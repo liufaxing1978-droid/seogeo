@@ -1,7 +1,9 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { app } from '../../src/app.js';
+import { createApp } from '../../src/app.js';
 import { prisma } from '../../src/db/prisma.js';
+
+const app = createApp();
 
 describe('GEO overview web page', () => {
   beforeEach(async () => {
