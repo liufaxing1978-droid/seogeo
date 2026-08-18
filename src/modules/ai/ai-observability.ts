@@ -7,7 +7,7 @@ export type AiObservabilityEventName =
   | 'ai.task.completed'
   | 'ai.task.failed';
 
-export interface AiObservabilityEvent {
+export interface AiObservabilityEvent extends Record<string, unknown> {
   event: AiObservabilityEventName;
   taskId: string;
   projectId: string;
