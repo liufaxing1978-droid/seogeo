@@ -38,7 +38,7 @@ describe('deterministic GEO entity extraction', () => {
       }
     });
 
-    await prisma.pageSnapshot.create({
+    const snapshot = await prisma.pageSnapshot.create({
       data: {
         pageId: page.id,
         crawlRunId: crawlRun.id,
@@ -50,6 +50,13 @@ describe('deterministic GEO entity extraction', () => {
         h1Count: 1,
         wordCount: 400,
         schemaCount: 1,
+        parserVersion: '0.2.0'
+      }
+    });
+
+    await prisma.pageStructuredSignal.create({
+      data: {
+        pageSnapshotId: snapshot.id,
         openGraphSiteName: 'Example Site',
         entitySignals: [
           {
@@ -85,8 +92,7 @@ describe('deterministic GEO entity extraction', () => {
             sourcePath: '$.@graph[1].provider',
             parentSourcePath: '$.@graph[1]'
           }
-        ],
-        parserVersion: '0.2.0'
+        ]
       }
     });
 
@@ -208,7 +214,7 @@ describe('deterministic GEO entity extraction', () => {
         path: '/'
       }
     });
-    await prisma.pageSnapshot.create({
+    const snapshot = await prisma.pageSnapshot.create({
       data: {
         pageId: page.id,
         crawlRunId: crawlRun.id,
@@ -216,9 +222,14 @@ describe('deterministic GEO entity extraction', () => {
         statusCode: 200,
         contentType: 'text/html',
         title: 'Person Name in Title',
-        openGraphSiteName: 'Possible Brand Name',
-        entitySignals: [],
         parserVersion: '0.2.0'
+      }
+    });
+    await prisma.pageStructuredSignal.create({
+      data: {
+        pageSnapshotId: snapshot.id,
+        openGraphSiteName: 'Possible Brand Name',
+        entitySignals: []
       }
     });
     const audit = await prisma.geoAuditRun.create({
