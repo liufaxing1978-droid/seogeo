@@ -1,4 +1,11 @@
-import type { PageRuleEvaluator } from './seo.types.js';
+import type { CrawlRuleEvaluator, PageRuleEvaluator } from './seo.types.js';
+import {
+  evaluateRobotsFetchFailed,
+  evaluateRobotsServerError,
+  evaluateSitemapEmpty,
+  evaluateSitemapParseError,
+  evaluateSitemapUnavailable
+} from './rules/crawl-rules.js';
 import {
   evaluateCanonicalMissing,
   evaluateH1Missing,
@@ -35,8 +42,22 @@ const PAGE_RULE_EVALUATORS: Readonly<Record<string, PageRuleEvaluator>> = {
   HTML_TOO_LARGE: evaluateHtmlTooLarge
 };
 
+const CRAWL_RULE_EVALUATORS: Readonly<Record<string, CrawlRuleEvaluator>> = {
+  ROBOTS_FETCH_FAILED: evaluateRobotsFetchFailed,
+  ROBOTS_SERVER_ERROR: evaluateRobotsServerError,
+  SITEMAP_UNAVAILABLE: evaluateSitemapUnavailable,
+  SITEMAP_PARSE_ERROR: evaluateSitemapParseError,
+  SITEMAP_EMPTY: evaluateSitemapEmpty
+};
+
 export function getPageRuleEvaluator(ruleCode: string): PageRuleEvaluator {
   const evaluator = PAGE_RULE_EVALUATORS[ruleCode];
-  if (!evaluator) throw new Error(`Unknown SEO rule: ${ruleCode}`);
+  if (!evaluator) throw new Error(`Unknown SEO page rule: ${ruleCode}`);
+  return evaluator;
+}
+
+export function getCrawlRuleEvaluator(ruleCode: string): CrawlRuleEvaluator {
+  const evaluator = CRAWL_RULE_EVALUATORS[ruleCode];
+  if (!evaluator) throw new Error(`Unknown SEO crawl rule: ${ruleCode}`);
   return evaluator;
 }
