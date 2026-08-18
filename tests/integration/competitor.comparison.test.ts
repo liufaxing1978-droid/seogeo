@@ -9,7 +9,7 @@ describe('P5-B competitor comparison evidence boundary', () => {
     for (const id of projects) await prisma.project.delete({ where: { id } }).catch(() => undefined);
   });
 
-  it('keeps owned successShare UNKNOWN when ContentDocument has no HTTP status fact', async () => {
+  it('keeps owned transport and schema shares UNKNOWN when ContentDocument does not carry those source facts', async () => {
     const suffix = `${Date.now()}-${Math.random()}`;
     const project = await prisma.project.create({ data: { name: 'Comparison Boundary', slug: `comparison-${suffix}`, primaryDomain: `owned-${suffix}.example.com` } });
     projects.push(project.id);
@@ -22,10 +22,14 @@ describe('P5-B competitor comparison evidence boundary', () => {
 
     const competitor = await prisma.competitor.create({ data: { projectId: project.id, name: 'Rival', domain: `rival-${suffix}.example.com` } });
     const rivalCrawl = await prisma.competitorCrawl.create({ data: { competitorId: competitor.id, status: 'COMPLETED', seedUrl: `https://${competitor.domain}/`, maxPages: 25, pagesCrawled: 1, crawlerVersion: 'test', startedAt: new Date(), finishedAt: new Date() } });
-    await prisma.competitorPageSnapshot.create({ data: { competitorCrawlId: rivalCrawl.id, url: `https://${competitor.domain}/`, normalizedUrl: `https://${competitor.domain}/`, finalUrl: `https://${competitor.domain}/`, statusCode: 200, title: 'Rival', h1: 'Rival', wordCount: 1000, headingCount: 2, internalLinkCount: 3, schemaCount: 0, indexable: true } });
+    await prisma.competitorPageSnapshot.create({ data: { competitorCrawlId: rivalCrawl.id, url: `https://${competitor.domain}/`, normalizedUrl: `https://${competitor.domain}/`, finalUrl: `https://${competitor.domain}/`, statusCode: 200, title: 'Rival', h1: 'Rival', wordCount: 1000, headingCount: 2, internalLinkCount: 3, schemaCount: 1, indexable: true } });
 
     const comparison = await createCompetitorComparison(project.id, competitor.id);
-    expect((comparison.ownedMetrics as any).successShare).toBeNull();
-    expect((comparison.gaps as any[]).find((gap) => gap.metric === 'successShare')).toMatchObject({ state: 'UNKNOWN', delta: null });
+    const ownedMetrics = comparison.ownedMetrics as any;
+    const gaps = comparison.gaps as any[];
+    expect(ownedMetrics.successShare).toBeNull();
+    expect(ownedMetrics.structuredDataPresenceShare).toBeNull();
+    expect(gaps.find((gap) => gap.metric === 'successShare')).toMatchObject({ state: 'UNKNOWN', delta: null });
+    expect(gaps.find((gap) => gap.metric === 'structuredDataPresenceShare')).toMatchObject({ state: 'UNKNOWN', delta: null });
   });
 });
