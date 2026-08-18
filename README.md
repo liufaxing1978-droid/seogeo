@@ -5,7 +5,7 @@ SEO GEO is an independent SEO + GEO platform for technical auditing, GEO readine
 - System target: `seo.xingshantang.org`
 - Analyzed domains are project data and are separate from the system entry domain.
 - Advanced AI Visibility is a separately gated module.
-- Current milestone: **P4 DeepSeek AI Gateway + Intelligence release gate**.
+- Current milestone: **P5 Content, competitor analysis, reports**.
 - DeepSeek is integrated through a provider-neutral AI Gateway; business modules do not call it directly.
 
 ## Stack
@@ -83,6 +83,6 @@ P4 implementation, environment configuration, retry policy, observability rules 
 - P1 Crawler + Technical SEO ingestion — complete
 - P2 SEO Rule Engine + Audit UI — complete
 - P3 GEO Engine + Citability + Entity — complete
-- P4 DeepSeek AI Gateway + Intelligence — release gate
+- P4 DeepSeek AI Gateway + Intelligence — complete
 - P5 Content, competitor analysis, reports — next
 - P6 AI Visibility Advanced module
