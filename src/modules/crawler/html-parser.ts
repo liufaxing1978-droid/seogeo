@@ -45,8 +45,8 @@ export interface ParsedPageSignals {
   imagesCount: number;
   imagesWithoutAlt: number;
   schemaCount: number;
-  openGraphSiteName: string | null;
-  entitySignals: StructuredEntitySignal[];
+  openGraphSiteName?: string | null;
+  entitySignals?: StructuredEntitySignal[];
   htmlHash: string;
   contentHash: string;
   indexable: boolean;
