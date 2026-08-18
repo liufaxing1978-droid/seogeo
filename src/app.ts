@@ -2,13 +2,19 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { errorHandler } from './core/http.js';
+import { createCrawlRoutes } from './modules/crawler/crawl.routes.js';
+import type { CrawlService } from './modules/crawler/crawl.service.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import { projectRoutes } from './modules/projects/project.routes.js';
 import { webRoutes } from './web/routes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-export function createApp() {
+export interface AppOptions {
+  crawlService?: CrawlService;
+}
+
+export function createApp(options: AppOptions = {}) {
   const app = express();
 
   app.disable('x-powered-by');
@@ -21,6 +27,7 @@ export function createApp() {
 
   app.use('/health', healthRoutes);
   app.use('/api/projects', projectRoutes);
+  app.use('/api', createCrawlRoutes(options.crawlService));
   app.use('/', webRoutes);
 
   app.use(errorHandler);
