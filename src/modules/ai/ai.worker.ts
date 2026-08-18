@@ -3,6 +3,7 @@ import type { AiTask, Prisma } from '@prisma/client';
 import type { Job } from 'bullmq';
 import { aiGatewayConfig } from './ai.config.js';
 import { AiGateway } from './ai.gateway.js';
+import { aiObservability, type AiObservability } from './ai-observability.js';
 import type { AiGatewayRequest, AiProviderResponse } from './ai.types.js';
 import { DeepSeekProvider } from './deepseek.provider.js';
 import { parseEntityEnrichmentOutput } from './entity-intelligence.js';
@@ -25,6 +26,7 @@ export interface AiCompletionGateway {
 export interface ExecuteAiTaskDependencies {
   repository?: AiRepository;
   gateway?: AiCompletionGateway;
+  observability?: AiObservability;
 }
 
 type AiTaskExecutor = (taskId: string) => Promise<void>;
@@ -122,6 +124,7 @@ export async function executeAiTask(
 ): Promise<void> {
   const repository = dependencies.repository ?? new AiRepository();
   const gateway = dependencies.gateway ?? getDefaultGateway();
+  const observability = dependencies.observability ?? aiObservability;
   const task = await repository.getTask(taskId);
   if (!task) throw new Error(`AI task not found: ${taskId}`);
 
@@ -133,6 +136,13 @@ export async function executeAiTask(
   const expectedPrompt = expectedPromptId(task);
   if (task.promptVersion !== expectedPrompt) {
     await repository.markTaskFailed(task.id, 'AI_PROMPT_MISMATCH', 'AI task prompt does not match its task type');
+    observability.emit({
+      event: 'ai.task.failed',
+      taskId: task.id,
+      projectId: task.projectId,
+      promptVersion: task.promptVersion,
+      errorCode: 'AI_PROMPT_MISMATCH'
+    });
     throw new Error('AI task prompt does not match its task type');
   }
 
@@ -150,6 +160,17 @@ export async function executeAiTask(
     requestHash: requestHash(task, model, prompt.mode, prompt.responseFormat)
   });
 
+  observability.emit({
+    event: 'ai.task.started',
+    taskId: task.id,
+    projectId: task.projectId,
+    runId: run.id,
+    provider: 'DEEPSEEK',
+    model,
+    promptVersion: task.promptVersion
+  });
+
+  let providerCompleted = false;
   try {
     const response = await gateway.complete({
       messages: [
@@ -159,8 +180,36 @@ export async function executeAiTask(
       mode: prompt.mode,
       responseFormat: prompt.responseFormat
     });
+    providerCompleted = true;
+
+    observability.emit({
+      event: 'ai.provider.request.completed',
+      taskId: task.id,
+      projectId: task.projectId,
+      runId: run.id,
+      provider: 'DEEPSEEK',
+      model: response.model,
+      promptVersion: task.promptVersion,
+      latencyMs: response.latencyMs,
+      promptTokens: response.usage.promptTokens,
+      completionTokens: response.usage.completionTokens,
+      totalTokens: response.usage.totalTokens,
+      cacheHitTokens: response.usage.cacheHitTokens,
+      cacheMissTokens: response.usage.cacheMissTokens,
+      reasoningTokens: response.usage.reasoningTokens
+    });
 
     const output = parseTaskOutput(task, response.content);
+    observability.emit({
+      event: 'ai.output.validated',
+      taskId: task.id,
+      projectId: task.projectId,
+      runId: run.id,
+      provider: 'DEEPSEEK',
+      model: response.model,
+      promptVersion: task.promptVersion
+    });
+
     await repository.completeRun(
       task,
       run.id,
@@ -168,11 +217,49 @@ export async function executeAiTask(
       output as Prisma.InputJsonValue,
       resultSummary(task, output)
     );
+
+    observability.emit({
+      event: 'ai.task.completed',
+      taskId: task.id,
+      projectId: task.projectId,
+      runId: run.id,
+      provider: 'DEEPSEEK',
+      model: response.model,
+      promptVersion: task.promptVersion
+    });
   } catch (error) {
+    const code = errorCode(error);
+    const httpStatus = error instanceof AiProviderError ? error.httpStatus : null;
     await repository.failRun(task.id, run.id, {
-      errorCode: errorCode(error),
+      errorCode: code,
       errorMessage: safeErrorMessage(error),
-      httpStatus: error instanceof AiProviderError ? error.httpStatus : null
+      httpStatus
+    });
+
+    if (!providerCompleted) {
+      observability.emit({
+        event: 'ai.provider.request.failed',
+        taskId: task.id,
+        projectId: task.projectId,
+        runId: run.id,
+        provider: 'DEEPSEEK',
+        model,
+        promptVersion: task.promptVersion,
+        httpStatus,
+        errorCode: code
+      });
+    }
+
+    observability.emit({
+      event: 'ai.task.failed',
+      taskId: task.id,
+      projectId: task.projectId,
+      runId: run.id,
+      provider: 'DEEPSEEK',
+      model,
+      promptVersion: task.promptVersion,
+      httpStatus,
+      errorCode: code
     });
     throw error;
   }
