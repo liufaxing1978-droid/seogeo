@@ -37,4 +37,26 @@ describe('P5-B competitor API', () => {
     expect(listed.body.data).toHaveLength(1);
     expect(listed.body.data[0].name).toBe('Reference Site');
   });
+
+  it('rejects the owned domain even when supplied through a www alias', async () => {
+    const suffix = `${Date.now()}-${Math.random()}`;
+    const bareDomain = `owned-www-${suffix}.example.com`;
+    const project = await prisma.project.create({
+      data: {
+        name: 'Competitor Own Domain Guard',
+        slug: `competitor-own-domain-${suffix}`,
+        primaryDomain: bareDomain,
+        planLevel: 'STANDARD'
+      }
+    });
+    projects.push(project.id);
+
+    const response = await request(createApp())
+      .post(`/api/v1/projects/${project.id}/competitors`)
+      .send({ name: 'Not A Competitor', domain: `www.${bareDomain}` })
+      .expect(400);
+
+    expect(response.body.error.code).toBe('COMPETITOR_MATCHES_PROJECT');
+    expect(await prisma.competitor.count({ where: { projectId: project.id } })).toBe(0);
+  });
 });
