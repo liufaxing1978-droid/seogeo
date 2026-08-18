@@ -44,6 +44,90 @@ export class AiRepository {
     return prisma.aiTask.findUnique({ where: { id: taskId } });
   }
 
+  listProjectTasks(projectId: string) {
+    return prisma.aiTask.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        projectId: true,
+        taskType: true,
+        status: true,
+        promptVersion: true,
+        errorCode: true,
+        errorMessage: true,
+        createdAt: true,
+        updatedAt: true,
+        _count: { select: { runs: true } }
+      }
+    });
+  }
+
+  getTaskDetail(taskId: string) {
+    return prisma.aiTask.findUnique({
+      where: { id: taskId },
+      select: {
+        id: true,
+        projectId: true,
+        taskType: true,
+        status: true,
+        promptVersion: true,
+        sourceReferences: true,
+        errorCode: true,
+        errorMessage: true,
+        createdAt: true,
+        updatedAt: true,
+        runs: {
+          orderBy: { attemptNo: 'desc' },
+          select: {
+            id: true,
+            attemptNo: true,
+            provider: true,
+            model: true,
+            mode: true,
+            responseFormat: true,
+            status: true,
+            promptVersion: true,
+            startedAt: true,
+            finishedAt: true,
+            errorCode: true,
+            errorMessage: true,
+            calls: {
+              orderBy: { attemptNo: 'asc' },
+              select: {
+                attemptNo: true,
+                httpStatus: true,
+                latencyMs: true,
+                promptTokens: true,
+                completionTokens: true,
+                totalTokens: true,
+                cacheHitTokens: true,
+                cacheMissTokens: true,
+                reasoningTokens: true,
+                finishReason: true,
+                errorCode: true,
+                createdAt: true
+              }
+            },
+            result: {
+              select: {
+                id: true,
+                resultType: true,
+                summary: true,
+                structuredOutput: true,
+                sourceReferences: true,
+                provider: true,
+                model: true,
+                promptVersion: true,
+                createdAt: true
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
   async claimQueuedTask(taskId: string): Promise<boolean> {
     const result = await prisma.aiTask.updateMany({
       where: { id: taskId, status: 'QUEUED' },
