@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
+import { competitorObservability, type CompetitorObservability } from './competitor-observability.js';
 
 export const COMPETITOR_COMPARISON_VERSION = 'COMPETITOR_COMPARISON_V1';
 
@@ -96,7 +97,7 @@ export function buildCompetitorGaps(owned: CompetitorMetrics, competitor: Compet
     .map((metric) => compareMetric(metric, owned[metric], competitor[metric]));
 }
 
-export async function createCompetitorComparison(projectId: string, competitorId: string) {
+export async function createCompetitorComparison(projectId: string, competitorId: string, observability: CompetitorObservability = competitorObservability) {
   const competitor = await prisma.competitor.findFirst({ where: { id: competitorId, projectId, status: 'ACTIVE' } });
   if (!competitor) throw new NotFoundError('Competitor not found', 'COMPETITOR_NOT_FOUND');
   const crawl = await prisma.competitorCrawl.findFirst({ where: { competitorId, status: 'COMPLETED' }, orderBy: [{ finishedAt: 'desc' }, { createdAt: 'desc' }] });
@@ -115,9 +116,11 @@ export async function createCompetitorComparison(projectId: string, competitorId
     ...rivalRows.map((row) => ({ type: 'COMPETITOR_PAGE_SNAPSHOT', id: row.id }))
   ];
 
-  return prisma.competitorComparison.upsert({
+  const comparison = await prisma.competitorComparison.upsert({
     where: { projectId_competitorCrawlId_comparisonVersion: { projectId, competitorCrawlId: crawl.id, comparisonVersion: COMPETITOR_COMPARISON_VERSION } },
     create: { projectId, competitorId, competitorCrawlId: crawl.id, comparisonVersion: COMPETITOR_COMPARISON_VERSION, ownedMetrics: owned as unknown as Prisma.InputJsonValue, competitorMetrics: rival as unknown as Prisma.InputJsonValue, gaps: gaps as unknown as Prisma.InputJsonValue, sourceReferences: sourceReferences as unknown as Prisma.InputJsonValue },
     update: { ownedMetrics: owned as unknown as Prisma.InputJsonValue, competitorMetrics: rival as unknown as Prisma.InputJsonValue, gaps: gaps as unknown as Prisma.InputJsonValue, sourceReferences: sourceReferences as unknown as Prisma.InputJsonValue }
   });
+  observability.emit({ event: 'competitor.comparison.created', projectId, competitorId, comparisonId: comparison.id });
+  return comparison;
 }
