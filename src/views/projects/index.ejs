@@ -1,0 +1,26 @@
+<section class="page-heading">
+  <div><p class="eyebrow">项目</p><h2>项目列表</h2><p class="muted">管理需要审计和监控的网站。</p></div>
+  <a class="button" href="/projects/new">+ 新建项目</a>
+</section>
+<section class="panel table-panel">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>项目</th><th>域名</th><th>套餐</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead>
+      <tbody>
+      <% if (!projects.length) { %>
+        <tr><td colspan="6" class="empty-cell">暂无项目</td></tr>
+      <% } %>
+      <% projects.forEach((project) => { %>
+        <tr>
+          <td><strong><%= project.name %></strong><br><span class="muted small"><%= project.slug %></span></td>
+          <td><%= project.primaryDomain %></td>
+          <td><span class="badge <%= project.planLevel === 'STANDARD' ? 'neutral' : 'premium' %>"><%= project.planLevel %></span></td>
+          <td><span class="badge success"><%= project.status %></span></td>
+          <td><%= new Date(project.updatedAt).toLocaleString('zh-CN') %></td>
+          <td><a href="/projects/<%= project.id %>">查看</a></td>
+        </tr>
+      <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
