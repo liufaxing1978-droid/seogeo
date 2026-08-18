@@ -1,4 +1,4 @@
-import robotsParser from 'robots-parser';
+import robotsParser = require('robots-parser');
 import { fetchPage } from './http-fetcher.js';
 import type { FetchOptions, FetchResult } from './crawl.types.js';
 import { isInProjectScope, normalizeCrawlUrl } from './url-normalizer.js';
