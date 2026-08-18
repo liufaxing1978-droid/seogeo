@@ -4,6 +4,8 @@ import { prisma } from '../../src/db/prisma.js';
 describe('SEO audit persistence', () => {
   beforeEach(async () => {
     await prisma.project.deleteMany();
+    await prisma.seoRuleVersion.deleteMany();
+    await prisma.seoRule.deleteMany();
   });
 
   it('stores an audit run tied to one completed crawl without mutating crawl facts', async () => {
