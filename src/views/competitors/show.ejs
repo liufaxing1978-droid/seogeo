@@ -37,7 +37,7 @@
     <article class="panel nested-panel">
       <div class="panel-header"><div><strong><%= comparison.comparisonVersion %></strong><div class="muted">ID: <%= comparison.id %></div></div><div><%= new Date(comparison.createdAt).toLocaleString('zh-CN') %></div></div>
       <div class="table-wrap"><table><thead><tr><th>指标</th><th>结论</th><th>本站</th><th>竞品</th></tr></thead><tbody>
-      <% for (const gap of gaps) { %><tr><td><%= gap.metric ?? 'UNKNOWN' %></td><td><span class="badge"><%= gap.direction ?? 'UNKNOWN' %></span></td><td><%= gap.ownedValue ?? 'UNKNOWN' %></td><td><%= gap.competitorValue ?? 'UNKNOWN' %></td></tr><% } %>
+      <% for (const gap of gaps) { %><tr><td><%= gap.metric ?? 'UNKNOWN' %></td><td><span class="badge"><%= gap.state ?? 'UNKNOWN' %></span></td><td><%= gap.owned ?? 'UNKNOWN' %></td><td><%= gap.competitor ?? 'UNKNOWN' %></td></tr><% } %>
       <% if (!gaps.length) { %><tr><td colspan="4" class="muted">没有可比较的确定性 gap。</td></tr><% } %>
       </tbody></table></div>
       <form action="/projects/<%= project.id %>/competitors/comparisons/<%= comparison.id %>/ai" method="post"><button class="button" type="submit">DeepSeek 解释差距</button></form>
