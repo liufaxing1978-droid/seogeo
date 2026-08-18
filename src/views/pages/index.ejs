@@ -1,0 +1,28 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Crawler</p>
+    <h1>页面中心</h1>
+    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
+  </div>
+  <a class="button button-secondary" href="/projects/<%= project.id %>/crawls">抓取历史</a>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><h2>已发现页面 <span class="muted">(<%= total %>)</span></h2></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>URL</th><th>HTTP</th><th>Title</th><th>Indexable</th><th>模式</th><th>最近抓取</th></tr></thead>
+    <tbody>
+      <% for (const item of pages) { %>
+        <tr>
+          <td><a href="/pages/<%= item.id %>"><%= item.url %></a></td>
+          <td><%= item.statusCode ?? '未知' %></td>
+          <td><%= item.title ?? '—' %></td>
+          <td><%= item.indexable === null ? '未知' : item.indexable ? '是' : '否' %></td>
+          <td><%= item.rendered ? 'Browser' : 'HTTP' %></td>
+          <td><%= item.latestCapturedAt ? item.latestCapturedAt.toISOString() : '—' %></td>
+        </tr>
+      <% } %>
+      <% if (!pages.length) { %><tr><td colspan="6" class="muted">尚无页面数据，请先运行抓取。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
