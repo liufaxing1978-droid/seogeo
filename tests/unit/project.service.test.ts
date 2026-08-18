@@ -23,7 +23,7 @@ function repository(): ProjectRepository {
     create: async () => project,
     list: async () => [project],
     findById: async (id) => id === project.id ? project : null,
-    update: async (_id, input) => ({ ...project, ...input })
+    update: async () => project
   };
 }
 
