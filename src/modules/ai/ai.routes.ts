@@ -5,6 +5,7 @@ import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
 import { createEntityEnrichmentTask } from './entity-intelligence.js';
 import { createGeoAnalysisTask } from './geo-intelligence.js';
+import { AiRepository } from './ai.repository.js';
 import { aiTaskService, type AiTaskService } from './ai.service.js';
 import { createSeoAnalysisTask } from './seo-intelligence.js';
 
@@ -31,15 +32,20 @@ async function requireAiProject(projectId: string) {
   return project;
 }
 
-async function requireProjectTask(projectId: string, taskId: string) {
-  await requireAiProject(projectId);
-  const task = await prisma.aiTask.findFirst({ where: { id: taskId, projectId } });
-  if (!task) throw new NotFoundError('AI task not found', 'AI_TASK_NOT_FOUND');
-  return task;
-}
-
-export function createAiRoutes(service: AiTaskService = aiTaskService) {
+export function createAiRoutes(
+  service: AiTaskService = aiTaskService,
+  repository: AiRepository = new AiRepository()
+) {
   const router = Router();
+
+  async function requireProjectTask(projectId: string, taskId: string) {
+    await requireAiProject(projectId);
+    const task = await repository.getTaskDetail(taskId);
+    if (!task || task.projectId !== projectId) {
+      throw new NotFoundError('AI task not found', 'AI_TASK_NOT_FOUND');
+    }
+    return task;
+  }
 
   router.post('/projects/:projectId/ai/seo-analysis', async (req, res, next) => {
     try {
@@ -80,12 +86,7 @@ export function createAiRoutes(service: AiTaskService = aiTaskService) {
   router.get('/projects/:projectId/ai/tasks', async (req, res, next) => {
     try {
       await requireAiProject(req.params.projectId);
-      const tasks = await prisma.aiTask.findMany({
-        where: { projectId: req.params.projectId },
-        orderBy: { createdAt: 'desc' },
-        take: 100
-      });
-      res.json({ data: tasks.map(safeTask) });
+      res.json({ data: await repository.listProjectTasks(req.params.projectId) });
     } catch (error) {
       next(error);
     }
@@ -95,58 +96,7 @@ export function createAiRoutes(service: AiTaskService = aiTaskService) {
     try {
       const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : '';
       if (!projectId) throw new AppError('projectId is required', 400, 'PROJECT_ID_REQUIRED');
-      await requireProjectTask(projectId, req.params.taskId);
-      const task = await prisma.aiTask.findFirstOrThrow({
-        where: { id: req.params.taskId, projectId },
-        include: {
-          runs: {
-            orderBy: { attemptNo: 'desc' },
-            include: { analysisResult: true, providerCalls: true }
-          }
-        }
-      });
-      res.json({
-        data: {
-          ...safeTask(task),
-          runs: task.runs.map((run) => ({
-            id: run.id,
-            attemptNo: run.attemptNo,
-            status: run.status,
-            provider: run.provider,
-            model: run.model,
-            mode: run.mode,
-            responseFormat: run.responseFormat,
-            promptVersion: run.promptVersion,
-            startedAt: run.startedAt,
-            finishedAt: run.finishedAt,
-            errorCode: run.errorCode,
-            errorMessage: run.errorMessage,
-            result: run.analysisResult
-              ? {
-                  id: run.analysisResult.id,
-                  resultType: run.analysisResult.resultType,
-                  summary: run.analysisResult.summary,
-                  structuredOutput: run.analysisResult.structuredOutput,
-                  sourceReferences: run.analysisResult.sourceReferences,
-                  provider: run.analysisResult.provider,
-                  model: run.analysisResult.model,
-                  promptVersion: run.analysisResult.promptVersion,
-                  createdAt: run.analysisResult.createdAt
-                }
-              : null,
-            usage: run.providerCalls.map((call) => ({
-              latencyMs: call.latencyMs,
-              promptTokens: call.promptTokens,
-              completionTokens: call.completionTokens,
-              totalTokens: call.totalTokens,
-              reasoningTokens: call.reasoningTokens,
-              finishReason: call.finishReason,
-              httpStatus: call.httpStatus,
-              errorCode: call.errorCode
-            }))
-          }))
-        }
-      });
+      res.json({ data: await requireProjectTask(projectId, req.params.taskId) });
     } catch (error) {
       next(error);
     }
