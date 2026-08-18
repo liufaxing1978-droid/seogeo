@@ -1,81 +1,129 @@
-# SEO GEO
+# 兴善堂 SEO GEO
 
-SEO GEO is an independent SEO + GEO platform for technical auditing, GEO readiness, AI-assisted analysis, and—on Advanced plans—AI Visibility monitoring.
+Independent SEO / GEO platform for `seo.xingshantang.org`.
 
-- System target: `seo.xingshantang.org`
-- Analyzed domains are project data and are separate from the system entry domain.
-- Advanced AI Visibility is a separately gated module.
-- Current milestone: **P5 Content, competitor analysis, reports**.
-- DeepSeek is integrated through a provider-neutral AI Gateway; business modules do not call it directly.
+Current milestone: **P5 Content, competitor analysis, reports — release candidate pending final CI gate**.
 
-## Stack
+## Architecture
 
-Node.js 22, TypeScript, Express 5, EJS, PostgreSQL, Prisma, Redis, BullMQ, Zod, Vitest, Supertest, Playwright.
+- Node.js 22
+- TypeScript
+- Express 5
+- EJS
+- PostgreSQL / Prisma
+- Redis / BullMQ
+- Zod
+- Vitest / Supertest / Playwright
+- DeepSeek through a provider-neutral AI Gateway
 
-## Local setup
+## Core boundary
 
-```bash
-cp .env.example .env
-npm install
-npx prisma generate
-npx prisma migrate dev
-npm run typecheck
-npm test
-npm run dev
+Deterministic crawler, SEO, GEO, content, competitor and reporting facts remain authoritative. AI may explain, summarize, prioritize and recommend, but it does not determine crawl/HTTP facts, SEO/GEO issue state, readiness scores, competitor metrics or verified-fix state.
+
+Provider reasoning is never persisted, logged or rendered.
+
+## P4 DeepSeek AI Gateway
+
+P4 provides the project-scoped AI Analysis Center and durable AI task execution.
+
+Environment:
+
+```text
+DEEPSEEK_API_KEY=
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_FAST_MODEL=deepseek-v4-flash
+DEEPSEEK_REASONING_MODEL=deepseek-v4-pro
+DEEPSEEK_TIMEOUT_MS=180000
+AI_MAX_INPUT_CHARS=200000
+AI_MAX_OUTPUT_TOKENS=8192
 ```
 
-Open `http://localhost:3000`.
+The application starts without `DEEPSEEK_API_KEY`; only an actual AI request fails safely when no key is configured.
 
-## Useful commands
+Model routes:
+
+- FAST → `deepseek-v4-flash`
+- REASONING → `deepseek-v4-pro`
+
+The routes are configurable through environment variables.
+
+Operational details: `docs/development/p4-ai-gateway.md`.
+
+## P5 Content Intelligence
+
+P5-A materializes versioned content facts from persisted P1 snapshots, evaluates deterministic content signals/opportunities and exposes project-scoped Content Center pages and APIs.
+
+Explicit failed/non-HTML snapshots preserve content facts as UNKNOWN rather than creating false thin-content/title/H1 failures. Schema evidence remains UNKNOWN unless a deterministic source supplies it.
+
+Optional Content Brief and Content Optimization tasks use the existing P4 AI Gateway. A successful provider call is persisted with aggregate usage before the validated AI result, ContentBrief materialization and final COMPLETED state are committed atomically.
+
+Operational details: `docs/development/p5a-content-intelligence.md`.
+
+## P5 Competitor Intelligence
+
+P5-B persists competitor facts separately from owned-site facts, uses bounded same-domain crawling with P1 safety/parser primitives and creates `COMPETITOR_COMPARISON_V1` deterministic gap snapshots.
+
+Owned metrics that P5 does not deterministically possess—such as HTTP success share, structured-data presence share and indexability share—remain UNKNOWN rather than being fabricated from missing data.
+
+Optional `COMPETITOR_GAP_ANALYSIS` uses the P4 AI Gateway only to explain saved gaps. It cannot invent rankings, traffic, citations, AI Visibility or Share of Voice.
+
+Operational details: `docs/development/p5b-competitor-intelligence.md`.
+
+## P5 Reporting
+
+P5-C creates immutable `PROJECT_REPORT_V1` snapshots from persisted SEO, GEO, Content and Competitor data. Deterministic facts and AI advisory summaries are stored and displayed separately.
+
+Report generation itself is database-only; it does not crawl or call DeepSeek. Optional Executive Summary uses the P4 AI task pipeline.
+
+Operational details: `docs/development/p5c-reporting.md`.
+
+## Feature gates
+
+Base project features available to Standard / Advanced / Enterprise include:
+
+- SEO Audit
+- GEO Audit
+- Content Intelligence
+- Competitor Intelligence
+- Reporting
+- AI Analysis
+
+P6 monitoring gates remain separate:
+
+- AI Visibility
+- Prompt Monitor
+- Citation Monitor
+- Competitor Share of Voice
+
+`ADVANCED_REPORTS` remains reserved for future advanced scheduling/bundling/distribution rather than the base P5 report snapshot feature.
+
+## Development
 
 ```bash
-npm run dev
+npm ci
+npx prisma generate
 npm run typecheck
 npm test
 npm run build
 npm run test:e2e
 ```
 
-## Health
+## Release verification
 
-- `GET /health/live` — process liveness
-- `GET /health/ready` — PostgreSQL + Redis readiness
+The release gate requires all of the following on the final P5 head:
 
-## P1 Crawler
+```bash
+npx prisma validate
+npx prisma generate
+npx prisma migrate deploy
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
+npm audit --omit=dev --audit-level=high
+```
 
-P1 provides durable crawl runs, a real BullMQ crawl worker, bounded HTTP fetching, redirect history, robots.txt and sitemap parsing, deterministic HTML technical signals, optional browser rendering fallback, Crawl History, Page Center, and append-only Page Snapshot history.
-
-Crawler facts come from actual responses. P1 does not calculate SEO scores, create SEO severity issues, call DeepSeek, calculate GEO scores, or perform AI Visibility/Prompt/Citation sampling.
-
-Production crawler setup and safety details are documented in `docs/development/p1-crawler-setup.md`.
-
-## P2 SEO Audit
-
-P2 consumes immutable P1 crawl observations and adds a versioned deterministic SEO rule catalog, raw rule results, stable SEO Issue identities, per-audit issue occurrences, explainable SEO Score components, audit comparison (`NEW / PERSISTENT / REGRESSED / FIXED`), BullMQ execution, REST APIs, SEO Audit UI, Issue Center, Issue Detail and Audit Compare.
-
-An issue can be manually marked `IN_PROGRESS`, `PARTIALLY_FIXED` or `IGNORED`, but only a later deterministic audit can mark a previously failing issue `RESOLVED`. DeepSeek is not used to decide whether a rule passes or fails, how many pages are affected, issue severity, SEO Score, or whether a fix is verified.
-
-P2 implementation and operating semantics are documented in `docs/development/p2-seo-audit.md`.
-
-## P3 GEO Readiness
-
-P3 adds a deterministic GEO readiness layer over persisted P1/P2 facts: versioned GEO rules, Citability readiness, structured Entity extraction, AI crawler policy readiness, owned-site Brand readiness, `GEO_READINESS_V1`, BullMQ execution, REST APIs, GEO Overview and detail views.
-
-P3 Citability means citation readiness/extractability, not observed external AI citations. AI Visibility remains explicitly unavailable until P6 performs real Prompt × Platform sampling. DeepSeek is not called by P3 business logic.
-
-P3 implementation and operating semantics are documented in `docs/development/p3-geo-engine.md`.
-
-## P4 DeepSeek AI Gateway + Intelligence
-
-P4 adds durable AI tasks/runs/provider-call metadata/results, a provider-neutral AI Gateway, DeepSeek FAST/REASONING routing, versioned JSON prompts, Zod-validated structured output, bounded SEO/GEO fact packets, entity-enrichment suggestions, BullMQ execution, REST APIs and a project-scoped AI Analysis Center.
-
-P4 AI output is advisory and traceable. P1/P2/P3 deterministic facts remain authoritative. P4 cannot resolve SEO issues, mark GEO facts fixed, silently mutate deterministic entities, or fabricate ranking, traffic, external citation, SOV or AI Visibility facts.
-
-`AI_ANALYSIS` is available to STANDARD/ADVANCED/ENTERPRISE. The separately gated P6 `AI_VISIBILITY` capability remains unchanged.
-
-DeepSeek API keys are server-only. Provider `reasoning_content` is never persisted, logged or rendered. CI uses deterministic provider mocks and performs no live DeepSeek requests.
-
-P4 implementation, environment configuration, retry policy, observability rules and troubleshooting are documented in `docs/development/p4-ai-gateway.md`.
+CI must not call live DeepSeek or live competitor sites.
 
 ## Roadmap
 
@@ -84,5 +132,5 @@ P4 implementation, environment configuration, retry policy, observability rules 
 - P2 SEO Rule Engine + Audit UI — complete
 - P3 GEO Engine + Citability + Entity — complete
 - P4 DeepSeek AI Gateway + Intelligence — complete
-- P5 Content, competitor analysis, reports — next
-- P6 AI Visibility Advanced module
+- P5 Content, competitor analysis, reports — release candidate; complete only after final CI green and merge
+- P6 AI Visibility Advanced module — next after P5 release

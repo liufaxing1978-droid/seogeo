@@ -1,0 +1,26 @@
+<section class="page-header">
+  <div><p class="eyebrow">Deterministic Content Facts</p><h1><%= document.title ?? '内容详情' %></h1><p class="muted"><%= document.canonicalUrl %></p></div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/content">返回内容中心</a></div>
+</section>
+
+<section class="metric-grid compact">
+  <article class="metric-card"><div class="metric-title">字数</div><div class="metric-value"><%= document.wordCount ?? '--' %></div><div class="metric-caption"><%= document.wordCount === null ? 'UNKNOWN' : 'PageSnapshot fact' %></div></article>
+  <article class="metric-card"><div class="metric-title">标题结构</div><div class="metric-value"><%= document.headingCount ?? '--' %></div><div class="metric-caption">H1 + H2 + H3</div></article>
+  <article class="metric-card"><div class="metric-title">内链</div><div class="metric-value"><%= document.internalLinkCount ?? '--' %></div><div class="metric-caption">Deterministic</div></article>
+  <article class="metric-card"><div class="metric-title">Content Hash</div><div class="metric-value" style="font-size:14px"><%= document.contentHash.slice(0,16) %></div><div class="metric-caption">AI request identity</div></article>
+</section>
+
+<section class="panel"><h2>确定性 Signals</h2><div class="table-wrap"><table><thead><tr><th>规则</th><th>状态</th><th>优先级</th><th>值</th></tr></thead><tbody>
+<% for (const signal of document.signals) { %><tr><td><%= signal.ruleKey %> · v<%= signal.ruleVersion %></td><td><span class="badge"><%= signal.status %></span></td><td><%= signal.priority %></td><td><%= signal.numericValue ?? signal.textValue ?? 'UNKNOWN' %></td></tr><% } %>
+</tbody></table></div></section>
+
+<section class="panel"><h2>Content Opportunities</h2><p class="muted">只有新的确定性 refresh 才能把机会标记为 VERIFIED_FIXED。</p><div class="table-wrap"><table><thead><tr><th>优先级</th><th>类别</th><th>说明</th><th>状态</th></tr></thead><tbody>
+<% for (const opp of document.opportunities) { %><tr><td><%= opp.priority %></td><td><%= opp.category %></td><td><%= opp.summary %></td><td><%= opp.status %></td></tr><% } %>
+</tbody></table></div></section>
+
+<section class="panel"><h2>DeepSeek 建议</h2><p class="muted">以下操作只创建 AI 建议任务，不会修改抓取、SEO 或 GEO 事实。</p><div class="actions">
+<form action="/projects/<%= project.id %>/content/documents/<%= document.id %>/brief" method="post"><button class="button" type="submit">生成 Content Brief</button></form>
+<form action="/projects/<%= project.id %>/content/documents/<%= document.id %>/optimization" method="post"><button class="button secondary" type="submit">生成优化建议</button></form>
+</div>
+<% if (document.briefs.length) { %><div class="table-wrap" style="margin-top:16px"><table><thead><tr><th>Brief</th><th>Prompt</th><th>创建时间</th></tr></thead><tbody><% for (const brief of document.briefs) { %><tr><td><a href="/projects/<%= project.id %>/content/briefs/<%= brief.id %>"><%= brief.id %></a></td><td><%= brief.promptVersion %></td><td><%= new Date(brief.createdAt).toLocaleString('zh-CN') %></td></tr><% } %></tbody></table></div><% } %>
+</section>

@@ -1,0 +1,42 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Competitor Intelligence · P5-B</p>
+    <h1>竞争对手中心</h1>
+    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>确定性比较优先</h2>
+  <p class="muted">竞品抓取复用 P1 的安全抓取与解析能力。系统只比较已保存页面事实；不生成第三方搜索排名、流量或 P6 AI Visibility 数据。DeepSeek 只解释已保存差距。</p>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>添加竞品</h2><p class="muted">每个竞品使用独立 bounded crawl，不写入自有站点 Page/SEO/GEO 表。</p></div></div>
+  <form action="/projects/<%= project.id %>/competitors" method="post" class="form-grid">
+    <label>竞品名称<input name="name" aria-label="竞品名称" required placeholder="例如：Reference Site"></label>
+    <label>竞品域名<input name="domain" aria-label="竞品域名" required placeholder="example.com"></label>
+    <div class="actions"><button class="button" type="submit">添加竞品</button></div>
+  </form>
+</section>
+
+<section class="metric-grid compact">
+  <article class="metric-card"><div class="metric-title">已登记竞品</div><div class="metric-value"><%= competitors.length %></div><div class="metric-caption">独立事实域</div></article>
+  <article class="metric-card"><div class="metric-title">已完成抓取</div><div class="metric-value"><%= competitors.filter((item) => item.crawls[0]?.status === 'COMPLETED').length %></div><div class="metric-caption">最近一次状态</div></article>
+  <article class="metric-card"><div class="metric-title">已有比较</div><div class="metric-value"><%= competitors.filter((item) => item.comparisons.length > 0).length %></div><div class="metric-caption">COMPETITOR_COMPARISON_V1</div></article>
+</section>
+
+<section class="panel">
+  <div class="table-wrap"><table><thead><tr><th>竞品</th><th>域名</th><th>最近抓取</th><th>页面</th><th>最近比较</th></tr></thead><tbody>
+  <% for (const item of competitors) { const crawl = item.crawls[0]; const comparison = item.comparisons[0]; %>
+    <tr>
+      <td><a href="/projects/<%= project.id %>/competitors/<%= item.id %>"><strong><%= item.name %></strong></a></td>
+      <td><%= item.domain %></td>
+      <td><%= crawl?.status ?? '尚未抓取' %></td>
+      <td><%= crawl?.pagesCrawled ?? 0 %></td>
+      <td><%= comparison ? comparison.comparisonVersion : '尚未比较' %></td>
+    </tr>
+  <% } %>
+  <% if (!competitors.length) { %><tr><td colspan="5" class="muted">尚未登记竞争对手。</td></tr><% } %>
+  </tbody></table></div>
+</section>
