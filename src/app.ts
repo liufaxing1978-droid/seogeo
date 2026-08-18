@@ -16,6 +16,7 @@ import { createGeoRoutes } from './modules/geo/geo.routes.js';
 import type { GeoService } from './modules/geo/geo.service.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import { projectRoutes } from './modules/projects/project.routes.js';
+import { createReportRoutes } from './modules/reporting/report.routes.js';
 import { createSeoRoutes } from './modules/seo/seo.routes.js';
 import type { SeoService } from './modules/seo/seo.service.js';
 import { webRoutes } from './web/routes.js';
@@ -47,6 +48,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/v1', createAiRoutes(options.aiTaskService));
   app.use('/api/v1', createContentRoutes(options.contentService, options.aiTaskService));
   app.use('/api/v1', createCompetitorRoutes(options.competitorService, options.aiTaskService));
+  app.use('/api/v1', createReportRoutes(options.aiTaskService));
   app.use('/', contentWebRoutes);
   app.use('/', competitorWebRoutes);
   app.use('/', webRoutes);
