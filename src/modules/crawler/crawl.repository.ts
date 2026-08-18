@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient, type CrawlRunType } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 
 export interface CrawlRunStats {
@@ -80,15 +80,144 @@ export interface SitemapUrlPersistenceInput {
   priority: number | null;
 }
 
+export interface CrawlRunCreateInput {
+  projectId: string;
+  runType: CrawlRunType;
+  seedUrl: string;
+  maxPages: number;
+  crawlerVersion?: string;
+}
+
+export interface PaginationInput {
+  limit: number;
+  offset: number;
+}
+
 function safeErrorMessage(message: string): string {
   return message.replace(/[\r\n\t]+/g, ' ').slice(0, 2000);
+}
+
+function safeDate(value: string | null): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 export class CrawlRepository {
   constructor(private readonly client: PrismaClient = prisma) {}
 
+  async findProject(id: string) {
+    return this.client.project.findUnique({ where: { id } });
+  }
+
+  async findPage(id: string) {
+    return this.client.page.findUnique({ where: { id }, include: { project: true } });
+  }
+
   async getRun(id: string) {
     return this.client.crawlRun.findUnique({ where: { id }, include: { project: true } });
+  }
+
+  async createRun(input: CrawlRunCreateInput) {
+    return this.client.crawlRun.create({
+      data: {
+        projectId: input.projectId,
+        runType: input.runType,
+        status: 'QUEUED',
+        seedUrl: input.seedUrl,
+        maxPages: input.maxPages,
+        crawlerVersion: input.crawlerVersion ?? '0.1.0'
+      }
+    });
+  }
+
+  async findActiveProjectRun(projectId: string) {
+    return this.client.crawlRun.findFirst({
+      where: {
+        projectId,
+        status: { in: ['QUEUED', 'RUNNING'] },
+        runType: { in: ['FULL', 'MANUAL'] }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+
+  async listRuns(projectId: string, pagination: PaginationInput) {
+    const [data, total] = await Promise.all([
+      this.client.crawlRun.findMany({
+        where: { projectId },
+        orderBy: { createdAt: 'desc' },
+        skip: pagination.offset,
+        take: pagination.limit
+      }),
+      this.client.crawlRun.count({ where: { projectId } })
+    ]);
+    return { data, total };
+  }
+
+  async getRunDetail(id: string) {
+    return this.client.crawlRun.findUnique({
+      where: { id },
+      include: {
+        project: { select: { id: true, name: true, primaryDomain: true } },
+        robotsResults: { orderBy: { fetchedAt: 'desc' }, take: 1 },
+        sitemapSources: {
+          orderBy: { fetchedAt: 'asc' },
+          include: { _count: { select: { urls: true } } }
+        }
+      }
+    });
+  }
+
+  async listRunPages(crawlRunId: string, pagination: PaginationInput) {
+    const where = { crawlRunId };
+    const [snapshots, total] = await Promise.all([
+      this.client.pageSnapshot.findMany({
+        where,
+        orderBy: [{ capturedAt: 'desc' }, { id: 'desc' }],
+        skip: pagination.offset,
+        take: pagination.limit,
+        select: {
+          id: true,
+          pageId: true,
+          finalUrl: true,
+          statusCode: true,
+          contentType: true,
+          title: true,
+          canonicalUrl: true,
+          h1: true,
+          indexable: true,
+          rendered: true,
+          responseTimeMs: true,
+          capturedAt: true,
+          page: { select: { url: true, normalizedUrl: true, path: true } },
+          httpResult: { select: { fetchError: true } }
+        }
+      }),
+      this.client.pageSnapshot.count({ where })
+    ]);
+
+    return {
+      data: snapshots.map((snapshot) => ({
+        snapshotId: snapshot.id,
+        pageId: snapshot.pageId,
+        url: snapshot.page.normalizedUrl,
+        observedUrl: snapshot.page.url,
+        path: snapshot.page.path,
+        finalUrl: snapshot.finalUrl,
+        statusCode: snapshot.statusCode,
+        contentType: snapshot.contentType,
+        title: snapshot.title,
+        canonicalUrl: snapshot.canonicalUrl,
+        h1: snapshot.h1,
+        indexable: snapshot.indexable,
+        rendered: snapshot.rendered,
+        responseTimeMs: snapshot.responseTimeMs,
+        fetchError: snapshot.httpResult?.fetchError ?? null,
+        capturedAt: snapshot.capturedAt
+      })),
+      total
+    };
   }
 
   async markRunRunning(id: string) {
@@ -219,7 +348,7 @@ export class CrawlRepository {
       data: urls.map((url) => ({
         sitemapSourceId: sourceId,
         normalizedUrl: url.normalizedUrl,
-        lastmod: url.lastmod ? new Date(url.lastmod) : null,
+        lastmod: safeDate(url.lastmod),
         changefreq: url.changefreq,
         priority: url.priority
       })),
