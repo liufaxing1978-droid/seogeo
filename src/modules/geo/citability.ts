@@ -4,6 +4,7 @@ import {
   type CitabilityPageFact,
   type CitabilityPersistenceInput
 } from './geo-input.repository.js';
+import { logGeoEvent } from './geo-observability.js';
 
 export interface CitabilityEvidence {
   availability: {
@@ -211,6 +212,13 @@ export async function calculateCitabilityForAudit(
   }
 
   await replaceCitabilityResults(geoAuditRunId, engineVersion, persistable);
+  logGeoEvent('geo.citability.calculated', {
+    geoAuditRunId,
+    factsEvaluated: facts.length,
+    eligiblePages: persistable.length,
+    persistedResults: persistable.length,
+    engineVersion
+  });
 
   return {
     eligiblePages: persistable.length,

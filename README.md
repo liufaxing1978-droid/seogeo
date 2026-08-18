@@ -5,7 +5,7 @@ SEO GEO is an independent SEO + GEO platform for technical auditing, GEO readine
 - System target: `seo.xingshantang.org`
 - Analyzed domains are project data and are separate from the system entry domain.
 - Advanced AI Visibility is a separately gated module.
-- Current milestone: **P2 SEO Rule Engine + Audit UI**.
+- Current milestone: **P3 GEO Engine + Citability + Entity**.
 - DeepSeek will be integrated through an AI Gateway in P4; business modules must not call it directly.
 
 ## Stack
@@ -57,12 +57,20 @@ An issue can be manually marked `IN_PROGRESS`, `PARTIALLY_FIXED` or `IGNORED`, b
 
 P2 implementation and operating semantics are documented in `docs/development/p2-seo-audit.md`.
 
+## P3 GEO Readiness
+
+P3 adds a deterministic GEO readiness layer over persisted P1/P2 facts: versioned GEO rules, Citability readiness, structured Entity extraction, AI crawler policy readiness, owned-site Brand readiness, `GEO_READINESS_V1`, BullMQ execution, REST APIs, GEO Overview and detail views.
+
+P3 Citability means citation readiness/extractability, not observed external AI citations. AI Visibility remains explicitly unavailable until P6 performs real Prompt × Platform sampling. DeepSeek is not called by P3 business logic.
+
+P3 implementation and operating semantics are documented in `docs/development/p3-geo-engine.md`.
+
 ## Roadmap
 
 - P0 Platform foundation — complete
 - P1 Crawler + Technical SEO ingestion — complete
 - P2 SEO Rule Engine + Audit UI — complete
-- P3 GEO Engine + Citability + Entity — next
-- P4 DeepSeek AI Gateway + Intelligence
+- P3 GEO Engine + Citability + Entity — complete
+- P4 DeepSeek AI Gateway + Intelligence — next
 - P5 Content, competitor analysis, reports
 - P6 AI Visibility Advanced module

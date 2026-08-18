@@ -6,6 +6,7 @@ import {
   AI_CRAWLER_CATALOG,
   type AiCrawlerCatalogEntry
 } from './ai-crawler-catalog.js';
+import { logGeoEvent } from './geo-observability.js';
 
 interface RobotsParserInstance {
   isAllowed(url: string, userAgent?: string): boolean | undefined;
@@ -235,10 +236,12 @@ export async function evaluateAiCrawlersForAudit(geoAuditRunId: string): Promise
     }
   });
 
-  return {
+  const result = {
     evaluatedCrawlers: evaluations.length,
     passed: evaluations.filter(({ result }) => result.status === 'PASS').length,
     failed: evaluations.filter(({ result }) => result.status === 'FAIL').length,
     unknown: evaluations.filter(({ result }) => result.status === 'UNKNOWN').length
   };
+  logGeoEvent('geo.ai_crawler.evaluated', { geoAuditRunId, ...result });
+  return result;
 }
