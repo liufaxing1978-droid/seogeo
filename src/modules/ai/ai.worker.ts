@@ -10,6 +10,7 @@ import { getPromptDefinition } from './prompts/prompt-registry.js';
 import { AiProviderError } from './provider.js';
 import { AiProviderRegistry } from './provider-registry.js';
 import { AiRepository } from './ai.repository.js';
+import { parseSeoAnalysisOutput } from './seo-intelligence.js';
 import { AiOutputValidationError, parseStructuredOutput } from './structured-output.js';
 
 export interface AiJobData {
@@ -87,8 +88,11 @@ function errorCode(error: unknown): string {
   return 'AI_EXECUTION_FAILED';
 }
 
-function resultSummary(task: AiTask, output: Record<string, unknown>): string {
-  const supplied = output.summary;
+function resultSummary(task: AiTask, output: unknown): string {
+  const record = output !== null && typeof output === 'object' && !Array.isArray(output)
+    ? (output as Record<string, unknown>)
+    : null;
+  const supplied = record?.summary;
   if (typeof supplied === 'string' && supplied.trim().length > 0) {
     return supplied.trim().slice(0, 2000);
   }
@@ -100,6 +104,13 @@ function resultSummary(task: AiTask, output: Record<string, unknown>): string {
     case 'ENTITY_ENRICHMENT':
       return 'Entity enrichment suggestions generated.';
   }
+}
+
+function parseTaskOutput(task: AiTask, content: string): unknown {
+  if (task.taskType === 'SEO_AUDIT_ANALYSIS') {
+    return parseSeoAnalysisOutput(content, task.sourceReferences);
+  }
+  return parseStructuredOutput(content, GENERIC_JSON_OUTPUT);
 }
 
 export async function executeAiTask(
@@ -146,7 +157,7 @@ export async function executeAiTask(
       responseFormat: prompt.responseFormat
     });
 
-    const output = parseStructuredOutput(response.content, GENERIC_JSON_OUTPUT);
+    const output = parseTaskOutput(task, response.content);
     await repository.completeRun(
       task,
       run.id,
