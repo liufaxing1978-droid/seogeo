@@ -8,7 +8,9 @@ const projectService = new ProjectService(projectRepository);
 export function requireFeature(feature: Feature): RequestHandler {
   return async (req, res, next) => {
     try {
-      const project = await projectService.get(req.params.id);
+      const rawId = req.params.id;
+      const projectId = Array.isArray(rawId) ? rawId[0] : rawId;
+      const project = await projectService.get(projectId);
       if (!hasFeature(project.planLevel, feature)) {
         return res.status(403).json({
           error: {
