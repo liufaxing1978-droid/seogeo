@@ -1,3 +1,4 @@
+// P5-A Task 1 RED contract: production Content persistence models must not be added before this test fails for the expected missing-model reason.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 
