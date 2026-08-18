@@ -1,3 +1,4 @@
+import { syncAuditIssues } from './issue-service.js';
 import { BUILTIN_PAGE_RULES } from './rule-catalog.js';
 import { getPageRuleEvaluator } from './rule-registry.js';
 import { syncBuiltinRules } from './rule-sync.js';
@@ -60,6 +61,7 @@ export async function executeSeoAudit(
     }
 
     await repository.replaceRuleResults(auditRunId, rows);
+    await syncAuditIssues(auditRunId);
     await repository.markAuditCompleted(auditRunId, {
       eligiblePages: input.pages.length,
       rulesEvaluated: rows.length,
