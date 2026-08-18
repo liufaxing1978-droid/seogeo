@@ -1,0 +1,96 @@
+<% const latestRun = task.runs[0] ?? null; %>
+<% const result = latestRun?.result ?? null; %>
+<section class="page-header">
+  <div>
+    <p class="eyebrow">DeepSeek Intelligence · P4</p>
+    <h1>AI 任务详情</h1>
+    <p class="muted"><%= project.name %> · <%= task.taskType %> · <%= task.id %></p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/projects/<%= project.id %>/ai">返回 AI 分析中心</a>
+    <% if (task.status === 'FAILED') { %>
+      <form action="/projects/<%= project.id %>/ai/tasks/<%= task.id %>/retry" method="post">
+        <button class="button" type="submit">重试任务</button>
+      </form>
+    <% } %>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>执行状态</h2>
+      <p class="muted">事实来源与 AI 解释分层保存。Provider 运行元数据可审计，但不会展示密钥或私有 reasoning 内容。</p>
+    </div>
+  </div>
+  <dl class="detail-grid">
+    <div><dt>任务类型</dt><dd><%= task.taskType %></dd></div>
+    <div><dt>状态</dt><dd><span class="badge"><%= task.status %></span></dd></div>
+    <div><dt>Prompt</dt><dd><%= task.promptVersion %></dd></div>
+    <div><dt>Provider</dt><dd><%= latestRun ? latestRun.provider : '等待执行' %></dd></div>
+    <div><dt>模型</dt><dd><%= latestRun ? latestRun.model : '等待执行' %></dd></div>
+    <div><dt>模式</dt><dd><%= latestRun ? latestRun.mode : '等待执行' %></dd></div>
+  </dl>
+  <% if (task.errorMessage) { %>
+    <p class="muted"><strong><%= task.errorCode ?? 'ERROR' %></strong> · <%= task.errorMessage %></p>
+  <% } %>
+</section>
+
+<% if (result) { %>
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <h2>分析摘要</h2>
+        <p class="muted"><%= result.provider %> · <%= result.model %> · <%= result.promptVersion %></p>
+      </div>
+    </div>
+    <p><%= result.summary %></p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <h2>结构化结果</h2>
+        <p class="muted">这里只显示通过 P4 Schema 校验后的结果。内容是 AI 建议，不会自动改写确定性 SEO/GEO/Entity 数据。</p>
+      </div>
+    </div>
+    <pre style="white-space:pre-wrap;word-break:break-word"><%= JSON.stringify(result.structuredOutput, null, 2) %></pre>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <div><h2>事实引用</h2><p class="muted">这些引用对应发送给模型的已保存事实，可用于追溯建议来源。</p></div>
+    </div>
+    <pre style="white-space:pre-wrap;word-break:break-word"><%= JSON.stringify(result.sourceReferences, null, 2) %></pre>
+  </section>
+<% } else { %>
+  <section class="panel">
+    <h2>结果尚未生成</h2>
+    <p class="muted">任务当前为 <%= task.status %>。完成后这里会显示经过结构化验证的分析结果。</p>
+  </section>
+<% } %>
+
+<% if (latestRun && latestRun.calls.length) { %>
+  <section class="panel">
+    <div class="panel-header"><div><h2>调用指标</h2><p class="muted">用于成本、延迟与缓存命中审计。</p></div></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Attempt</th><th>HTTP</th><th>Latency</th><th>Prompt Tokens</th><th>Completion</th><th>Total</th><th>Cache Hit</th><th>Reasoning Tokens</th></tr></thead>
+        <tbody>
+          <% for (const call of latestRun.calls) { %>
+            <tr>
+              <td><%= call.attemptNo %></td>
+              <td><%= call.httpStatus ?? '--' %></td>
+              <td><%= call.latencyMs === null ? '--' : `${call.latencyMs} ms` %></td>
+              <td><%= call.promptTokens ?? '--' %></td>
+              <td><%= call.completionTokens ?? '--' %></td>
+              <td><%= call.totalTokens ?? '--' %></td>
+              <td><%= call.cacheHitTokens ?? '--' %></td>
+              <td><%= call.reasoningTokens ?? '--' %></td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+<% } %>
