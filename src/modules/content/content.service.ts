@@ -1,5 +1,6 @@
 import { Queue } from 'bullmq';
 import { createRedisConnection } from '../../queue/connection.js';
+import { contentObservability, type ContentObservability } from './content-observability.js';
 
 export interface ContentRefreshJobData { projectId: string; }
 
@@ -21,7 +22,10 @@ class LazyBullContentQueue implements ContentQueue {
 }
 
 export class ContentService {
-  constructor(private readonly queue: ContentQueue) {}
+  constructor(
+    private readonly queue: ContentQueue,
+    private readonly observability: ContentObservability = contentObservability
+  ) {}
 
   async enqueueRefresh(projectId: string) {
     const jobId = `content-refresh-${projectId}`;
@@ -31,6 +35,7 @@ export class ContentService {
       if (state === 'active' || state === 'waiting' || state === 'delayed') return { jobId, deduplicated: true };
     }
     await this.queue.add('content-refresh', { projectId }, { jobId, attempts: 1, removeOnComplete: 100, removeOnFail: 100 });
+    this.observability.emit({ event: 'content.refresh.queued', projectId });
     return { jobId, deduplicated: false };
   }
 }
