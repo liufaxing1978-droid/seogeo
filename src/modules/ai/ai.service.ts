@@ -2,6 +2,7 @@ import type { AiTask, AiTaskType, Prisma } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { createRedisConnection } from '../../queue/connection.js';
+import { aiObservability, type AiObservability } from './ai-observability.js';
 import { AiRepository, isUniqueConstraintError } from './ai.repository.js';
 import type { AiJobData } from './ai.worker.js';
 
@@ -44,14 +45,28 @@ function safeQueueFailure(): string {
 export class AiTaskService {
   constructor(
     private readonly repository: AiRepository,
-    private readonly queue: AiTaskJobQueue
+    private readonly queue: AiTaskJobQueue,
+    private readonly observability: AiObservability = aiObservability
   ) {}
 
-  private async enqueue(taskId: string, jobId: string): Promise<void> {
+  private async enqueue(task: AiTask, jobId: string): Promise<void> {
     try {
-      await this.queue.add('ai-task', { taskId }, { jobId, attempts: 1 });
+      await this.queue.add('ai-task', { taskId: task.id }, { jobId, attempts: 1 });
+      this.observability.emit({
+        event: 'ai.task.queued',
+        taskId: task.id,
+        projectId: task.projectId,
+        promptVersion: task.promptVersion
+      });
     } catch (error) {
-      await this.repository.markTaskFailed(taskId, 'AI_QUEUE_ENQUEUE_FAILED', safeQueueFailure());
+      await this.repository.markTaskFailed(task.id, 'AI_QUEUE_ENQUEUE_FAILED', safeQueueFailure());
+      this.observability.emit({
+        event: 'ai.task.failed',
+        taskId: task.id,
+        projectId: task.projectId,
+        promptVersion: task.promptVersion,
+        errorCode: 'AI_QUEUE_ENQUEUE_FAILED'
+      });
       throw error;
     }
   }
@@ -71,7 +86,7 @@ export class AiTaskService {
       throw error;
     }
 
-    await this.enqueue(task.id, `ai-task-${task.id}`);
+    await this.enqueue(task, `ai-task-${task.id}`);
     return task;
   }
 
@@ -88,7 +103,8 @@ export class AiTaskService {
       throw new AppError('AI task retry state changed', 409, 'AI_TASK_RETRY_CONFLICT');
     }
 
-    await this.enqueue(taskId, `ai-task-${taskId}-retry-${nextAttemptNo}`);
+    const queuedTask = (await this.repository.getTask(taskId)) as AiTask;
+    await this.enqueue(queuedTask, `ai-task-${taskId}-retry-${nextAttemptNo}`);
     return (await this.repository.getTask(taskId)) as AiTask;
   }
 }

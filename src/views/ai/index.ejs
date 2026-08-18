@@ -1,0 +1,89 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">DeepSeek Intelligence · P4</p>
+    <h1>DeepSeek AI 分析中心</h1>
+    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/projects/<%= project.id %>/seo">SEO 审计</a>
+    <a class="button secondary" href="/projects/<%= project.id %>/geo">GEO 概览</a>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>AI 只分析已保存事实</h2>
+  <p class="muted">DeepSeek 不负责产生抓取、HTTP、robots、SEO/GEO 评分或 AI 平台可见性事实。P4 只读取已经完成的确定性审计，生成解释、优先级和建议，并保留模型与 Prompt 版本。</p>
+</section>
+
+<section class="metric-grid compact">
+  <article class="metric-card">
+    <div class="metric-title">SEO 分析</div>
+    <div class="metric-value"><%= latestSeoAudit ? 'READY' : '--' %></div>
+    <div class="metric-caption"><%= latestSeoAudit ? `Audit ${latestSeoAudit.id}` : '先完成 SEO 审计' %></div>
+    <% if (latestSeoAudit) { %>
+      <form action="/projects/<%= project.id %>/ai/seo" method="post" style="margin-top:12px">
+        <input type="hidden" name="auditRunId" value="<%= latestSeoAudit.id %>">
+        <button class="button" type="submit">运行 SEO 分析</button>
+      </form>
+    <% } %>
+  </article>
+
+  <article class="metric-card">
+    <div class="metric-title">GEO 分析</div>
+    <div class="metric-value"><%= latestGeoAudit ? 'READY' : '--' %></div>
+    <div class="metric-caption"><%= latestGeoAudit ? `Audit ${latestGeoAudit.id}` : '先完成 GEO 审计' %></div>
+    <% if (latestGeoAudit) { %>
+      <form action="/projects/<%= project.id %>/ai/geo" method="post" style="margin-top:12px">
+        <input type="hidden" name="geoAuditRunId" value="<%= latestGeoAudit.id %>">
+        <button class="button" type="submit">运行 GEO 分析</button>
+      </form>
+    <% } %>
+  </article>
+
+  <article class="metric-card">
+    <div class="metric-title">Entity Enrichment</div>
+    <div class="metric-value"><%= latestGeoAudit ? 'READY' : '--' %></div>
+    <div class="metric-caption">只生成实体描述与别名建议，不自动修改 P3 数据</div>
+    <% if (latestGeoAudit) { %>
+      <form action="/projects/<%= project.id %>/ai/entity" method="post" style="margin-top:12px">
+        <input type="hidden" name="geoAuditRunId" value="<%= latestGeoAudit.id %>">
+        <button class="button" type="submit">生成实体建议</button>
+      </form>
+    <% } %>
+  </article>
+
+  <article class="metric-card">
+    <div class="metric-title">AI Visibility</div>
+    <div class="metric-value">--</div>
+    <div class="metric-caption">P6 高级版 · 需要真实 Prompt × Platform 重复采样，P4 不计算</div>
+  </article>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>AI 任务</h2>
+      <p class="muted">展示任务状态、实际 Provider/模型路由和已持久化结果；不展示 API Key、事实包原文或 provider reasoning。</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>任务</th><th>状态</th><th>模型路由</th><th>Prompt</th><th>结果</th><th>创建时间</th></tr></thead>
+      <tbody>
+        <% for (const task of tasks) { const latestRun = task.runs[0] ?? null; %>
+          <tr>
+            <td><a href="/projects/<%= project.id %>/ai/tasks/<%= task.id %>"><strong><%= task.taskType %></strong></a></td>
+            <td><span class="badge"><%= task.status %></span></td>
+            <td><%= latestRun ? `${latestRun.provider} · ${latestRun.model}` : '等待执行' %></td>
+            <td><%= task.promptVersion %></td>
+            <td><%= latestRun?.result?.summary ?? task.errorMessage ?? '等待结果' %></td>
+            <td><%= new Date(task.createdAt).toLocaleString('zh-CN') %></td>
+          </tr>
+        <% } %>
+        <% if (!tasks.length) { %>
+          <tr><td colspan="6" class="muted">尚无 AI 分析任务。完成 SEO/GEO 审计后，可从上方创建分析。</td></tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</section>

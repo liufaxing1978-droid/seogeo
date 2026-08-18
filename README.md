@@ -5,8 +5,8 @@ SEO GEO is an independent SEO + GEO platform for technical auditing, GEO readine
 - System target: `seo.xingshantang.org`
 - Analyzed domains are project data and are separate from the system entry domain.
 - Advanced AI Visibility is a separately gated module.
-- Current milestone: **P3 GEO Engine + Citability + Entity**.
-- DeepSeek will be integrated through an AI Gateway in P4; business modules must not call it directly.
+- Current milestone: **P4 DeepSeek AI Gateway + Intelligence release gate**.
+- DeepSeek is integrated through a provider-neutral AI Gateway; business modules do not call it directly.
 
 ## Stack
 
@@ -65,12 +65,24 @@ P3 Citability means citation readiness/extractability, not observed external AI 
 
 P3 implementation and operating semantics are documented in `docs/development/p3-geo-engine.md`.
 
+## P4 DeepSeek AI Gateway + Intelligence
+
+P4 adds durable AI tasks/runs/provider-call metadata/results, a provider-neutral AI Gateway, DeepSeek FAST/REASONING routing, versioned JSON prompts, Zod-validated structured output, bounded SEO/GEO fact packets, entity-enrichment suggestions, BullMQ execution, REST APIs and a project-scoped AI Analysis Center.
+
+P4 AI output is advisory and traceable. P1/P2/P3 deterministic facts remain authoritative. P4 cannot resolve SEO issues, mark GEO facts fixed, silently mutate deterministic entities, or fabricate ranking, traffic, external citation, SOV or AI Visibility facts.
+
+`AI_ANALYSIS` is available to STANDARD/ADVANCED/ENTERPRISE. The separately gated P6 `AI_VISIBILITY` capability remains unchanged.
+
+DeepSeek API keys are server-only. Provider `reasoning_content` is never persisted, logged or rendered. CI uses deterministic provider mocks and performs no live DeepSeek requests.
+
+P4 implementation, environment configuration, retry policy, observability rules and troubleshooting are documented in `docs/development/p4-ai-gateway.md`.
+
 ## Roadmap
 
 - P0 Platform foundation — complete
 - P1 Crawler + Technical SEO ingestion — complete
 - P2 SEO Rule Engine + Audit UI — complete
 - P3 GEO Engine + Citability + Entity — complete
-- P4 DeepSeek AI Gateway + Intelligence — next
-- P5 Content, competitor analysis, reports
+- P4 DeepSeek AI Gateway + Intelligence — release gate
+- P5 Content, competitor analysis, reports — next
 - P6 AI Visibility Advanced module
