@@ -28,7 +28,7 @@ describe('P4 durable AI worker execution', () => {
     const task = await createTask();
     const gateway: AiCompletionGateway = {
       complete: vi.fn(async () => ({
-        provider: 'DEEPSEEK',
+        provider: 'DEEPSEEK' as const,
         model: 'deepseek-v4-flash',
         responseId: 'fixture-response',
         content: '{"summary":"Use deterministic facts.","priorities":[]}',
