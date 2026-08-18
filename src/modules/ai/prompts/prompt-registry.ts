@@ -5,7 +5,8 @@ export type PromptId =
   | 'geo-readiness-analysis-v1'
   | 'entity-enrichment-v1'
   | 'content-brief-v1'
-  | 'content-optimization-v1';
+  | 'content-optimization-v1'
+  | 'competitor-gap-v1';
 
 export interface PromptDefinition {
   id: PromptId;
@@ -55,12 +56,19 @@ const CONTENT_OPTIMIZATION_PROMPT: PromptDefinition = Object.freeze({
   buildUserMessage: (facts) => buildUserMessage('Recommend bounded content optimizations from the supplied deterministic facts.', { summary: 'Summary', priorities: [{ priority: 'HIGH', action: 'Action', sourceRefs: ['CONTENT_OPPORTUNITY:<id>'] }], sectionRecommendations: ['Recommendation'], entityRecommendations: ['Recommendation'], internalLinkRecommendations: ['Recommendation'], citabilityRecommendations: ['Recommendation'], doNotChange: ['Stable element'], sourceReferences: ['CONTENT_DOCUMENT:<id>'] }, facts)
 });
 
+const COMPETITOR_GAP_PROMPT: PromptDefinition = Object.freeze({
+  id: 'competitor-gap-v1', version: 'v1', mode: 'REASONING', responseFormat: 'JSON',
+  system: `${FACT_GUARDRAILS}\nExplain only the supplied deterministic owned-versus-competitor comparison. Do not invent search rankings, organic traffic, citations, AI visibility, market share or share of voice. Treat UNKNOWN as unavailable evidence.`,
+  buildUserMessage: (facts) => buildUserMessage('Explain and prioritize the supplied deterministic competitor gaps.', { summary: 'Gap summary', priorities: [{ priority: 'HIGH', metric: 'averageWordCount', explanation: 'What the deterministic gap means', action: 'Concrete action', sourceRefs: ['COMPETITOR_COMPARISON:<id>'] }], unavailableClaims: ['search rankings'], sourceReferences: ['COMPETITOR_COMPARISON:<id>'] }, facts)
+});
+
 export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = Object.freeze([
   SEO_PROMPT,
   GEO_PROMPT,
   ENTITY_PROMPT,
   CONTENT_BRIEF_PROMPT,
-  CONTENT_OPTIMIZATION_PROMPT
+  CONTENT_OPTIMIZATION_PROMPT,
+  COMPETITOR_GAP_PROMPT
 ]);
 
 const PROMPT_BY_ID = new Map<PromptId, PromptDefinition>(PROMPT_DEFINITIONS.map((prompt) => [prompt.id, prompt]));
