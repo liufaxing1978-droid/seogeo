@@ -22,6 +22,24 @@ function safeError(error: unknown): string {
     : 'Unknown SEO audit failure';
 }
 
+function logSeoEvent(event: string, data: Record<string, unknown>) {
+  console.log({ event, ...data });
+}
+
+function summarizeOutcomes(rows: PersistedRuleResult[]) {
+  let passed = 0;
+  let failed = 0;
+  let unknown = 0;
+
+  for (const row of rows) {
+    if (row.outcome === 'PASS') passed += 1;
+    else if (row.outcome === 'FAIL') failed += 1;
+    else unknown += 1;
+  }
+
+  return { passed, failed, unknown };
+}
+
 export async function executeSeoAudit(
   auditRunId: string,
   options: RunSeoAuditOptions = {}
@@ -38,6 +56,8 @@ export async function executeSeoAudit(
     }
 
     await repository.markAuditRunning(auditRunId, engineVersion);
+    logSeoEvent('seo.audit.started', { auditRunId, engineVersion });
+
     const [input, ruleIdentities] = await Promise.all([
       repository.getAuditInput(auditRunId),
       syncBuiltinRules()
@@ -79,16 +99,43 @@ export async function executeSeoAudit(
       });
     }
 
+    const outcomeSummary = summarizeOutcomes(rows);
+    logSeoEvent('seo.rule.evaluated.summary', {
+      auditRunId,
+      eligiblePages: input.pages.length,
+      rulesEvaluated: rows.length,
+      ...outcomeSummary
+    });
+
     await repository.replaceRuleResults(auditRunId, rows);
     await syncAuditIssues(auditRunId);
+    logSeoEvent('seo.issues.synced', {
+      auditRunId,
+      failedResults: outcomeSummary.failed,
+      failingRuleVersions: new Set(
+        rows.filter((row) => row.outcome === 'FAIL').map((row) => row.ruleVersionId)
+      ).size
+    });
+
     await calculateAndPersistSeoScore(auditRunId);
+    logSeoEvent('seo.score.calculated', { auditRunId });
+
     await repository.markAuditCompleted(auditRunId, {
       eligiblePages: input.pages.length,
       rulesEvaluated: rows.length,
       engineVersion
     });
+    logSeoEvent('seo.audit.completed', {
+      auditRunId,
+      engineVersion,
+      eligiblePages: input.pages.length,
+      rulesEvaluated: rows.length,
+      ...outcomeSummary
+    });
   } catch (error) {
-    await repository.markAuditFailed(auditRunId, safeError(error));
+    const message = safeError(error);
+    await repository.markAuditFailed(auditRunId, message);
+    logSeoEvent('seo.audit.failed', { auditRunId, engineVersion, error: message });
     throw error;
   }
 }
