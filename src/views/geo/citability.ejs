@@ -1,0 +1,45 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">GEO · Citability</p>
+    <h1>Citability</h1>
+    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
+  </div>
+  <a class="button secondary" href="/projects/<%= project.id %>/geo">返回 GEO 概览</a>
+</section>
+
+<% if (!audit) { %>
+  <section class="panel"><h2>尚无 Citability 数据</h2><p class="muted">先完成 GEO 审计后再查看页面级可引用性事实。</p></section>
+<% } else { %>
+  <section class="panel">
+    <div class="panel-header">
+      <div><h2>页面 Citability</h2><p class="muted">仅基于已持久化的确定性页面事实。未采集的语义维度不会显示为 0。</p></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>页面</th><th>Overall</th><th>Heading Structure</th><th>Source Support</th><th>Extractability</th><th>Answer First</th><th>Factual Density</th><th>Definition Clarity</th></tr>
+        </thead>
+        <tbody>
+          <% for (const row of rows) { %>
+            <tr>
+              <td><a href="/pages/<%= row.page.id %>"><%= row.page.normalizedUrl %></a></td>
+              <td><strong><%= row.overallScore %></strong></td>
+              <td><%= row.headingStructureScore %></td>
+              <td><%= row.sourceSupportScore %></td>
+              <td><%= row.extractabilityScore %></td>
+              <td><%= row.answerFirstScore === null ? '未采集' : row.answerFirstScore %></td>
+              <td><%= row.factualDensityScore === null ? '未采集' : row.factualDensityScore %></td>
+              <td><%= row.definitionClarityScore === null ? '未采集' : row.definitionClarityScore %></td>
+            </tr>
+          <% } %>
+          <% if (!rows.length) { %><tr><td colspan="8" class="muted">当前审计没有可用的 Citability 页面结果。</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>数据口径</h2>
+    <p class="muted">Heading Structure、Source Support、Extractability 来自 P1 可验证事实。Answer First、Factual Density、Definition Clarity 在当前 P1 没有确定性语义证据时显示“未采集”，不会由 DeepSeek 或其他 AI 猜测填分。</p>
+  </section>
+<% } %>
