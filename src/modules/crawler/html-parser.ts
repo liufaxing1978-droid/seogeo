@@ -2,6 +2,29 @@ import { createHash } from 'node:crypto';
 import * as cheerio from 'cheerio';
 import { isInProjectScope, normalizeCrawlUrl } from './url-normalizer.js';
 
+export type StructuredEntityRole =
+  | 'ROOT'
+  | 'AUTHOR'
+  | 'PUBLISHER'
+  | 'ABOUT'
+  | 'BRAND'
+  | 'MAIN_ENTITY'
+  | 'PROVIDER'
+  | 'OFFERS'
+  | 'ITEM_OFFERED';
+
+export interface StructuredEntitySignal {
+  schemaTypes: string[];
+  id: string | null;
+  name: string | null;
+  alternateNames: string[];
+  url: string | null;
+  sameAs: string[];
+  role: StructuredEntityRole;
+  sourcePath: string;
+  parentSourcePath: string | null;
+}
+
 export interface ParsedPageSignals {
   title: string | null;
   metaDescription: string | null;
@@ -22,10 +45,28 @@ export interface ParsedPageSignals {
   imagesCount: number;
   imagesWithoutAlt: number;
   schemaCount: number;
+  openGraphSiteName: string | null;
+  entitySignals: StructuredEntitySignal[];
   htmlHash: string;
   contentHash: string;
   indexable: boolean;
 }
+
+const MAX_ENTITY_SIGNALS = 200;
+const MAX_STRING_LENGTH = 2048;
+const MAX_NAME_LENGTH = 500;
+const MAX_ARRAY_VALUES = 50;
+
+const RELATION_ROLES: Readonly<Record<string, StructuredEntityRole>> = {
+  author: 'AUTHOR',
+  publisher: 'PUBLISHER',
+  about: 'ABOUT',
+  brand: 'BRAND',
+  mainEntity: 'MAIN_ENTITY',
+  provider: 'PROVIDER',
+  offers: 'OFFERS',
+  itemOffered: 'ITEM_OFFERED'
+};
 
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
@@ -42,6 +83,17 @@ function firstMetaContent($: cheerio.CheerioAPI, name: string): string | null {
     if (($(element).attr('name') ?? '').trim().toLowerCase() !== name.toLowerCase()) return;
     const content = normalizeWhitespace($(element).attr('content') ?? '');
     if (content) found = content;
+  });
+  return found;
+}
+
+function firstMetaProperty($: cheerio.CheerioAPI, property: string): string | null {
+  let found: string | null = null;
+  $('meta[property]').each((_, element) => {
+    if (found !== null) return;
+    if (($(element).attr('property') ?? '').trim().toLowerCase() !== property.toLowerCase()) return;
+    const content = normalizeWhitespace($(element).attr('content') ?? '');
+    if (content) found = content.slice(0, MAX_NAME_LENGTH);
   });
   return found;
 }
@@ -136,6 +188,138 @@ function collectLinks($: cheerio.CheerioAPI, pageUrl: string) {
   return { internalLinks, externalLinks, internalLinksCount, externalLinksCount };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function boundedString(value: unknown, maxLength = MAX_STRING_LENGTH): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = normalizeWhitespace(value);
+  return normalized ? normalized.slice(0, maxLength) : null;
+}
+
+function boundedStrings(value: unknown, maxLength = MAX_STRING_LENGTH): string[] {
+  const raw = Array.isArray(value) ? value : [value];
+  const result: string[] = [];
+  const seen = new Set<string>();
+
+  for (const item of raw.slice(0, MAX_ARRAY_VALUES)) {
+    const normalized = boundedString(item, maxLength);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+  }
+
+  return result;
+}
+
+function schemaTypes(value: unknown): string[] {
+  return boundedStrings(value, 100);
+}
+
+function pushEntitySignal(
+  signals: StructuredEntitySignal[],
+  value: Record<string, unknown>,
+  role: StructuredEntityRole,
+  sourcePath: string,
+  parentSourcePath: string | null
+) {
+  if (signals.length >= MAX_ENTITY_SIGNALS) return;
+
+  const id = boundedString(value['@id']);
+  const name = boundedString(value.name, MAX_NAME_LENGTH);
+  const url = boundedString(value.url);
+  const types = schemaTypes(value['@type']);
+
+  if (!id && !name && !url) return;
+
+  signals.push({
+    schemaTypes: types,
+    id,
+    name,
+    alternateNames: boundedStrings(value.alternateName, MAX_NAME_LENGTH),
+    url,
+    sameAs: boundedStrings(value.sameAs),
+    role,
+    sourcePath,
+    parentSourcePath
+  });
+}
+
+function walkRelationValue(
+  signals: StructuredEntitySignal[],
+  value: unknown,
+  role: StructuredEntityRole,
+  sourcePath: string,
+  parentSourcePath: string
+) {
+  const values = Array.isArray(value) ? value.slice(0, MAX_ARRAY_VALUES) : [value];
+
+  values.forEach((item, index) => {
+    if (!isRecord(item) || signals.length >= MAX_ENTITY_SIGNALS) return;
+    const itemPath = Array.isArray(value) ? `${sourcePath}[${index}]` : sourcePath;
+    pushEntitySignal(signals, item, role, itemPath, parentSourcePath);
+    walkEntityRelations(signals, item, itemPath);
+  });
+}
+
+function walkEntityRelations(
+  signals: StructuredEntitySignal[],
+  value: Record<string, unknown>,
+  sourcePath: string
+) {
+  for (const [key, role] of Object.entries(RELATION_ROLES)) {
+    if (!(key in value) || signals.length >= MAX_ENTITY_SIGNALS) continue;
+    walkRelationValue(signals, value[key], role, `${sourcePath}.${key}`, sourcePath);
+  }
+}
+
+function collectRootEntity(
+  signals: StructuredEntitySignal[],
+  value: unknown,
+  sourcePath: string
+) {
+  if (signals.length >= MAX_ENTITY_SIGNALS) return;
+
+  if (Array.isArray(value)) {
+    value.slice(0, MAX_ARRAY_VALUES).forEach((item, index) => {
+      collectRootEntity(signals, item, `${sourcePath}[${index}]`);
+    });
+    return;
+  }
+
+  if (!isRecord(value)) return;
+
+  if (Array.isArray(value['@graph'])) {
+    value['@graph'].slice(0, MAX_ARRAY_VALUES).forEach((item, index) => {
+      collectRootEntity(signals, item, `${sourcePath}.@graph[${index}]`);
+    });
+  }
+
+  pushEntitySignal(signals, value, 'ROOT', sourcePath, null);
+  walkEntityRelations(signals, value, sourcePath);
+}
+
+function collectStructuredEntitySignals($: cheerio.CheerioAPI): StructuredEntitySignal[] {
+  const signals: StructuredEntitySignal[] = [];
+
+  $('script[type]').each((scriptIndex, element) => {
+    if (signals.length >= MAX_ENTITY_SIGNALS) return false;
+    if (($(element).attr('type') ?? '').trim().toLowerCase() !== 'application/ld+json') return;
+
+    const raw = $(element).text().trim();
+    if (!raw) return;
+
+    try {
+      collectRootEntity(signals, JSON.parse(raw) as unknown, `$[${scriptIndex}]`);
+    } catch {
+      // Malformed JSON-LD is not converted into a structured entity fact.
+    }
+  });
+
+  return signals.slice(0, MAX_ENTITY_SIGNALS);
+}
+
 export function parseHtml(
   html: string,
   pageUrl: string,
@@ -167,6 +351,9 @@ export function parseHtml(
 
   const statusAllowsIndexing = statusCode >= 200 && statusCode <= 299;
   const indexable = statusAllowsIndexing && !containsNoindex(metaRobots) && !containsNoindex(xRobotsTag);
+  const jsonLdScripts = $('script[type]').filter((_, element) => {
+    return ($(element).attr('type') ?? '').trim().toLowerCase() === 'application/ld+json';
+  });
 
   return {
     title,
@@ -184,9 +371,9 @@ export function parseHtml(
     ...links,
     imagesCount: images.length,
     imagesWithoutAlt,
-    schemaCount: $('script[type]').filter((_, element) => {
-      return ($(element).attr('type') ?? '').trim().toLowerCase() === 'application/ld+json';
-    }).length,
+    schemaCount: jsonLdScripts.length,
+    openGraphSiteName: firstMetaProperty($, 'og:site_name'),
+    entitySignals: collectStructuredEntitySignals($),
     htmlHash: sha256(normalizedHtml($)),
     contentHash: sha256(text),
     indexable
