@@ -45,7 +45,7 @@ function present(value: string | null | undefined): boolean | null {
   return value.trim().length > 0;
 }
 
-function ownedMetrics(rows: Array<{ title: string | null; h1: string | null; wordCount: number | null; headingCount: number | null; internalLinkCount: number | null; schemaTypes: Prisma.JsonValue; canonicalUrl: string }>): CompetitorMetrics {
+function ownedMetrics(rows: Array<{ title: string | null; h1: string | null; wordCount: number | null; headingCount: number | null; internalLinkCount: number | null; canonicalUrl: string }>): CompetitorMetrics {
   return {
     pagesSampled: rows.length,
     successShare: null,
@@ -54,7 +54,7 @@ function ownedMetrics(rows: Array<{ title: string | null; h1: string | null; wor
     h1PresenceShare: share(rows.map((row) => present(row.h1))),
     averageHeadingCount: average(rows.map((row) => row.headingCount)),
     averageInternalLinkCount: average(rows.map((row) => row.internalLinkCount)),
-    structuredDataPresenceShare: share(rows.map((row) => Array.isArray(row.schemaTypes) ? row.schemaTypes.length > 0 : null)),
+    structuredDataPresenceShare: null,
     indexableShare: null
   };
 }
@@ -103,7 +103,7 @@ export async function createCompetitorComparison(projectId: string, competitorId
   const crawl = await prisma.competitorCrawl.findFirst({ where: { competitorId, status: 'COMPLETED' }, orderBy: [{ finishedAt: 'desc' }, { createdAt: 'desc' }] });
   if (!crawl) throw new AppError('A completed competitor crawl is required', 409, 'COMPETITOR_CRAWL_REQUIRED');
   const [ownedRows, rivalRows] = await Promise.all([
-    prisma.contentDocument.findMany({ where: { projectId }, select: { title: true, h1: true, wordCount: true, headingCount: true, internalLinkCount: true, schemaTypes: true, canonicalUrl: true } }),
+    prisma.contentDocument.findMany({ where: { projectId }, select: { title: true, h1: true, wordCount: true, headingCount: true, internalLinkCount: true, canonicalUrl: true } }),
     prisma.competitorPageSnapshot.findMany({ where: { competitorCrawlId: crawl.id }, select: { id: true, statusCode: true, title: true, h1: true, wordCount: true, headingCount: true, internalLinkCount: true, schemaCount: true, indexable: true } })
   ]);
   if (!ownedRows.length) throw new AppError('Content refresh is required before competitor comparison', 409, 'CONTENT_REFRESH_REQUIRED');
