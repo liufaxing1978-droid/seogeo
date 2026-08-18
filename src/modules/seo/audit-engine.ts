@@ -2,6 +2,7 @@ import { syncAuditIssues } from './issue-service.js';
 import { BUILTIN_PAGE_RULES } from './rule-catalog.js';
 import { getPageRuleEvaluator } from './rule-registry.js';
 import { syncBuiltinRules } from './rule-sync.js';
+import { calculateAndPersistSeoScore } from './score-engine.js';
 import {
   seoRepository,
   type PersistedRuleResult,
@@ -62,6 +63,7 @@ export async function executeSeoAudit(
 
     await repository.replaceRuleResults(auditRunId, rows);
     await syncAuditIssues(auditRunId);
+    await calculateAndPersistSeoScore(auditRunId);
     await repository.markAuditCompleted(auditRunId, {
       eligiblePages: input.pages.length,
       rulesEvaluated: rows.length,
