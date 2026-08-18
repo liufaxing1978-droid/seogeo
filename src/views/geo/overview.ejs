@@ -1,0 +1,183 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">GEO</p>
+    <h1>GEO 概览</h1>
+    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
+  </div>
+  <div class="actions">
+    <% if (latestCompletedCrawl) { %>
+      <form action="/projects/<%= project.id %>/geo/run" method="post">
+        <button class="button" type="submit">运行 GEO 审计</button>
+      </form>
+    <% } else { %>
+      <a class="button secondary" href="/projects/<%= project.id %>/crawls">先运行抓取</a>
+    <% } %>
+    <a class="button secondary" href="/projects/<%= project.id %>/geo/citability">Citability</a>
+    <a class="button secondary" href="/projects/<%= project.id %>/geo/entities">Entity</a>
+    <a class="button secondary" href="/projects/<%= project.id %>/geo/ai-crawlers">AI Crawler</a>
+  </div>
+</section>
+
+<% if (!audit) { %>
+  <section class="panel">
+    <h2>尚无 GEO 审计</h2>
+    <p class="muted">P3 只使用已完成抓取中的确定性事实计算 GEO Readiness。完成一次抓取后即可运行 GEO 审计。</p>
+  </section>
+<% } else { %>
+  <% const citability = componentByCode.get('CITABILITY'); %>
+  <% const entity = componentByCode.get('ENTITY'); %>
+  <% const aiCrawler = componentByCode.get('AI_CRAWLER'); %>
+  <% const brandComponent = componentByCode.get('BRAND'); %>
+  <% const contentGeo = componentByCode.get('CONTENT_GEO'); %>
+
+  <section class="metric-grid compact">
+    <article class="metric-card">
+      <div class="metric-title">GEO Readiness</div>
+      <div class="metric-value"><%= score ? score.score : '--' %></div>
+      <div class="metric-caption">
+        <% if (score && score.change !== null) { %>
+          较上次 <%= score.change > 0 ? '+' : '' %><%= score.change %>
+        <% } else { %>
+          GEO_READINESS_V1
+        <% } %>
+      </div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">Citability</div>
+      <div class="metric-value"><%= citability ? citability.rawScore : '--' %></div>
+      <div class="metric-caption">可引用性</div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">Entity Authority</div>
+      <div class="metric-value"><%= entity ? entity.rawScore : '--' %></div>
+      <div class="metric-caption">实体清晰度</div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">Technical AI Readiness</div>
+      <div class="metric-value"><%= aiCrawler ? aiCrawler.rawScore : '--' %></div>
+      <div class="metric-caption">AI Crawler 技术可访问性</div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">Brand</div>
+      <div class="metric-value"><%= brandComponent ? brandComponent.rawScore : '--' %></div>
+      <div class="metric-caption">Owned-site 品牌一致性</div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">Content GEO</div>
+      <div class="metric-value"><%= contentGeo ? contentGeo.rawScore : '--' %></div>
+      <div class="metric-caption">内容 GEO 就绪度</div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">AI Visibility</div>
+      <div class="metric-value">--</div>
+      <div class="metric-caption"><%= aiVisibility.label %> · P6 高级版</div>
+    </article>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <h2>GEO 审计运行</h2>
+        <p class="muted">状态 <strong><%= audit.status %></strong> · Engine <%= audit.engineVersion %></p>
+      </div>
+      <a class="button secondary" href="/crawls/<%= audit.crawlRun.id %>">查看来源抓取</a>
+    </div>
+    <dl class="detail-grid">
+      <div><dt>Score Type</dt><dd><%= score ? score.scoreType : '等待数据' %></dd></div>
+      <div><dt>页面事实</dt><dd><%= audit.eligiblePages %></dd></div>
+      <div><dt>规则评估</dt><dd><%= audit.rulesEvaluated %></dd></div>
+      <div><dt>完成时间</dt><dd><%= audit.finishedAt ? new Date(audit.finishedAt).toLocaleString('zh-CN') : '运行中' %></dd></div>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <h2>Readiness 评分组件</h2>
+        <p class="muted">仅对有确定性证据的维度归一化计分；不可用维度不会被当作 0。</p>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>维度</th><th>原始分</th><th>权重</th><th>加权贡献</th><th>事实来源</th></tr></thead>
+        <tbody>
+          <% for (const component of components) { %>
+            <tr>
+              <td><strong><%= component.componentName %></strong><br><span class="muted"><%= component.componentCode %></span></td>
+              <td><%= component.rawScore %></td>
+              <td><%= component.weight %>%</td>
+              <td><strong><%= component.weightedScore %></strong></td>
+              <td><%= component.sourceType %></td>
+            </tr>
+          <% } %>
+          <% if (!components.length) { %>
+            <tr><td colspan="5" class="muted">当前审计尚未形成可用的确定性评分组件。</td></tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <h2>AI Crawler Readiness</h2>
+        <p class="muted">读取本项目已保存的 robots / 页面指令事实，不代表 AI 平台实际引用或展示。</p>
+      </div>
+    </div>
+    <dl class="detail-grid">
+      <div><dt>PASS</dt><dd><%= crawlerCounts.PASS %></dd></div>
+      <div><dt>FAIL</dt><dd><%= crawlerCounts.FAIL %></dd></div>
+      <div><dt>UNKNOWN</dt><dd><%= crawlerCounts.UNKNOWN %></dd></div>
+      <div><dt>已评估身份</dt><dd><%= aiCrawlers.length %></dd></div>
+    </dl>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Crawler</th><th>状态</th><th>robots</th><th>可达</th></tr></thead>
+        <tbody>
+          <% for (const crawler of aiCrawlers) { %>
+            <tr>
+              <td><strong><%= crawler.crawlerCode %></strong></td>
+              <td><span class="badge"><%= crawler.status %></span></td>
+              <td><%= crawler.robotsAllowed === null ? 'UNKNOWN' : crawler.robotsAllowed ? '允许' : '阻止' %></td>
+              <td><%= crawler.reachable === null ? 'UNKNOWN' : crawler.reachable ? '是' : '否' %></td>
+            </tr>
+          <% } %>
+          <% if (!aiCrawlers.length) { %><tr><td colspan="4" class="muted">尚无 AI Crawler readiness 数据。</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <div><h2>主要 GEO Opportunities</h2><p class="muted">这里只展示确定性 FAIL 规则，不由 AI 推断。</p></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>机会</th><th>维度</th><th>优先级</th><th>范围</th><th>建议</th></tr></thead>
+        <tbody>
+          <% for (const opportunity of opportunities) { %>
+            <tr>
+              <td><strong><%= opportunity.ruleName %></strong><br><span class="muted"><%= opportunity.ruleCode %></span></td>
+              <td><%= opportunity.dimension %></td>
+              <td><span class="badge"><%= opportunity.severity %></span></td>
+              <td>
+                <% if (opportunity.pageUrl) { %><%= opportunity.pageUrl %>
+                <% } else if (opportunity.entityName) { %><%= opportunity.entityName %>
+                <% } else { %>项目级<% } %>
+              </td>
+              <td><%= opportunity.fixGuide %></td>
+            </tr>
+          <% } %>
+          <% if (!opportunities.length) { %><tr><td colspan="5" class="muted">当前审计没有确定性的 FAIL opportunities。</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>AI Visibility 与 GEO Readiness 是两个指标</h2>
+    <p class="muted">当前 P3 的 GEO Readiness 来自站内可验证事实。AI Visibility 需要真实的 Prompt × Platform 重复采样，将在 P6 高级版单独计算；当前状态为“尚未采样”，不会以 0 分代替未知。</p>
+  </section>
+<% } %>
