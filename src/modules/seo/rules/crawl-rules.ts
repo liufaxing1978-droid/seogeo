@@ -29,20 +29,19 @@ export const evaluateRobotsServerError: CrawlRuleEvaluator = (fact) => {
     : PASS;
 };
 
+function is2xx(statusCode: number | null): boolean {
+  return statusCode !== null && statusCode >= 200 && statusCode <= 299;
+}
+
 function usableSitemaps(fact: SeoCrawlFact) {
   return fact.sitemaps.filter(
-    (source) =>
-      source.statusCode !== null &&
-      source.statusCode >= 200 &&
-      source.statusCode <= 299 &&
-      source.parseError === null &&
-      source.type !== null
+    (source) => is2xx(source.statusCode) && source.parseError === null && source.type !== null
   );
 }
 
 export const evaluateSitemapUnavailable: CrawlRuleEvaluator = (fact) => {
-  const usable = usableSitemaps(fact);
-  if (usable.length > 0) return PASS;
+  if (fact.sitemaps.length === 0) return UNKNOWN;
+  if (fact.sitemaps.some((source) => is2xx(source.statusCode))) return PASS;
 
   return fail({
     sourceCount: fact.sitemaps.length,
@@ -52,27 +51,14 @@ export const evaluateSitemapUnavailable: CrawlRuleEvaluator = (fact) => {
 
 export const evaluateSitemapParseError: CrawlRuleEvaluator = (fact) => {
   const parseErrors = fact.sitemaps
-    .filter(
-      (source) =>
-        source.statusCode !== null &&
-        source.statusCode >= 200 &&
-        source.statusCode <= 299 &&
-        source.parseError !== null
-    )
+    .filter((source) => is2xx(source.statusCode) && source.parseError !== null)
     .map((source) => ({
       statusCode: source.statusCode,
       parseError: source.parseError
     }));
 
   if (parseErrors.length > 0) return fail({ parseErrors });
-
-  const fetched2xx = fact.sitemaps.some(
-    (source) =>
-      source.statusCode !== null &&
-      source.statusCode >= 200 &&
-      source.statusCode <= 299
-  );
-  return fetched2xx ? PASS : NOT_APPLICABLE;
+  return fact.sitemaps.some((source) => is2xx(source.statusCode)) ? PASS : NOT_APPLICABLE;
 };
 
 export const evaluateSitemapEmpty: CrawlRuleEvaluator = (fact) => {
