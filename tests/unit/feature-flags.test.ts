@@ -2,11 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { hasFeature } from '../../src/auth/feature-flags.js';
 
 describe('plan feature matrix', () => {
-  it('keeps AI Visibility out of STANDARD', () => {
-    expect(hasFeature('STANDARD', 'SEO_AUDIT')).toBe(true);
-    expect(hasFeature('STANDARD', 'GEO_AUDIT')).toBe(true);
-    expect(hasFeature('STANDARD', 'CONTENT_AI')).toBe(true);
+  it('enables P5 base intelligence for STANDARD while keeping P6 unavailable', () => {
+    for (const feature of [
+      'SEO_AUDIT',
+      'GEO_AUDIT',
+      'CONTENT_AI',
+      'CONTENT_INTELLIGENCE',
+      'COMPETITOR_INTELLIGENCE',
+      'REPORTING',
+      'AI_ANALYSIS'
+    ] as const) {
+      expect(hasFeature('STANDARD', feature)).toBe(true);
+    }
     expect(hasFeature('STANDARD', 'AI_VISIBILITY')).toBe(false);
+    expect(hasFeature('STANDARD', 'COMPETITOR_SOV')).toBe(false);
+    expect(hasFeature('STANDARD', 'ADVANCED_REPORTS')).toBe(false);
   });
 
   it('enables advanced monitoring for ADVANCED', () => {
