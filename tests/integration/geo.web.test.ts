@@ -131,5 +131,11 @@ describe('GEO overview UI', () => {
     expect(response.text).toContain('AI Visibility');
     expect(response.text).toContain('尚未采样');
     expect(response.text).not.toContain('AI Visibility</div><div class="metric-value">0');
+
+    expect(response.text).toContain(`href="/projects/${project.id}/geo"`);
+    expect(response.text).toContain(`href="/projects/${project.id}/geo/citability"`);
+    expect(response.text).toContain(`href="/projects/${project.id}/geo/entities"`);
+    expect(response.text).toContain(`href="/projects/${project.id}/geo/ai-crawlers"`);
+    expect(response.text).toContain('GEO Readiness · P3');
   });
 });
