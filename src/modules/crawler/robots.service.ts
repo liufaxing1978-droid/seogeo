@@ -1,7 +1,16 @@
-import robotsParser = require('robots-parser');
+import { createRequire } from 'node:module';
 import { fetchPage } from './http-fetcher.js';
 import type { FetchOptions, FetchResult } from './crawl.types.js';
 import { isInProjectScope, normalizeCrawlUrl } from './url-normalizer.js';
+
+interface RobotParserInstance {
+  isAllowed(url: string, userAgent?: string): boolean | undefined;
+}
+
+type RobotParserFactory = (url: string, contents: string) => RobotParserInstance;
+
+const require = createRequire(import.meta.url);
+const robotsParser = require('robots-parser') as RobotParserFactory;
 
 export type RobotsAllowed = boolean | null;
 
