@@ -3,6 +3,8 @@ export interface ContentPageSource {
   pageId: string;
   normalizedUrl: string;
   snapshotId: string;
+  statusCode: number | null;
+  contentType: string | null;
   canonicalUrl: string | null;
   title: string | null;
   metaDescription: string | null;
