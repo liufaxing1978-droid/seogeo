@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { prisma } from '../../src/db/prisma.js';
@@ -112,11 +112,22 @@ describe('executeCrawlRun', () => {
       }
     });
 
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
     await executeCrawlRun(run.id, {
       publicTargetGuard: allowLocalTarget,
       browserEnabled: false,
       concurrency: 2
     });
+
+    const logEvents = logSpy.mock.calls
+      .map(([entry]) => (typeof entry === 'object' && entry !== null ? (entry as { event?: string }).event : undefined))
+      .filter(Boolean);
+    logSpy.mockRestore();
+
+    expect(logEvents).toContain('crawl.started');
+    expect(logEvents).toContain('crawl.page.fetched');
+    expect(logEvents).toContain('crawl.completed');
 
     const completed = await prisma.crawlRun.findUniqueOrThrow({ where: { id: run.id } });
     expect(completed.status).toBe('COMPLETED');

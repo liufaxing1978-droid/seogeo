@@ -5,7 +5,7 @@ SEO GEO is an independent SEO + GEO platform for technical auditing, GEO readine
 - System target: `seo.xingshantang.org`
 - Analyzed domains are project data and are separate from the system entry domain.
 - Advanced AI Visibility is a separately gated module.
-- Current milestone: **P0 platform foundation**.
+- Current milestone: **P1 Crawler + Technical SEO ingestion**.
 - DeepSeek will be integrated through an AI Gateway in P4; business modules must not call it directly.
 
 ## Stack
@@ -41,13 +41,18 @@ npm run test:e2e
 - `GET /health/live` — process liveness
 - `GET /health/ready` — PostgreSQL + Redis readiness
 
-## P0 boundaries
+## P1 Crawler
 
-P0 contains project management, persistence, feature gates, queue foundations, the approved admin shell, diagnostics and tests. It deliberately does **not** implement crawler ingestion, SEO audit logic, GEO audit logic, DeepSeek analysis, content intelligence, or AI Visibility sampling.
+P1 provides durable crawl runs, a real BullMQ crawl worker, bounded HTTP fetching, redirect history, robots.txt and sitemap parsing, deterministic HTML technical signals, optional browser rendering fallback, Crawl History, Page Center, and append-only Page Snapshot history.
 
-Roadmap:
+Crawler facts come from actual responses. P1 does not calculate SEO scores, create SEO severity issues, call DeepSeek, calculate GEO scores, or perform AI Visibility/Prompt/Citation sampling.
 
-- P1 Crawler + Technical SEO ingestion
+Production crawler setup and safety details are documented in `docs/development/p1-crawler-setup.md`.
+
+## Roadmap
+
+- P0 Platform foundation — complete
+- P1 Crawler + Technical SEO ingestion — current
 - P2 SEO Rule Engine + Audit UI
 - P3 GEO Engine + Citability + Entity
 - P4 DeepSeek AI Gateway + Intelligence

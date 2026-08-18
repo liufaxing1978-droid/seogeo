@@ -1,10 +1,8 @@
+import { env } from '../../config/env.js';
 import { assertPublicHttpTarget } from './network-policy.js';
 import type { FetchOptions, FetchResult, RedirectHop } from './crawl.types.js';
 
-const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_REDIRECTS = 10;
-const DEFAULT_MAX_RESPONSE_BYTES = 5_000_000;
-const DEFAULT_USER_AGENT = 'SEOGEO-Bot/0.1 (+https://seo.xingshantang.org)';
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 function headersToRecord(headers: Headers): Record<string, string> {
@@ -102,10 +100,10 @@ async function readBoundedBody(
 
 export async function fetchPage(url: string, options: FetchOptions = {}): Promise<FetchResult> {
   const requestUrl = url;
-  const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  const requestTimeoutMs = options.requestTimeoutMs ?? env.CRAWLER_REQUEST_TIMEOUT_MS;
   const maxRedirects = options.maxRedirects ?? DEFAULT_MAX_REDIRECTS;
-  const maxResponseBytes = options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
-  const userAgent = options.userAgent ?? DEFAULT_USER_AGENT;
+  const maxResponseBytes = options.maxResponseBytes ?? env.CRAWLER_MAX_RESPONSE_BYTES;
+  const userAgent = options.userAgent ?? env.CRAWLER_USER_AGENT;
   const publicTargetGuard = options.publicTargetGuard ?? assertPublicHttpTarget;
   const redirectChain: RedirectHop[] = [];
   const startedAt = performance.now();
