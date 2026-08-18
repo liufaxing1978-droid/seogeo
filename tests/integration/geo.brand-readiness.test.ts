@@ -7,7 +7,7 @@ beforeEach(async () => {
 });
 
 describe('analyzeAndPersistBrandReadiness', () => {
-  it('persists owned identity readiness without inventing unavailable contact consistency', async () => {
+  it('persists owned identity readiness without treating unavailable contact consistency as evidence', async () => {
     const project = await prisma.project.create({
       data: {
         name: 'Example Brand',
@@ -119,7 +119,10 @@ describe('analyzeAndPersistBrandReadiness', () => {
     const persisted = await prisma.brandAuthorityResult.findUniqueOrThrow({
       where: { geoAuditRunId: audit.id }
     });
-    expect(persisted.contactIdentityConsistency).toBeNull();
+    expect(persisted.contactIdentityConsistency).toBe(0);
+    expect(persisted.evidence).toMatchObject({
+      availability: { contactIdentityConsistency: false }
+    });
 
     await analyzeAndPersistBrandReadiness(audit.id);
     expect(await prisma.brandAuthorityResult.count({ where: { geoAuditRunId: audit.id } })).toBe(1);
