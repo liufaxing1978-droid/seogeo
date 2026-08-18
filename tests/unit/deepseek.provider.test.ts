@@ -47,7 +47,7 @@ function successfulBody(model = 'deepseek-v4-flash') {
 
 describe('DeepSeekProvider', () => {
   it('maps a FAST JSON request to DeepSeek without exposing reasoning_content', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(successfulBody()));
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => jsonResponse(successfulBody()));
     const provider = new DeepSeekProvider(
       {
         apiKey: 'fixture-key',
@@ -99,7 +99,7 @@ describe('DeepSeekProvider', () => {
   });
 
   it('maps REASONING mode to thinking enabled with high reasoning effort', async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(successfulBody('deepseek-v4-pro')));
+    const fetchImpl = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => jsonResponse(successfulBody('deepseek-v4-pro')));
     const provider = new DeepSeekProvider(
       {
         apiKey: 'fixture-key',
