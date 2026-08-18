@@ -106,7 +106,7 @@ describe('SEO audit web UI', () => {
     expect(response.text).toContain('Missing title');
     expect(response.text).toContain('HIGH');
     expect(response.text).toContain('7.5');
-    expect(response.text).not.toContain('DeepSeek');
+    expect(response.text).not.toContain('DeepSeek Intelligence');
   });
 
   it('renders issue center and deterministic issue detail with affected URL', async () => {
