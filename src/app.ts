@@ -4,6 +4,8 @@ import path from 'node:path';
 import { errorHandler } from './core/http.js';
 import { createCrawlRoutes } from './modules/crawler/crawl.routes.js';
 import type { CrawlService } from './modules/crawler/crawl.service.js';
+import { createGeoRoutes } from './modules/geo/geo.routes.js';
+import type { GeoService } from './modules/geo/geo.service.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import { projectRoutes } from './modules/projects/project.routes.js';
 import { createSeoRoutes } from './modules/seo/seo.routes.js';
@@ -15,6 +17,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export interface AppOptions {
   crawlService?: CrawlService;
   seoService?: SeoService;
+  geoService?: GeoService;
 }
 
 export function createApp(options: AppOptions = {}) {
@@ -32,6 +35,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/projects', projectRoutes);
   app.use('/api', createCrawlRoutes(options.crawlService));
   app.use('/api', createSeoRoutes(options.seoService));
+  app.use('/api', createGeoRoutes(options.geoService));
   app.use('/', webRoutes);
 
   app.use(errorHandler);
