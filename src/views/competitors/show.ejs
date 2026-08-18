@@ -1,0 +1,47 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Competitor Intelligence · P5-B</p>
+    <h1><%= competitor.name %></h1>
+    <p class="muted"><%= competitor.domain %> · 对比 <%= project.primaryDomain %></p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/competitors">返回竞品中心</a></div>
+</section>
+
+<section class="panel">
+  <h2>DeepSeek 只解释已保存差距</h2>
+  <p class="muted">页面指标和 AHEAD / BEHIND / EVEN / UNKNOWN 均来自 COMPETITOR_COMPARISON_V1。AI 不会生成搜索排名、流量、Share of Voice 或 AI Visibility。</p>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>抓取与比较</h2><p class="muted">bounded crawl 默认 25 页，硬上限 100 页。</p></div></div>
+  <div class="actions">
+    <form action="/projects/<%= project.id %>/competitors/<%= competitor.id %>/crawls" method="post">
+      <label>最大页面数 <input name="maxPages" type="number" min="1" max="100" value="25"></label>
+      <button class="button" type="submit">开始竞品抓取</button>
+    </form>
+    <form action="/projects/<%= project.id %>/competitors/<%= competitor.id %>/compare" method="post"><button class="button secondary" type="submit">生成确定性比较</button></form>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>抓取历史</h2>
+  <div class="table-wrap"><table><thead><tr><th>状态</th><th>页面</th><th>版本</th><th>完成时间</th></tr></thead><tbody>
+  <% for (const crawl of competitor.crawls) { %><tr><td><%= crawl.status %></td><td><%= crawl.pagesCrawled %> / <%= crawl.maxPages %></td><td><%= crawl.crawlerVersion %></td><td><%= crawl.finishedAt ? new Date(crawl.finishedAt).toLocaleString('zh-CN') : '—' %></td></tr><% } %>
+  <% if (!competitor.crawls.length) { %><tr><td colspan="4" class="muted">尚无竞品抓取。</td></tr><% } %>
+  </tbody></table></div>
+</section>
+
+<section class="panel">
+  <h2>确定性比较</h2>
+  <% for (const comparison of competitor.comparisons) { const gaps = Array.isArray(comparison.gaps) ? comparison.gaps : []; %>
+    <article class="panel nested-panel">
+      <div class="panel-header"><div><strong><%= comparison.comparisonVersion %></strong><div class="muted">ID: <%= comparison.id %></div></div><div><%= new Date(comparison.createdAt).toLocaleString('zh-CN') %></div></div>
+      <div class="table-wrap"><table><thead><tr><th>指标</th><th>结论</th><th>本站</th><th>竞品</th></tr></thead><tbody>
+      <% for (const gap of gaps) { %><tr><td><%= gap.metric ?? 'UNKNOWN' %></td><td><span class="badge"><%= gap.direction ?? 'UNKNOWN' %></span></td><td><%= gap.ownedValue ?? 'UNKNOWN' %></td><td><%= gap.competitorValue ?? 'UNKNOWN' %></td></tr><% } %>
+      <% if (!gaps.length) { %><tr><td colspan="4" class="muted">没有可比较的确定性 gap。</td></tr><% } %>
+      </tbody></table></div>
+      <form action="/projects/<%= project.id %>/competitors/comparisons/<%= comparison.id %>/ai" method="post"><button class="button" type="submit">DeepSeek 解释差距</button></form>
+    </article>
+  <% } %>
+  <% if (!competitor.comparisons.length) { %><p class="muted">完成竞品抓取后，可生成 COMPETITOR_COMPARISON_V1。</p><% } %>
+</section>
