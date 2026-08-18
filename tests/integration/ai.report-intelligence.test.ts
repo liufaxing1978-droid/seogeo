@@ -22,10 +22,20 @@ describe('P5-C report executive intelligence', () => {
     expect(input.promptVersion).toBe('project-report-summary-v1');
     expect(JSON.stringify(input.factSnapshot)).not.toContain('reasoning_content');
 
-    const fakeTask = { id: '11111111-1111-1111-1111-111111111111', projectId: project.id, taskType: 'REPORT_EXECUTIVE_SUMMARY', status: 'QUEUED', requestKey: input.requestKey, promptVersion: input.promptVersion } as any;
-    const task = await createReportExecutiveSummaryTask(project.id, report.id, { createAndEnqueue: async () => fakeTask } as any);
-    expect(task.id).toBe(fakeTask.id);
-    expect((await prisma.reportSnapshot.findUniqueOrThrow({ where: { id: report.id } })).executiveAiTaskId).toBe(fakeTask.id);
+    const task = await createReportExecutiveSummaryTask(project.id, report.id, {
+      createAndEnqueue: async (taskInput: any) => prisma.aiTask.create({
+        data: {
+          projectId: taskInput.projectId,
+          taskType: taskInput.taskType,
+          requestKey: taskInput.requestKey,
+          promptVersion: taskInput.promptVersion,
+          factSnapshot: taskInput.factSnapshot,
+          sourceReferences: taskInput.sourceReferences
+        }
+      })
+    } as any);
+    expect(task.taskType).toBe('REPORT_EXECUTIVE_SUMMARY');
+    expect((await prisma.reportSnapshot.findUniqueOrThrow({ where: { id: report.id } })).executiveAiTaskId).toBe(task.id);
   });
 
   it('rejects executive output that invents source references', () => {
