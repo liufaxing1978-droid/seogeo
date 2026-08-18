@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateContentDocument } from '../../src/modules/content/content-rules.js';
+import { CONTENT_RULESET_V1, evaluateContentDocument } from '../../src/modules/content/content-rules.js';
 import type { ContentFacts } from '../../src/modules/content/content.types.js';
 
 const base: ContentFacts = {
@@ -26,7 +26,8 @@ const base: ContentFacts = {
 
 describe('CONTENT_RULESET_V1', () => {
   it('passes healthy deterministic content facts', () => {
-    const results = evaluateContentDocument(base, { entityCount: 2, citabilityStatus: 'PASS' });
+    const results = evaluateContentDocument(base, { entityCount: 2, citabilityScore: 80 });
+    expect(CONTENT_RULESET_V1.citabilityMinScore).toBe(60);
     expect(results).toHaveLength(9);
     expect(results.every((result) => result.status === 'PASS')).toBe(true);
   });
@@ -43,7 +44,7 @@ describe('CONTENT_RULESET_V1', () => {
         internalLinkCount: null,
         schemaTypes: []
       },
-      { entityCount: null, citabilityStatus: 'UNKNOWN', schemaTypesKnown: false }
+      { entityCount: null, citabilityScore: null, schemaTypesKnown: false }
     );
 
     expect(results.find((x) => x.ruleKey === 'CONTENT_BODY_SUBSTANTIVE')?.status).toBe('UNKNOWN');
@@ -55,10 +56,11 @@ describe('CONTENT_RULESET_V1', () => {
   it('fails deterministic deficiencies with stable opportunity metadata', () => {
     const results = evaluateContentDocument(
       { ...base, title: '', h1: '', metaDescription: '', wordCount: 100, headingCount: 1, internalLinkCount: 0, schemaTypes: [] },
-      { entityCount: 0, citabilityStatus: 'FAIL', schemaTypesKnown: true }
+      { entityCount: 0, citabilityScore: 20, schemaTypesKnown: true }
     );
     const failures = results.filter((result) => result.status === 'FAIL');
     expect(failures.length).toBeGreaterThan(0);
     expect(failures.every((result) => result.opportunityKey === `${result.ruleKey}:v${result.ruleVersion}`)).toBe(true);
+    expect(results.find((x) => x.ruleKey === 'CONTENT_CITABILITY_SUPPORT')).toMatchObject({ status: 'FAIL', numericValue: 20 });
   });
 });
