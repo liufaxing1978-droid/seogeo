@@ -4,12 +4,16 @@ import {
   getPromptDefinition
 } from '../../src/modules/ai/prompts/prompt-registry.js';
 
-describe('P4 prompt registry', () => {
-  it('defines immutable v1 prompt identities for SEO, GEO and entity intelligence', () => {
+describe('versioned AI prompt registry', () => {
+  it('defines immutable v1 prompt identities for P4 and P5 intelligence', () => {
     expect(PROMPT_DEFINITIONS.map((prompt) => prompt.id)).toEqual([
       'seo-audit-analysis-v1',
       'geo-readiness-analysis-v1',
-      'entity-enrichment-v1'
+      'entity-enrichment-v1',
+      'content-brief-v1',
+      'content-optimization-v1',
+      'competitor-gap-v1',
+      'project-report-summary-v1'
     ]);
     expect(new Set(PROMPT_DEFINITIONS.map((prompt) => prompt.id)).size).toBe(PROMPT_DEFINITIONS.length);
     expect(PROMPT_DEFINITIONS.every((prompt) => prompt.version === 'v1')).toBe(true);
@@ -36,10 +40,18 @@ describe('P4 prompt registry', () => {
     }
   });
 
-  it('uses FAST for bounded SEO analysis and REASONING for GEO/entity semantic work', () => {
+  it('uses FAST only for bounded SEO analysis and REASONING for semantic P4/P5 work', () => {
     expect(getPromptDefinition('seo-audit-analysis-v1').mode).toBe('FAST');
-    expect(getPromptDefinition('geo-readiness-analysis-v1').mode).toBe('REASONING');
-    expect(getPromptDefinition('entity-enrichment-v1').mode).toBe('REASONING');
+    for (const promptId of [
+      'geo-readiness-analysis-v1',
+      'entity-enrichment-v1',
+      'content-brief-v1',
+      'content-optimization-v1',
+      'competitor-gap-v1',
+      'project-report-summary-v1'
+    ] as const) {
+      expect(getPromptDefinition(promptId).mode).toBe('REASONING');
+    }
   });
 
   it('fails closed for an unknown prompt id', () => {
