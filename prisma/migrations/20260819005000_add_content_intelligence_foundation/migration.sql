@@ -104,7 +104,7 @@ ALTER TABLE "ContentDocument"
   FOREIGN KEY ("pageId") REFERENCES "Page"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "ContentDocument"
   ADD CONSTRAINT "ContentDocument_latestPageSnapshotId_fkey"
-  FOREIGN KEY ("latestPageSnapshotId") REFERENCES "PageSnapshot"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  FOREIGN KEY ("latestPageSnapshotId") REFERENCES "PageSnapshot"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "ContentSignal"
   ADD CONSTRAINT "ContentSignal_projectId_fkey"
