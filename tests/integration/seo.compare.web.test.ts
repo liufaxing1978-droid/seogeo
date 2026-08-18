@@ -150,7 +150,7 @@ describe('SEO audit compare web UI', () => {
     expect(response.text).toContain('Missing meta description');
     expect(response.text).toContain('Missing H1');
     expect(response.text).toContain('Missing title');
-    expect(response.text).toContain('Slow response');
+    expect(response.text).toContain('Slow server response');
 
     expect(response.text).toContain(fixture.auditC.id);
     expect(response.text).toContain(fixture.auditB.id);
