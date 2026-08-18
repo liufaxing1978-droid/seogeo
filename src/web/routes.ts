@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { NotFoundError } from '../core/errors.js';
 import { crawlRepository } from '../modules/crawler/crawl.repository.js';
 import { crawlerWebRepository } from '../modules/crawler/crawler.web.repository.js';
+import { geoService } from '../modules/geo/geo.service.js';
+import { geoWebRepository } from '../modules/geo/geo.web.repository.js';
 import { ProjectService } from '../modules/projects/project.service.js';
 import { projectRepository } from '../modules/projects/project.repository.js';
 import { seoService } from '../modules/seo/seo.service.js';
@@ -219,6 +221,31 @@ webRoutes.post('/seo/issues/:issueId/status', async (req, res, next) => {
   try {
     await seoService.updateIssueStatus(req.params.issueId, req.body);
     res.redirect(303, `/seo/issues/${req.params.issueId}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+webRoutes.get('/projects/:id/geo', async (req, res, next) => {
+  try {
+    const model = await geoWebRepository.getOverview(req.params.id);
+    if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
+
+    render(res, 'geo/overview', {
+      title: 'GEO 概览',
+      activeNav: 'geo',
+      currentProjectId: model.project.id,
+      ...model
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+webRoutes.post('/projects/:id/geo/run', async (req, res, next) => {
+  try {
+    await geoService.createProjectAudit(req.params.id, {});
+    res.redirect(303, `/projects/${req.params.id}/geo`);
   } catch (error) {
     next(error);
   }
