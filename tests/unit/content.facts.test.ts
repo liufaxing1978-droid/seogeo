@@ -8,6 +8,8 @@ describe('buildContentFacts', () => {
       pageId: 'page-1',
       normalizedUrl: 'https://example.com/guide',
       snapshotId: 'snapshot-1',
+      statusCode: 200,
+      contentType: 'text/html; charset=utf-8',
       canonicalUrl: null,
       title: ' Guide ',
       metaDescription: null,
@@ -39,6 +41,8 @@ describe('buildContentFacts', () => {
       pageId: 'page-1',
       normalizedUrl: 'https://example.com/empty',
       snapshotId: 'snapshot-2',
+      statusCode: null,
+      contentType: null,
       canonicalUrl: null,
       title: null,
       metaDescription: null,
@@ -61,5 +65,43 @@ describe('buildContentFacts', () => {
     expect(facts.imageCount).toBeNull();
     expect(facts.internalLinkCount).toBeNull();
     expect(facts.contentHash).toMatch(/^missing:/);
+  });
+
+  it('turns parsed-looking fields into UNKNOWN for explicit failed or non-HTML snapshots', () => {
+    for (const transport of [
+      { statusCode: 500, contentType: 'text/html' },
+      { statusCode: 200, contentType: 'application/pdf' }
+    ]) {
+      const facts = buildContentFacts({
+        projectId: 'project-1',
+        pageId: 'page-ineligible',
+        normalizedUrl: 'https://example.com/ineligible',
+        snapshotId: `snapshot-${transport.statusCode}-${transport.contentType}`,
+        ...transport,
+        canonicalUrl: null,
+        title: 'Should not become a content fact',
+        metaDescription: 'Should not become a content fact',
+        h1: 'Should not become a content fact',
+        language: 'en',
+        wordCount: 0,
+        h1Count: 0,
+        h2Count: 0,
+        h3Count: 0,
+        imagesCount: 0,
+        internalLinksCount: 0,
+        externalLinksCount: 0,
+        schemaTypes: [],
+        contentHash: null,
+        capturedAt: new Date('2026-08-19T00:00:00Z')
+      });
+
+      expect(facts.title).toBeNull();
+      expect(facts.h1).toBeNull();
+      expect(facts.wordCount).toBeNull();
+      expect(facts.headingCount).toBeNull();
+      expect(facts.imageCount).toBeNull();
+      expect(facts.internalLinkCount).toBeNull();
+      expect(facts.externalLinkCount).toBeNull();
+    }
   });
 });
