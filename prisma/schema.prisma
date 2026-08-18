@@ -82,6 +82,73 @@ enum SeoIssueComparison {
   REGRESSED
 }
 
+enum GeoAuditRunStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum GeoDimension {
+  CITABILITY
+  ENTITY
+  BRAND
+  AI_CRAWLER
+  CONTENT_GEO
+}
+
+enum GeoPriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum GeoRuleOutcome {
+  PASS
+  FAIL
+  UNKNOWN
+}
+
+enum EntityType {
+  ORGANIZATION
+  PERSON
+  PRODUCT
+  SERVICE
+  PLACE
+  TOPIC
+  OTHER
+}
+
+enum EntityStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum EntityObservationSource {
+  SCHEMA
+  HTML_META
+  OPEN_GRAPH
+  TITLE
+  HEADING
+  INTERNAL_LINK
+  PROJECT_CONFIG
+}
+
+enum PageEntityRole {
+  PRIMARY
+  MENTIONED
+  AUTHOR
+  PUBLISHER
+  ABOUT
+}
+
+enum AiCrawlerReadinessStatus {
+  PASS
+  FAIL
+  UNKNOWN
+}
+
 model Project {
   id              String        @id @default(uuid()) @db.Uuid
   name            String
@@ -96,11 +163,15 @@ model Project {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  crawlRuns    CrawlRun[]
-  pages        Page[]
-  seoAuditRuns SeoAuditRun[]
-  seoIssues    SeoIssue[]
-  seoScores    SeoScore[]
+  crawlRuns        CrawlRun[]
+  pages            Page[]
+  seoAuditRuns     SeoAuditRun[]
+  seoIssues        SeoIssue[]
+  seoScores        SeoScore[]
+  geoAuditRuns     GeoAuditRun[]
+  entities         Entity[]
+  entityRelations  EntityRelation[]
+  geoScores        GeoScore[]
 
   @@index([primaryDomain])
   @@index([status])
@@ -129,6 +200,7 @@ model CrawlRun {
   robotsResults  RobotsResult[]
   sitemapSources SitemapSource[]
   seoAuditRuns   SeoAuditRun[]
+  geoAuditRuns   GeoAuditRun[]
 
   @@index([projectId, createdAt])
   @@index([projectId, status])
@@ -148,10 +220,15 @@ model Page {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  snapshots      PageSnapshot[]
-  seoRuleResults SeoRuleResult[]
-  seoIssuePages  SeoIssuePage[]
+  project              Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  snapshots            PageSnapshot[]
+  seoRuleResults       SeoRuleResult[]
+  seoIssuePages        SeoIssuePage[]
+  geoRuleResults       GeoRuleResult[]
+  citabilityResults    CitabilityResult[]
+  entityObservations   EntityObservation[]
+  pageEntities         PageEntity[]
+  entityRelations      EntityRelation[]
 
   @@unique([projectId, normalizedUrl])
   @@index([projectId, host])
@@ -451,4 +528,275 @@ model SeoScoreComponent {
   ruleVersion SeoRuleVersion @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
 
   @@unique([seoScoreId, ruleVersionId])
+}
+
+model GeoAuditRun {
+  id             String            @id @default(uuid()) @db.Uuid
+  projectId      String            @db.Uuid
+  crawlRunId     String            @db.Uuid
+  status         GeoAuditRunStatus @default(QUEUED)
+  eligiblePages  Int               @default(0)
+  rulesEvaluated Int               @default(0)
+  engineVersion  String
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  errorMessage   String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  project              Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  crawlRun             CrawlRun               @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
+  ruleResults          GeoRuleResult[]
+  citabilityResults    CitabilityResult[]
+  entityObservations   EntityObservation[]
+  aiCrawlerResults     AiCrawlerResult[]
+  brandAuthorityResult BrandAuthorityResult?
+  geoScore             GeoScore?
+
+  @@index([projectId, createdAt])
+  @@index([projectId, status])
+  @@index([crawlRunId])
+}
+
+model GeoRule {
+  id          String   @id @default(uuid()) @db.Uuid
+  ruleCode    String   @unique
+  name        String
+  category    String
+  description String
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  versions GeoRuleVersion[]
+}
+
+model GeoRuleVersion {
+  id              String       @id @default(uuid()) @db.Uuid
+  geoRuleId       String       @db.Uuid
+  version         Int
+  dimension       GeoDimension
+  severity        GeoPriority
+  weight          Float
+  detectionType   String
+  detectionConfig Json?
+  geoImpact       String
+  fixGuide        String
+  releasedAt      DateTime
+  deprecatedAt    DateTime?
+
+  geoRule     GeoRule         @relation(fields: [geoRuleId], references: [id], onDelete: Restrict)
+  ruleResults GeoRuleResult[]
+
+  @@unique([geoRuleId, version])
+  @@index([dimension])
+  @@index([severity])
+}
+
+model GeoRuleResult {
+  id             String         @id @default(uuid()) @db.Uuid
+  geoAuditRunId  String         @db.Uuid
+  pageId         String?        @db.Uuid
+  entityId       String?        @db.Uuid
+  ruleVersionId  String         @db.Uuid
+  resultKey      String
+  outcome        GeoRuleOutcome
+  evidence       Json?
+  createdAt      DateTime       @default(now())
+
+  geoAuditRun GeoAuditRun     @relation(fields: [geoAuditRunId], references: [id], onDelete: Cascade)
+  page        Page?           @relation(fields: [pageId], references: [id], onDelete: SetNull)
+  entity      Entity?         @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  ruleVersion GeoRuleVersion  @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([geoAuditRunId, ruleVersionId, resultKey])
+  @@index([geoAuditRunId, outcome])
+  @@index([pageId])
+  @@index([entityId])
+}
+
+model CitabilityResult {
+  id                       String   @id @default(uuid()) @db.Uuid
+  geoAuditRunId            String   @db.Uuid
+  pageId                    String   @db.Uuid
+  answerFirstScore          Float
+  headingStructureScore     Float
+  factualDensityScore       Float
+  sourceSupportScore        Float
+  extractabilityScore       Float
+  definitionClarityScore    Float
+  overallScore              Float
+  evidence                  Json?
+  engineVersion             String
+  createdAt                 DateTime @default(now())
+
+  geoAuditRun GeoAuditRun @relation(fields: [geoAuditRunId], references: [id], onDelete: Cascade)
+  page        Page        @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@unique([geoAuditRunId, pageId])
+  @@index([pageId, createdAt])
+}
+
+model Entity {
+  id             String       @id @default(uuid()) @db.Uuid
+  projectId      String       @db.Uuid
+  entityType     EntityType
+  canonicalName  String
+  normalizedName String
+  description    String?
+  officialUrl    String?
+  status         EntityStatus @default(ACTIVE)
+  confidence     Float        @default(1)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  project          Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  aliases          EntityAlias[]
+  observations     EntityObservation[]
+  pageEntities     PageEntity[]
+  sourceRelations  EntityRelation[]     @relation("EntityRelationSource")
+  targetRelations  EntityRelation[]     @relation("EntityRelationTarget")
+  geoRuleResults   GeoRuleResult[]
+
+  @@unique([projectId, entityType, normalizedName])
+  @@index([projectId, status])
+  @@index([normalizedName])
+}
+
+model EntityAlias {
+  id              String @id @default(uuid()) @db.Uuid
+  entityId        String @db.Uuid
+  alias           String
+  normalizedAlias String
+  sourceType      String
+
+  entity Entity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([entityId, normalizedAlias])
+  @@index([normalizedAlias])
+}
+
+model EntityRelation {
+  id             String  @id @default(uuid()) @db.Uuid
+  projectId      String  @db.Uuid
+  sourceEntityId String  @db.Uuid
+  relationType   String
+  targetEntityId String  @db.Uuid
+  sourcePageId   String? @db.Uuid
+  confidence     Float   @default(1)
+  evidence       Json?
+  createdAt      DateTime @default(now())
+
+  project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceEntity Entity  @relation("EntityRelationSource", fields: [sourceEntityId], references: [id], onDelete: Restrict)
+  targetEntity Entity  @relation("EntityRelationTarget", fields: [targetEntityId], references: [id], onDelete: Restrict)
+  sourcePage   Page?   @relation(fields: [sourcePageId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, relationType])
+  @@index([sourceEntityId])
+  @@index([targetEntityId])
+}
+
+model EntityObservation {
+  id            String                  @id @default(uuid()) @db.Uuid
+  geoAuditRunId String                  @db.Uuid
+  entityId      String                  @db.Uuid
+  pageId        String?                 @db.Uuid
+  sourceType    EntityObservationSource
+  property      String
+  value         String
+  evidence      Json?
+  createdAt     DateTime                @default(now())
+
+  geoAuditRun GeoAuditRun @relation(fields: [geoAuditRunId], references: [id], onDelete: Cascade)
+  entity      Entity      @relation(fields: [entityId], references: [id], onDelete: Restrict)
+  page        Page?       @relation(fields: [pageId], references: [id], onDelete: SetNull)
+
+  @@index([geoAuditRunId, sourceType])
+  @@index([entityId])
+  @@index([pageId])
+}
+
+model PageEntity {
+  pageId     String         @db.Uuid
+  entityId   String         @db.Uuid
+  role       PageEntityRole
+  confidence Float          @default(1)
+  sourceType String
+
+  page   Page   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  entity Entity @relation(fields: [entityId], references: [id], onDelete: Restrict)
+
+  @@id([pageId, entityId, role, sourceType])
+  @@index([entityId])
+}
+
+model AiCrawlerResult {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  geoAuditRunId       String                   @db.Uuid
+  crawlerCode         String
+  robotsAllowed       Boolean?
+  metaRobotsAllowed   Boolean?
+  xRobotsAllowed      Boolean?
+  reachable           Boolean?
+  status              AiCrawlerReadinessStatus
+  evidence            Json?
+  createdAt           DateTime                 @default(now())
+
+  geoAuditRun GeoAuditRun @relation(fields: [geoAuditRunId], references: [id], onDelete: Cascade)
+
+  @@unique([geoAuditRunId, crawlerCode])
+  @@index([crawlerCode, status])
+}
+
+model BrandAuthorityResult {
+  id                         String   @id @default(uuid()) @db.Uuid
+  geoAuditRunId              String   @unique @db.Uuid
+  officialIdentityPresent    Boolean
+  organizationSchemaPresent  Boolean
+  sameAsCount                Int      @default(0)
+  publisherConsistency       Float
+  contactIdentityConsistency Float
+  aboutPagePresent           Boolean
+  overallScore               Float
+  evidence                   Json?
+  createdAt                  DateTime @default(now())
+
+  geoAuditRun GeoAuditRun @relation(fields: [geoAuditRunId], references: [id], onDelete: Cascade)
+}
+
+model GeoScore {
+  id             String   @id @default(uuid()) @db.Uuid
+  geoAuditRunId  String   @unique @db.Uuid
+  projectId      String   @db.Uuid
+  scoreType      String
+  score          Float
+  previousScore  Float?
+  change         Float?
+  formulaVersion String
+  calculatedAt   DateTime @default(now())
+  engineVersion  String
+
+  geoAuditRun GeoAuditRun         @relation(fields: [geoAuditRunId], references: [id], onDelete: Cascade)
+  project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  components  GeoScoreComponent[]
+
+  @@index([projectId, calculatedAt])
+  @@index([projectId, scoreType])
+}
+
+model GeoScoreComponent {
+  id              String @id @default(uuid()) @db.Uuid
+  geoScoreId      String @db.Uuid
+  componentCode   String
+  componentName   String
+  rawScore        Float
+  weight          Float
+  weightedScore   Float
+  sourceType      String
+  sourceReference String?
+
+  geoScore GeoScore @relation(fields: [geoScoreId], references: [id], onDelete: Cascade)
+
+  @@unique([geoScoreId, componentCode])
 }
