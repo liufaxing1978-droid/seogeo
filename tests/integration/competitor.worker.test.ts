@@ -33,4 +33,35 @@ describe('P5-B competitor crawl worker', () => {
     expect(snapshots).toHaveLength(2);
     expect(snapshots.every((snapshot) => new URL(snapshot.normalizedUrl).hostname === competitor.domain)).toBe(true);
   });
+
+  it('does not parse an external redirect body as competitor content', async () => {
+    const suffix = `${Date.now()}-${Math.random()}`;
+    const project = await prisma.project.create({ data: { name: 'cmp-redirect', slug: `cmp-redirect-${suffix}`, primaryDomain: `owned-redirect-${suffix}.example.com` } });
+    projects.push(project.id);
+    const competitor = await prisma.competitor.create({ data: { projectId: project.id, name: 'Redirect Rival', domain: `rival-redirect-${suffix}.example.com` } });
+    const seedUrl = `https://${competitor.domain}/`;
+    const crawl = await prisma.competitorCrawl.create({ data: { competitorId: competitor.id, seedUrl, maxPages: 1, crawlerVersion: 'test' } });
+
+    await executeCompetitorCrawl(crawl.id, {
+      fetcher: async (url) => ({
+        requestUrl: url,
+        finalUrl: 'https://outside.example.com/landing',
+        statusCode: 200,
+        headers: { 'content-type': 'text/html' },
+        body: html('Outside Landing', ['/outside-child']),
+        contentType: 'text/html',
+        bytes: 100,
+        responseTimeMs: 1,
+        redirectChain: [{ from: seedUrl, to: 'https://outside.example.com/landing', statusCode: 302 }],
+        errorCode: null
+      })
+    });
+
+    const snapshot = await prisma.competitorPageSnapshot.findFirstOrThrow({ where: { competitorCrawlId: crawl.id } });
+    expect(snapshot.finalUrl).toBe('https://outside.example.com/landing');
+    expect(snapshot.title).toBeNull();
+    expect(snapshot.h1).toBeNull();
+    expect(snapshot.wordCount).toBeNull();
+    expect(snapshot.contentHash).toBeNull();
+  });
 });
