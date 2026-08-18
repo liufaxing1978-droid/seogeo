@@ -10,12 +10,13 @@ type CrawlJobLike = Pick<Job<CrawlJobData>, 'data'>;
 
 export async function processCrawlJob(
   job: CrawlJobLike,
-  execute: CrawlExecutor = executeCrawlRun
+  tokenOrExecute?: string | CrawlExecutor
 ): Promise<void> {
   const crawlRunId = job.data?.crawlRunId;
   if (!crawlRunId || typeof crawlRunId !== 'string') {
     throw new Error('crawlRunId is required for crawl jobs');
   }
 
+  const execute = typeof tokenOrExecute === 'function' ? tokenOrExecute : executeCrawlRun;
   await execute(crawlRunId);
 }
