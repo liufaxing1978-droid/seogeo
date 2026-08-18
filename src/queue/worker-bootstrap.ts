@@ -1,5 +1,6 @@
 import { Worker } from 'bullmq';
 import { processAiJob, type AiJobData } from '../modules/ai/ai.worker.js';
+import { processCompetitorCrawlJob, type CompetitorCrawlJobData } from '../modules/competitor/competitor.worker.js';
 import { processContentRefreshJob, type ContentRefreshJobData } from '../modules/content/content.worker.js';
 import { processCrawlJob, type CrawlJobData } from '../modules/crawler/crawl.worker.js';
 import { processGeoAuditJob, type GeoAuditJobData } from '../modules/geo/geo.worker.js';
@@ -14,6 +15,7 @@ export async function startWorkers() {
     if (name === 'seo-audit') return new Worker<SeoAuditJobData>(name, processSeoAuditJob, { connection });
     if (name === 'geo-audit') return new Worker<GeoAuditJobData>(name, processGeoAuditJob, { connection });
     if (name === 'content') return new Worker<ContentRefreshJobData>(name, processContentRefreshJob, { connection, concurrency: 2 });
+    if (name === 'competitor') return new Worker<CompetitorCrawlJobData>(name, processCompetitorCrawlJob, { connection, concurrency: 2 });
     if (name === 'ai') return new Worker<AiJobData>(name, processAiJob, { connection });
     return new Worker(name, async () => undefined, { connection });
   });
