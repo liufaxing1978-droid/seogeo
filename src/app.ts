@@ -5,6 +5,7 @@ import { errorHandler } from './core/http.js';
 import { createCrawlRoutes } from './modules/crawler/crawl.routes.js';
 import type { CrawlService } from './modules/crawler/crawl.service.js';
 import { createGeoRoutes } from './modules/geo/geo.routes.js';
+import { geoWebRoutes } from './modules/geo/geo.web.routes.js';
 import type { GeoService } from './modules/geo/geo.service.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import { projectRoutes } from './modules/projects/project.routes.js';
@@ -36,6 +37,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api', createCrawlRoutes(options.crawlService));
   app.use('/api', createSeoRoutes(options.seoService));
   app.use('/api', createGeoRoutes(options.geoService));
+  app.use('/', geoWebRoutes);
   app.use('/', webRoutes);
 
   app.use(errorHandler);
