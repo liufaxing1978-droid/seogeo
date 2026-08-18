@@ -44,8 +44,9 @@ export const geoApiRepository: GeoApiRepository = {
   },
 
   findAuditByProjectCrawl(projectId, crawlRunId) {
-    return prisma.geoAuditRun.findUnique({
-      where: { projectId_crawlRunId: { projectId, crawlRunId } }
+    return prisma.geoAuditRun.findFirst({
+      where: { projectId, crawlRunId },
+      orderBy: { createdAt: 'desc' }
     });
   },
 
