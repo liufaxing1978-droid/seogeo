@@ -7,7 +7,7 @@ function createProvider(): AiProvider {
   return {
     name: 'DEEPSEEK',
     complete: vi.fn(async (request) => ({
-      provider: 'DEEPSEEK',
+      provider: 'DEEPSEEK' as const,
       model: request.model,
       responseId: 'fixture-response',
       content: '{"ok":true}',
