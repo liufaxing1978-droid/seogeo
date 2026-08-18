@@ -5,6 +5,7 @@ import { aiGatewayConfig } from './ai.config.js';
 import { AiGateway } from './ai.gateway.js';
 import { aiObservability, type AiObservability } from './ai-observability.js';
 import type { AiGatewayRequest, AiProviderResponse } from './ai.types.js';
+import { parseCompetitorGapOutput } from './competitor-intelligence.js';
 import { parseContentBriefOutput, parseContentOptimizationOutput, persistContentBrief } from './content-intelligence.js';
 import { DeepSeekProvider } from './deepseek.provider.js';
 import { parseEntityEnrichmentOutput } from './entity-intelligence.js';
@@ -39,6 +40,7 @@ function expectedPromptId(task: AiTask): string {
     case 'ENTITY_ENRICHMENT': return 'entity-enrichment-v1';
     case 'CONTENT_BRIEF': return 'content-brief-v1';
     case 'CONTENT_OPTIMIZATION_ANALYSIS': return 'content-optimization-v1';
+    case 'COMPETITOR_GAP_ANALYSIS': return 'competitor-gap-v1';
   }
 }
 
@@ -73,6 +75,7 @@ function resultSummary(task: AiTask, output: unknown): string {
     case 'ENTITY_ENRICHMENT': return 'Entity enrichment suggestions generated.';
     case 'CONTENT_BRIEF': return 'Content brief generated.';
     case 'CONTENT_OPTIMIZATION_ANALYSIS': return 'Content optimization analysis completed.';
+    case 'COMPETITOR_GAP_ANALYSIS': return 'Competitor gap analysis completed.';
   }
 }
 
@@ -83,6 +86,7 @@ function parseTaskOutput(task: AiTask, content: string): unknown {
     case 'ENTITY_ENRICHMENT': return parseEntityEnrichmentOutput(content, task.sourceReferences);
     case 'CONTENT_BRIEF': return parseContentBriefOutput(content, task.sourceReferences);
     case 'CONTENT_OPTIMIZATION_ANALYSIS': return parseContentOptimizationOutput(content, task.sourceReferences);
+    case 'COMPETITOR_GAP_ANALYSIS': return parseCompetitorGapOutput(content, task.sourceReferences);
   }
 }
 
