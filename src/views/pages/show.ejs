@@ -1,0 +1,51 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Crawler</p>
+    <h1>页面详情</h1>
+    <p class="muted"><%= page.normalizedUrl %></p>
+  </div>
+  <a class="button button-secondary" href="/projects/<%= page.project.id %>/pages">返回页面中心</a>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><h2>最新抓取事实</h2></div>
+  <% if (latest) { %>
+    <dl class="detail-grid">
+      <div><dt>HTTP</dt><dd><%= latest.statusCode ?? '未知' %></dd></div>
+      <div><dt>Title</dt><dd><%= latest.title ?? '—' %></dd></div>
+      <div><dt>H1</dt><dd><%= latest.h1 ?? '—' %></dd></div>
+      <div><dt>Content-Type</dt><dd><%= latest.contentType ?? '—' %></dd></div>
+      <div><dt>Indexable</dt><dd><%= latest.indexable === null ? '未知' : latest.indexable ? '是' : '否' %></dd></div>
+      <div><dt>Word Count</dt><dd><%= latest.wordCount %></dd></div>
+      <div><dt>Canonical</dt><dd><%= latest.canonicalUrl ?? '—' %></dd></div>
+      <div><dt>抓取方式</dt><dd><%= latest.rendered ? 'Browser' : 'HTTP' %></dd></div>
+      <div><dt>抓取时间</dt><dd><%= latest.capturedAt.toISOString() %></dd></div>
+    </dl>
+  <% } else { %>
+    <p class="muted">尚无抓取快照。</p>
+  <% } %>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><h2>快照历史</h2></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>时间</th><th>HTTP</th><th>Title</th><th>H1</th><th>Indexable</th><th>Run</th></tr></thead>
+    <tbody>
+      <% for (const snapshot of snapshots) { %>
+        <tr>
+          <td><%= snapshot.capturedAt.toISOString() %></td>
+          <td><%= snapshot.statusCode ?? '未知' %></td>
+          <td><%= snapshot.title ?? '—' %></td>
+          <td><%= snapshot.h1 ?? '—' %></td>
+          <td><%= snapshot.indexable === null ? '未知' : snapshot.indexable ? '是' : '否' %></td>
+          <td><a href="/crawls/<%= snapshot.crawlRun.id %>"><%= snapshot.crawlRun.runType %></a></td>
+        </tr>
+      <% } %>
+      <% if (!snapshots.length) { %><tr><td colspan="6" class="muted">尚无快照。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="panel">
+  <p class="muted">P1 仅展示真实抓取事实；SEO 评分和问题归类将在 P2 Rule Engine 中生成。</p>
+</section>
