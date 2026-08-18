@@ -10,7 +10,7 @@ describe('AI completion transaction boundary', () => {
     for (const id of projects) await prisma.project.delete({ where: { id } }).catch(() => undefined);
   });
 
-  it('rolls back provider/result completion when derived-result materialization fails, then records one clean failure', async () => {
+  it('preserves successful provider usage while rolling back analysis and derived materialization', async () => {
     const suffix = `${Date.now()}-${Math.random()}`;
     const project = await prisma.project.create({ data: { name: 'AI Atomic Completion', slug: `ai-atomic-${suffix}`, primaryDomain: `ai-atomic-${suffix}.example.com` } });
     projects.push(project.id);
@@ -44,6 +44,7 @@ describe('AI completion transaction boundary', () => {
       usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15, cacheHitTokens: 0, cacheMissTokens: 10, reasoningTokens: 1 }
     };
 
+    await repository.recordProviderSuccess(run.id, response);
     await expect(repository.completeRun(
       task,
       run.id,
@@ -53,13 +54,15 @@ describe('AI completion transaction boundary', () => {
       async () => { throw new Error('derived materialization failed'); }
     )).rejects.toThrow(/derived materialization failed/);
 
-    expect(await prisma.aiProviderCall.count({ where: { aiTaskRunId: run.id } })).toBe(0);
+    const providerCall = await prisma.aiProviderCall.findFirstOrThrow({ where: { aiTaskRunId: run.id } });
+    expect(providerCall).toMatchObject({ totalTokens: 15, promptTokens: 10, completionTokens: 5, errorCode: null });
     expect(await prisma.aiAnalysisResult.count({ where: { aiTaskRunId: run.id } })).toBe(0);
     expect((await prisma.aiTaskRun.findUniqueOrThrow({ where: { id: run.id } })).status).toBe('RUNNING');
     expect((await prisma.aiTask.findUniqueOrThrow({ where: { id: task.id } })).status).toBe('RUNNING');
 
     await repository.failRun(task.id, run.id, { errorCode: 'DERIVED_RESULT_FAILED', errorMessage: 'Derived result failed' });
     expect(await prisma.aiProviderCall.count({ where: { aiTaskRunId: run.id } })).toBe(1);
+    expect((await prisma.aiProviderCall.findFirstOrThrow({ where: { aiTaskRunId: run.id } })).totalTokens).toBe(15);
     expect((await prisma.aiTaskRun.findUniqueOrThrow({ where: { id: run.id } })).status).toBe('FAILED');
     expect((await prisma.aiTask.findUniqueOrThrow({ where: { id: task.id } })).status).toBe('FAILED');
   });
