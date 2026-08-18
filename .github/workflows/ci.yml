@@ -42,6 +42,8 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
       - name: Validate Prisma
         run: npx prisma validate
       - name: Generate Prisma client
