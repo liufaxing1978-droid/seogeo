@@ -63,15 +63,15 @@ jobs:
         with:
           node-version: 22
       - name: Install deployable runtime dependencies only
-        run: npm install --omit=dev --omit=peer
+        run: npm install --omit=dev --legacy-peer-deps
       - name: Verify Prisma CLI is not in runtime tree
         run: |
-          if npm ls prisma --depth=0 >/dev/null 2>&1; then
+          if [ -d node_modules/prisma ]; then
             echo "Prisma CLI must not be present in the runtime dependency tree"
             exit 1
           fi
       - name: Audit deployable runtime dependency tree
-        run: npm audit --omit=dev --omit=peer --audit-level=high
+        run: npm audit --omit=dev --audit-level=high --legacy-peer-deps
 
   e2e:
     runs-on: ubuntu-latest
