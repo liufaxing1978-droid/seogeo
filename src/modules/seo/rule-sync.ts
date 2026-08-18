@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
-import { BUILTIN_PAGE_RULES } from './rule-catalog.js';
+import { BUILTIN_RULES } from './rule-catalog.js';
 import type { SeoRuleDefinition } from './seo.types.js';
 
 export interface SyncedRuleIdentity {
@@ -63,5 +63,5 @@ export async function syncRuleDefinitions(
 }
 
 export function syncBuiltinRules(): Promise<Map<string, SyncedRuleIdentity>> {
-  return syncRuleDefinitions(BUILTIN_PAGE_RULES);
+  return syncRuleDefinitions(BUILTIN_RULES);
 }
