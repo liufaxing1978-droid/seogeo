@@ -29,7 +29,7 @@ const SEO_PROMPT: PromptDefinition = Object.freeze({
   mode: 'FAST',
   responseFormat: 'JSON',
   system: `${FACT_GUARDRAILS}\nAnalyze deterministic SEO audit facts. Prioritize practical actions, but never change factual issue state.`,
-  buildUserMessage: (facts) =>
+  buildUserMessage: (facts: unknown) =>
     buildUserMessage(
       'Analyze the deterministic SEO audit facts.',
       {
@@ -51,7 +51,7 @@ const GEO_PROMPT: PromptDefinition = Object.freeze({
   mode: 'REASONING',
   responseFormat: 'JSON',
   system: `${FACT_GUARDRAILS}\nAnalyze deterministic GEO readiness facts. Treat null and UNKNOWN as unavailable evidence, never as zero. AI Visibility is unavailable unless explicitly supplied as a real sampled fact.`,
-  buildUserMessage: (facts) =>
+  buildUserMessage: (facts: unknown) =>
     buildUserMessage(
       'Analyze the deterministic GEO readiness facts.',
       {
@@ -77,7 +77,7 @@ const ENTITY_PROMPT: PromptDefinition = Object.freeze({
   mode: 'REASONING',
   responseFormat: 'JSON',
   system: `${FACT_GUARDRAILS}\nSuggest semantic entity enrichment only. Suggestions must not be presented as deterministic entity facts and must reference supplied source IDs.`,
-  buildUserMessage: (facts) =>
+  buildUserMessage: (facts: unknown) =>
     buildUserMessage(
       'Suggest semantic enrichment for the supplied deterministic entities.',
       {
