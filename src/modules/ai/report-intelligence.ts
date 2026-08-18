@@ -2,6 +2,7 @@ import type { AiTask, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
+import { reportObservability, type ReportObservability } from '../reporting/report-observability.js';
 import { aiTaskService, type AiTaskService, type CreateAiTaskInput } from './ai.service.js';
 import { AiOutputValidationError, parseStructuredOutput } from './structured-output.js';
 
@@ -85,7 +86,8 @@ export async function buildReportExecutiveTaskInput(projectId: string, reportId:
 export async function createReportExecutiveSummaryTask(
   projectId: string,
   reportId: string,
-  service: Pick<AiTaskService, 'createAndEnqueue'> = aiTaskService
+  service: Pick<AiTaskService, 'createAndEnqueue'> = aiTaskService,
+  observability: ReportObservability = reportObservability
 ): Promise<AiTask> {
   const existingReport = await prisma.reportSnapshot.findFirst({ where: { id: reportId, projectId } });
   if (!existingReport) throw new NotFoundError('Report not found', 'REPORT_NOT_FOUND');
@@ -96,5 +98,6 @@ export async function createReportExecutiveSummaryTask(
 
   const task = await service.createAndEnqueue(await buildReportExecutiveTaskInput(projectId, reportId));
   await prisma.reportSnapshot.update({ where: { id: reportId }, data: { executiveAiTaskId: task.id } });
+  observability.emit({ event: 'report.ai_summary.queued', projectId, reportId, reportVersion: existingReport.reportVersion, taskId: task.id });
   return task;
 }
