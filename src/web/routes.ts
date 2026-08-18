@@ -242,6 +242,51 @@ webRoutes.get('/projects/:id/geo', async (req, res, next) => {
   }
 });
 
+webRoutes.get('/projects/:id/geo/citability', async (req, res, next) => {
+  try {
+    const model = await geoWebRepository.getCitabilityPage(req.params.id);
+    if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
+    render(res, 'geo/citability', {
+      title: 'Citability',
+      activeNav: 'geo',
+      currentProjectId: model.project.id,
+      ...model
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+webRoutes.get('/projects/:id/geo/entities', async (req, res, next) => {
+  try {
+    const model = await geoWebRepository.getEntitiesPage(req.params.id);
+    if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
+    render(res, 'geo/entities', {
+      title: 'Entity',
+      activeNav: 'geo',
+      currentProjectId: model.project.id,
+      ...model
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+webRoutes.get('/projects/:id/geo/ai-crawlers', async (req, res, next) => {
+  try {
+    const model = await geoWebRepository.getAiCrawlerPage(req.params.id);
+    if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
+    render(res, 'geo/ai-crawlers', {
+      title: 'AI Crawler',
+      activeNav: 'geo',
+      currentProjectId: model.project.id,
+      ...model
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 webRoutes.post('/projects/:id/geo/run', async (req, res, next) => {
   try {
     await geoService.createProjectAudit(req.params.id, {});
