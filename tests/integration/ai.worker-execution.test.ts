@@ -31,7 +31,7 @@ describe('P4 durable AI worker execution', () => {
         provider: 'DEEPSEEK' as const,
         model: 'deepseek-v4-flash',
         responseId: 'fixture-response',
-        content: '{"summary":"Use deterministic facts.","priorities":[]}',
+        content: '{"summary":"Use deterministic facts.","priorities":[],"recommendations":[]}',
         finishReason: 'stop',
         latencyMs: 321,
         usage: {
