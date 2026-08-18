@@ -14,7 +14,9 @@ test('opens the Standard-plan DeepSeek AI Analysis Center without invoking a pro
   expect(projectId).toBeTruthy();
 
   await page.goto(`/projects/${projectId}/ai`);
-  await expect(page.getByRole('heading', { level: 1, name: 'DeepSeek AI 分析中心' })).toBeVisible();
+  await expect(
+    page.getByRole('main').getByRole('heading', { level: 1, name: 'DeepSeek AI 分析中心' })
+  ).toBeVisible();
   await expect(page.getByText('AI 只分析已保存事实')).toBeVisible();
   await expect(page.getByText(/P6 高级版/)).toBeVisible();
   await expect(page.getByRole('link', { name: 'DeepSeek 分析中心' })).toHaveClass(/active/);
