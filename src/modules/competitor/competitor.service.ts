@@ -2,6 +2,7 @@ import { Queue } from 'bullmq';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
 import { createRedisConnection } from '../../queue/connection.js';
+import { competitorObservability, type CompetitorObservability } from './competitor-observability.js';
 
 export const COMPETITOR_CRAWLER_VERSION = 'COMPETITOR_CRAWLER_V1';
 export const DEFAULT_COMPETITOR_MAX_PAGES = 25;
@@ -31,7 +32,10 @@ function normalizeDomain(value: string): string {
 }
 
 export class CompetitorService {
-  constructor(private readonly queue: CompetitorQueue = new LazyCompetitorQueue()) {}
+  constructor(
+    private readonly queue: CompetitorQueue = new LazyCompetitorQueue(),
+    private readonly observability: CompetitorObservability = competitorObservability
+  ) {}
 
   async createCompetitor(projectId: string, input: { name: string; domain: string }) {
     const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, primaryDomain: true } });
@@ -52,8 +56,10 @@ export class CompetitorService {
     });
     try {
       await this.queue.add('competitor-crawl', { competitorCrawlId: crawl.id }, { jobId: `competitor-crawl-${crawl.id}`, attempts: 1 });
+      this.observability.emit({ event: 'competitor.crawl.queued', projectId, competitorId, crawlId: crawl.id });
     } catch (error) {
       await prisma.competitorCrawl.update({ where: { id: crawl.id }, data: { status: 'FAILED', finishedAt: new Date(), errorMessage: 'Failed to enqueue competitor crawl' } });
+      this.observability.emit({ event: 'competitor.crawl.failed', projectId, competitorId, crawlId: crawl.id, errorCode: 'COMPETITOR_QUEUE_ENQUEUE_FAILED' });
       throw error;
     }
     return crawl;
