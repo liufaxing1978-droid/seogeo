@@ -6,6 +6,7 @@ import { aiGatewayConfig } from './ai.config.js';
 import { AiGateway } from './ai.gateway.js';
 import type { AiGatewayRequest, AiProviderResponse } from './ai.types.js';
 import { DeepSeekProvider } from './deepseek.provider.js';
+import { parseGeoAnalysisOutput } from './geo-intelligence.js';
 import { getPromptDefinition } from './prompts/prompt-registry.js';
 import { AiProviderError } from './provider.js';
 import { AiProviderRegistry } from './provider-registry.js';
@@ -109,6 +110,9 @@ function resultSummary(task: AiTask, output: unknown): string {
 function parseTaskOutput(task: AiTask, content: string): unknown {
   if (task.taskType === 'SEO_AUDIT_ANALYSIS') {
     return parseSeoAnalysisOutput(content, task.sourceReferences);
+  }
+  if (task.taskType === 'GEO_READINESS_ANALYSIS') {
+    return parseGeoAnalysisOutput(content, task.sourceReferences);
   }
   return parseStructuredOutput(content, GENERIC_JSON_OUTPUT);
 }
