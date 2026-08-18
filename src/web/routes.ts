@@ -173,6 +173,32 @@ webRoutes.get('/projects/:id/seo/issues', async (req, res, next) => {
   }
 });
 
+webRoutes.get('/projects/:id/seo/compare', async (req, res, next) => {
+  try {
+    const currentAuditId = typeof req.query.current === 'string' ? req.query.current : '';
+    const previousAuditId = typeof req.query.previous === 'string' ? req.query.previous : '';
+    if (!currentAuditId || !previousAuditId) {
+      throw new NotFoundError('SEO audit comparison not found', 'SEO_COMPARE_NOT_FOUND');
+    }
+
+    const model = await seoWebRepository.getAuditComparison(
+      req.params.id,
+      currentAuditId,
+      previousAuditId
+    );
+    if (!model) throw new NotFoundError('SEO audit comparison not found', 'SEO_COMPARE_NOT_FOUND');
+
+    render(res, 'seo/compare', {
+      title: 'SEO 审计对比',
+      activeNav: 'seo',
+      currentProjectId: model.project.id,
+      ...model
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 webRoutes.get('/seo/issues/:issueId', async (req, res, next) => {
   try {
     const model = await seoWebRepository.getIssuePage(req.params.issueId);
