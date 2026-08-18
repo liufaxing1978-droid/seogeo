@@ -37,9 +37,9 @@ describe('P5-B Competitor Center web', () => {
         competitorId: competitor.id,
         competitorCrawlId: crawl.id,
         comparisonVersion: 'COMPETITOR_COMPARISON_V1',
-        ownedMetrics: { pageCount: 4, avgWordCount: 900 },
-        competitorMetrics: { pageCount: 3, avgWordCount: 1200 },
-        gaps: [{ metric: 'avgWordCount', direction: 'BEHIND', ownedValue: 900, competitorValue: 1200 }],
+        ownedMetrics: { averageWordCount: 900 },
+        competitorMetrics: { averageWordCount: 1200 },
+        gaps: [{ metric: 'averageWordCount', state: 'BEHIND', owned: 900, competitor: 1200, delta: -300 }],
         sourceReferences: [{ type: 'COMPETITOR_CRAWL', id: crawl.id }]
       }
     });
