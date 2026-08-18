@@ -163,14 +163,14 @@ export async function createContentOptimizationTask(projectId: string, documentI
   return service.createAndEnqueue(await buildContentOptimizationTaskInput(projectId, documentId));
 }
 
-export async function persistContentBrief(task: AiTask, output: ContentBriefOutput) {
+export async function persistContentBrief(task: AiTask, output: ContentBriefOutput, tx?: Prisma.TransactionClient) {
   const snapshot = task.factSnapshot as Record<string, unknown>;
   const document = snapshot.document as Record<string, unknown> | undefined;
   const documentRef = typeof document?.sourceRef === 'string' ? document.sourceRef : '';
   const contentDocumentId = documentRef.startsWith('CONTENT_DOCUMENT:') ? documentRef.slice('CONTENT_DOCUMENT:'.length) : null;
   const contentHash = typeof document?.contentHash === 'string' ? document.contentHash : '';
   const factSnapshotHash = createHash('sha256').update(JSON.stringify(task.factSnapshot)).digest('hex');
-  return prisma.contentBrief.upsert({
+  const args = {
     where: { aiTaskId: task.id },
     create: {
       projectId: task.projectId,
@@ -188,5 +188,6 @@ export async function persistContentBrief(task: AiTask, output: ContentBriefOutp
       briefJson: output as unknown as Prisma.InputJsonValue,
       sourceReferences: task.sourceReferences as Prisma.InputJsonValue
     }
-  });
+  } satisfies Prisma.ContentBriefUpsertArgs;
+  return tx ? tx.contentBrief.upsert(args) : prisma.contentBrief.upsert(args);
 }
