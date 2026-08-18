@@ -4,6 +4,8 @@ import path from 'node:path';
 import { errorHandler } from './core/http.js';
 import { createAiRoutes } from './modules/ai/ai.routes.js';
 import type { AiTaskService } from './modules/ai/ai.service.js';
+import { createContentRoutes } from './modules/content/content.routes.js';
+import type { ContentService } from './modules/content/content.service.js';
 import { createCrawlRoutes } from './modules/crawler/crawl.routes.js';
 import type { CrawlService } from './modules/crawler/crawl.service.js';
 import { createGeoRoutes } from './modules/geo/geo.routes.js';
@@ -21,28 +23,25 @@ export interface AppOptions {
   seoService?: SeoService;
   geoService?: GeoService;
   aiTaskService?: AiTaskService;
+  contentService?: ContentService;
 }
 
 export function createApp(options: AppOptions = {}) {
   const app = express();
-
   app.disable('x-powered-by');
   app.set('view engine', 'ejs');
   app.set('views', path.join(here, 'views'));
-
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.use('/assets', express.static(path.join(here, 'public')));
-
   app.use('/health', healthRoutes);
   app.use('/api/projects', projectRoutes);
   app.use('/api', createCrawlRoutes(options.crawlService));
   app.use('/api', createSeoRoutes(options.seoService));
   app.use('/api', createGeoRoutes(options.geoService));
   app.use('/api/v1', createAiRoutes(options.aiTaskService));
+  app.use('/api/v1', createContentRoutes(options.contentService, options.aiTaskService));
   app.use('/', webRoutes);
-
   app.use(errorHandler);
-
   return app;
 }
