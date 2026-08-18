@@ -2,6 +2,8 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { errorHandler } from './core/http.js';
+import { createAiRoutes } from './modules/ai/ai.routes.js';
+import type { AiTaskService } from './modules/ai/ai.service.js';
 import { createCrawlRoutes } from './modules/crawler/crawl.routes.js';
 import type { CrawlService } from './modules/crawler/crawl.service.js';
 import { createGeoRoutes } from './modules/geo/geo.routes.js';
@@ -18,6 +20,7 @@ export interface AppOptions {
   crawlService?: CrawlService;
   seoService?: SeoService;
   geoService?: GeoService;
+  aiTaskService?: AiTaskService;
 }
 
 export function createApp(options: AppOptions = {}) {
@@ -36,6 +39,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api', createCrawlRoutes(options.crawlService));
   app.use('/api', createSeoRoutes(options.seoService));
   app.use('/api', createGeoRoutes(options.geoService));
+  app.use('/api/v1', createAiRoutes(options.aiTaskService));
   app.use('/', webRoutes);
 
   app.use(errorHandler);
