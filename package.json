@@ -6,9 +6,6 @@
   "engines": {
     "node": ">=22"
   },
-  "prisma": {
-    "schema": "./prisma"
-  },
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
