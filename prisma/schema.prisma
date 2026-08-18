@@ -1,0 +1,38 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum PlanLevel {
+  STANDARD
+  ADVANCED
+  ENTERPRISE
+}
+
+model Project {
+  id              String        @id @default(uuid()) @db.Uuid
+  name            String
+  slug            String        @unique
+  primaryDomain   String
+  industry        String?
+  defaultLanguage String        @default("zh-CN")
+  targetCountry   String        @default("CN")
+  timezone        String        @default("Asia/Shanghai")
+  status          ProjectStatus @default(ACTIVE)
+  planLevel       PlanLevel     @default(STANDARD)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([primaryDomain])
+  @@index([status])
+}
