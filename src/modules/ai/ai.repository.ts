@@ -29,6 +29,8 @@ export interface CreateAiRunRecord {
   requestHash: string;
 }
 
+export type AiCompletionMaterializer = (tx: Prisma.TransactionClient) => Promise<void>;
+
 export class AiRepository {
   findTaskByRequest(projectId: string, requestKey: string) {
     return prisma.aiTask.findUnique({
@@ -166,7 +168,8 @@ export class AiRepository {
     runId: string,
     response: AiProviderResponse,
     structuredOutput: Prisma.InputJsonValue,
-    summary: string
+    summary: string,
+    materialize?: AiCompletionMaterializer
   ): Promise<void> {
     await prisma.$transaction(async (tx) => {
       await tx.aiProviderCall.create({
@@ -196,6 +199,7 @@ export class AiRepository {
           promptVersion: task.promptVersion
         }
       });
+      if (materialize) await materialize(tx);
       await tx.aiTaskRun.update({
         where: { id: runId },
         data: { status: 'COMPLETED', finishedAt: new Date() }
