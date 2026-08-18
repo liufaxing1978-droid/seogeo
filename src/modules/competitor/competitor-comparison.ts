@@ -48,7 +48,7 @@ function present(value: string | null | undefined): boolean | null {
 function ownedMetrics(rows: Array<{ title: string | null; h1: string | null; wordCount: number | null; headingCount: number | null; internalLinkCount: number | null; schemaTypes: Prisma.JsonValue; canonicalUrl: string }>): CompetitorMetrics {
   return {
     pagesSampled: rows.length,
-    successShare: rows.length ? 1 : null,
+    successShare: null,
     averageWordCount: average(rows.map((row) => row.wordCount)),
     titlePresenceShare: share(rows.map((row) => present(row.title))),
     h1PresenceShare: share(rows.map((row) => present(row.h1))),
