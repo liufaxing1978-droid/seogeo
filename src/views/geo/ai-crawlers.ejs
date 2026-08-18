@@ -1,0 +1,43 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">GEO · AI Crawler</p>
+    <h1>AI Crawler</h1>
+    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
+  </div>
+  <a class="button secondary" href="/projects/<%= project.id %>/geo">返回 GEO 概览</a>
+</section>
+
+<section class="metric-grid compact">
+  <article class="metric-card"><div class="metric-title">PASS</div><div class="metric-value"><%= counts.PASS %></div></article>
+  <article class="metric-card"><div class="metric-title">FAIL</div><div class="metric-value"><%= counts.FAIL %></div></article>
+  <article class="metric-card"><div class="metric-title">UNKNOWN</div><div class="metric-value"><%= counts.UNKNOWN %></div></article>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div><h2>AI Crawler Policy</h2><p class="muted">基于已保存 robots.txt 与页面指令事实，未进行外部平台可见性采样。</p></div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Crawler</th><th>状态</th><th>robots</th><th>Meta Robots</th><th>X-Robots</th><th>可达</th></tr></thead>
+      <tbody>
+        <% for (const row of rows) { %>
+          <tr>
+            <td><strong><%= row.crawlerCode %></strong></td>
+            <td><span class="badge"><%= row.status %></span></td>
+            <td><%= row.robotsAllowed === null ? 'UNKNOWN' : row.robotsAllowed ? 'PASS' : 'FAIL' %></td>
+            <td><%= row.metaRobotsAllowed === null ? 'UNKNOWN' : row.metaRobotsAllowed ? 'PASS' : 'FAIL' %></td>
+            <td><%= row.xRobotsAllowed === null ? 'UNKNOWN' : row.xRobotsAllowed ? 'PASS' : 'FAIL' %></td>
+            <td><%= row.reachable === null ? 'UNKNOWN' : row.reachable ? 'PASS' : 'FAIL' %></td>
+          </tr>
+        <% } %>
+        <% if (!rows.length) { %><tr><td colspan="6" class="muted">当前审计没有 AI Crawler readiness 数据。</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>AI Crawler readiness 不等于 AI Visibility</h2>
+  <p class="muted">这里回答的是站点是否在 robots / 页面技术指令层面对特定爬虫可访问。它不代表 ChatGPT、Google、Claude、Perplexity 或其他 AI 平台已经展示、引用或推荐该网站。真正的 AI Visibility 需要 P6 的 Prompt × Platform 重复采样。</p>
+</section>

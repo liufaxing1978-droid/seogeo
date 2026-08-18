@@ -1,0 +1,74 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">GEO · Entity</p>
+    <h1>Entity</h1>
+    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
+  </div>
+  <a class="button secondary" href="/projects/<%= project.id %>/geo">返回 GEO 概览</a>
+</section>
+
+<section class="panel">
+  <h2>确定性实体</h2>
+  <p class="muted">这里只展示 JSON-LD、og:site_name 等已保存的结构化事实。P3 不扫描正文做自由文本 NER，也不使用 DeepSeek 猜测实体。</p>
+</section>
+
+<% if (!audit || !entities.length) { %>
+  <section class="panel"><p class="muted">当前审计没有观察到可持久化的结构化实体。</p></section>
+<% } %>
+
+<% for (const entity of entities) { %>
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <h2><%= entity.canonicalName %></h2>
+        <p class="muted"><%= entity.entityType %> · confidence <%= entity.confidence %></p>
+      </div>
+      <% if (entity.officialUrl) { %><span class="badge"><%= entity.officialUrl %></span><% } %>
+    </div>
+
+    <dl class="detail-grid">
+      <div><dt>Canonical Name</dt><dd><%= entity.canonicalName %></dd></div>
+      <div><dt>Type</dt><dd><%= entity.entityType %></dd></div>
+      <div><dt>Official URL</dt><dd><%= entity.officialUrl ?? '未观察到' %></dd></div>
+      <div><dt>Aliases</dt><dd><%= entity.aliases.length ? entity.aliases.map((alias) => alias.alias).join('、') : '无' %></dd></div>
+    </dl>
+
+    <h3>结构化事实</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>属性</th><th>值</th><th>来源</th><th>页面</th></tr></thead>
+        <tbody>
+          <% for (const observation of entity.observations) { %>
+            <tr>
+              <td><strong><%= observation.property %></strong></td>
+              <td><%= observation.value %></td>
+              <td><%= observation.sourceType %></td>
+              <td><% if (observation.page) { %><a href="/pages/<%= observation.page.id %>"><%= observation.page.normalizedUrl %></a><% } else { %>项目级<% } %></td>
+            </tr>
+          <% } %>
+          <% if (!entity.observations.length) { %><tr><td colspan="4" class="muted">当前审计没有 observation。</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+
+    <% if (entity.pageEntities.length) { %>
+      <h3>页面角色</h3>
+      <ul>
+        <% for (const link of entity.pageEntities) { %>
+          <li><%= link.role %> · <a href="/pages/<%= link.page.id %>"><%= link.page.normalizedUrl %></a> · <%= link.sourceType %></li>
+        <% } %>
+      </ul>
+    <% } %>
+  </section>
+<% } %>
+
+<% if (relations.length) { %>
+  <section class="panel">
+    <h2>实体关系</h2>
+    <div class="table-wrap"><table><thead><tr><th>Source</th><th>Relation</th><th>Target</th><th>来源页面</th></tr></thead><tbody>
+      <% for (const relation of relations) { %>
+        <tr><td><%= relation.sourceEntity.canonicalName %></td><td><%= relation.relationType %></td><td><%= relation.targetEntity.canonicalName %></td><td><%= relation.sourcePage?.normalizedUrl ?? '—' %></td></tr>
+      <% } %>
+    </tbody></table></div>
+  </section>
+<% } %>
