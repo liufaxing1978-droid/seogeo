@@ -9,6 +9,11 @@ export interface ContentRepository {
   replaceEvaluation(projectId: string, contentDocumentId: string, rows: EvaluatedContentRule[]): Promise<void>;
 }
 
+function stringArray(value: Prisma.JsonValue): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
+}
+
 export const contentRepository: ContentRepository = {
   async listLatestOwnedPageSources(projectId) {
     const snapshots = await prisma.pageSnapshot.findMany({
@@ -64,11 +69,13 @@ export const contentRepository: ContentRepository = {
       extractedAt: facts.extractedAt
     };
 
-    return prisma.contentDocument.upsert({
+    const stored = await prisma.contentDocument.upsert({
       where: { projectId_pageId: { projectId: facts.projectId, pageId: facts.pageId } },
       create: { projectId: facts.projectId, pageId: facts.pageId, ...data },
       update: data
     });
+
+    return { ...stored, schemaTypes: stringArray(stored.schemaTypes) };
   },
 
   async replaceEvaluation(projectId, contentDocumentId, rows) {
