@@ -27,8 +27,8 @@ class LazyCompetitorQueue implements CompetitorQueue {
 
 function normalizeDomain(value: string): string {
   const trimmed = value.trim().toLowerCase();
-  const host = trimmed.includes('://') ? new URL(trimmed).hostname : new URL(`https://${trimmed}`).hostname;
-  return host.replace(/\.$/, '');
+  const host = (trimmed.includes('://') ? new URL(trimmed).hostname : new URL(`https://${trimmed}`).hostname).replace(/\.$/, '');
+  return host.startsWith('www.') ? host.slice(4) : host;
 }
 
 export class CompetitorService {
