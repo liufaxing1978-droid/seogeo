@@ -1,7 +1,7 @@
 import { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
 
-export const QUEUE_NAMES = ['crawl', 'seo-audit', 'geo-audit', 'visibility', 'ai', 'report'] as const;
+export const QUEUE_NAMES = ['crawl', 'seo-audit', 'geo-audit', 'content', 'visibility', 'ai', 'report'] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 export type QueueRegistry = Record<QueueName, Queue>;
 
