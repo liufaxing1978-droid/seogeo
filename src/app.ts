@@ -6,6 +6,7 @@ import { createAiRoutes } from './modules/ai/ai.routes.js';
 import type { AiTaskService } from './modules/ai/ai.service.js';
 import { createContentRoutes } from './modules/content/content.routes.js';
 import type { ContentService } from './modules/content/content.service.js';
+import { contentWebRoutes } from './modules/content/content.web.routes.js';
 import { createCrawlRoutes } from './modules/crawler/crawl.routes.js';
 import type { CrawlService } from './modules/crawler/crawl.service.js';
 import { createGeoRoutes } from './modules/geo/geo.routes.js';
@@ -41,6 +42,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api', createGeoRoutes(options.geoService));
   app.use('/api/v1', createAiRoutes(options.aiTaskService));
   app.use('/api/v1', createContentRoutes(options.contentService, options.aiTaskService));
+  app.use('/', contentWebRoutes);
   app.use('/', webRoutes);
   app.use(errorHandler);
   return app;
