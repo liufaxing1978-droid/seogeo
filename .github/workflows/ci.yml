@@ -62,15 +62,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install production dependencies only
-        run: npm install --omit=dev
-      - name: Explain Prisma dependency chain
+      - name: Install deployable runtime dependencies only
+        run: npm install --omit=dev --omit=peer
+      - name: Verify Prisma CLI is not in runtime tree
         run: |
-          npm explain prisma || true
-          npm explain @prisma/config || true
-          npm explain deepmerge-ts || true
-      - name: Audit production dependency tree
-        run: npm audit --omit=dev --audit-level=high
+          if npm ls prisma --depth=0 >/dev/null 2>&1; then
+            echo "Prisma CLI must not be present in the runtime dependency tree"
+            exit 1
+          fi
+      - name: Audit deployable runtime dependency tree
+        run: npm audit --omit=dev --omit=peer --audit-level=high
 
   e2e:
     runs-on: ubuntu-latest
