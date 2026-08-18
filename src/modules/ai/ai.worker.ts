@@ -1,18 +1,18 @@
 import { createHash } from 'node:crypto';
 import type { AiTask, Prisma } from '@prisma/client';
 import type { Job } from 'bullmq';
-import { z } from 'zod';
 import { aiGatewayConfig } from './ai.config.js';
 import { AiGateway } from './ai.gateway.js';
 import type { AiGatewayRequest, AiProviderResponse } from './ai.types.js';
 import { DeepSeekProvider } from './deepseek.provider.js';
+import { parseEntityEnrichmentOutput } from './entity-intelligence.js';
 import { parseGeoAnalysisOutput } from './geo-intelligence.js';
 import { getPromptDefinition } from './prompts/prompt-registry.js';
 import { AiProviderError } from './provider.js';
 import { AiProviderRegistry } from './provider-registry.js';
 import { AiRepository } from './ai.repository.js';
 import { parseSeoAnalysisOutput } from './seo-intelligence.js';
-import { AiOutputValidationError, parseStructuredOutput } from './structured-output.js';
+import { AiOutputValidationError } from './structured-output.js';
 
 export interface AiJobData {
   taskId: string;
@@ -29,8 +29,6 @@ export interface ExecuteAiTaskDependencies {
 
 type AiTaskExecutor = (taskId: string) => Promise<void>;
 type AiJobLike = Pick<Job<AiJobData>, 'data'>;
-
-const GENERIC_JSON_OUTPUT = z.record(z.string(), z.unknown());
 
 let defaultGateway: AiGateway | null = null;
 
@@ -108,13 +106,14 @@ function resultSummary(task: AiTask, output: unknown): string {
 }
 
 function parseTaskOutput(task: AiTask, content: string): unknown {
-  if (task.taskType === 'SEO_AUDIT_ANALYSIS') {
-    return parseSeoAnalysisOutput(content, task.sourceReferences);
+  switch (task.taskType) {
+    case 'SEO_AUDIT_ANALYSIS':
+      return parseSeoAnalysisOutput(content, task.sourceReferences);
+    case 'GEO_READINESS_ANALYSIS':
+      return parseGeoAnalysisOutput(content, task.sourceReferences);
+    case 'ENTITY_ENRICHMENT':
+      return parseEntityEnrichmentOutput(content, task.sourceReferences);
   }
-  if (task.taskType === 'GEO_READINESS_ANALYSIS') {
-    return parseGeoAnalysisOutput(content, task.sourceReferences);
-  }
-  return parseStructuredOutput(content, GENERIC_JSON_OUTPUT);
 }
 
 export async function executeAiTask(
