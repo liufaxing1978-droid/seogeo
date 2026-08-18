@@ -9,6 +9,7 @@ import {
   upsertPageEntity,
   upsertStableEntity
 } from './entity.repository.js';
+import { logGeoEvent } from './geo-observability.js';
 
 const VALID_ROLES = new Set<StructuredEntityRole>([
   'ROOT',
@@ -243,9 +244,11 @@ export async function extractEntitiesForAudit(geoAuditRunId: string): Promise<{
     }
   }
 
-  return {
+  const result = {
     entitiesObserved: uniqueEntityIds.size,
     observationsPersisted,
     relationsObserved
   };
+  logGeoEvent('geo.entities.observed', { geoAuditRunId, ...result });
+  return result;
 }
