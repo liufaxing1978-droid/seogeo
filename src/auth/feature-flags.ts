@@ -4,6 +4,7 @@ export type Feature =
   | 'SEO_AUDIT'
   | 'GEO_AUDIT'
   | 'CONTENT_AI'
+  | 'AI_ANALYSIS'
   | 'AI_VISIBILITY'
   | 'PROMPT_MONITOR'
   | 'CITATION_MONITOR'
@@ -11,7 +12,7 @@ export type Feature =
   | 'ADVANCED_REPORTS'
   | 'API_ACCESS';
 
-const standardFeatures = new Set<Feature>(['SEO_AUDIT', 'GEO_AUDIT', 'CONTENT_AI']);
+const standardFeatures = new Set<Feature>(['SEO_AUDIT', 'GEO_AUDIT', 'CONTENT_AI', 'AI_ANALYSIS']);
 const advancedFeatures = new Set<Feature>([
   ...standardFeatures,
   'AI_VISIBILITY',
