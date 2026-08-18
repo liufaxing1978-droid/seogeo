@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireFeature } from '../../auth/require-feature.js';
 import { projectRepository } from './project.repository.js';
 import { ProjectService } from './project.service.js';
 
@@ -20,6 +21,10 @@ projectRoutes.get('/', async (_req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+projectRoutes.get('/:id/features/ai-visibility', requireFeature('AI_VISIBILITY'), (_req, res) => {
+  res.json({ enabled: true });
 });
 
 projectRoutes.get('/:id', async (req, res, next) => {
