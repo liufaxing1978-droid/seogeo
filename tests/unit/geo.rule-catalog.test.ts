@@ -24,7 +24,7 @@ describe('P3 GEO rule catalog', () => {
   });
 
   it('contains the approved stable readiness identities without claiming live AI visibility', () => {
-    const codes = new Set(BUILTIN_GEO_RULES.map((rule) => rule.ruleCode));
+    const codes = new Set<string>(BUILTIN_GEO_RULES.map((rule) => rule.ruleCode));
 
     for (const code of [
       'CITABILITY_NO_CLEAR_H1',
