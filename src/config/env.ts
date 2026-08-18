@@ -9,7 +9,8 @@ const schema = z.object({
     .min(1)
     .default('postgresql://postgres:postgres@localhost:5432/seogeo'),
   REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
-  SESSION_SECRET: z.string().min(8).default('development-secret')
+  SESSION_SECRET: z.string().min(8).default('development-secret'),
+  CRAWLER_BROWSER_ENABLED: z.enum(['true', 'false']).default('false').transform((value) => value === 'true')
 });
 
 export const env = schema.parse(process.env);
