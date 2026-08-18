@@ -79,7 +79,7 @@ function containsNoindex(value: string | null): boolean {
 }
 
 function visibleText($: cheerio.CheerioAPI): string {
-  const source = $('body').length ? $('body').first().clone() : $.root().clone();
+  const source = $('body').length ? $('body').first().clone() : $('html').first().clone();
   source
     .find(
       'script,style,noscript,template,svg,head,meta,link,title,[hidden],[aria-hidden="true"],input[type="hidden"]'
