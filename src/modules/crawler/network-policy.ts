@@ -6,6 +6,10 @@ function ipv4ToNumber(address: string): number {
   return address.split('.').reduce((value, part) => (value << 8) + Number(part), 0) >>> 0;
 }
 
+function numberToIpv4(value: number): string {
+  return [24, 16, 8, 0].map((shift) => (value >>> shift) & 0xff).join('.');
+}
+
 function ipv4InCidr(address: string, base: string, prefixLength: number): boolean {
   const value = ipv4ToNumber(address);
   const baseValue = ipv4ToNumber(base);
@@ -84,10 +88,11 @@ function isPublicAddress(address: string): boolean {
   }
 
   if (family === 6) {
-    const mappedPrefix = '::ffff:';
-    if (address.toLowerCase().startsWith(mappedPrefix) && address.slice(mappedPrefix.length).includes('.')) {
-      return isPublicAddress(address.slice(mappedPrefix.length));
+    if (ipv6InCidr(address, '::ffff:0:0', 96)) {
+      const mappedValue = Number(expandIpv6(address) & 0xffffffffn) >>> 0;
+      return isPublicAddress(numberToIpv4(mappedValue));
     }
+
     return !BLOCKED_IPV6_CIDRS.some(([base, prefixLength]) => ipv6InCidr(address, base, prefixLength));
   }
 
