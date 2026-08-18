@@ -5,7 +5,7 @@ export type ContentRulePriority = 'INFO' | 'LOW' | 'MEDIUM' | 'HIGH';
 
 export interface RelatedContentFacts {
   entityCount: number | null;
-  citabilityStatus: 'PASS' | 'FAIL' | 'UNKNOWN';
+  citabilityScore: number | null;
   schemaTypesKnown?: boolean;
 }
 
@@ -27,7 +27,8 @@ export const CONTENT_RULESET_V1 = {
   version: V1,
   bodySubstantiveMinWords: 600,
   headingStructureMin: 2,
-  internalLinkSupportMin: 3
+  internalLinkSupportMin: 3,
+  citabilityMinScore: 60
 } as const;
 
 function textPresence(value: string | null): ContentRuleStatus {
@@ -60,6 +61,7 @@ export function evaluateContentDocument(
     related.schemaTypesKnown === false ? 'UNKNOWN' : facts.schemaTypes.length > 0 ? 'PASS' : 'FAIL';
   const entityStatus: ContentRuleStatus =
     related.entityCount === null ? 'UNKNOWN' : related.entityCount > 0 ? 'PASS' : 'FAIL';
+  const citabilityStatus = numericThreshold(related.citabilityScore, CONTENT_RULESET_V1.citabilityMinScore);
 
   return [
     makeRule(facts, {
@@ -99,8 +101,10 @@ export function evaluateContentDocument(
     },
     {
       ...makeRule(facts, {
-        ruleKey: 'CONTENT_CITABILITY_SUPPORT', status: related.citabilityStatus, priority: 'HIGH', category: 'CITABILITY',
-        summary: '页面应满足 P3 可引用性确定性条件。', numericValue: null, textValue: related.citabilityStatus
+        ruleKey: 'CONTENT_CITABILITY_SUPPORT', status: citabilityStatus, priority: 'HIGH', category: 'CITABILITY',
+        summary: `P3 Citability score 应达到 P5 Content Rule V1 阈值 ${CONTENT_RULESET_V1.citabilityMinScore}。`,
+        numericValue: related.citabilityScore,
+        textValue: null
       }),
       sourceReferences: [{ type: 'P3_CITABILITY', id: facts.pageId }]
     }
