@@ -20,7 +20,7 @@ async function getRelatedFacts(projectId: string, pageId: string) {
 
   return {
     entityCount,
-    citabilityStatus: citability ? (citability.overallScore >= 60 ? 'PASS' as const : 'FAIL' as const) : 'UNKNOWN' as const,
+    citabilityScore: citability?.overallScore ?? null,
     schemaTypesKnown: false
   };
 }
