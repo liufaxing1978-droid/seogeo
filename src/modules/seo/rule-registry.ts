@@ -52,12 +52,12 @@ const CRAWL_RULE_EVALUATORS: Readonly<Record<string, CrawlRuleEvaluator>> = {
 
 export function getPageRuleEvaluator(ruleCode: string): PageRuleEvaluator {
   const evaluator = PAGE_RULE_EVALUATORS[ruleCode];
-  if (!evaluator) throw new Error(`Unknown SEO page rule: ${ruleCode}`);
+  if (!evaluator) throw new Error(`Unknown SEO rule: ${ruleCode} (page)`);
   return evaluator;
 }
 
 export function getCrawlRuleEvaluator(ruleCode: string): CrawlRuleEvaluator {
   const evaluator = CRAWL_RULE_EVALUATORS[ruleCode];
-  if (!evaluator) throw new Error(`Unknown SEO crawl rule: ${ruleCode}`);
+  if (!evaluator) throw new Error(`Unknown SEO rule: ${ruleCode} (crawl)`);
   return evaluator;
 }
