@@ -7,6 +7,29 @@ const SEVERITY_ORDER = {
   LOW: 3
 } as const;
 
+function compareItem(occurrence: any) {
+  return {
+    id: occurrence.seoIssue.id,
+    title: occurrence.seoIssue.title,
+    issueKey: occurrence.seoIssue.issueKey,
+    status: occurrence.seoIssue.status,
+    severity: occurrence.severity,
+    category: occurrence.seoIssue.category,
+    affectedPagesCount: occurrence.affectedPagesCount,
+    comparison: occurrence.comparison,
+    ruleCode: occurrence.seoIssue.rule.ruleCode,
+    ruleName: occurrence.seoIssue.rule.name
+  };
+}
+
+function sortCompareItems<T extends { severity: keyof typeof SEVERITY_ORDER; affectedPagesCount: number }>(items: T[]) {
+  return items.sort((a, b) => {
+    const severityDiff = SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
+    if (severityDiff !== 0) return severityDiff;
+    return b.affectedPagesCount - a.affectedPagesCount;
+  });
+}
+
 export const seoWebRepository = {
   async getAuditDashboard(projectId: string) {
     const project = await prisma.project.findUnique({
@@ -243,6 +266,76 @@ export const seoWebRepository = {
       latestOccurrence,
       ruleVersion: latestOccurrence?.ruleVersion ?? null,
       affectedPages: latestOccurrence?.pages ?? []
+    };
+  },
+
+  async getAuditComparison(projectId: string, currentAuditId: string, previousAuditId: string) {
+    const project = await prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) return null;
+
+    const occurrenceInclude = {
+      seoIssue: {
+        include: {
+          rule: {
+            select: {
+              ruleCode: true,
+              name: true,
+              category: true
+            }
+          }
+        }
+      }
+    } as const;
+
+    const [current, previous] = await Promise.all([
+      prisma.seoAuditRun.findFirst({
+        where: { id: currentAuditId, projectId },
+        include: {
+          seoScore: { select: { score: true } },
+          crawlRun: { select: { id: true, runType: true, finishedAt: true } },
+          issueOccurrences: { include: occurrenceInclude }
+        }
+      }),
+      prisma.seoAuditRun.findFirst({
+        where: { id: previousAuditId, projectId },
+        include: {
+          seoScore: { select: { score: true } },
+          crawlRun: { select: { id: true, runType: true, finishedAt: true } },
+          issueOccurrences: { include: occurrenceInclude }
+        }
+      })
+    ]);
+
+    if (!current || !previous) return null;
+
+    const currentIds = new Set(current.issueOccurrences.map((item) => item.seoIssueId));
+
+    const groups = {
+      new: sortCompareItems(
+        current.issueOccurrences.filter((item) => item.comparison === 'NEW').map(compareItem)
+      ),
+      persistent: sortCompareItems(
+        current.issueOccurrences.filter((item) => item.comparison === 'PERSISTENT').map(compareItem)
+      ),
+      regressed: sortCompareItems(
+        current.issueOccurrences.filter((item) => item.comparison === 'REGRESSED').map(compareItem)
+      ),
+      fixed: sortCompareItems(
+        previous.issueOccurrences.filter((item) => !currentIds.has(item.seoIssueId)).map(compareItem)
+      )
+    };
+
+    return {
+      project,
+      current,
+      previous,
+      groups,
+      counts: {
+        new: groups.new.length,
+        persistent: groups.persistent.length,
+        regressed: groups.regressed.length,
+        fixed: groups.fixed.length
+      }
     };
   }
 };
