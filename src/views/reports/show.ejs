@@ -1,0 +1,64 @@
+<% const facts = report.factSnapshot || {}; const seo = facts.seo || {}; const geo = facts.geo || {}; const content = facts.content || {}; const competitors = facts.competitors || {}; const advisory = report.advisorySnapshot || {}; const advisoryAi = Array.isArray(advisory.ai) ? advisory.ai : []; const executiveResult = executiveTask?.runs?.[0]?.result ?? null; %>
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Reporting · P5-C</p>
+    <h1>项目报告</h1>
+    <p class="muted"><%= report.reportVersion %> · <%= new Date(report.createdAt).toLocaleString('zh-CN') %></p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/projects/<%= project.id %>/reports">返回报告中心</a>
+    <a class="button secondary" href="/api/v1/projects/<%= project.id %>/reports/<%= report.id %>/export.json">下载 JSON</a>
+    <button class="button secondary" type="button" onclick="window.print()">打印</button>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>确定性事实</h2>
+  <p class="muted">以下数据来自报告生成时已保存的 P2/P3/P5 数据。缺失事实显示 UNKNOWN，不会按 0 处理。</p>
+</section>
+
+<section class="metric-grid compact">
+  <article class="metric-card"><div class="metric-title">SEO Score</div><div class="metric-value"><%= seo.score?.value ?? 'UNKNOWN' %></div><div class="metric-caption">Open issues: <%= seo.openIssues?.total ?? 0 %></div></article>
+  <article class="metric-card"><div class="metric-title">GEO Score</div><div class="metric-value"><%= geo.score?.value ?? 'UNKNOWN' %></div><div class="metric-caption"><%= geo.score ? 'GEO_READINESS_V1' : 'UNKNOWN' %></div></article>
+  <article class="metric-card"><div class="metric-title">Content Docs</div><div class="metric-value"><%= content.documentCount ?? 0 %></div><div class="metric-caption">Open opportunities: <%= content.openOpportunityCount ?? 0 %></div></article>
+  <article class="metric-card"><div class="metric-title">Competitors</div><div class="metric-value"><%= competitors.count ?? 0 %></div><div class="metric-caption">Compared: <%= competitors.comparedCount ?? 0 %></div></article>
+</section>
+
+<section class="panel">
+  <h2>SEO / Content 优先级事实</h2>
+  <div class="table-wrap"><table><thead><tr><th>区域</th><th>HIGH / CRITICAL</th><th>MEDIUM</th><th>LOW</th></tr></thead><tbody>
+    <tr><td>SEO Issues</td><td><%= (seo.openIssues?.bySeverity?.CRITICAL ?? 0) + (seo.openIssues?.bySeverity?.HIGH ?? 0) %></td><td><%= seo.openIssues?.bySeverity?.MEDIUM ?? 0 %></td><td><%= seo.openIssues?.bySeverity?.LOW ?? 0 %></td></tr>
+    <tr><td>Content Opportunities</td><td><%= content.byPriority?.HIGH ?? 0 %></td><td><%= content.byPriority?.MEDIUM ?? 0 %></td><td><%= content.byPriority?.LOW ?? 0 %></td></tr>
+  </tbody></table></div>
+</section>
+
+<section class="panel">
+  <h2>Competitor Gap 状态</h2>
+  <div class="metric-grid compact">
+    <article class="metric-card"><div class="metric-title">AHEAD</div><div class="metric-value"><%= competitors.gapStates?.AHEAD ?? 0 %></div></article>
+    <article class="metric-card"><div class="metric-title">BEHIND</div><div class="metric-value"><%= competitors.gapStates?.BEHIND ?? 0 %></div></article>
+    <article class="metric-card"><div class="metric-title">EVEN</div><div class="metric-value"><%= competitors.gapStates?.EVEN ?? 0 %></div></article>
+    <article class="metric-card"><div class="metric-title">UNKNOWN</div><div class="metric-value"><%= competitors.gapStates?.UNKNOWN ?? 0 %></div></article>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>AI 建议 / Executive Summary</h2><p class="muted">以下内容全部是建议性输出，不改变上面的确定性事实。</p></div></div>
+  <% if (!report.executiveAiTaskId) { %>
+    <form action="/projects/<%= project.id %>/reports/<%= report.id %>/ai-summary" method="post"><button class="button" type="submit">生成 DeepSeek Executive Summary</button></form>
+  <% } else { %>
+    <p><strong>Executive AI Task:</strong> <a href="/projects/<%= project.id %>/ai/tasks/<%= report.executiveAiTaskId %>"><%= report.executiveAiTaskId %></a> · <%= executiveTask?.status ?? 'UNKNOWN' %></p>
+    <% if (executiveResult) { %><article class="nested-panel"><strong>Executive Summary</strong><p><%= executiveResult.summary %></p></article><% } %>
+  <% } %>
+
+  <h3>已保存 AI Advisory</h3>
+  <% for (const item of advisoryAi) { %>
+    <article class="nested-panel"><div><strong><%= item.taskType %></strong> · <a href="/projects/<%= project.id %>/ai/tasks/<%= item.taskId %>"><%= item.taskId %></a></div><p><%= item.summary %></p></article>
+  <% } %>
+  <% if (!advisoryAi.length && !executiveResult) { %><p class="muted">当前没有已完成的 AI advisory。报告事实本身仍然完整可用。</p><% } %>
+</section>
+
+<section class="panel">
+  <h2>边界声明</h2>
+  <p class="muted">本报告不包含 P6 AI Visibility、Prompt Rank、Citation Share、Share of Voice、搜索排名或第三方流量估算，除非未来对应的确定性采样模块明确提供这些事实。</p>
+</section>
