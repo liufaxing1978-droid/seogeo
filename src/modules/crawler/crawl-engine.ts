@@ -265,7 +265,7 @@ export async function executeCrawlRun(
             pageId: page.id,
             url: safeLogUrl(url),
             succeeded: renderedResult.succeeded,
-            reason: renderedResult.reason,
+            errorCode: renderedResult.errorCode,
             renderTimeMs: renderedResult.renderTimeMs
           });
           if (renderedResult.succeeded && renderedResult.html !== null) {
