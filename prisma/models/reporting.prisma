@@ -1,0 +1,18 @@
+enum ReportType {
+  PROJECT_SUMMARY
+}
+
+model ReportSnapshot {
+  id                String     @id @default(uuid()) @db.Uuid
+  projectId         String     @db.Uuid
+  reportType        ReportType
+  reportVersion     String
+  factSnapshot      Json
+  advisorySnapshot  Json
+  sourceReferences  Json
+  executiveAiTaskId String?    @unique @db.Uuid
+  createdAt         DateTime   @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([projectId, reportType, createdAt])
+}

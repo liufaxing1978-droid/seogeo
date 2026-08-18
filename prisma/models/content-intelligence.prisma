@@ -1,0 +1,117 @@
+enum ContentSignalStatus {
+  PASS
+  FAIL
+  UNKNOWN
+}
+
+enum ContentPriority {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ContentOpportunityStatus {
+  OPEN
+  IN_PROGRESS
+  IGNORED
+  VERIFIED_FIXED
+}
+
+model ContentDocument {
+  id                   String   @id @default(uuid()) @db.Uuid
+  projectId            String   @db.Uuid
+  pageId               String   @db.Uuid
+  latestPageSnapshotId String   @db.Uuid
+  canonicalUrl         String
+  title                String?
+  metaDescription      String?
+  h1                   String?
+  language             String?
+  wordCount            Int?
+  paragraphCount       Int?
+  headingCount         Int?
+  listCount            Int?
+  tableCount           Int?
+  imageCount           Int?
+  internalLinkCount    Int?
+  externalLinkCount    Int?
+  schemaTypes          Json
+  contentHash          String
+  extractedAt          DateTime
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  signals       ContentSignal[]
+  opportunities ContentOpportunity[]
+  briefs        ContentBrief[]
+
+  @@unique([projectId, pageId])
+  @@index([projectId, extractedAt])
+  @@index([latestPageSnapshotId])
+  @@index([contentHash])
+}
+
+model ContentSignal {
+  id                String              @id @default(uuid()) @db.Uuid
+  projectId         String              @db.Uuid
+  contentDocumentId String              @db.Uuid
+  ruleKey           String
+  ruleVersion       Int
+  status            ContentSignalStatus
+  priority          ContentPriority
+  numericValue      Float?
+  textValue         String?
+  sourceReferences  Json
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  document ContentDocument @relation(fields: [contentDocumentId], references: [id], onDelete: Cascade)
+
+  @@unique([contentDocumentId, ruleKey, ruleVersion])
+  @@index([projectId, status])
+  @@index([projectId, ruleKey])
+}
+
+model ContentOpportunity {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  projectId          String                   @db.Uuid
+  contentDocumentId  String                   @db.Uuid
+  opportunityKey     String
+  opportunityVersion Int
+  category           String
+  priority           ContentPriority
+  status             ContentOpportunityStatus @default(OPEN)
+  summary            String
+  sourceReferences   Json
+  firstDetectedAt    DateTime
+  lastDetectedAt     DateTime
+  verifiedFixedAt    DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  document ContentDocument @relation(fields: [contentDocumentId], references: [id], onDelete: Cascade)
+
+  @@unique([contentDocumentId, opportunityKey, opportunityVersion])
+  @@index([projectId, status])
+  @@index([projectId, priority])
+  @@index([projectId, category])
+}
+
+model ContentBrief {
+  id                String   @id @default(uuid()) @db.Uuid
+  projectId         String   @db.Uuid
+  contentDocumentId String?  @db.Uuid
+  aiTaskId          String   @unique @db.Uuid
+  promptVersion     String
+  factSnapshotHash  String
+  briefJson         Json
+  sourceReferences  Json
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  document ContentDocument? @relation(fields: [contentDocumentId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([contentDocumentId, createdAt])
+}

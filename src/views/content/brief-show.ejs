@@ -1,0 +1,15 @@
+<section class="page-header">
+  <div><p class="eyebrow">AI Advisory · P5-A</p><h1>Content Brief</h1><p class="muted">Prompt <%= brief.promptVersion %> · AI 建议，不是确定性事实</p></div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/content">返回内容中心</a></div>
+</section>
+
+<section class="panel">
+  <h2>建议性输出</h2>
+  <p class="muted">此结果来自 DeepSeek 对有界事实包的结构化分析。事实来源仍以 P1/P2/P3 与 Content Signals 为准。</p>
+  <pre style="white-space:pre-wrap;overflow-wrap:anywhere"><%= JSON.stringify(brief.briefJson, null, 2) %></pre>
+</section>
+
+<section class="panel">
+  <h2>可追溯来源</h2>
+  <pre style="white-space:pre-wrap;overflow-wrap:anywhere"><%= JSON.stringify(brief.sourceReferences, null, 2) %></pre>
+</section>

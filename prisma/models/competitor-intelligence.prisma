@@ -1,0 +1,98 @@
+enum CompetitorStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum CompetitorCrawlStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model Competitor {
+  id        String           @id @default(uuid()) @db.Uuid
+  projectId String           @db.Uuid
+  name      String
+  domain    String
+  status    CompetitorStatus @default(ACTIVE)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  crawls      CompetitorCrawl[]
+  comparisons CompetitorComparison[]
+
+  @@unique([projectId, domain])
+  @@index([projectId, status])
+}
+
+model CompetitorCrawl {
+  id            String                @id @default(uuid()) @db.Uuid
+  competitorId  String                @db.Uuid
+  status        CompetitorCrawlStatus @default(QUEUED)
+  seedUrl       String
+  maxPages      Int                   @default(25)
+  pagesCrawled  Int                   @default(0)
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  errorMessage  String?
+  crawlerVersion String
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  competitor  Competitor               @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  snapshots   CompetitorPageSnapshot[]
+  comparisons CompetitorComparison[]
+
+  @@index([competitorId, createdAt])
+  @@index([competitorId, status])
+}
+
+model CompetitorPageSnapshot {
+  id                  String   @id @default(uuid()) @db.Uuid
+  competitorCrawlId   String   @db.Uuid
+  url                 String
+  normalizedUrl       String
+  finalUrl            String?
+  statusCode          Int?
+  fetchError          String?
+  title               String?
+  metaDescription     String?
+  canonicalUrl        String?
+  h1                  String?
+  wordCount           Int?
+  headingCount        Int?
+  internalLinkCount   Int?
+  externalLinkCount   Int?
+  imageCount          Int?
+  schemaCount         Int?
+  indexable           Boolean?
+  contentHash         String?
+  fetchedAt           DateTime @default(now())
+
+  crawl CompetitorCrawl @relation(fields: [competitorCrawlId], references: [id], onDelete: Cascade)
+
+  @@unique([competitorCrawlId, normalizedUrl])
+  @@index([competitorCrawlId, statusCode])
+}
+
+model CompetitorComparison {
+  id                  String   @id @default(uuid()) @db.Uuid
+  projectId           String   @db.Uuid
+  competitorId        String   @db.Uuid
+  competitorCrawlId   String   @db.Uuid
+  comparisonVersion   String
+  ownedMetrics        Json
+  competitorMetrics   Json
+  gaps                Json
+  sourceReferences    Json
+  createdAt           DateTime @default(now())
+
+  competitor Competitor      @relation(fields: [competitorId], references: [id], onDelete: Cascade)
+  crawl      CompetitorCrawl @relation(fields: [competitorCrawlId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, competitorCrawlId, comparisonVersion])
+  @@index([projectId, createdAt])
+  @@index([competitorId, createdAt])
+}
