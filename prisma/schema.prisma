@@ -45,6 +45,43 @@ enum SitemapType {
   URLSET
 }
 
+enum SeoAuditRunStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum SeoSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum SeoRuleOutcome {
+  PASS
+  FAIL
+  UNKNOWN
+  NOT_APPLICABLE
+}
+
+enum SeoIssueStatus {
+  OPEN
+  IN_PROGRESS
+  PARTIALLY_FIXED
+  RESOLVED
+  IGNORED
+  REGRESSED
+}
+
+enum SeoIssueComparison {
+  NEW
+  PERSISTENT
+  REGRESSED
+}
+
 model Project {
   id              String        @id @default(uuid()) @db.Uuid
   name            String
@@ -59,8 +96,11 @@ model Project {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  crawlRuns CrawlRun[]
-  pages     Page[]
+  crawlRuns    CrawlRun[]
+  pages        Page[]
+  seoAuditRuns SeoAuditRun[]
+  seoIssues    SeoIssue[]
+  seoScores    SeoScore[]
 
   @@index([primaryDomain])
   @@index([status])
@@ -88,6 +128,7 @@ model CrawlRun {
   snapshots      PageSnapshot[]
   robotsResults  RobotsResult[]
   sitemapSources SitemapSource[]
+  seoAuditRuns   SeoAuditRun[]
 
   @@index([projectId, createdAt])
   @@index([projectId, status])
@@ -107,8 +148,10 @@ model Page {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  snapshots PageSnapshot[]
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  snapshots      PageSnapshot[]
+  seoRuleResults SeoRuleResult[]
+  seoIssuePages  SeoIssuePage[]
 
   @@unique([projectId, normalizedUrl])
   @@index([projectId, host])
@@ -230,4 +273,182 @@ model SitemapUrl {
 
   @@unique([sitemapSourceId, normalizedUrl])
   @@index([normalizedUrl])
+}
+
+model SeoAuditRun {
+  id             String            @id @default(uuid()) @db.Uuid
+  projectId      String            @db.Uuid
+  crawlRunId     String            @db.Uuid
+  status         SeoAuditRunStatus @default(QUEUED)
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  errorMessage   String?
+  engineVersion  String
+  eligiblePages  Int               @default(0)
+  rulesEvaluated Int               @default(0)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  project          Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  crawlRun         CrawlRun             @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
+  ruleResults      SeoRuleResult[]
+  issueOccurrences SeoIssueOccurrence[]
+  seoScore         SeoScore?
+
+  @@unique([projectId, crawlRunId])
+  @@index([projectId, createdAt])
+  @@index([projectId, status])
+}
+
+model SeoRule {
+  id          String   @id @default(uuid()) @db.Uuid
+  ruleCode    String   @unique
+  name        String
+  category    String
+  description String
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  versions SeoRuleVersion[]
+  issues   SeoIssue[]
+}
+
+model SeoRuleVersion {
+  id              String      @id @default(uuid()) @db.Uuid
+  seoRuleId       String      @db.Uuid
+  version         Int
+  severity        SeoSeverity
+  weight          Float
+  detectionType   String
+  detectionConfig Json?
+  seoImpact       String
+  fixGuide        String
+  releasedAt      DateTime
+  deprecatedAt    DateTime?
+
+  seoRule          SeoRule              @relation(fields: [seoRuleId], references: [id], onDelete: Restrict)
+  ruleResults      SeoRuleResult[]
+  issueOccurrences SeoIssueOccurrence[]
+  scoreComponents  SeoScoreComponent[]
+
+  @@unique([seoRuleId, version])
+  @@index([severity])
+}
+
+model SeoRuleResult {
+  id            String         @id @default(uuid()) @db.Uuid
+  auditRunId    String         @db.Uuid
+  pageId        String?        @db.Uuid
+  ruleVersionId String         @db.Uuid
+  resultKey     String
+  outcome       SeoRuleOutcome
+  evidence      Json?
+  createdAt     DateTime       @default(now())
+
+  auditRun    SeoAuditRun    @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
+  page        Page?          @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  ruleVersion SeoRuleVersion @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
+  issuePages  SeoIssuePage[]
+
+  @@unique([auditRunId, resultKey, ruleVersionId])
+  @@index([auditRunId, outcome])
+  @@index([pageId])
+}
+
+model SeoIssue {
+  id              String         @id @default(uuid()) @db.Uuid
+  projectId       String         @db.Uuid
+  ruleId          String         @db.Uuid
+  issueKey        String
+  title           String
+  category        String
+  currentSeverity SeoSeverity
+  status          SeoIssueStatus @default(OPEN)
+  firstSeenAt     DateTime
+  lastSeenAt      DateTime
+  resolvedAt      DateTime?
+  ignoredAt       DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  project     Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  rule        SeoRule              @relation(fields: [ruleId], references: [id], onDelete: Restrict)
+  occurrences SeoIssueOccurrence[]
+
+  @@unique([projectId, issueKey])
+  @@index([projectId, status])
+  @@index([projectId, currentSeverity])
+}
+
+model SeoIssueOccurrence {
+  id                 String             @id @default(uuid()) @db.Uuid
+  seoIssueId         String             @db.Uuid
+  auditRunId         String             @db.Uuid
+  ruleVersionId      String             @db.Uuid
+  comparison         SeoIssueComparison
+  severity           SeoSeverity
+  affectedPagesCount Int
+  evidenceSummary    Json?
+  createdAt          DateTime           @default(now())
+
+  seoIssue    SeoIssue        @relation(fields: [seoIssueId], references: [id], onDelete: Cascade)
+  auditRun    SeoAuditRun     @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
+  ruleVersion SeoRuleVersion  @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
+  pages       SeoIssuePage[]
+
+  @@unique([seoIssueId, auditRunId])
+  @@index([auditRunId, comparison])
+}
+
+model SeoIssuePage {
+  id                String @id @default(uuid()) @db.Uuid
+  issueOccurrenceId String @db.Uuid
+  pageId            String @db.Uuid
+  ruleResultId      String @db.Uuid
+  evidence          Json?
+
+  issueOccurrence SeoIssueOccurrence @relation(fields: [issueOccurrenceId], references: [id], onDelete: Cascade)
+  page            Page               @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  ruleResult      SeoRuleResult      @relation(fields: [ruleResultId], references: [id], onDelete: Cascade)
+
+  @@unique([issueOccurrenceId, pageId])
+  @@index([pageId])
+}
+
+model SeoScore {
+  id            String   @id @default(uuid()) @db.Uuid
+  auditRunId    String   @unique @db.Uuid
+  projectId     String   @db.Uuid
+  score         Float
+  previousScore Float?
+  change        Float?
+  calculatedAt  DateTime @default(now())
+  engineVersion String
+
+  auditRun   SeoAuditRun        @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
+  project    Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  components SeoScoreComponent[]
+
+  @@index([projectId, calculatedAt])
+}
+
+model SeoScoreComponent {
+  id                 String  @id @default(uuid()) @db.Uuid
+  seoScoreId         String  @db.Uuid
+  componentCode      String
+  componentName      String
+  affectedPages      Int
+  eligiblePages      Int
+  pageImpactFactor   Float
+  severityMultiplier Float
+  weight             Float
+  importanceFactor   Float   @default(1)
+  penalty            Float
+  ruleVersionId      String  @db.Uuid
+
+  seoScore    SeoScore       @relation(fields: [seoScoreId], references: [id], onDelete: Cascade)
+  ruleVersion SeoRuleVersion @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([seoScoreId, ruleVersionId])
 }
