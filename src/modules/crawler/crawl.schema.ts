@@ -1,8 +1,9 @@
 import { z } from 'zod';
+import { env } from '../../config/env.js';
 
 export const createCrawlSchema = z.object({
   runType: z.enum(['FULL', 'INCREMENTAL', 'MANUAL', 'SCHEDULED', 'SINGLE_PAGE']).default('MANUAL'),
-  maxPages: z.number().int().min(1).max(5000).default(500),
+  maxPages: z.number().int().min(1).max(5000).default(env.CRAWLER_MAX_PAGES),
   seedUrl: z.string().url().optional()
 });
 
