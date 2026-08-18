@@ -1,0 +1,38 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">SEO</p>
+    <h1>问题中心</h1>
+    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/projects/<%= project.id %>/seo">返回 SEO 审计</a>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>SEO Issues</h2>
+      <p class="muted">稳定 Issue 身份跨审计保留；每次审计的受影响范围和变化状态单独记录。</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>问题</th><th>严重度</th><th>状态</th><th>分类</th><th>范围</th><th>变化</th><th>最近发现</th></tr></thead>
+      <tbody>
+        <% for (const issue of issues) { %>
+          <tr>
+            <td><a href="/seo/issues/<%= issue.id %>"><%= issue.title %></a><br><span class="muted"><%= issue.rule.ruleCode %></span></td>
+            <td><strong><%= issue.currentSeverity %></strong></td>
+            <td><%= issue.status %></td>
+            <td><%= issue.category %></td>
+            <td><%= issue.affectedLabel %></td>
+            <td><%= issue.latestOccurrence?.comparison ?? '—' %></td>
+            <td><%= new Date(issue.lastSeenAt).toLocaleString('zh-CN') %></td>
+          </tr>
+        <% } %>
+        <% if (!issues.length) { %><tr><td colspan="7" class="muted">当前项目还没有 SEO Issue。</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</section>
