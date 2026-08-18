@@ -1,0 +1,31 @@
+<section class="page-heading">
+  <div><p class="eyebrow">平台总览</p><h2>SEO + GEO 总控台</h2><p class="muted">P0 只展示系统结构。SEO、GEO、AI Visibility 等真实指标将在后续引擎接入后显示。</p></div>
+  <div class="actions"><a class="button secondary" href="/projects">项目列表</a><a class="button" href="/projects/new">新建项目</a></div>
+</section>
+
+<section class="metric-grid">
+  <% metrics.forEach((metric) => { %>
+    <article class="metric-card">
+      <div class="metric-title"><%= metric %></div>
+      <div class="metric-value">--</div>
+      <div class="metric-caption">等待数据</div>
+    </article>
+  <% }) %>
+</section>
+
+<section class="dashboard-grid">
+  <article class="panel panel-wide">
+    <div class="panel-header"><div><h3>SEO / GEO 综合趋势</h3><p>引擎接入后展示历史评分与变化</p></div><span class="badge neutral">30 天</span></div>
+    <div class="empty-chart"><span>暂无历史数据</span></div>
+  </article>
+  <article class="panel">
+    <div class="panel-header"><div><h3>DeepSeek 今日洞察</h3><p>AI Gateway 将在 P4 接入</p></div></div>
+    <div class="empty-state">当前不会生成任何虚构建议。</div>
+  </article>
+</section>
+
+<section class="dashboard-grid three">
+  <article class="panel"><h3>Top SEO Issues</h3><div class="empty-state">等待 SEO Rule Engine</div></article>
+  <article class="panel"><h3>GEO Opportunities</h3><div class="empty-state">等待 GEO Engine</div></article>
+  <article class="panel"><h3>AI 平台可见性</h3><div class="empty-state">高级版 · 等待 P6</div></article>
+</section>

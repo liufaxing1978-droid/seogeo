@@ -1,0 +1,25 @@
+<section class="page-heading project-heading">
+  <div><p class="eyebrow">项目详情</p><h2><%= project.name %></h2><p class="muted"><%= project.primaryDomain %></p></div>
+  <div class="actions"><button class="button secondary" disabled title="P1 接入">立即抓取 · 尚未接入</button><button class="button secondary" disabled title="P3 接入">GEO 审计 · 尚未接入</button></div>
+</section>
+<div class="project-meta">
+  <span class="badge success"><%= project.status %></span>
+  <span class="badge <%= project.planLevel === 'STANDARD' ? 'neutral' : 'premium' %>"><%= project.planLevel %></span>
+  <span>语言 <strong><%= project.defaultLanguage %></strong></span>
+  <span>地区 <strong><%= project.targetCountry %></strong></span>
+  <span>时区 <strong><%= project.timezone %></strong></span>
+</div>
+<nav class="tabs">
+  <% tabs.forEach((tab) => { const active = tab === '概览'; const enabled = tab === '概览' || tab === '设置'; %>
+    <span class="tab <%= active ? 'active' : '' %> <%= enabled ? '' : 'disabled' %>"><%= tab %><% if (!enabled) { %><small> 后续</small><% } %></span>
+  <% }) %>
+</nav>
+<section class="metric-grid compact">
+  <% ['SEO Score','GEO Score','AI Visibility','Citability','Entity Authority','Critical Issues'].forEach((metric) => { %>
+    <article class="metric-card"><div class="metric-title"><%= metric %></div><div class="metric-value">--</div><div class="metric-caption">等待数据</div></article>
+  <% }) %>
+</section>
+<section class="dashboard-grid">
+  <article class="panel panel-wide"><h3>项目概览</h3><dl class="detail-list"><div><dt>主域名</dt><dd><%= project.primaryDomain %></dd></div><div><dt>行业</dt><dd><%= project.industry || '未设置' %></dd></div><div><dt>创建时间</dt><dd><%= new Date(project.createdAt).toLocaleString('zh-CN') %></dd></div></dl></article>
+  <article class="panel"><h3>DeepSeek Intelligence</h3><div class="empty-state">P4 接入 AI Gateway 后显示真实分析。</div></article>
+</section>

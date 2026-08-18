@@ -1,0 +1,18 @@
+<section class="page-heading">
+  <div><p class="eyebrow">项目</p><h2>新建项目</h2><p class="muted">系统入口与被分析域名相互独立。</p></div>
+  <a class="button secondary" href="/projects">返回项目列表</a>
+</section>
+<section class="panel form-panel">
+  <form method="post" action="/projects" class="form-grid">
+    <% const field = (name) => (values && values[name]) || ''; %>
+    <label><span>项目名称</span><input name="name" value="<%= field('name') %>" required><small class="error"><%= errors?.name?.[0] || '' %></small></label>
+    <label><span>slug</span><input name="slug" value="<%= field('slug') %>" placeholder="xingshantang" required><small class="error"><%= errors?.slug?.[0] || '' %></small></label>
+    <label><span>主域名</span><input name="primaryDomain" value="<%= field('primaryDomain') %>" placeholder="xingshantang.org" required><small class="error"><%= errors?.primaryDomain?.[0] || '' %></small></label>
+    <label><span>行业</span><input name="industry" value="<%= field('industry') %>"></label>
+    <label><span>默认语言</span><input name="defaultLanguage" value="<%= field('defaultLanguage') || 'zh-CN' %>"></label>
+    <label><span>目标国家</span><input name="targetCountry" value="<%= field('targetCountry') || 'CN' %>" maxlength="2"></label>
+    <label><span>时区</span><input name="timezone" value="<%= field('timezone') || 'Asia/Shanghai' %>"></label>
+    <label><span>套餐</span><select name="planLevel"><option>STANDARD</option><option>ADVANCED</option><option>ENTERPRISE</option></select></label>
+    <div class="form-actions"><button class="button" type="submit">创建项目</button></div>
+  </form>
+</section>
