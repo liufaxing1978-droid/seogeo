@@ -1,4 +1,5 @@
 import { Worker } from 'bullmq';
+import { processAiJob, type AiJobData } from '../modules/ai/ai.worker.js';
 import { processCrawlJob, type CrawlJobData } from '../modules/crawler/crawl.worker.js';
 import { processGeoAuditJob, type GeoAuditJobData } from '../modules/geo/geo.worker.js';
 import { processSeoAuditJob, type SeoAuditJobData } from '../modules/seo/seo.worker.js';
@@ -16,6 +17,9 @@ export async function startWorkers() {
     }
     if (name === 'geo-audit') {
       return new Worker<GeoAuditJobData>(name, processGeoAuditJob, { connection });
+    }
+    if (name === 'ai') {
+      return new Worker<AiJobData>(name, processAiJob, { connection });
     }
     return new Worker(name, async () => undefined, { connection });
   });
