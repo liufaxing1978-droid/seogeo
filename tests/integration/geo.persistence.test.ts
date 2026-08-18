@@ -3,6 +3,7 @@ import { prisma } from '../../src/db/prisma.js';
 
 beforeEach(async () => {
   await prisma.project.deleteMany();
+  await prisma.geoRuleVersion.deleteMany();
   await prisma.geoRule.deleteMany();
 });
 
