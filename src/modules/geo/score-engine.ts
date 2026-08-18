@@ -1,4 +1,5 @@
 import { prisma } from '../../db/prisma.js';
+import { logGeoEvent } from './geo-observability.js';
 
 export interface GeoReadinessDimensionInput {
   citability: number | null;
@@ -207,7 +208,7 @@ export async function calculateAndPersistGeoReadinessScore(
   const previousScore = previous?.score ?? null;
   const change = previousScore === null ? null : round2(calculation.score - previousScore);
 
-  return prisma.$transaction(async (tx) => {
+  const persisted = await prisma.$transaction(async (tx) => {
     const score = await tx.geoScore.upsert({
       where: { geoAuditRunId },
       create: {
@@ -252,4 +253,16 @@ export async function calculateAndPersistGeoReadinessScore(
       include: { components: { orderBy: { componentCode: 'asc' } } }
     });
   });
+
+  logGeoEvent('geo.score.calculated', {
+    geoAuditRunId,
+    scoreType: persisted.scoreType,
+    score: persisted.score,
+    previousScore: persisted.previousScore,
+    change: persisted.change,
+    componentCount: persisted.components.length,
+    formulaVersion: persisted.formulaVersion,
+    engineVersion
+  });
+  return persisted;
 }
