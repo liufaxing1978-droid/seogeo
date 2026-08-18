@@ -28,16 +28,15 @@ model ContentDocument {
   metaDescription      String?
   h1                   String?
   language             String?
-  wordCount            Int      @default(0)
-  paragraphCount       Int      @default(0)
-  headingCount         Int      @default(0)
-  listCount            Int      @default(0)
-  tableCount           Int      @default(0)
-  imageCount           Int      @default(0)
-  internalLinkCount    Int      @default(0)
-  externalLinkCount    Int      @default(0)
+  wordCount            Int?
+  paragraphCount       Int?
+  headingCount         Int?
+  listCount            Int?
+  tableCount           Int?
+  imageCount           Int?
+  internalLinkCount    Int?
+  externalLinkCount    Int?
   schemaTypes          Json
-  entityIds            Json?
   contentHash          String
   extractedAt          DateTime
   createdAt            DateTime @default(now())
