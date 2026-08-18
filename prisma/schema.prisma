@@ -120,7 +120,7 @@ model PageSnapshot {
   pageId             String   @db.Uuid
   crawlRunId         String   @db.Uuid
   finalUrl           String
-  statusCode         Int
+  statusCode         Int?
   contentType        String?
   title              String?
   metaDescription    String?
@@ -142,7 +142,7 @@ model PageSnapshot {
   responseTimeMs     Int?
   htmlSizeBytes      Int?
   rendered           Boolean  @default(false)
-  indexable          Boolean  @default(true)
+  indexable          Boolean?
   capturedAt         DateTime @default(now())
   parserVersion      String
 
