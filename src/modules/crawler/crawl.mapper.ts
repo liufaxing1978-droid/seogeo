@@ -43,8 +43,8 @@ export function mapSnapshotPersistence(input: SnapshotMapInput): SnapshotPersist
     schemaCount: signals?.schemaCount ?? 0,
     structuredSignals: signals
       ? {
-          openGraphSiteName: signals.openGraphSiteName,
-          entitySignals: signals.entitySignals
+          openGraphSiteName: signals.openGraphSiteName ?? null,
+          entitySignals: signals.entitySignals ?? []
         }
       : null,
     htmlHash: signals?.htmlHash ?? null,
