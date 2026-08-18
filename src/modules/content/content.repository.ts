@@ -30,6 +30,8 @@ export const contentRepository: ContentRepository = {
       pageId: snapshot.page.id,
       normalizedUrl: snapshot.page.normalizedUrl,
       snapshotId: snapshot.id,
+      statusCode: snapshot.statusCode,
+      contentType: snapshot.contentType,
       canonicalUrl: snapshot.canonicalUrl,
       title: snapshot.title,
       metaDescription: snapshot.metaDescription,
