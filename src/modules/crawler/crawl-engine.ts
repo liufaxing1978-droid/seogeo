@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { env } from '../../config/env.js';
 import type { FetchOptions, FetchResult } from './crawl.types.js';
 import { fetchPage } from './http-fetcher.js';
 import { parseHtml, type ParsedPageSignals } from './html-parser.js';
@@ -15,8 +16,6 @@ import {
 import { crawlRepository, type CrawlRepository, type CrawlRunStats } from './crawl.repository.js';
 import { mapSnapshotPersistence } from './crawl.mapper.js';
 
-const CRAWLER_USER_AGENT = 'SEOGEO-Bot/0.1 (+https://seo.xingshantang.org)';
-const DEFAULT_CONCURRENCY = 4;
 const MAX_SITEMAP_DOCUMENTS = 50;
 
 export interface CrawlEngineDependencies {
@@ -73,8 +72,9 @@ export async function executeCrawlRun(
   const fetcher = dependencies.fetcher ?? fetchPage;
   const publicTargetGuard = dependencies.publicTargetGuard ?? assertPublicHttpTarget;
   const renderer = dependencies.renderer ?? renderPage;
-  const browserEnabled = dependencies.browserEnabled ?? false;
-  const concurrency = Math.max(1, Math.min(16, dependencies.concurrency ?? DEFAULT_CONCURRENCY));
+  const browserEnabled = dependencies.browserEnabled ?? env.CRAWLER_BROWSER_ENABLED;
+  const concurrency = Math.max(1, Math.min(16, dependencies.concurrency ?? env.CRAWLER_CONCURRENCY));
+  const userAgent = env.CRAWLER_USER_AGENT;
 
   const run = await repository.getRun(crawlRunId);
   if (!run) throw new Error(`CrawlRun not found: ${crawlRunId}`);
@@ -106,7 +106,7 @@ export async function executeCrawlRun(
       fetcher(url, { ...options, publicTargetGuard });
 
     const origin = originOf(seedUrl);
-    const robotsPolicy = await loadRobotsPolicy(origin, CRAWLER_USER_AGENT, guardedFetcher);
+    const robotsPolicy = await loadRobotsPolicy(origin, userAgent, guardedFetcher);
     await repository.saveRobotsResult({
       crawlRunId,
       url: new URL('/robots.txt', origin).toString(),
@@ -132,7 +132,7 @@ export async function executeCrawlRun(
       if (!isInProjectScope(new URL(sitemapUrl), primaryDomain)) continue;
       seenSitemaps.add(sitemapUrl);
 
-      const sitemapFetch = await guardedFetcher(sitemapUrl, { userAgent: CRAWLER_USER_AGENT });
+      const sitemapFetch = await guardedFetcher(sitemapUrl, { userAgent });
       let parsedType: 'INDEX' | 'URLSET' | null = null;
       let parseError: string | null = null;
       let parsedUrls: ReturnType<typeof parseSitemap>['urls'] = [];
@@ -212,7 +212,7 @@ export async function executeCrawlRun(
       if (!isSeed && robotsAllowed !== true) return;
 
       const page = await repository.upsertPage(run.projectId, url, url);
-      const fetchResult = await guardedFetcher(url, { userAgent: CRAWLER_USER_AGENT });
+      const fetchResult = await guardedFetcher(url, { userAgent });
       stats.pagesCrawled += 1;
       if (fetchResult.errorCode === null) {
         stats.pagesSucceeded += 1;
@@ -257,7 +257,7 @@ export async function executeCrawlRun(
           renderedResult = await renderer(url, {
             enabled: browserEnabled,
             primaryDomain,
-            userAgent: CRAWLER_USER_AGENT,
+            userAgent,
             publicTargetGuard
           });
           logCrawlEvent('crawl.browser.fallback', {
