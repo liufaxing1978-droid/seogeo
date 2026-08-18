@@ -15,13 +15,14 @@ describe('calculateGeoReadinessScore', () => {
     expect(result.formulaVersion).toBe('GEO_READINESS_V1_NORMALIZED_AVAILABLE');
     expect(result.score).toBe(76.25);
     expect(result.availableWeight).toBe(80);
-    expect(result.components.map((component) => component.componentCode)).toEqual([
+    const componentCodes: string[] = result.components.map((component) => component.componentCode);
+    expect(componentCodes).toEqual([
       'CITABILITY',
       'ENTITY',
       'BRAND',
       'CONTENT_GEO'
     ]);
-    expect(result.components.some((component) => component.componentCode === 'AI_VISIBILITY')).toBe(false);
+    expect(componentCodes).not.toContain('AI_VISIBILITY');
   });
 
   it('returns unavailable rather than fabricating a score when no deterministic dimension is available', () => {
