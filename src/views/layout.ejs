@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title><%= title %> · SEO GEO</title>
+  <link rel="stylesheet" href="/assets/css/app.css">
+</head>
+<body>
+  <div class="app-shell">
+    <%- include('partials/sidebar', { activeNav }) %>
+    <div class="workspace">
+      <%- include('partials/topbar', { title }) %>
+      <main class="workspace-main">
+        <%- include(bodyTemplate) %>
+      </main>
+    </div>
+  </div>
+  <script src="/assets/js/app.js" defer></script>
+</body>
+</html>
