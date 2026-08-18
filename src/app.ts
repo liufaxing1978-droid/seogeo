@@ -4,6 +4,9 @@ import path from 'node:path';
 import { errorHandler } from './core/http.js';
 import { createAiRoutes } from './modules/ai/ai.routes.js';
 import type { AiTaskService } from './modules/ai/ai.service.js';
+import { createCompetitorRoutes } from './modules/competitor/competitor.routes.js';
+import type { CompetitorService } from './modules/competitor/competitor.service.js';
+import { competitorWebRoutes } from './modules/competitor/competitor.web.routes.js';
 import { createContentRoutes } from './modules/content/content.routes.js';
 import type { ContentService } from './modules/content/content.service.js';
 import { contentWebRoutes } from './modules/content/content.web.routes.js';
@@ -25,6 +28,7 @@ export interface AppOptions {
   geoService?: GeoService;
   aiTaskService?: AiTaskService;
   contentService?: ContentService;
+  competitorService?: CompetitorService;
 }
 
 export function createApp(options: AppOptions = {}) {
@@ -42,7 +46,9 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api', createGeoRoutes(options.geoService));
   app.use('/api/v1', createAiRoutes(options.aiTaskService));
   app.use('/api/v1', createContentRoutes(options.contentService, options.aiTaskService));
+  app.use('/api/v1', createCompetitorRoutes(options.competitorService, options.aiTaskService));
   app.use('/', contentWebRoutes);
+  app.use('/', competitorWebRoutes);
   app.use('/', webRoutes);
   app.use(errorHandler);
   return app;
