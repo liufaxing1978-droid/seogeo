@@ -1,5 +1,6 @@
 import { Worker } from 'bullmq';
 import { processCrawlJob, type CrawlJobData } from '../modules/crawler/crawl.worker.js';
+import { processGeoAuditJob, type GeoAuditJobData } from '../modules/geo/geo.worker.js';
 import { processSeoAuditJob, type SeoAuditJobData } from '../modules/seo/seo.worker.js';
 import { createRedisConnection } from './connection.js';
 import { QUEUE_NAMES } from './queues.js';
@@ -12,6 +13,9 @@ export async function startWorkers() {
     }
     if (name === 'seo-audit') {
       return new Worker<SeoAuditJobData>(name, processSeoAuditJob, { connection });
+    }
+    if (name === 'geo-audit') {
+      return new Worker<GeoAuditJobData>(name, processGeoAuditJob, { connection });
     }
     return new Worker(name, async () => undefined, { connection });
   });
