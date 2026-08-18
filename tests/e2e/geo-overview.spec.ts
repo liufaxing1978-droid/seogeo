@@ -13,6 +13,7 @@ test('opens GEO overview with factual empty state', async ({ page }) => {
   expect(projectId).toBeTruthy();
 
   await page.goto(`/projects/${projectId}/geo`);
+  await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/geo$`));
   await expect(page.getByRole('heading', { level: 1, name: 'GEO Readiness' })).toBeVisible();
   await expect(page.getByRole('heading', { level: 2, name: '尚无 GEO 审计' })).toBeVisible();
   await expect(page.getByText('AI Visibility', { exact: true })).toBeVisible();
