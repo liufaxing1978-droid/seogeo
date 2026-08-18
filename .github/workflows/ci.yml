@@ -64,6 +64,11 @@ jobs:
           node-version: 22
       - name: Install production dependencies only
         run: npm install --omit=dev
+      - name: Explain Prisma dependency chain
+        run: |
+          npm explain prisma || true
+          npm explain @prisma/config || true
+          npm explain deepmerge-ts || true
       - name: Audit production dependency tree
         run: npm audit --omit=dev --audit-level=high
 
