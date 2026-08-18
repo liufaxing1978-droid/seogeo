@@ -1,5 +1,11 @@
 import { Router } from 'express';
-import { NotFoundError } from '../core/errors.js';
+import { hasFeature } from '../auth/feature-flags.js';
+import { AppError, NotFoundError } from '../core/errors.js';
+import { aiTaskService } from '../modules/ai/ai.service.js';
+import { aiWebRepository } from '../modules/ai/ai.web.repository.js';
+import { createEntityEnrichmentTask } from '../modules/ai/entity-intelligence.js';
+import { createGeoAnalysisTask } from '../modules/ai/geo-intelligence.js';
+import { createSeoAnalysisTask } from '../modules/ai/seo-intelligence.js';
 import { crawlRepository } from '../modules/crawler/crawl.repository.js';
 import { crawlerWebRepository } from '../modules/crawler/crawler.web.repository.js';
 import { geoService } from '../modules/geo/geo.service.js';
@@ -21,6 +27,12 @@ function render(res: any, bodyTemplate: string, locals: Record<string, unknown>)
     bodyTemplate,
     ...locals
   });
+}
+
+function assertAiAnalysisFeature(project: { planLevel: 'STANDARD' | 'ADVANCED' | 'ENTERPRISE' }) {
+  if (!hasFeature(project.planLevel, 'AI_ANALYSIS')) {
+    throw new AppError('AI analysis is not available for this project plan', 403, 'FEATURE_NOT_AVAILABLE');
+  }
 }
 
 webRoutes.get('/', async (_req, res, next) => {
@@ -291,6 +303,89 @@ webRoutes.post('/projects/:id/geo/run', async (req, res, next) => {
   try {
     await geoService.createProjectAudit(req.params.id, {});
     res.redirect(303, `/projects/${req.params.id}/geo`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+webRoutes.get('/projects/:id/ai', async (req, res, next) => {
+  try {
+    const model = await aiWebRepository.getCenter(req.params.id);
+    if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
+    assertAiAnalysisFeature(model.project);
+    render(res, 'ai/index', {
+      title: 'DeepSeek AI 分析中心',
+      activeNav: 'ai',
+      currentProjectId: model.project.id,
+      ...model
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+webRoutes.post('/projects/:id/ai/seo', async (req, res, next) => {
+  try {
+    const project = await projectService.get(req.params.id);
+    assertAiAnalysisFeature(project);
+    const auditRunId = typeof req.body.auditRunId === 'string' ? req.body.auditRunId : '';
+    if (!auditRunId) throw new AppError('auditRunId is required', 400, 'AI_SOURCE_AUDIT_REQUIRED');
+    const task = await createSeoAnalysisTask(project.id, auditRunId, aiTaskService);
+    res.redirect(303, `/projects/${project.id}/ai/tasks/${task.id}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+webRoutes.post('/projects/:id/ai/geo', async (req, res, next) => {
+  try {
+    const project = await projectService.get(req.params.id);
+    assertAiAnalysisFeature(project);
+    const geoAuditRunId = typeof req.body.geoAuditRunId === 'string' ? req.body.geoAuditRunId : '';
+    if (!geoAuditRunId) throw new AppError('geoAuditRunId is required', 400, 'AI_SOURCE_AUDIT_REQUIRED');
+    const task = await createGeoAnalysisTask(project.id, geoAuditRunId, aiTaskService);
+    res.redirect(303, `/projects/${project.id}/ai/tasks/${task.id}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+webRoutes.post('/projects/:id/ai/entity', async (req, res, next) => {
+  try {
+    const project = await projectService.get(req.params.id);
+    assertAiAnalysisFeature(project);
+    const geoAuditRunId = typeof req.body.geoAuditRunId === 'string' ? req.body.geoAuditRunId : '';
+    if (!geoAuditRunId) throw new AppError('geoAuditRunId is required', 400, 'AI_SOURCE_AUDIT_REQUIRED');
+    const task = await createEntityEnrichmentTask(project.id, geoAuditRunId, aiTaskService);
+    res.redirect(303, `/projects/${project.id}/ai/tasks/${task.id}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+webRoutes.get('/projects/:id/ai/tasks/:taskId', async (req, res, next) => {
+  try {
+    const model = await aiWebRepository.getTaskPage(req.params.id, req.params.taskId);
+    if (!model) throw new NotFoundError('AI task not found', 'AI_TASK_NOT_FOUND');
+    assertAiAnalysisFeature(model.project);
+    render(res, 'ai/task-show', {
+      title: 'AI 任务详情',
+      activeNav: 'ai',
+      currentProjectId: model.project.id,
+      ...model
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+webRoutes.post('/projects/:id/ai/tasks/:taskId/retry', async (req, res, next) => {
+  try {
+    const model = await aiWebRepository.getTaskPage(req.params.id, req.params.taskId);
+    if (!model) throw new NotFoundError('AI task not found', 'AI_TASK_NOT_FOUND');
+    assertAiAnalysisFeature(model.project);
+    await aiTaskService.retry(model.task.id);
+    res.redirect(303, `/projects/${model.project.id}/ai/tasks/${model.task.id}`);
   } catch (error) {
     next(error);
   }
