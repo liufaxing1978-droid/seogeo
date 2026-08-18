@@ -1,0 +1,3 @@
+ALTER TABLE "PageSnapshot" ALTER COLUMN "statusCode" DROP NOT NULL;
+ALTER TABLE "PageSnapshot" ALTER COLUMN "indexable" DROP DEFAULT;
+ALTER TABLE "PageSnapshot" ALTER COLUMN "indexable" DROP NOT NULL;

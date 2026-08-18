@@ -1,12 +1,16 @@
 import { Worker } from 'bullmq';
+import { processCrawlJob, type CrawlJobData } from '../modules/crawler/crawl.worker.js';
 import { createRedisConnection } from './connection.js';
 import { QUEUE_NAMES } from './queues.js';
 
 export async function startWorkers() {
   const connection = createRedisConnection();
-  const workers = QUEUE_NAMES.filter((name) => name !== 'visibility').map(
-    (name) => new Worker(name, async () => undefined, { connection })
-  );
+  const workers = QUEUE_NAMES.filter((name) => name !== 'visibility').map((name) => {
+    if (name === 'crawl') {
+      return new Worker<CrawlJobData>(name, processCrawlJob, { connection });
+    }
+    return new Worker(name, async () => undefined, { connection });
+  });
 
   return {
     async close() {
