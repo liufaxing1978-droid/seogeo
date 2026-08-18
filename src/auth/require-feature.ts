@@ -1,6 +1,9 @@
 import type { RequestHandler } from 'express';
-import { projectService } from '../modules/projects/project.routes.js';
+import { projectRepository } from '../modules/projects/project.repository.js';
+import { ProjectService } from '../modules/projects/project.service.js';
 import { hasFeature, type Feature } from './feature-flags.js';
+
+const projectService = new ProjectService(projectRepository);
 
 export function requireFeature(feature: Feature): RequestHandler {
   return async (req, res, next) => {
