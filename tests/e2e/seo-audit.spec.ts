@@ -78,11 +78,13 @@ test('drills from SEO audit to deterministic issue detail', async ({ page }) => 
   await executeSeoAudit(audit.id);
 
   await page.goto(`/projects/${project.id}/seo`);
-  await expect(page.getByRole('heading', { level: 1, name: 'SEO 审计' })).toBeVisible();
-  await expect(page.getByText('92.5', { exact: true }).first()).toBeVisible();
+  const main = page.getByRole('main');
+  await expect(main.getByRole('heading', { level: 1, name: 'SEO 审计' })).toBeVisible();
+  await expect(main.getByText('92.5', { exact: true }).first()).toBeVisible();
 
-  await page.getByRole('link', { name: 'Missing title' }).first().click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Missing title' })).toBeVisible();
-  await expect(page.getByText('TITLE_MISSING', { exact: true })).toBeVisible();
-  await expect(page.getByText('https://browser-fixture.example/', { exact: true })).toBeVisible();
+  await main.getByRole('link', { name: 'Missing title' }).first().click();
+  const issueMain = page.getByRole('main');
+  await expect(issueMain.getByRole('heading', { level: 1, name: 'Missing title' })).toBeVisible();
+  await expect(issueMain.getByText('TITLE_MISSING', { exact: true })).toBeVisible();
+  await expect(issueMain.getByText('https://browser-fixture.example/', { exact: true })).toBeVisible();
 });
