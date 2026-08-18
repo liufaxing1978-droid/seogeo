@@ -121,12 +121,15 @@ export async function executeAiTask(taskId: string, dependencies: ExecuteAiTaskD
   try {
     const response = await gateway.complete({ messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.buildUserMessage(task.factSnapshot) }], mode: prompt.mode, responseFormat: prompt.responseFormat });
     providerCompleted = true;
+    await repository.recordProviderSuccess(run.id, response);
     observability.emit({ event: 'ai.provider.request.completed', taskId: task.id, projectId: task.projectId, runId: run.id, provider: 'DEEPSEEK', model: response.model, promptVersion: task.promptVersion, latencyMs: response.latencyMs, promptTokens: response.usage.promptTokens, completionTokens: response.usage.completionTokens, totalTokens: response.usage.totalTokens, cacheHitTokens: response.usage.cacheHitTokens, cacheMissTokens: response.usage.cacheMissTokens, reasoningTokens: response.usage.reasoningTokens });
 
     const output = parseTaskOutput(task, response.content);
     observability.emit({ event: 'ai.output.validated', taskId: task.id, projectId: task.projectId, runId: run.id, provider: 'DEEPSEEK', model: response.model, promptVersion: task.promptVersion });
-    await repository.completeRun(task, run.id, response, output as Prisma.InputJsonValue, resultSummary(task, output));
-    if (task.taskType === 'CONTENT_BRIEF') await persistContentBrief(task, output as ReturnType<typeof parseContentBriefOutput>);
+    const materialize = task.taskType === 'CONTENT_BRIEF'
+      ? (tx: Prisma.TransactionClient) => persistContentBrief(task, output as ReturnType<typeof parseContentBriefOutput>, tx).then(() => undefined)
+      : undefined;
+    await repository.completeRun(task, run.id, response, output as Prisma.InputJsonValue, resultSummary(task, output), materialize);
     observability.emit({ event: 'ai.task.completed', taskId: task.id, projectId: task.projectId, runId: run.id, provider: 'DEEPSEEK', model: response.model, promptVersion: task.promptVersion });
   } catch (error) {
     const code = errorCode(error);
