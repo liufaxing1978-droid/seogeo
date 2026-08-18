@@ -3,7 +3,7 @@ import { buildCompetitorGaps, type CompetitorMetrics } from '../../src/modules/c
 
 const owned: CompetitorMetrics = {
   pagesSampled: 10,
-  successShare: 1,
+  successShare: null,
   averageWordCount: 900,
   titlePresenceShare: 1,
   h1PresenceShare: 1,
@@ -21,7 +21,8 @@ describe('COMPETITOR_COMPARISON_V1', () => {
   });
 
   it('preserves unknown metrics', () => {
-    const gaps = buildCompetitorGaps(owned, { ...owned, indexableShare: 0.9 });
+    const gaps = buildCompetitorGaps(owned, { ...owned, successShare: 0.9, indexableShare: 0.9 });
+    expect(gaps.find((gap) => gap.metric === 'successShare')).toMatchObject({ delta: null, state: 'UNKNOWN' });
     expect(gaps.find((gap) => gap.metric === 'indexableShare')).toMatchObject({ delta: null, state: 'UNKNOWN' });
   });
 });
