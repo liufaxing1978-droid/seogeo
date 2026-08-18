@@ -3,6 +3,7 @@ import { prisma } from '../../db/prisma.js';
 import { fetchPage } from '../crawler/http-fetcher.js';
 import { parseHtml } from '../crawler/html-parser.js';
 import { isInProjectScope, normalizeCrawlUrl } from '../crawler/url-normalizer.js';
+import { competitorObservability, type CompetitorObservability } from './competitor-observability.js';
 import type { CompetitorCrawlJobData } from './competitor.service.js';
 
 export type { CompetitorCrawlJobData } from './competitor.service.js';
@@ -10,6 +11,7 @@ export type CompetitorFetch = typeof fetchPage;
 
 export interface CompetitorWorkerDependencies {
   fetcher?: CompetitorFetch;
+  observability?: CompetitorObservability;
 }
 
 function safeError(error: unknown): string {
@@ -18,11 +20,13 @@ function safeError(error: unknown): string {
 
 export async function executeCompetitorCrawl(competitorCrawlId: string, dependencies: CompetitorWorkerDependencies = {}) {
   const fetcher = dependencies.fetcher ?? fetchPage;
+  const observability = dependencies.observability ?? competitorObservability;
   const crawl = await prisma.competitorCrawl.findUnique({ where: { id: competitorCrawlId }, include: { competitor: true } });
   if (!crawl) throw new Error(`Competitor crawl not found: ${competitorCrawlId}`);
   if (crawl.status === 'COMPLETED' || crawl.status === 'RUNNING' || crawl.status === 'CANCELLED') return;
 
   await prisma.competitorCrawl.update({ where: { id: crawl.id }, data: { status: 'RUNNING', startedAt: new Date(), finishedAt: null, errorMessage: null } });
+  observability.emit({ event: 'competitor.crawl.started', projectId: crawl.competitor.projectId, competitorId: crawl.competitorId, crawlId: crawl.id });
   const queue = [normalizeCrawlUrl(crawl.seedUrl)];
   const seen = new Set<string>();
   let pagesCrawled = 0;
@@ -36,9 +40,7 @@ export async function executeCompetitorCrawl(competitorCrawlId: string, dependen
 
       const result = await fetcher(normalizedUrl);
       let parsed: ReturnType<typeof parseHtml> | null = null;
-      if (result.body) {
-        parsed = parseHtml(result.body, result.finalUrl, result.headers, result.statusCode);
-      }
+      if (result.body) parsed = parseHtml(result.body, result.finalUrl, result.headers, result.statusCode);
 
       await prisma.competitorPageSnapshot.upsert({
         where: { competitorCrawlId_normalizedUrl: { competitorCrawlId: crawl.id, normalizedUrl } },
@@ -98,8 +100,10 @@ export async function executeCompetitorCrawl(competitorCrawlId: string, dependen
     }
 
     await prisma.competitorCrawl.update({ where: { id: crawl.id }, data: { status: 'COMPLETED', pagesCrawled, finishedAt: new Date(), errorMessage: null } });
+    observability.emit({ event: 'competitor.crawl.completed', projectId: crawl.competitor.projectId, competitorId: crawl.competitorId, crawlId: crawl.id, pageCount: pagesCrawled });
   } catch (error) {
     await prisma.competitorCrawl.update({ where: { id: crawl.id }, data: { status: 'FAILED', pagesCrawled, finishedAt: new Date(), errorMessage: safeError(error) } });
+    observability.emit({ event: 'competitor.crawl.failed', projectId: crawl.competitor.projectId, competitorId: crawl.competitorId, crawlId: crawl.id, pageCount: pagesCrawled, errorCode: 'COMPETITOR_CRAWL_FAILED' });
     throw error;
   }
 }
