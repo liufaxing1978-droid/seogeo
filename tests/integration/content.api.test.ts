@@ -12,7 +12,7 @@ describe('P5-A content API', () => {
     const suffix = `${Date.now()}-${Math.random()}`;
     const project = await prisma.project.create({ data: { name: 'api', slug: `api-${suffix}`, primaryDomain: `api-${suffix}.example.com`, planLevel: 'STANDARD' } });
     projects.push(project.id);
-    const fakeService = { async enqueueRefresh(projectId: string) { return { jobId: `content-refresh-${projectId}`, deduplicated: false }; } } as ContentService;
+    const fakeService = { async enqueueRefresh(projectId: string) { return { jobId: `content-refresh-${projectId}`, deduplicated: false }; } } as unknown as ContentService;
     const app = createApp({ contentService: fakeService });
 
     const list = await request(app).get(`/api/v1/projects/${project.id}/content/documents`).expect(200);
@@ -30,7 +30,7 @@ describe('P5-A content API', () => {
     const snapshot = await prisma.pageSnapshot.create({ data: { pageId: page.id, crawlRunId: crawl.id, finalUrl: page.url, contentHash: `h-${suffix}`, parserVersion: 'test' } });
     const document = await prisma.contentDocument.create({ data: { projectId: project.id, pageId: page.id, latestPageSnapshotId: snapshot.id, canonicalUrl: page.url, schemaTypes: [], contentHash: `h-${suffix}`, extractedAt: snapshot.capturedAt } });
     const opportunity = await prisma.contentOpportunity.create({ data: { projectId: project.id, contentDocumentId: document.id, opportunityKey: 'x:v1', opportunityVersion: 1, category: 'BASICS', priority: 'HIGH', summary: 'Fix', sourceReferences: [], firstDetectedAt: new Date(), lastDetectedAt: new Date() } });
-    const app = createApp({ contentService: { enqueueRefresh: async () => ({ jobId: 'x', deduplicated: false }) } as ContentService });
+    const app = createApp({ contentService: { enqueueRefresh: async () => ({ jobId: 'x', deduplicated: false }) } as unknown as ContentService });
     await request(app).patch(`/api/v1/projects/${project.id}/content/opportunities/${opportunity.id}`).send({ status: 'VERIFIED_FIXED' }).expect(400);
   });
 });
