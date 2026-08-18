@@ -1,0 +1,146 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">GEO</p>
+    <h1>GEO Readiness</h1>
+    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
+  </div>
+  <div class="actions">
+    <% if (latestCompletedCrawl) { %>
+      <form action="/projects/<%= project.id %>/geo/run" method="post">
+        <button class="button" type="submit">运行 GEO 审计</button>
+      </form>
+    <% } else { %>
+      <a class="button secondary" href="/projects/<%= project.id %>/crawls">先运行抓取</a>
+    <% } %>
+  </div>
+</section>
+
+<% if (!summary) { %>
+  <section class="panel">
+    <h2>尚无 GEO 审计</h2>
+    <p class="muted">P3 只读取真实抓取与确定性站内信号。完成一次抓取后，可生成 GEO_READINESS_V1。</p>
+  </section>
+
+  <section class="metric-grid compact">
+    <article class="metric-card">
+      <div class="metric-title">GEO Readiness</div>
+      <div class="metric-value">--</div>
+      <div class="metric-caption">等待确定性审计</div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">AI Visibility</div>
+      <div class="metric-value">--</div>
+      <div class="metric-caption">等待 P6 真实采样</div>
+    </article>
+  </section>
+<% } else { %>
+  <section class="metric-grid compact">
+    <article class="metric-card">
+      <div class="metric-title">GEO Readiness</div>
+      <div class="metric-value"><%= summary.score ?? '--' %></div>
+      <div class="metric-caption">
+        <% if (summary.change !== null) { %>
+          较上次 <%= summary.change > 0 ? '+' : '' %><%= summary.change %>
+        <% } else { %>
+          <%= summary.scoreType ?? 'GEO_READINESS_V1' %>
+        <% } %>
+      </div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">Citability</div>
+      <div class="metric-value"><%= dimensions.citability ? dimensions.citability.rawScore : '--' %></div>
+      <div class="metric-caption">可引用结构准备度</div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">Entity</div>
+      <div class="metric-value"><%= dimensions.entity ? dimensions.entity.rawScore : '--' %></div>
+      <div class="metric-caption">实体清晰度</div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">AI Crawler</div>
+      <div class="metric-value"><%= dimensions.aiCrawler ? dimensions.aiCrawler.rawScore : '--' %></div>
+      <div class="metric-caption">Technical AI Readiness</div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">Brand</div>
+      <div class="metric-value"><%= dimensions.brand ? dimensions.brand.rawScore : '--' %></div>
+      <div class="metric-caption">站内品牌一致性</div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">Content GEO</div>
+      <div class="metric-value"><%= dimensions.contentGeo ? dimensions.contentGeo.rawScore : '--' %></div>
+      <div class="metric-caption">内容结构准备度</div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">AI Visibility</div>
+      <div class="metric-value">--</div>
+      <div class="metric-caption">等待 P6 真实采样</div>
+    </article>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <div>
+        <h2>本次 GEO 审计</h2>
+        <p class="muted">状态 <strong><%= summary.status %></strong> · <%= summary.scoreType %></p>
+      </div>
+      <a class="button secondary" href="/crawls/<%= summary.crawlRunId %>">查看来源抓取</a>
+    </div>
+    <dl class="detail-grid">
+      <div><dt>页面事实</dt><dd><%= summary.eligiblePages %></dd></div>
+      <div><dt>规则评估</dt><dd><%= summary.rulesEvaluated %></dd></div>
+      <div><dt>失败规则</dt><dd><%= summary.failedRules %></dd></div>
+      <div><dt>完成时间</dt><dd><%= summary.finishedAt ? new Date(summary.finishedAt).toLocaleString('zh-CN') : '—' %></dd></div>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <div><h2>评分组件</h2><p class="muted">只按当前有可靠事实的维度参与归一化评分；缺失数据不会被填成 0。</p></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>维度</th><th>原始分</th><th>设计权重</th><th>本次贡献</th><th>事实来源</th></tr></thead>
+        <tbody>
+          <% for (const component of summary.components) { %>
+            <tr>
+              <td><strong><%= component.componentName %></strong><br><span class="muted"><%= component.componentCode %></span></td>
+              <td><%= component.rawScore %></td>
+              <td><%= component.weight %>%</td>
+              <td><%= component.weightedScore %></td>
+              <td><%= component.sourceType %></td>
+            </tr>
+          <% } %>
+          <% if (!summary.components.length) { %><tr><td colspan="5" class="muted">暂无足够事实形成评分组件。</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header">
+      <div><h2>优先机会</h2><p class="muted">来自确定性 FAIL 规则，不由 AI 推断。</p></div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>规则</th><th>维度</th><th>严重度</th><th>对象</th><th>修复方向</th></tr></thead>
+        <tbody>
+          <% for (const item of opportunities) { %>
+            <tr>
+              <td><strong><%= item.ruleName %></strong><br><span class="muted"><%= item.ruleCode %></span></td>
+              <td><%= item.dimension %></td>
+              <td><span class="badge"><%= item.severity %></span></td>
+              <td><%= item.pageUrl ?? item.entityName ?? '全站' %></td>
+              <td><%= item.fixGuide %></td>
+            </tr>
+          <% } %>
+          <% if (!opportunities.length) { %><tr><td colspan="5" class="muted">当前没有确定性 GEO FAIL 机会。</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+<% } %>
+
+<section class="panel">
+  <p class="muted">GEO_READINESS_V1 衡量站点对生成式搜索的准备度，不等于真实 AI 平台可见性。ChatGPT、Gemini、Perplexity、DeepSeek、豆包等平台的实际出现率、引用和 Share of Voice 将在 P6 通过真实重复采样产生。</p>
+</section>
