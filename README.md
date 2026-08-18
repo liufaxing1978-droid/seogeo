@@ -2,7 +2,7 @@
 
 Independent SEO / GEO platform for `seo.xingshantang.org`.
 
-Current milestone: **P5 Content, competitor analysis, reports — release candidate pending final CI gate**.
+Current milestone: **P6 AI Visibility Advanced module — next**.
 
 ## Architecture
 
@@ -110,7 +110,7 @@ npm run test:e2e
 
 ## Release verification
 
-The release gate requires all of the following on the final P5 head:
+P5 was released only after the final head passed all of the following checks in CI:
 
 ```bash
 npx prisma validate
@@ -123,7 +123,7 @@ npm run test:e2e
 npm audit --omit=dev --audit-level=high
 ```
 
-CI must not call live DeepSeek or live competitor sites.
+CI does not call live DeepSeek or live competitor sites.
 
 ## Roadmap
 
@@ -132,5 +132,5 @@ CI must not call live DeepSeek or live competitor sites.
 - P2 SEO Rule Engine + Audit UI — complete
 - P3 GEO Engine + Citability + Entity — complete
 - P4 DeepSeek AI Gateway + Intelligence — complete
-- P5 Content, competitor analysis, reports — release candidate; complete only after final CI green and merge
-- P6 AI Visibility Advanced module — next after P5 release
+- P5 Content, competitor analysis, reports — complete
+- P6 AI Visibility Advanced module — next
