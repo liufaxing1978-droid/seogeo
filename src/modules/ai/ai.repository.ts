@@ -163,6 +163,24 @@ export class AiRepository {
     });
   }
 
+  recordProviderSuccess(runId: string, response: AiProviderResponse) {
+    return prisma.aiProviderCall.create({
+      data: {
+        aiTaskRunId: runId,
+        attemptNo: 1,
+        providerResponseId: response.responseId,
+        latencyMs: response.latencyMs,
+        promptTokens: response.usage.promptTokens,
+        completionTokens: response.usage.completionTokens,
+        totalTokens: response.usage.totalTokens,
+        cacheHitTokens: response.usage.cacheHitTokens,
+        cacheMissTokens: response.usage.cacheMissTokens,
+        reasoningTokens: response.usage.reasoningTokens,
+        finishReason: response.finishReason
+      }
+    });
+  }
+
   async completeRun(
     task: AiTask,
     runId: string,
@@ -172,21 +190,6 @@ export class AiRepository {
     materialize?: AiCompletionMaterializer
   ): Promise<void> {
     await prisma.$transaction(async (tx) => {
-      await tx.aiProviderCall.create({
-        data: {
-          aiTaskRunId: runId,
-          attemptNo: 1,
-          providerResponseId: response.responseId,
-          latencyMs: response.latencyMs,
-          promptTokens: response.usage.promptTokens,
-          completionTokens: response.usage.completionTokens,
-          totalTokens: response.usage.totalTokens,
-          cacheHitTokens: response.usage.cacheHitTokens,
-          cacheMissTokens: response.usage.cacheMissTokens,
-          reasoningTokens: response.usage.reasoningTokens,
-          finishReason: response.finishReason
-        }
-      });
       await tx.aiAnalysisResult.create({
         data: {
           aiTaskRunId: runId,
@@ -217,13 +220,15 @@ export class AiRepository {
     input: { errorCode: string; errorMessage: string; httpStatus?: number | null }
   ): Promise<void> {
     await prisma.$transaction(async (tx) => {
-      await tx.aiProviderCall.create({
-        data: {
+      await tx.aiProviderCall.upsert({
+        where: { aiTaskRunId_attemptNo: { aiTaskRunId: runId, attemptNo: 1 } },
+        create: {
           aiTaskRunId: runId,
           attemptNo: 1,
           httpStatus: input.httpStatus ?? null,
           errorCode: input.errorCode
-        }
+        },
+        update: {}
       });
       await tx.aiTaskRun.update({
         where: { id: runId },
