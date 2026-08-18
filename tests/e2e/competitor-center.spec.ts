@@ -13,7 +13,7 @@ test('registers a competitor from the project-scoped competitor center', async (
   expect(projectId).toBeTruthy();
 
   await page.goto(`/projects/${projectId}/competitors`);
-  await expect(page.getByRole('heading', { level: 1, name: '竞争对手中心' })).toBeVisible();
+  await expect(page.getByRole('main').getByRole('heading', { level: 1, name: '竞争对手中心' })).toBeVisible();
   await page.getByLabel('竞品名称').fill('Reference Site');
   await page.getByLabel('竞品域名').fill(`reference-${suffix}.example.com`);
   await page.getByRole('button', { name: '添加竞品' }).click();
