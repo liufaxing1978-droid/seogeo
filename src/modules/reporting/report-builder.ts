@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
+import { reportObservability, type ReportObservability } from './report-observability.js';
 
 export const PROJECT_REPORT_VERSION = 'PROJECT_REPORT_V1';
 
@@ -26,7 +27,7 @@ function stateCounts(comparisons: Array<{ gaps: Prisma.JsonValue }>) {
   return counts;
 }
 
-export async function generateProjectReport(projectId: string) {
+export async function generateProjectReport(projectId: string, observability: ReportObservability = reportObservability) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     select: { id: true, name: true, primaryDomain: true, industry: true, defaultLanguage: true, targetCountry: true, planLevel: true }
@@ -115,7 +116,7 @@ export async function generateProjectReport(projectId: string) {
     ...advisoryAi.map((row) => ({ type: 'AI_TASK', id: row.taskId }))
   ];
 
-  return prisma.reportSnapshot.create({
+  const report = await prisma.reportSnapshot.create({
     data: {
       projectId,
       reportType: 'PROJECT_SUMMARY',
@@ -125,4 +126,6 @@ export async function generateProjectReport(projectId: string) {
       sourceReferences: sourceReferences as unknown as Prisma.InputJsonValue
     }
   });
+  observability.emit({ event: 'report.generated', projectId, reportId: report.id, reportVersion: report.reportVersion, sourceCount: sourceReferences.length });
+  return report;
 }
