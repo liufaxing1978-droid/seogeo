@@ -29,6 +29,10 @@ export interface SnapshotPersistenceInput {
   imagesCount: number;
   imagesWithoutAlt: number;
   schemaCount: number;
+  structuredSignals: {
+    openGraphSiteName: string | null;
+    entitySignals: unknown[];
+  } | null;
   htmlHash: string | null;
   contentHash: string | null;
   responseTimeMs: number | null;
@@ -299,38 +303,52 @@ export class CrawlRepository {
         }
       : undefined;
 
-    return this.client.pageSnapshot.create({
-      data: {
-        pageId: input.pageId,
-        crawlRunId: input.crawlRunId,
-        finalUrl: input.finalUrl,
-        statusCode: input.statusCode,
-        contentType: input.contentType,
-        title: input.title,
-        metaDescription: input.metaDescription,
-        canonicalUrl: input.canonicalUrl,
-        metaRobots: input.metaRobots,
-        h1: input.h1,
-        h1Count: input.h1Count,
-        h2Count: input.h2Count,
-        h3Count: input.h3Count,
-        wordCount: input.wordCount,
-        language: input.language,
-        internalLinksCount: input.internalLinksCount,
-        externalLinksCount: input.externalLinksCount,
-        imagesCount: input.imagesCount,
-        imagesWithoutAlt: input.imagesWithoutAlt,
-        schemaCount: input.schemaCount,
-        htmlHash: input.htmlHash,
-        contentHash: input.contentHash,
-        responseTimeMs: input.responseTimeMs,
-        htmlSizeBytes: input.htmlSizeBytes,
-        rendered: input.rendered,
-        indexable: input.indexable,
-        parserVersion: input.parserVersion,
-        httpResult: { create: httpCreate },
-        ...(renderCreate ? { renderResult: { create: renderCreate } } : {})
+    return this.client.$transaction(async (tx) => {
+      const snapshot = await tx.pageSnapshot.create({
+        data: {
+          pageId: input.pageId,
+          crawlRunId: input.crawlRunId,
+          finalUrl: input.finalUrl,
+          statusCode: input.statusCode,
+          contentType: input.contentType,
+          title: input.title,
+          metaDescription: input.metaDescription,
+          canonicalUrl: input.canonicalUrl,
+          metaRobots: input.metaRobots,
+          h1: input.h1,
+          h1Count: input.h1Count,
+          h2Count: input.h2Count,
+          h3Count: input.h3Count,
+          wordCount: input.wordCount,
+          language: input.language,
+          internalLinksCount: input.internalLinksCount,
+          externalLinksCount: input.externalLinksCount,
+          imagesCount: input.imagesCount,
+          imagesWithoutAlt: input.imagesWithoutAlt,
+          schemaCount: input.schemaCount,
+          htmlHash: input.htmlHash,
+          contentHash: input.contentHash,
+          responseTimeMs: input.responseTimeMs,
+          htmlSizeBytes: input.htmlSizeBytes,
+          rendered: input.rendered,
+          indexable: input.indexable,
+          parserVersion: input.parserVersion,
+          httpResult: { create: httpCreate },
+          ...(renderCreate ? { renderResult: { create: renderCreate } } : {})
+        }
+      });
+
+      if (input.structuredSignals) {
+        await tx.pageStructuredSignal.create({
+          data: {
+            pageSnapshotId: snapshot.id,
+            openGraphSiteName: input.structuredSignals.openGraphSiteName,
+            entitySignals: input.structuredSignals.entitySignals as Prisma.InputJsonValue
+          }
+        });
       }
+
+      return snapshot;
     });
   }
 

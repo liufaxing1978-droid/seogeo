@@ -1,0 +1,9 @@
+model PageStructuredSignal {
+  id                String   @id @default(uuid()) @db.Uuid
+  pageSnapshotId    String   @unique @db.Uuid
+  openGraphSiteName String?
+  entitySignals     Json
+  createdAt         DateTime @default(now())
+
+  @@index([createdAt])
+}
