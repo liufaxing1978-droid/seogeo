@@ -1,0 +1,53 @@
+<section class="page-heading">
+  <div>
+    <p class="eyebrow">Crawler</p>
+    <h2>抓取历史</h2>
+    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/projects/<%= project.id %>/pages">页面中心</a>
+    <a class="button secondary" href="/projects/<%= project.id %>">项目详情</a>
+  </div>
+</section>
+
+<section class="panel table-panel">
+  <div class="panel-header crawler-panel-header">
+    <div>
+      <h3>历史任务</h3>
+      <p>共 <strong><%= total %></strong> 次抓取。QUEUED / RUNNING 的统计属于当前进度。</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>状态</th>
+          <th>类型</th>
+          <th>开始时间</th>
+          <th>完成时间</th>
+          <th>发现页面</th>
+          <th>已抓取</th>
+          <th>成功</th>
+          <th>失败</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (!runs.length) { %>
+          <tr><td class="empty-cell" colspan="8">暂无抓取记录。通过 API 发起首次抓取后会在这里显示。</td></tr>
+        <% } %>
+        <% runs.forEach((run) => { const badgeClass = run.status === 'COMPLETED' ? 'success' : run.status === 'FAILED' ? 'danger' : run.status === 'RUNNING' ? 'running' : 'neutral'; %>
+          <tr>
+            <td><a href="/crawls/<%= run.id %>"><span class="badge <%= badgeClass %>"><%= run.status %></span></a></td>
+            <td><a class="link-primary" href="/crawls/<%= run.id %>"><%= run.runType %></a></td>
+            <td><%= run.startedAt ? new Date(run.startedAt).toLocaleString('zh-CN') : '—' %></td>
+            <td><%= run.finishedAt ? new Date(run.finishedAt).toLocaleString('zh-CN') : '—' %></td>
+            <td><%= run.pagesDiscovered %></td>
+            <td><%= run.pagesCrawled %></td>
+            <td><%= run.pagesSucceeded %></td>
+            <td><%= run.pagesFailed %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
