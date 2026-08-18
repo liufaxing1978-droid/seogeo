@@ -13,6 +13,7 @@ import { parseGeoAnalysisOutput } from './geo-intelligence.js';
 import { getPromptDefinition } from './prompts/prompt-registry.js';
 import { AiProviderError } from './provider.js';
 import { AiProviderRegistry } from './provider-registry.js';
+import { parseReportExecutiveOutput } from './report-intelligence.js';
 import { AiRepository } from './ai.repository.js';
 import { parseSeoAnalysisOutput } from './seo-intelligence.js';
 import { AiOutputValidationError } from './structured-output.js';
@@ -41,6 +42,7 @@ function expectedPromptId(task: AiTask): string {
     case 'CONTENT_BRIEF': return 'content-brief-v1';
     case 'CONTENT_OPTIMIZATION_ANALYSIS': return 'content-optimization-v1';
     case 'COMPETITOR_GAP_ANALYSIS': return 'competitor-gap-v1';
+    case 'REPORT_EXECUTIVE_SUMMARY': return 'project-report-summary-v1';
   }
 }
 
@@ -76,6 +78,7 @@ function resultSummary(task: AiTask, output: unknown): string {
     case 'CONTENT_BRIEF': return 'Content brief generated.';
     case 'CONTENT_OPTIMIZATION_ANALYSIS': return 'Content optimization analysis completed.';
     case 'COMPETITOR_GAP_ANALYSIS': return 'Competitor gap analysis completed.';
+    case 'REPORT_EXECUTIVE_SUMMARY': return 'Project report executive summary completed.';
   }
 }
 
@@ -87,6 +90,7 @@ function parseTaskOutput(task: AiTask, content: string): unknown {
     case 'CONTENT_BRIEF': return parseContentBriefOutput(content, task.sourceReferences);
     case 'CONTENT_OPTIMIZATION_ANALYSIS': return parseContentOptimizationOutput(content, task.sourceReferences);
     case 'COMPETITOR_GAP_ANALYSIS': return parseCompetitorGapOutput(content, task.sourceReferences);
+    case 'REPORT_EXECUTIVE_SUMMARY': return parseReportExecutiveOutput(content, task.sourceReferences);
   }
 }
 
