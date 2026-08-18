@@ -94,7 +94,7 @@ Fields:
 - `internalLinkCount`
 - `externalLinkCount`
 - `schemaTypes` JSON
-- `entityIds` JSON or relational references
+- `entityIds` JSON array of deterministic P3 Entity IDs
 - `contentHash`
 - `extractedAt`
 - timestamps
@@ -178,7 +178,7 @@ Fields:
 - `sourceReferences` JSON
 - timestamps
 
-P5-A should reuse P4 `AiTask`, `AiTaskRun`, `AiProviderCall` and `AiAnalysisResult`; `ContentBrief` stores the content-specific validated result or reference to it, not a second provider-call system.
+P5-A reuses P4 `AiTask`, `AiTaskRun`, `AiProviderCall` and `AiAnalysisResult`; `ContentBrief` stores the content-specific validated result/reference and does not create a second provider-call system.
 
 ## Deterministic Fact Sources
 
@@ -211,7 +211,7 @@ Rules:
 
 ## Deterministic Opportunity Rules V1
 
-The first rule catalog should be intentionally conservative.
+The first rule catalog is intentionally conservative.
 
 ### Thin or unavailable main content
 
@@ -246,7 +246,7 @@ Add P5-A task types without changing P6:
 - `CONTENT_BRIEF`
 - `CONTENT_OPTIMIZATION_ANALYSIS`
 
-Suggested prompt IDs:
+Prompt IDs:
 
 - `content-brief-v1`
 - `content-optimization-v1`
@@ -281,7 +281,7 @@ AI may recommend wording or structure, but the UI must label it as AI recommenda
 
 ## Idempotency
 
-Logical AI request keys must be stable and tied to deterministic inputs.
+Logical AI request keys are stable and tied to deterministic inputs.
 
 Examples:
 
@@ -292,9 +292,9 @@ The same page content + same prompt version produces one logical task. Changed c
 
 ## Feature Gating
 
-Introduce a P5 content capability separate from P6, for example `CONTENT_INTELLIGENCE`.
+P5-A uses the exact feature capability `CONTENT_INTELLIGENCE`.
 
-Recommended plan availability:
+Plan availability:
 
 - STANDARD: content inventory, deterministic opportunities, bounded AI briefs/optimization.
 - ADVANCED: same P5-A capability; P6 AI Visibility remains separately gated.
@@ -317,7 +317,7 @@ Project-scoped endpoints:
 
 All reads/writes enforce project scoping.
 
-Refresh behavior should be idempotent and deterministic. It reads persisted data; it does not independently recrawl the web. A separate crawl remains a P1 action.
+Refresh behavior is idempotent and deterministic. It reads persisted data; it does not independently recrawl the web. A separate crawl remains a P1 action.
 
 ## Web UI
 
@@ -359,13 +359,14 @@ Do not alter the `AI 可见性` navigation or wire P6 functionality.
 
 ## Queue and Execution
 
-- Deterministic content refresh may use a dedicated BullMQ `content` queue or synchronous bounded service depending on measured workload; preferred design is a durable `content` queue for project-wide refreshes.
+- Project-wide deterministic content refresh uses a dedicated BullMQ queue named `content` and a durable content-refresh job identity.
+- The refresh worker reads only persisted P1/P2/P3 facts and writes P5-A derived ContentDocument/ContentSignal/ContentOpportunity state.
 - AI brief/optimization uses the existing P4 `ai` queue and `attempts: 1` policy.
-- Explicit manual retry semantics remain inherited from P4.
+- Explicit manual retry semantics remain inherited from P4 for AI work.
 
 ## Observability
 
-Add structured content lifecycle events, such as:
+Add structured content lifecycle events:
 
 - `content.refresh.queued`
 - `content.refresh.started`
@@ -423,7 +424,7 @@ CI must not call live DeepSeek.
 - New P5-A tables/enums are additive.
 - Existing P1/P2/P3/P4 rows and semantics remain unchanged.
 - Existing `AI_ANALYSIS` and `AI_VISIBILITY` behavior remains backward compatible.
-- P5-A can reuse P4 AI task infrastructure without changing existing P4 task semantics.
+- P5-A reuses P4 AI task infrastructure without changing existing P4 task semantics.
 
 ## Release Gate
 
@@ -460,11 +461,11 @@ P5-A is accepted only when:
 6. AI returned source refs are restricted to supplied refs.
 7. AI cannot mark content opportunities verified fixed.
 8. Same content hash + prompt version is idempotent for paid AI work.
-9. STANDARD/ADVANCED/ENTERPRISE can use P5-A through a non-P6 feature gate.
+9. STANDARD/ADVANCED/ENTERPRISE can use P5-A through `CONTENT_INTELLIGENCE`, not P6 `AI_VISIBILITY`.
 10. Content Center and document/brief views are project-scoped and tested.
 11. No raw secrets/provider reasoning/full prompts/full page bodies are logged.
 12. Full Prisma/TypeScript/tests/build/runtime-audit/Chromium E2E release gate is green.
 
 ## Handoff to P5-B
 
-After P5-A is complete, P5-B Competitor Intelligence can introduce a separate competitor-domain fact layer. It should compare owned ContentDocument facts against deterministic competitor observations and then use P4 AI only to explain gaps. P5-B must not treat third-party estimated traffic/rankings as measured facts unless an explicit external data source is integrated and provenance is stored.
+After P5-A is complete, P5-B Competitor Intelligence introduces a separate competitor-domain fact layer. It compares owned ContentDocument facts against deterministic competitor observations and then uses P4 AI only to explain gaps. P5-B must not treat third-party estimated traffic/rankings as measured facts unless an explicit external data source is integrated and provenance is stored.
