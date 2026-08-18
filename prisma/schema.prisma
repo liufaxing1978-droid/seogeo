@@ -163,15 +163,15 @@ model Project {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  crawlRuns        CrawlRun[]
-  pages            Page[]
-  seoAuditRuns     SeoAuditRun[]
-  seoIssues        SeoIssue[]
-  seoScores        SeoScore[]
-  geoAuditRuns     GeoAuditRun[]
-  entities         Entity[]
-  entityRelations  EntityRelation[]
-  geoScores        GeoScore[]
+  crawlRuns       CrawlRun[]
+  pages           Page[]
+  seoAuditRuns    SeoAuditRun[]
+  seoIssues       SeoIssue[]
+  seoScores       SeoScore[]
+  geoAuditRuns    GeoAuditRun[]
+  entities        Entity[]
+  entityRelations EntityRelation[]
+  geoScores       GeoScore[]
 
   @@index([primaryDomain])
   @@index([status])
@@ -220,15 +220,15 @@ model Page {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  project              Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  snapshots            PageSnapshot[]
-  seoRuleResults       SeoRuleResult[]
-  seoIssuePages        SeoIssuePage[]
-  geoRuleResults       GeoRuleResult[]
-  citabilityResults    CitabilityResult[]
-  entityObservations   EntityObservation[]
-  pageEntities         PageEntity[]
-  entityRelations      EntityRelation[]
+  project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  snapshots          PageSnapshot[]
+  seoRuleResults     SeoRuleResult[]
+  seoIssuePages      SeoIssuePage[]
+  geoRuleResults     GeoRuleResult[]
+  citabilityResults  CitabilityResult[]
+  entityObservations EntityObservation[]
+  pageEntities       PageEntity[]
+  entityRelations    EntityRelation[]
 
   @@unique([projectId, normalizedUrl])
   @@index([projectId, host])
@@ -322,16 +322,16 @@ model RobotsResult {
 }
 
 model SitemapSource {
-  id                 String      @id @default(uuid()) @db.Uuid
-  crawlRunId         String      @db.Uuid
+  id                 String       @id @default(uuid()) @db.Uuid
+  crawlRunId         String       @db.Uuid
   url                String
   statusCode         Int?
   type               SitemapType?
   parseError         String?
-  discoveredUrlCount Int         @default(0)
-  fetchedAt          DateTime    @default(now())
+  discoveredUrlCount Int          @default(0)
+  fetchedAt          DateTime     @default(now())
 
-  crawlRun CrawlRun    @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
+  crawlRun CrawlRun     @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
   urls     SitemapUrl[]
 
   @@index([crawlRunId, fetchedAt])
@@ -503,8 +503,8 @@ model SeoScore {
   calculatedAt  DateTime @default(now())
   engineVersion String
 
-  auditRun   SeoAuditRun        @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
-  project    Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  auditRun   SeoAuditRun         @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
+  project    Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   components SeoScoreComponent[]
 
   @@index([projectId, calculatedAt])
@@ -544,8 +544,8 @@ model GeoAuditRun {
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
-  project              Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  crawlRun             CrawlRun               @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
+  project              Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  crawlRun             CrawlRun                @relation(fields: [crawlRunId], references: [id], onDelete: Cascade)
   ruleResults          GeoRuleResult[]
   citabilityResults    CitabilityResult[]
   entityObservations   EntityObservation[]
@@ -594,20 +594,20 @@ model GeoRuleVersion {
 }
 
 model GeoRuleResult {
-  id             String         @id @default(uuid()) @db.Uuid
-  geoAuditRunId  String         @db.Uuid
-  pageId         String?        @db.Uuid
-  entityId       String?        @db.Uuid
-  ruleVersionId  String         @db.Uuid
-  resultKey      String
-  outcome        GeoRuleOutcome
-  evidence       Json?
-  createdAt      DateTime       @default(now())
+  id            String         @id @default(uuid()) @db.Uuid
+  geoAuditRunId String         @db.Uuid
+  pageId        String?        @db.Uuid
+  entityId      String?        @db.Uuid
+  ruleVersionId String         @db.Uuid
+  resultKey     String
+  outcome       GeoRuleOutcome
+  evidence      Json?
+  createdAt     DateTime       @default(now())
 
-  geoAuditRun GeoAuditRun     @relation(fields: [geoAuditRunId], references: [id], onDelete: Cascade)
-  page        Page?           @relation(fields: [pageId], references: [id], onDelete: SetNull)
-  entity      Entity?         @relation(fields: [entityId], references: [id], onDelete: SetNull)
-  ruleVersion GeoRuleVersion  @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
+  geoAuditRun GeoAuditRun    @relation(fields: [geoAuditRunId], references: [id], onDelete: Cascade)
+  page        Page?          @relation(fields: [pageId], references: [id], onDelete: SetNull)
+  entity      Entity?        @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  ruleVersion GeoRuleVersion @relation(fields: [ruleVersionId], references: [id], onDelete: Restrict)
 
   @@unique([geoAuditRunId, ruleVersionId, resultKey])
   @@index([geoAuditRunId, outcome])
@@ -616,19 +616,19 @@ model GeoRuleResult {
 }
 
 model CitabilityResult {
-  id                       String   @id @default(uuid()) @db.Uuid
-  geoAuditRunId            String   @db.Uuid
-  pageId                    String   @db.Uuid
-  answerFirstScore          Float
-  headingStructureScore     Float
-  factualDensityScore       Float
-  sourceSupportScore        Float
-  extractabilityScore       Float
-  definitionClarityScore    Float
-  overallScore              Float
-  evidence                  Json?
-  engineVersion             String
-  createdAt                 DateTime @default(now())
+  id                     String   @id @default(uuid()) @db.Uuid
+  geoAuditRunId          String   @db.Uuid
+  pageId                 String   @db.Uuid
+  answerFirstScore       Float?
+  headingStructureScore  Float
+  factualDensityScore    Float?
+  sourceSupportScore     Float
+  extractabilityScore    Float
+  definitionClarityScore Float?
+  overallScore           Float
+  evidence               Json?
+  engineVersion          String
+  createdAt              DateTime @default(now())
 
   geoAuditRun GeoAuditRun @relation(fields: [geoAuditRunId], references: [id], onDelete: Cascade)
   page        Page        @relation(fields: [pageId], references: [id], onDelete: Cascade)
@@ -650,13 +650,13 @@ model Entity {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  project          Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  aliases          EntityAlias[]
-  observations     EntityObservation[]
-  pageEntities     PageEntity[]
-  sourceRelations  EntityRelation[]     @relation("EntityRelationSource")
-  targetRelations  EntityRelation[]     @relation("EntityRelationTarget")
-  geoRuleResults   GeoRuleResult[]
+  project         Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  aliases         EntityAlias[]
+  observations    EntityObservation[]
+  pageEntities    PageEntity[]
+  sourceRelations EntityRelation[]     @relation("EntityRelationSource")
+  targetRelations EntityRelation[]     @relation("EntityRelationTarget")
+  geoRuleResults  GeoRuleResult[]
 
   @@unique([projectId, entityType, normalizedName])
   @@index([projectId, status])
@@ -677,13 +677,13 @@ model EntityAlias {
 }
 
 model EntityRelation {
-  id             String  @id @default(uuid()) @db.Uuid
-  projectId      String  @db.Uuid
-  sourceEntityId String  @db.Uuid
+  id             String   @id @default(uuid()) @db.Uuid
+  projectId      String   @db.Uuid
+  sourceEntityId String   @db.Uuid
   relationType   String
-  targetEntityId String  @db.Uuid
-  sourcePageId   String? @db.Uuid
-  confidence     Float   @default(1)
+  targetEntityId String   @db.Uuid
+  sourcePageId   String?  @db.Uuid
+  confidence     Float    @default(1)
   evidence       Json?
   createdAt      DateTime @default(now())
 
@@ -732,16 +732,16 @@ model PageEntity {
 }
 
 model AiCrawlerResult {
-  id                  String                   @id @default(uuid()) @db.Uuid
-  geoAuditRunId       String                   @db.Uuid
-  crawlerCode         String
-  robotsAllowed       Boolean?
-  metaRobotsAllowed   Boolean?
-  xRobotsAllowed      Boolean?
-  reachable           Boolean?
-  status              AiCrawlerReadinessStatus
-  evidence            Json?
-  createdAt           DateTime                 @default(now())
+  id                String                   @id @default(uuid()) @db.Uuid
+  geoAuditRunId     String                   @db.Uuid
+  crawlerCode       String
+  robotsAllowed     Boolean?
+  metaRobotsAllowed Boolean?
+  xRobotsAllowed    Boolean?
+  reachable         Boolean?
+  status            AiCrawlerReadinessStatus
+  evidence          Json?
+  createdAt         DateTime                 @default(now())
 
   geoAuditRun GeoAuditRun @relation(fields: [geoAuditRunId], references: [id], onDelete: Cascade)
 
