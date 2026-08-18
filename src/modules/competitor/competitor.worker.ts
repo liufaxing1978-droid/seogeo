@@ -5,6 +5,7 @@ import { parseHtml } from '../crawler/html-parser.js';
 import { isInProjectScope, normalizeCrawlUrl } from '../crawler/url-normalizer.js';
 import type { CompetitorCrawlJobData } from './competitor.service.js';
 
+export type { CompetitorCrawlJobData } from './competitor.service.js';
 export type CompetitorFetch = typeof fetchPage;
 
 export interface CompetitorWorkerDependencies {
