@@ -1,6 +1,6 @@
 import { syncAuditIssues } from './issue-service.js';
-import { BUILTIN_PAGE_RULES } from './rule-catalog.js';
-import { getPageRuleEvaluator } from './rule-registry.js';
+import { BUILTIN_CRAWL_RULES, BUILTIN_PAGE_RULES } from './rule-catalog.js';
+import { getCrawlRuleEvaluator, getPageRuleEvaluator } from './rule-registry.js';
 import { syncBuiltinRules } from './rule-sync.js';
 import { calculateAndPersistSeoScore } from './score-engine.js';
 import {
@@ -59,6 +59,24 @@ export async function executeSeoAudit(
           evidence: result.evidence
         });
       }
+    }
+
+    const crawlFact = {
+      robots: input.robots,
+      sitemaps: input.sitemaps
+    };
+    for (const definition of BUILTIN_CRAWL_RULES) {
+      const identity = ruleIdentities.get(definition.ruleCode);
+      if (!identity) throw new Error(`Missing synchronized SEO rule: ${definition.ruleCode}`);
+
+      const result = getCrawlRuleEvaluator(definition.ruleCode)(crawlFact);
+      rows.push({
+        pageId: null,
+        ruleVersionId: identity.ruleVersionId,
+        resultKey: `crawl:${definition.ruleCode}`,
+        outcome: result.outcome,
+        evidence: result.evidence
+      });
     }
 
     await repository.replaceRuleResults(auditRunId, rows);
