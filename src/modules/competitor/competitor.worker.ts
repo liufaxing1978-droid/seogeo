@@ -40,7 +40,11 @@ export async function executeCompetitorCrawl(competitorCrawlId: string, dependen
 
       const result = await fetcher(normalizedUrl);
       let parsed: ReturnType<typeof parseHtml> | null = null;
-      if (result.body) parsed = parseHtml(result.body, result.finalUrl, result.headers, result.statusCode);
+      const finalUrlInScope = (() => {
+        try { return isInProjectScope(new URL(result.finalUrl), crawl.competitor.domain); }
+        catch { return false; }
+      })();
+      if (result.body && finalUrlInScope) parsed = parseHtml(result.body, result.finalUrl, result.headers, result.statusCode);
 
       await prisma.competitorPageSnapshot.upsert({
         where: { competitorCrawlId_normalizedUrl: { competitorCrawlId: crawl.id, normalizedUrl } },
