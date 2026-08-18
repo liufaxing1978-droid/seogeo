@@ -1,0 +1,58 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Crawler</p>
+    <h1>抓取详情</h1>
+    <p class="muted"><%= crawl.project.name %> · <%= crawl.seedUrl %></p>
+  </div>
+  <a class="button button-secondary" href="/projects/<%= crawl.project.id %>/crawls">返回抓取历史</a>
+</section>
+
+<section class="metric-grid">
+  <article class="metric-card"><span>状态</span><strong><%= crawl.status %></strong></article>
+  <article class="metric-card"><span>发现页面</span><strong><%= crawl.pagesDiscovered %></strong></article>
+  <article class="metric-card"><span>已抓取</span><strong><%= crawl.pagesCrawled %></strong></article>
+  <article class="metric-card"><span>成功 / 失败</span><strong><%= crawl.pagesSucceeded %> / <%= crawl.pagesFailed %></strong></article>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><h2>robots.txt</h2></div>
+  <% const robots = crawl.robotsResults?.[0] ?? null; %>
+  <% if (robots) { %>
+    <dl class="detail-grid">
+      <div><dt>URL</dt><dd><%= robots.url %></dd></div>
+      <div><dt>HTTP</dt><dd><%= robots.statusCode ?? '未知' %></dd></div>
+      <div><dt>解析错误</dt><dd><%= robots.parseError ?? '无' %></dd></div>
+    </dl>
+  <% } else { %>
+    <p class="muted">尚无 robots.txt 抓取记录。</p>
+  <% } %>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><h2>Sitemap</h2></div>
+  <% if (crawl.sitemapSources?.length) { %>
+    <div class="table-wrap"><table><thead><tr><th>URL</th><th>HTTP</th><th>类型</th><th>发现 URL</th></tr></thead><tbody>
+      <% for (const source of crawl.sitemapSources) { %>
+        <tr><td><%= source.url %></td><td><%= source.statusCode ?? '未知' %></td><td><%= source.type ?? '未知' %></td><td><%= source._count?.urls ?? source.discoveredUrlCount %></td></tr>
+      <% } %>
+    </tbody></table></div>
+  <% } else { %>
+    <p class="muted">尚无 sitemap.xml 记录。</p>
+  <% } %>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><h2>页面结果 <span class="muted">(<%= pageTotal %>)</span></h2></div>
+  <div class="table-wrap"><table><thead><tr><th>URL</th><th>HTTP</th><th>Title</th><th>Indexable</th><th>Render</th><th>抓取时间</th></tr></thead><tbody>
+    <% for (const item of pages) { %>
+      <tr>
+        <td><a href="/pages/<%= item.pageId %>"><%= item.url %></a></td>
+        <td><%= item.statusCode ?? '未知' %></td>
+        <td><%= item.title ?? '—' %></td>
+        <td><%= item.indexable === null ? '未知' : item.indexable ? '是' : '否' %></td>
+        <td><%= item.rendered ? 'Browser' : 'HTTP' %></td>
+        <td><%= item.capturedAt ? item.capturedAt.toISOString() : '—' %></td>
+      </tr>
+    <% } %>
+  </tbody></table></div>
+</section>
