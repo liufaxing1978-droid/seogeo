@@ -22,7 +22,7 @@
       <a href="<%= currentProjectId ? `/projects/${currentProjectId}/geo/ai-crawlers` : '/projects' %>">AI Crawler</a>
     </div>
     <div class="nav-group"><div class="nav-label">高级功能</div><a href="#">AI Visibility <span class="badge premium">高级版</span></a><a href="#">Prompt 监控</a><a href="#">Citation 监控</a><a href="#">Share of Voice</a></div>
-    <div class="nav-group"><div class="nav-label">AI</div><a href="#">DeepSeek</a></div>
+    <div class="nav-group"><div class="nav-label">AI</div><a class="<%= activeNav === 'ai' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/ai` : '/projects' %>">DeepSeek 分析中心</a></div>
     <div class="nav-group"><div class="nav-label">其他</div><a href="#">报告</a><a href="#">系统</a></div>
   </nav>
 </aside>
