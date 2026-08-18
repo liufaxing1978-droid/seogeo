@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '../../src/db/prisma.js';
-import { BUILTIN_PAGE_RULES } from '../../src/modules/seo/rule-catalog.js';
+import { BUILTIN_PAGE_RULES, BUILTIN_RULES } from '../../src/modules/seo/rule-catalog.js';
 import { syncBuiltinRules, syncRuleDefinitions } from '../../src/modules/seo/rule-sync.js';
 
 describe('SEO rule catalog synchronization', () => {
@@ -22,7 +22,7 @@ describe('SEO rule catalog synchronization', () => {
     expect(second.size).toBe(first.size);
     expect(await prisma.seoRule.count()).toBe(countsAfterFirst.rules);
     expect(await prisma.seoRuleVersion.count()).toBe(countsAfterFirst.versions);
-    expect(first.size).toBe(BUILTIN_PAGE_RULES.length);
+    expect(first.size).toBe(BUILTIN_RULES.length);
   });
 
   it('creates a new rule version without overwriting the earlier version', async () => {
