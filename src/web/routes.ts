@@ -4,6 +4,8 @@ import { crawlRepository } from '../modules/crawler/crawl.repository.js';
 import { crawlerWebRepository } from '../modules/crawler/crawler.web.repository.js';
 import { ProjectService } from '../modules/projects/project.service.js';
 import { projectRepository } from '../modules/projects/project.repository.js';
+import { seoService } from '../modules/seo/seo.service.js';
+import { seoWebRepository } from '../modules/seo/seo.web.repository.js';
 import { dashboardMetrics, projectTabs } from './view-models.js';
 
 const projectService = new ProjectService(projectRepository);
@@ -125,6 +127,72 @@ webRoutes.get('/pages/:pageId', async (req, res, next) => {
       latest: page.snapshots[0] ?? null,
       snapshots: page.snapshots
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+webRoutes.get('/projects/:id/seo', async (req, res, next) => {
+  try {
+    const model = await seoWebRepository.getAuditDashboard(req.params.id);
+    if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
+
+    render(res, 'seo/audit', {
+      title: 'SEO 审计',
+      activeNav: 'seo',
+      currentProjectId: model.project.id,
+      ...model
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+webRoutes.post('/projects/:id/seo/run', async (req, res, next) => {
+  try {
+    await seoService.createProjectAudit(req.params.id, {});
+    res.redirect(303, `/projects/${req.params.id}/seo`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+webRoutes.get('/projects/:id/seo/issues', async (req, res, next) => {
+  try {
+    const model = await seoWebRepository.listProjectIssues(req.params.id);
+    if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
+
+    render(res, 'seo/issues', {
+      title: 'SEO 问题中心',
+      activeNav: 'seo',
+      currentProjectId: model.project.id,
+      ...model
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+webRoutes.get('/seo/issues/:issueId', async (req, res, next) => {
+  try {
+    const model = await seoWebRepository.getIssuePage(req.params.issueId);
+    if (!model) throw new NotFoundError('SEO issue not found', 'SEO_ISSUE_NOT_FOUND');
+
+    render(res, 'seo/issue-show', {
+      title: model.issue.title,
+      activeNav: 'seo',
+      currentProjectId: model.project.id,
+      ...model
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+webRoutes.post('/seo/issues/:issueId/status', async (req, res, next) => {
+  try {
+    await seoService.updateIssueStatus(req.params.issueId, req.body);
+    res.redirect(303, `/seo/issues/${req.params.issueId}`);
   } catch (error) {
     next(error);
   }
