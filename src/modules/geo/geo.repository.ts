@@ -1,5 +1,6 @@
 import { Prisma, type GeoAuditRunStatus, type GeoRuleOutcome } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
+import { logGeoEvent, sanitizeGeoError } from './geo-observability.js';
 
 export interface GeoRuleResultWrite {
   pageId?: string | null;
@@ -22,7 +23,7 @@ export async function getGeoAuditContext(geoAuditRunId: string) {
   return audit;
 }
 
-export function updateGeoAuditStatus(
+export async function updateGeoAuditStatus(
   geoAuditRunId: string,
   status: GeoAuditRunStatus,
   data: {
@@ -33,10 +34,38 @@ export function updateGeoAuditStatus(
     finishedAt?: Date | null;
   } = {}
 ) {
-  return prisma.geoAuditRun.update({
+  const updated = await prisma.geoAuditRun.update({
     where: { id: geoAuditRunId },
     data: { status, ...data }
   });
+
+  if (status === 'RUNNING' && data.startedAt) {
+    logGeoEvent('geo.audit.started', {
+      geoAuditRunId,
+      projectId: updated.projectId,
+      crawlRunId: updated.crawlRunId,
+      engineVersion: updated.engineVersion
+    });
+  } else if (status === 'COMPLETED') {
+    logGeoEvent('geo.audit.completed', {
+      geoAuditRunId,
+      projectId: updated.projectId,
+      crawlRunId: updated.crawlRunId,
+      engineVersion: updated.engineVersion,
+      eligiblePages: updated.eligiblePages,
+      rulesEvaluated: updated.rulesEvaluated
+    });
+  } else if (status === 'FAILED') {
+    logGeoEvent('geo.audit.failed', {
+      geoAuditRunId,
+      projectId: updated.projectId,
+      crawlRunId: updated.crawlRunId,
+      engineVersion: updated.engineVersion,
+      error: sanitizeGeoError(updated.errorMessage)
+    });
+  }
+
+  return updated;
 }
 
 export async function replaceGeoRuleResults(
