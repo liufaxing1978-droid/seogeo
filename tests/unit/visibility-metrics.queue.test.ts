@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   VISIBILITY_METRICS_ATTEMPTS,
   VISIBILITY_METRICS_QUEUE_NAME,
@@ -6,6 +6,7 @@ import {
   buildVisibilityMetricsJobId,
   type VisibilityMetricsQueuePort
 } from '../../src/modules/visibility/visibility-metrics.queue.js';
+import { processVisibilityMetricsJob } from '../../src/modules/visibility/visibility-metrics.worker.js';
 
 class FakeQueue implements VisibilityMetricsQueuePort {
   calls: Array<{ name: string; data: Record<string, unknown>; options: { jobId: string; attempts: number } }> = [];
@@ -26,6 +27,18 @@ const JOB = {
   windowEnd: '2026-08-08T00:00:00.000Z',
   inputCutoffAt: '2026-08-08T00:05:00.000Z',
   scopeHash: 'b'.repeat(64)
+};
+
+const SNAPSHOT = {
+  id: JOB.snapshotId,
+  projectId: JOB.projectId,
+  formulaVersion: JOB.formulaVersion,
+  extractorVersion: JOB.extractorVersion,
+  subjectSetHash: JOB.subjectSetHash,
+  windowStart: new Date(JOB.windowStart),
+  windowEnd: new Date(JOB.windowEnd),
+  inputCutoffAt: new Date(JOB.inputCutoffAt),
+  scopeHash: JOB.scopeHash
 };
 
 describe('P6-C visibility metrics queue', () => {
@@ -54,5 +67,40 @@ describe('P6-C visibility metrics queue', () => {
     expect(buildVisibilityMetricsJobId({ ...JOB, inputCutoffAt: '2026-08-08T00:06:00.000Z' })).not.toBe(base);
     expect(buildVisibilityMetricsJobId({ ...JOB, scopeHash: 'c'.repeat(64) })).not.toBe(base);
     expect(buildVisibilityMetricsJobId({ ...JOB, subjectSetHash: 'd'.repeat(64) })).not.toBe(base);
+  });
+
+  it('validates the frozen same-project snapshot identity and performs zero network calls', async () => {
+    const materializeSnapshot = vi.fn(async () => ({ id: JOB.snapshotId, status: 'COMPLETED' }));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+    try {
+      const result = await processVisibilityMetricsJob(
+        { name: 'materialize-metric-snapshot', data: JOB },
+        {
+          repository: { get: vi.fn(async () => SNAPSHOT as never) },
+          metricsService: { materializeSnapshot: materializeSnapshot as never }
+        }
+      );
+
+      expect(result).toMatchObject({ id: JOB.snapshotId, status: 'COMPLETED' });
+      expect(materializeSnapshot).toHaveBeenCalledWith(JOB.projectId, JOB.snapshotId);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('rejects a missing or mismatched project snapshot before materialization', async () => {
+    const materializeSnapshot = vi.fn();
+
+    await expect(processVisibilityMetricsJob(
+      { name: 'materialize-metric-snapshot', data: JOB },
+      {
+        repository: { get: vi.fn(async () => null) },
+        metricsService: { materializeSnapshot: materializeSnapshot as never }
+      }
+    )).rejects.toMatchObject({ code: 'VISIBILITY_METRICS_SNAPSHOT_NOT_FOUND' });
+
+    expect(materializeSnapshot).not.toHaveBeenCalled();
   });
 });
