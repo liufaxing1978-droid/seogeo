@@ -5,6 +5,7 @@ import { VisibilityProviderRegistry } from '../../src/modules/visibility/provide
 import { VisibilityRunService, type VisibilityQueue } from '../../src/modules/visibility/visibility-run.service.js';
 import { executeVisibilityObservation } from '../../src/modules/visibility/visibility.worker.js';
 
+// This contract must fail until run/worker lifecycle boundaries emit the safe visibility events below.
 class FakeVisibilityQueue implements VisibilityQueue {
   async add(_name: string, _data: { observationId: string }, options: { jobId: string; attempts: number }) {
     return { id: options.jobId };
