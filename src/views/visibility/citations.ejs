@@ -1,0 +1,74 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">AI Visibility · P6-B</p>
+    <h1>Citation 监控</h1>
+    <p class="muted"><%= project.name %> · 这里只展示持久化 observation 派生出的确定性 Mention / Citation 事实；P6-C 聚合指标尚未启用。</p>
+  </div>
+  <div class="actions">
+    <a class="button" href="/projects/<%= project.id %>/visibility/subjects">监控主体</a>
+    <a class="button" href="/projects/<%= project.id %>/visibility">返回 AI Visibility</a>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>Extraction 状态</h2><p class="muted">UNKNOWN 与 NOT_ELIGIBLE 不等于零；KNOWN_EMPTY 只代表有资格抽取且确定为空。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>状态</th><th>Mention 证据</th><th>Citation 证据</th><th>Mention 数</th><th>Citation 数</th><th>Extractor</th><th>Subject Set</th><th>详情</th></tr></thead>
+    <tbody>
+      <% for (const item of extractions) { %>
+        <tr>
+          <td><span class="badge"><%= item.status %></span></td>
+          <td><%= item.mentionStatus %></td>
+          <td><%= item.citationStatus %></td>
+          <td><%= item.mentionCount %></td>
+          <td><%= item.citationCount %></td>
+          <td><code><%= item.extractorVersion %></code></td>
+          <td><code><%= item.subjectSetHash.slice(0, 12) %>…</code></td>
+          <td><a href="/projects/<%= project.id %>/visibility/extractions/<%= item.id %>">查看</a></td>
+        </tr>
+      <% } %>
+      <% if (!extractions.length) { %><tr><td colspan="8" class="muted">尚无 extraction。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>Citation Facts</h2><p class="muted">只接受 provider-native citation/search metadata；正文普通 URL 不会升级为 Citation。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Domain</th><th>Title / URL</th><th>位置</th><th>次数</th><th>Owned</th><th>来源类型</th><th>Extractor</th></tr></thead>
+    <tbody>
+      <% for (const item of citations) { %>
+        <tr>
+          <td><strong><%= item.domain %></strong></td>
+          <td><%= item.title ?? '—' %><div class="muted"><%= item.normalizedUrl %></div></td>
+          <td><%= item.position ?? '—' %></td>
+          <td><%= item.occurrenceCount %></td>
+          <td><%= item.isOwnedDomain ? '是' : '否' %></td>
+          <td><%= item.sourceType ?? '—' %></td>
+          <td><code><%= item.extractorVersion %></code></td>
+        </tr>
+      <% } %>
+      <% if (!citations.length) { %><tr><td colspan="7" class="muted">尚无 Citation facts。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>Mention Facts</h2><p class="muted">Exact / alias / domain 匹配均为确定性规则，不使用模糊匹配、embedding 或 LLM。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Subject</th><th>匹配值</th><th>类型</th><th>次数</th><th>首次位置</th><th>Extractor</th></tr></thead>
+    <tbody>
+      <% for (const item of mentions) { %>
+        <tr>
+          <td><strong><%= item.subjectValue %></strong><div class="muted"><%= item.subjectType %></div></td>
+          <td><%= item.matchedValue %></td>
+          <td><%= item.mentionType %></td>
+          <td><%= item.occurrenceCount %></td>
+          <td><%= item.firstPosition ?? '—' %></td>
+          <td><code><%= item.extractorVersion %></code></td>
+        </tr>
+      <% } %>
+      <% if (!mentions.length) { %><tr><td colspan="6" class="muted">尚无 Mention facts。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>

@@ -124,10 +124,10 @@ jobs:
         run: npx prisma migrate deploy
       - name: Install Chromium system dependencies
         timeout-minutes: 10
-        run: npx playwright install-deps chromium
+        run: node node_modules/@playwright/test/cli.js install-deps chromium
       - name: Install Chromium browser
         timeout-minutes: 10
-        run: npx playwright install chromium
+        run: node node_modules/@playwright/test/cli.js install chromium
       - name: Browser smoke tests
         timeout-minutes: 5
         run: npm run test:e2e

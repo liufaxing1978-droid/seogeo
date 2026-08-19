@@ -24,6 +24,7 @@ import { createVisibilityRoutes } from './modules/visibility/visibility.routes.j
 import type { VisibilityRunService } from './modules/visibility/visibility-run.service.js';
 import { visibilityWebRoutes } from './modules/visibility/visibility.web.routes.js';
 import { createVisibilityIntelligenceRoutes } from './modules/visibility/visibility-intelligence.routes.js';
+import { visibilityIntelligenceWebRoutes } from './modules/visibility/visibility-intelligence.web.routes.js';
 import type { VisibilityExtractionQueue } from './modules/visibility/visibility-extraction.queue.js';
 import { webRoutes } from './web/routes.js';
 
@@ -63,6 +64,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/', competitorWebRoutes);
   app.use('/', reportWebRoutes);
   app.use('/', visibilityWebRoutes);
+  app.use('/', visibilityIntelligenceWebRoutes);
   app.use('/', webRoutes);
   app.use(errorHandler);
   return app;

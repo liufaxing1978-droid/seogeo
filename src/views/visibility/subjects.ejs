@@ -1,0 +1,49 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">AI Visibility · P6-B</p>
+    <h1>监控主体</h1>
+    <p class="muted"><%= project.name %> · 主体和 alias 参与确定性 Mention / Citation 映射；配置变化会形成新的 subjectSetHash，不覆盖旧 extraction。</p>
+  </div>
+  <div class="actions"><a class="button" href="/projects/<%= project.id %>/visibility/citations">Citation 监控</a></div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>新增主体</h2><p class="muted">本页面提供 Owned Brand / Owned Domain 基础配置；实体和竞争对手可继续通过 API 关联。</p></div></div>
+  <form action="/projects/<%= project.id %>/visibility/subjects" method="post" class="form-grid">
+    <label class="field"><span>类型</span><select name="subjectType"><option value="OWNED_BRAND">OWNED_BRAND</option><option value="OWNED_DOMAIN">OWNED_DOMAIN</option></select></label>
+    <label class="field"><span>Canonical Value</span><input name="canonicalValue" required /></label>
+    <div class="actions"><button class="button" type="submit">新增主体</button></div>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>Subject Registry</h2><p class="muted">PRIMARY_DOMAIN 会自动 bootstrap；ARCHIVED 主体不会进入新 snapshot。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>类型</th><th>Canonical</th><th>Normalized</th><th>来源</th><th>状态</th><th>Aliases</th></tr></thead>
+    <tbody>
+      <% for (const subject of subjects) { const subjectAliases = aliases.filter((alias) => alias.subjectId === subject.id); %>
+        <tr>
+          <td><strong><%= subject.subjectType %></strong></td>
+          <td><%= subject.canonicalValue %></td>
+          <td><code><%= subject.normalizedValue %></code></td>
+          <td><%= subject.sourceType %></td>
+          <td><%= subject.status %></td>
+          <td>
+            <% for (const alias of subjectAliases) { %><div><%= alias.alias %> <span class="muted">(<%= alias.aliasType %> · <%= alias.status %>)</span></div><% } %>
+            <form action="/projects/<%= project.id %>/visibility/subjects/<%= subject.id %>/aliases" method="post" class="form-grid" style="margin-top: .5rem">
+              <label class="field"><span>Alias</span><input name="alias" required /></label>
+              <label class="field"><span>类型</span><select name="aliasType"><option value="NAME">NAME</option><option value="DOMAIN">DOMAIN</option><option value="ENTITY_ALIAS">ENTITY_ALIAS</option></select></label>
+              <div class="actions"><button class="button" type="submit">添加 Alias</button></div>
+            </form>
+          </td>
+        </tr>
+      <% } %>
+      <% if (!subjects.length) { %><tr><td colspan="6" class="muted">尚无监控主体。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>Alias 安全语义</h2></div></div>
+  <p class="muted">同一项目内如果 alias 可映射到多个主体，系统会以 AMBIGUOUS_ALIAS 失败关闭，不会猜测归属。跨项目主体 ID 返回 404。</p>
+</section>
