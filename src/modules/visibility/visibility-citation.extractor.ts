@@ -7,7 +7,7 @@ import type { VisibilitySubjectSnapshot } from './visibility-subject.service.js'
 export interface VisibilityCitationExtractionInput {
   id?: string;
   status: string;
-  citationEvidenceState: 'KNOWN_PRESENT' | 'KNOWN_EMPTY' | 'UNKNOWN' | 'NOT_APPLICABLE';
+  citationEvidenceState: string;
   citationsJson: unknown;
   answerText?: unknown;
 }
@@ -139,12 +139,9 @@ function materializeCitation(
     : entries
         .filter((entry) => entry.position === position)
         .sort((left, right) => left.inputOrder - right.inputOrder)[0] ?? representative;
-  const fallbackTitle = entries
-    .sort((left, right) => left.inputOrder - right.inputOrder)
-    .find((entry) => entry.title !== null)?.title ?? null;
-  const fallbackSourceType = entries
-    .sort((left, right) => left.inputOrder - right.inputOrder)
-    .find((entry) => entry.sourceType !== null)?.sourceType ?? null;
+  const byInputOrder = [...entries].sort((left, right) => left.inputOrder - right.inputOrder);
+  const fallbackTitle = byInputOrder.find((entry) => entry.title !== null)?.title ?? null;
+  const fallbackSourceType = byInputOrder.find((entry) => entry.sourceType !== null)?.sourceType ?? null;
 
   const subject = uniqueDomainSubject(representative.domain, subjectSnapshot);
   const ownedSubjectId = subject?.subjectType === 'OWNED_DOMAIN' ? subject.id : null;
@@ -184,6 +181,10 @@ export function extractCitations(
       return { status: 'UNKNOWN', citations: [] };
     }
     return { status: 'KNOWN_EMPTY', citations: [] };
+  }
+
+  if (observation.citationEvidenceState !== 'KNOWN_PRESENT') {
+    return { status: 'UNKNOWN', citations: [] };
   }
 
   if (!Array.isArray(observation.citationsJson) || observation.citationsJson.length === 0) {
