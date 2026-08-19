@@ -30,7 +30,7 @@ test('opens Advanced AI Visibility and configures Prompt Monitor without startin
   await page.getByRole('button', { name: '创建 Prompt Set' }).click();
   await expect(page.getByText('Unbranded discovery')).toBeVisible();
 
-  await page.getByLabel('Prompt Set', { exact: true }).selectOption({ label: 'Unbranded discovery' });
+  await page.locator('#prompt-set').selectOption({ label: 'Unbranded discovery' });
   await page.getByLabel('Prompt Key').fill('discovery');
   await page.getByLabel('Prompt 文本').fill('Which websites explain Chinese folk religious traditions well?');
   await page.getByRole('button', { name: '创建 Prompt 版本' }).click();
