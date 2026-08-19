@@ -55,10 +55,11 @@ export class VisibilityExtractionRepository {
 
   async claim(extractionId: string): Promise<boolean> {
     const result = await prisma.visibilityExtraction.updateMany({
-      where: { id: extractionId, status: 'QUEUED' },
+      where: { id: extractionId, status: { in: ['QUEUED', 'FAILED'] } },
       data: {
         status: 'RUNNING',
         startedAt: new Date(),
+        completedAt: null,
         errorCode: null
       }
     });
