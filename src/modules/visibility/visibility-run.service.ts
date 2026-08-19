@@ -4,6 +4,7 @@ import { hasFeature } from '../../auth/feature-flags.js';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
 import { createRedisConnection } from '../../queue/connection.js';
+import { emitVisibilityEvent } from './visibility-observability.js';
 
 export interface VisibilityJobData {
   observationId: string;
@@ -273,9 +274,20 @@ export class VisibilityRunService {
           errorCode: 'VISIBILITY_QUEUE_ENQUEUE_FAILED'
         }
       });
+      emitVisibilityEvent('visibility.run.failed', {
+        projectId,
+        runId: created.run.id,
+        status: 'FAILED',
+        errorCode: 'VISIBILITY_QUEUE_ENQUEUE_FAILED'
+      });
       throw error;
     }
 
+    emitVisibilityEvent('visibility.run.queued', {
+      projectId,
+      runId: created.run.id,
+      status: 'QUEUED'
+    });
     return created.run;
   }
 }
