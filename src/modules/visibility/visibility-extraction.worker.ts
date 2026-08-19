@@ -8,6 +8,7 @@ import {
   type BackfillVisibilityProjectJobData,
   type ExtractVisibilityObservationJobData
 } from './visibility-extraction.queue.js';
+import { emitVisibilityIntelligenceEvent } from './visibility-intelligence.observability.js';
 
 const DEFAULT_BACKFILL_LIMIT = 50;
 const MAX_BACKFILL_LIMIT = 100;
@@ -68,6 +69,12 @@ function backfillJobData(data: Record<string, unknown>): BackfillVisibilityProje
   };
 }
 
+function errorCode(error: unknown) {
+  return error instanceof VisibilityExtractionError
+    ? error.code
+    : 'VISIBILITY_EXTRACTION_WORKER_FAILED';
+}
+
 export async function expandVisibilityExtractionBackfill(
   input: BackfillVisibilityProjectJobData,
   dependencies: { queue: VisibilityExtractionQueue }
@@ -118,9 +125,48 @@ export async function processVisibilityExtractionJob(
       );
     }
 
+    const started = Date.now();
+    emitVisibilityIntelligenceEvent('visibility.extraction.started', {
+      projectId: data.projectId,
+      observationId: data.observationId,
+      extractorVersion: data.extractorVersion,
+      subjectSetHash: data.subjectSetHash,
+      status: 'RUNNING'
+    });
     const service = dependencies.extractionService
       ?? new VisibilityExtractionService({ extractorVersion: data.extractorVersion });
-    return service.extractObservation(data.projectId, data.observationId, data.subjectSetHash);
+    try {
+      const result = await service.extractObservation(
+        data.projectId,
+        data.observationId,
+        data.subjectSetHash
+      );
+      emitVisibilityIntelligenceEvent('visibility.extraction.completed', {
+        projectId: data.projectId,
+        observationId: data.observationId,
+        extractionId: result.id,
+        extractorVersion: data.extractorVersion,
+        subjectSetHash: data.subjectSetHash,
+        status: result.status,
+        mentionStatus: 'mentionStatus' in result ? result.mentionStatus : undefined,
+        citationStatus: 'citationStatus' in result ? result.citationStatus : undefined,
+        mentionCount: 'mentionCount' in result ? result.mentionCount : undefined,
+        citationCount: 'citationCount' in result ? result.citationCount : undefined,
+        durationMs: Date.now() - started
+      });
+      return result;
+    } catch (error) {
+      emitVisibilityIntelligenceEvent('visibility.extraction.failed', {
+        projectId: data.projectId,
+        observationId: data.observationId,
+        extractorVersion: data.extractorVersion,
+        subjectSetHash: data.subjectSetHash,
+        status: 'FAILED',
+        errorCode: errorCode(error),
+        durationMs: Date.now() - started
+      });
+      throw error;
+    }
   }
 
   if (job.name === 'backfill-project') {
