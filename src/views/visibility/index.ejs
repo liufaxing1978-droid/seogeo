@@ -1,0 +1,91 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">AI Visibility · P6-A</p>
+    <h1>AI Visibility</h1>
+    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
+  </div>
+  <div class="actions">
+    <a class="button" href="/projects/<%= project.id %>/visibility/prompts">配置 Prompt</a>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>官方 API 可见性采样</h2>
+      <p class="muted">本阶段记录官方 Provider API 的真实采样观察；它不等同于任何消费者产品网页端结果。</p>
+    </div>
+    <span class="badge">API 采样</span>
+  </div>
+</section>
+
+<section class="metric-grid compact">
+  <article class="metric-card">
+    <div class="metric-title">Provider 配置</div>
+    <div class="metric-value"><%= providers.length %></div>
+    <div class="metric-caption"><%= providers.filter((provider) => provider.enabled).length %> 个启用</div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-title">Prompt</div>
+    <div class="metric-value"><%= promptCount %></div>
+    <div class="metric-caption"><%= promptSetCount %> 个 Prompt Set</div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-title">API Observations</div>
+    <div class="metric-value"><%= observationCount %></div>
+    <div class="metric-caption">仅统计已持久化采样单元</div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-title">预算记录</div>
+    <div class="metric-value"><%= (recordedSpendMicros / 1000000).toFixed(4) %></div>
+    <div class="metric-caption"><%= settings?.defaultCurrency ?? 'USD' %> · 历史成本不重定价</div>
+  </article>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div><h2>预算与采样上限</h2><p class="muted">付费请求在 visibility worker 执行前进行预算预检。</p></div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>每日预算</th><th>默认单次运行预算</th><th>每次最大观察数</th><th>定时采样</th></tr></thead>
+      <tbody><tr>
+        <td><%= settings?.dailyBudgetMicros == null ? '未配置' : `${(settings.dailyBudgetMicros / 1000000).toFixed(4)} ${settings.defaultCurrency}` %></td>
+        <td><%= settings?.defaultRunBudgetMicros == null ? '未配置' : `${(settings.defaultRunBudgetMicros / 1000000).toFixed(4)} ${settings.defaultCurrency}` %></td>
+        <td><%= settings?.maxObservationsPerRun ?? 100 %></td>
+        <td><%= settings?.schedulingEnabled ? '已启用' : '未启用' %></td>
+      </tr></tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>Provider API 配置</h2><p class="muted">P6-A 仅支持 channel=API；消费者 UI 自动化不在本阶段范围。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Provider</th><th>Model</th><th>Channel</th><th>Grounding</th><th>状态</th><th>并发</th></tr></thead>
+    <tbody>
+      <% for (const provider of providers) { %>
+        <tr><td><strong><%= provider.provider %></strong></td><td><%= provider.model %></td><td><span class="badge"><%= provider.channel %></span></td><td><%= provider.groundingMode %></td><td><%= provider.enabled ? '启用' : '停用' %></td><td><%= provider.maxConcurrency %></td></tr>
+      <% } %>
+      <% if (!providers.length) { %><tr><td colspan="6" class="muted">尚未配置 Provider API。可先在 API/配置层启用支持的 Provider。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>最近采样运行</h2><p class="muted">这里展示采样状态与观察数量，不推导下一阶段的引用/提及指标。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>运行</th><th>类型</th><th>状态</th><th>观察数</th><th>预算上限</th><th>创建时间</th></tr></thead>
+    <tbody>
+      <% for (const run of recentRuns) { %>
+        <tr>
+          <td><a href="/projects/<%= project.id %>/visibility/runs/<%= run.id %>"><%= run.id.slice(0, 8) %></a></td>
+          <td><%= run.runType %></td><td><span class="badge"><%= run.status %></span></td><td><%= run._count.observations %></td>
+          <td><%= run.budgetCeilingMicros == null ? '未配置' : `${(run.budgetCeilingMicros / 1000000).toFixed(4)} ${run.currency}` %></td>
+          <td><%= new Date(run.createdAt).toLocaleString('zh-CN') %></td>
+        </tr>
+      <% } %>
+      <% if (!recentRuns.length) { %><tr><td colspan="6" class="muted">尚无采样运行。先在 Prompt 监控建立版本化 Prompt，再通过受控 API 发起采样。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>

@@ -22,6 +22,7 @@ import { createSeoRoutes } from './modules/seo/seo.routes.js';
 import type { SeoService } from './modules/seo/seo.service.js';
 import { createVisibilityRoutes } from './modules/visibility/visibility.routes.js';
 import type { VisibilityRunService } from './modules/visibility/visibility-run.service.js';
+import { visibilityWebRoutes } from './modules/visibility/visibility.web.routes.js';
 import { webRoutes } from './web/routes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -57,6 +58,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/', contentWebRoutes);
   app.use('/', competitorWebRoutes);
   app.use('/', reportWebRoutes);
+  app.use('/', visibilityWebRoutes);
   app.use('/', webRoutes);
   app.use(errorHandler);
   return app;
