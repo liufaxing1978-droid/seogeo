@@ -11,11 +11,18 @@ import {
   type VisibilityExtractionQueuePort
 } from '../modules/visibility/visibility-extraction.queue.js';
 import { processVisibilityExtractionJob } from '../modules/visibility/visibility-extraction.worker.js';
+import {
+  VISIBILITY_METRICS_QUEUE_NAME
+} from '../modules/visibility/visibility-metrics.queue.js';
+import {
+  processVisibilityMetricsJob,
+  VISIBILITY_METRICS_WORKER_CONCURRENCY
+} from '../modules/visibility/visibility-metrics.worker.js';
 import { processVisibilityJob, type VisibilityJobData } from '../modules/visibility/visibility.worker.js';
 import { createRedisConnection } from './connection.js';
 import { QUEUE_NAMES } from './queues.js';
 
-export function workerDefinitionForQueue(name: 'visibility' | 'visibility-extraction') {
+export function workerDefinitionForQueue(name: 'visibility' | 'visibility-extraction' | 'visibility-metrics') {
   if (name === 'visibility') {
     return {
       processor: processVisibilityJob,
@@ -26,6 +33,12 @@ export function workerDefinitionForQueue(name: 'visibility' | 'visibility-extrac
     return {
       processor: processVisibilityExtractionJob,
       concurrency: 4
+    } as const;
+  }
+  if (name === 'visibility-metrics') {
+    return {
+      processor: processVisibilityMetricsJob,
+      concurrency: VISIBILITY_METRICS_WORKER_CONCURRENCY
     } as const;
   }
   throw new Error(`Unsupported worker definition: ${name}`);
@@ -59,6 +72,13 @@ export async function startWorkers() {
           { queue: extractionQueue }
         ),
         { connection, concurrency: 4 }
+      );
+    }
+    if (name === VISIBILITY_METRICS_QUEUE_NAME) {
+      return new Worker<Record<string, unknown>>(
+        name,
+        async (job) => processVisibilityMetricsJob({ name: job.name, data: job.data }),
+        { connection, concurrency: VISIBILITY_METRICS_WORKER_CONCURRENCY }
       );
     }
     if (name === 'ai') return new Worker<AiJobData>(name, processAiJob, { connection });
