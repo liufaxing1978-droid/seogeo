@@ -80,6 +80,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:17
@@ -109,6 +110,7 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379
       SESSION_SECRET: ci-test-secret
       CRAWLER_BROWSER_ENABLED: 'false'
+      PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: '120000'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -120,7 +122,12 @@ jobs:
         run: npx prisma generate
       - name: Apply migrations
         run: npx prisma migrate deploy
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Chromium system dependencies
+        timeout-minutes: 10
+        run: npx playwright install-deps chromium
+      - name: Install Chromium browser
+        timeout-minutes: 10
+        run: npx playwright install chromium
       - name: Browser smoke tests
+        timeout-minutes: 5
         run: npm run test:e2e
