@@ -50,6 +50,13 @@ enum PlatformObservationStatus {
   BUDGET_SKIPPED
 }
 
+enum CitationEvidenceState {
+  KNOWN_PRESENT
+  KNOWN_EMPTY
+  UNKNOWN
+  NOT_APPLICABLE
+}
+
 model VisibilityProjectSettings {
   projectId               String   @id @db.Uuid
   dailyBudgetMicros       Int?
@@ -146,36 +153,37 @@ model VisibilityRun {
 }
 
 model PlatformObservation {
-  id                   String                    @id @default(uuid()) @db.Uuid
-  projectId            String                    @db.Uuid
-  visibilityRunId      String                    @db.Uuid
-  visibilityPromptId   String                    @db.Uuid
-  promptVersion        Int
-  samplingUnitKey      String                    @unique
-  provider             VisibilityProvider
-  model                String
-  channel              VisibilityChannel
-  groundingMode        VisibilityGroundingMode
-  locale               String?
-  country              String?
-  status               PlatformObservationStatus @default(PENDING)
-  providerResponseId   String?
-  answerText           String?
-  answerHash           String?
-  citationsJson        Json
-  searchMetadataJson   Json
-  promptTokens         Int?
-  completionTokens     Int?
-  totalTokens          Int?
-  searchUnits          Int?
-  costMicros           Int?
-  costCurrency         String?
-  pricingVersion       String?
-  latencyMs            Int?
-  errorCode            String?
-  observedAt           DateTime                  @default(now())
-  createdAt            DateTime                  @default(now())
-  updatedAt            DateTime                  @updatedAt
+  id                    String                    @id @default(uuid()) @db.Uuid
+  projectId             String                    @db.Uuid
+  visibilityRunId       String                    @db.Uuid
+  visibilityPromptId    String                    @db.Uuid
+  promptVersion         Int
+  samplingUnitKey       String                    @unique
+  provider              VisibilityProvider
+  model                 String
+  channel               VisibilityChannel
+  groundingMode         VisibilityGroundingMode
+  locale                String?
+  country               String?
+  status                PlatformObservationStatus @default(PENDING)
+  providerResponseId    String?
+  answerText            String?
+  answerHash            String?
+  citationsJson         Json
+  searchMetadataJson    Json
+  citationEvidenceState CitationEvidenceState     @default(UNKNOWN)
+  promptTokens          Int?
+  completionTokens      Int?
+  totalTokens           Int?
+  searchUnits           Int?
+  costMicros            Int?
+  costCurrency          String?
+  pricingVersion        String?
+  latencyMs             Int?
+  errorCode             String?
+  observedAt            DateTime                  @default(now())
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
 
   run    VisibilityRun    @relation(fields: [visibilityRunId], references: [id], onDelete: Cascade)
   prompt VisibilityPrompt @relation(fields: [visibilityPromptId], references: [id], onDelete: Cascade)
