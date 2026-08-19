@@ -4,7 +4,7 @@
 
 **Goal:** Build deterministic, immutable Mention Rate, Citation Rate, and presence-based Mention Share of Voice snapshots over persisted P6-B facts, with explicit evidence coverage, version isolation, Advanced/Enterprise API/UI access, and zero provider/network calculation.
 
-**Architecture:** P6-C adds a pure metric calculator, immutable metric snapshot/row persistence, a database-only materialization service and `visibility-metrics` queue, then project-scoped REST and EJS surfaces. Every snapshot is frozen by `formulaVersion + extractorVersion + subjectSetHash + window + inputCutoffAt + scopeHash`; missing/unknown P6-B evidence is never coerced to zero. P6-D trends, alerts, history dashboarding, and report integration remain out of scope.
+**Architecture:** P6-C adds a pure metric calculator, immutable metric snapshot/row persistence, a database-only materialization service and `visibility-metrics` queue, then project-scoped REST and EJS surfaces. Each snapshot is frozen by `formulaVersion + extractorVersion + subjectSetHash + window + inputCutoffAt + scopeHash`. Missing/unknown P6-B evidence is never coerced to zero. P6-D trends, alerts, history dashboarding, and report integration remain out of scope.
 
 **Tech Stack:** Node.js 22, TypeScript, Express 5, EJS, PostgreSQL/Prisma 6, Redis/BullMQ, Zod, Vitest/Supertest/Playwright.
 
@@ -14,24 +14,24 @@
 
 - Authoritative P6-C inputs come only from persisted P6-A `PlatformObservation` and P6-B extraction/fact rows.
 - No DeepSeek, LLM, embedding, fuzzy matching, live provider call, external URL fetch, search engine, or consumer-product UI automation may participate in authoritative metric calculation.
-- `UNKNOWN` and missing/failed requested extraction input are not zero and do not enter a denominator; in P6-C V1 they make the affected metric/dimension `UNKNOWN`.
-- `KNOWN_EMPTY` is eligible evidence and must enter the correct denominator.
+- `UNKNOWN` and missing/failed requested extraction input are not zero and do not enter a denominator; P6-C V1 makes the affected metric/dimension `UNKNOWN`.
+- `KNOWN_EMPTY` is eligible evidence and enters the correct denominator.
 - Explicit `NOT_ELIGIBLE` never enters a denominator; mixed eligible + explicit NOT_ELIGIBLE may still be `CALCULATED` when no unknown/missing input exists.
-- A legitimate zero has `metricStatus=CALCULATED`, `numerator=0`, `denominator>0`.
+- A legitimate zero is `metricStatus=CALCULATED`, `numerator=0`, `denominator>0`.
 - Mention SOV uses observation-level actor presence, not occurrence count. Owned subjects roll up to one `OWNED_ROLLUP`; each competitor subject is one actor.
 - One snapshot never mixes `subjectSetHash` or `extractorVersion` values.
-- Candidate observations are selected from P6-A independently of extraction availability; missing extraction must remain visible as unknown coverage.
-- A completed metric snapshot is immutable. Later P6-B backfill creates no mutation of old P6-C rows.
-- All P6-C generation/read surfaces use existing feature code `COMPETITOR_SOV`; Standard is rejected before writes or enqueue side effects.
+- Candidate observations are selected from P6-A independently of extraction availability; missing extraction remains visible as unknown coverage.
+- A completed metric snapshot is immutable. Later P6-B backfill cannot mutate old P6-C rows.
+- All P6-C generation/read surfaces use existing feature code `COMPETITOR_SOV`; Standard is rejected before writes/enqueue.
 - Hard bounds: maximum window 31 days, maximum Prompt Set filters 20, maximum candidates 20,000, DB batch size 500, list default 25/max 100.
-- P6-C V1 dimensions are only `OVERALL`, `PROVIDER`, and `PROMPT_SET`; no Provider × Prompt Set cube.
-- P6-D trend lines, deltas, alerts, scheduled notifications, history dashboard widgets, report integration, and AI narrative trend explanation are forbidden in this phase.
-- Every implementation task starts from the latest merged `main` after the previous task; do not keep stale stacked histories.
-- Do not merge while required CI is pending/failing. Use exact expected head SHA for every merge.
+- Dimensions V1: `OVERALL`, `PROVIDER`, `PROMPT_SET` only; no Provider × Prompt Set cube.
+- P6-D trend lines, deltas, alerts, scheduled notifications, history widgets, report integration, and AI narrative trend explanation are forbidden.
+- Each implementation task starts from the latest merged `main` after the prior task; do not carry stale stacked history.
+- Never merge while required CI is pending/failing. Read the current PR head SHA immediately before merge and pass that exact SHA as `expected_head_sha`.
 
-## Delivery / Branch Discipline
+## Delivery Discipline
 
-Use six sequential task branches/PRs:
+Sequential branches/PRs:
 
 1. `feat/p6c-task-01-metric-calculator`
 2. `feat/p6c-task-02-metric-persistence`
@@ -40,76 +40,45 @@ Use six sequential task branches/PRs:
 5. `feat/p6c-task-05-metrics-ui`
 6. `feat/p6c-task-06-release-gate`
 
-After each task is merged, create the next branch from fresh `main`. If a PR becomes historically polluted, rebuild it from current `main` and transplant only that task's files rather than force-merging stale history.
+If a branch becomes historically polluted, rebuild from current `main` and transplant only that task's files.
 
 ---
 
-## File Structure
+## File Map
 
-### Pure metric domain
-- `src/modules/visibility/visibility-metrics.types.ts` — formula/version, pure input/actor/row contracts.
-- `src/modules/visibility/visibility-metrics.calculator.ts` — deterministic Mention Rate, Citation Rate, Mention SOV and status logic.
-
-### Persistence
-- `prisma/models/visibility-metrics.prisma` — snapshot/row enums and models.
-- `prisma/migrations/20260819215800_add_visibility_metrics/migration.sql` — exact P6-C DDL.
-
-### Materialization / queue
-- `src/modules/visibility/visibility-metrics.repository.ts`
-- `src/modules/visibility/visibility-metrics.service.ts`
-- `src/modules/visibility/visibility-metrics.queue.ts`
-- `src/modules/visibility/visibility-metrics.worker.ts`
-- `src/queue/queues.ts`
-- `src/queue/worker-bootstrap.ts`
-
-### API / web
-- `src/modules/visibility/visibility-metrics.routes.ts`
-- `src/modules/visibility/visibility-metrics.web.repository.ts`
-- `src/modules/visibility/visibility-metrics.web.routes.ts`
-- `src/views/visibility/metrics.ejs`
-- `src/views/partials/sidebar.ejs`
-- `src/public/css/app.css` only for P6-C status presentation if existing classes are insufficient.
-- `src/app.ts`
-
-### Observability / operations
-- `src/modules/visibility/visibility-metrics.observability.ts`
-- `docs/development/p6c-visibility-metrics-sov.md`
-- `README.md` only after the pre-README release gate is green.
+- Pure domain: `src/modules/visibility/visibility-metrics.types.ts`, `visibility-metrics.calculator.ts`
+- Persistence: `prisma/models/visibility-metrics.prisma`, `prisma/migrations/20260819215800_add_visibility_metrics/migration.sql`
+- Materialization: `visibility-metrics.repository.ts`, `visibility-metrics.service.ts`, `visibility-metrics.queue.ts`, `visibility-metrics.worker.ts`
+- API: `visibility-metrics.routes.ts`
+- Web: `visibility-metrics.web.repository.ts`, `visibility-metrics.web.routes.ts`, `src/views/visibility/metrics.ejs`
+- Observability: `visibility-metrics.observability.ts`
+- Operations: `docs/development/p6c-visibility-metrics-sov.md`
 
 ---
 
-## Task 1: Metric Contracts + Pure Deterministic Calculator
+## Task 1: Metric Contracts + Pure Calculator
 
 **Branch:** `feat/p6c-task-01-metric-calculator`
 
 **Files:**
-- Create: `src/modules/visibility/visibility-metrics.types.ts`
-- Create: `src/modules/visibility/visibility-metrics.calculator.ts`
-- Create: `tests/unit/visibility-metrics.calculator.test.ts`
+- Create `src/modules/visibility/visibility-metrics.types.ts`
+- Create `src/modules/visibility/visibility-metrics.calculator.ts`
+- Create `tests/unit/visibility-metrics.calculator.test.ts`
 
 **Interfaces:**
 
 ```ts
 export const P6C_FORMULA_VERSION = 'VISIBILITY_METRICS_V1' as const;
-
-export type VisibilityMetricProvider =
-  | 'OPENAI' | 'GEMINI' | 'PERPLEXITY' | 'ANTHROPIC' | 'DEEPSEEK';
-
-export type VisibilityMetricEvidenceStatus =
-  | 'EXTRACTED' | 'KNOWN_EMPTY' | 'UNKNOWN' | 'NOT_ELIGIBLE';
-
-export type VisibilityMetricType =
-  | 'MENTION_RATE' | 'CITATION_RATE' | 'MENTION_SHARE_OF_VOICE';
-
-export type VisibilityMetricStatus =
-  | 'CALCULATED' | 'NO_SIGNAL' | 'UNKNOWN' | 'NOT_ELIGIBLE' | 'NO_DATA';
-
-export type VisibilityMetricDimensionType = 'OVERALL' | 'PROVIDER' | 'PROMPT_SET';
+export type VisibilityMetricProvider = 'OPENAI'|'GEMINI'|'PERPLEXITY'|'ANTHROPIC'|'DEEPSEEK';
+export type VisibilityMetricEvidenceStatus = 'EXTRACTED'|'KNOWN_EMPTY'|'UNKNOWN'|'NOT_ELIGIBLE';
+export type VisibilityMetricType = 'MENTION_RATE'|'CITATION_RATE'|'MENTION_SHARE_OF_VOICE';
+export type VisibilityMetricStatus = 'CALCULATED'|'NO_SIGNAL'|'UNKNOWN'|'NOT_ELIGIBLE'|'NO_DATA';
+export type VisibilityMetricDimensionType = 'OVERALL'|'PROVIDER'|'PROMPT_SET';
 
 export interface VisibilityMetricActor {
-  actorType: 'OWNED_ROLLUP' | 'COMPETITOR';
+  actorType: 'OWNED_ROLLUP'|'COMPETITOR';
   actorKey: string;
-  actorSubjectId: string | null;
+  actorSubjectId: string|null;
 }
 
 export interface VisibilityMetricInputRecord {
@@ -125,118 +94,63 @@ export interface VisibilityMetricInputRecord {
   competitorCitedSubjectIds: string[];
 }
 
-export interface CalculatedVisibilityMetricRow {
-  metricType: VisibilityMetricType;
-  metricStatus: VisibilityMetricStatus;
-  dimensionType: VisibilityMetricDimensionType;
-  dimensionKey: string;
-  dimensionLabelSnapshot: string | null;
-  actorType: 'OWNED_ROLLUP' | 'COMPETITOR';
-  actorSubjectId: string | null;
-  actorKey: string;
-  numerator: number;
-  denominator: number;
-  candidateObservationCount: number;
-  eligibleObservationCount: number;
-  notEligibleObservationCount: number;
-  unknownObservationCount: number;
-}
-
 export function calculateVisibilityMetrics(input: {
   records: VisibilityMetricInputRecord[];
   actors: VisibilityMetricActor[];
 }): CalculatedVisibilityMetricRow[];
 ```
 
-- [ ] **Step 1: Write RED tests for evidence-state semantics**
+- [ ] **Step 1 — RED evidence-state tests**
 
-Create fixtures proving:
+Lock: `KNOWN_EMPTY` enters denominators; `UNKNOWN` never enters denominator and yields UNKNOWN; mixed eligible + NOT_ELIGIBLE may calculate; all NOT_ELIGIBLE yields NOT_ELIGIBLE; zero candidates yields Overall `NO_DATA` rows.
 
-```ts
-const rows = calculateVisibilityMetrics({ records, actors });
-const ownedMention = rows.find((row) =>
-  row.metricType === 'MENTION_RATE' &&
-  row.dimensionType === 'OVERALL' &&
-  row.actorKey === 'OWNED_ROLLUP'
-)!;
-```
-
-Lock these facts:
-- `KNOWN_EMPTY` enters Mention/Citation denominators.
-- `UNKNOWN` never enters a denominator and makes that metric/dimension `UNKNOWN`.
-- missing extraction will later be normalized by Task 3 to `UNKNOWN`; calculator behavior for the normalized record is identical.
-- mixed eligible + `NOT_ELIGIBLE` remains `CALCULATED` if no unknown exists.
-- all explicit `NOT_ELIGIBLE` returns `NOT_ELIGIBLE`.
-- zero candidates returns `NO_DATA` rows for all supplied actors/metric types.
-
-- [ ] **Step 2: Run RED**
+- [ ] **Step 2 — Run RED**
 
 ```bash
 npm test -- tests/unit/visibility-metrics.calculator.test.ts
 ```
 
-Expected: missing module/contracts.
+Expected: missing P6-C calculator/contracts.
 
-- [ ] **Step 3: Implement dimension grouping and coverage classification**
+- [ ] **Step 3 — Implement deterministic dimensions/coverage**
 
-Generate groups for:
+Groups:
 
 ```ts
-{ type: 'OVERALL', key: 'OVERALL', label: null }
-{ type: 'PROVIDER', key: record.provider, label: record.provider }
-{ type: 'PROMPT_SET', key: record.promptSetId, label: record.promptSetName }
+{ type:'OVERALL', key:'OVERALL', label:null }
+{ type:'PROVIDER', key:record.provider, label:record.provider }
+{ type:'PROMPT_SET', key:record.promptSetId, label:record.promptSetName }
 ```
 
-Deduplicate source observations by `observationId` inside a group before counting.
+Deduplicate by `observationId` inside each group.
 
-- [ ] **Step 4: Implement Mention Rate and Citation Rate**
+- [ ] **Step 4 — Implement Mention/Citation Rate**
 
-For rates:
-- denominator = count of `EXTRACTED | KNOWN_EMPTY` records for the metric evidence channel;
-- numerator = eligible observations where the actor is present;
-- any `UNKNOWN` record => status `UNKNOWN`, no authoritative ratio;
-- zero candidates => `NO_DATA`;
-- candidates but all explicit `NOT_ELIGIBLE` => `NOT_ELIGIBLE`;
-- denominator > 0 and no unknown => `CALCULATED`, including numerator 0.
+Denominator = `EXTRACTED|KNOWN_EMPTY`. Numerator = distinct eligible observations where actor is present. If any record for that metric/dimension is UNKNOWN, return UNKNOWN with integer coverage counts and no authoritative ratio. Denominator > 0 + numerator 0 = CALCULATED zero.
 
-Do not return floating-point percentage as authoritative storage; return integer numerator/denominator.
+- [ ] **Step 5 — Implement presence-based Mention SOV**
 
-- [ ] **Step 5: Implement presence-based Mention SOV**
+One owned unit max per observation; competitor subject IDs deduped via `Set`; only supplied actors count. SOV denominator = all actor presence units. Eligible mention observations + zero actor units = NO_SIGNAL.
 
-For each mention-eligible observation:
-- add at most one `OWNED_ROLLUP` presence;
-- deduplicate competitor subject IDs with `Set`;
-- only actors supplied in `actors` are countable;
-- denominator = sum of actor presence units across the dimension.
+- [ ] **Step 6 — Invariant tests**
 
-If mention evidence is complete and eligible observations exist but presence denominator is 0, all SOV rows are `NO_SIGNAL`.
+Prove rate numerator <= denominator; CALCULATED rate denominator > 0; calculated SOV actor numerators sum exactly to shared denominator; duplicate competitor IDs count once; actor absent from actor registry cannot appear; Provider and Prompt Set partitions are independent; calculator has no Prisma/BullMQ/provider/fetch import.
 
-- [ ] **Step 6: Add invariant tests**
-
-Prove:
-- rate numerator <= denominator;
-- `CALCULATED` rate denominator > 0;
-- SOV calculated numerators sum exactly to shared denominator;
-- repeated competitor IDs in one record count once;
-- owned/competitor actor not supplied in `actors` cannot appear in output;
-- Provider and Prompt Set partitions calculate independently;
-- no Prisma/BullMQ/provider/fetch import exists in calculator source.
-
-- [ ] **Step 7: Verify GREEN**
+- [ ] **Step 7 — GREEN**
 
 ```bash
 npm test -- tests/unit/visibility-metrics.calculator.test.ts
 npm run typecheck
 ```
 
-- [ ] **Step 8: Commit and open Task 1 PR**
+- [ ] **Step 8 — Commit**
 
 ```bash
 git add src/modules/visibility/visibility-metrics.types.ts src/modules/visibility/visibility-metrics.calculator.ts tests/unit/visibility-metrics.calculator.test.ts
 git commit -m "feat: add P6-C visibility metric calculator"
 ```
 
-Required PR scope: only pure contracts/calculator/tests; no Prisma/API/UI.
+Task 1 PR contains only pure calculator/contracts/tests.
 
 ---
 
@@ -245,9 +159,9 @@ Required PR scope: only pure contracts/calculator/tests; no Prisma/API/UI.
 **Branch:** `feat/p6c-task-02-metric-persistence`
 
 **Files:**
-- Create: `prisma/models/visibility-metrics.prisma`
-- Create: `prisma/migrations/20260819215800_add_visibility_metrics/migration.sql`
-- Create: `tests/integration/visibility-metrics.persistence.test.ts`
+- Create `prisma/models/visibility-metrics.prisma`
+- Create `prisma/migrations/20260819215800_add_visibility_metrics/migration.sql`
+- Create `tests/integration/visibility-metrics.persistence.test.ts`
 
 **Enums:**
 
@@ -259,94 +173,41 @@ enum VisibilityMetricDimensionType { OVERALL PROVIDER PROMPT_SET }
 enum VisibilityMetricActorType { OWNED_ROLLUP COMPETITOR }
 ```
 
-**Snapshot model contract:**
+**Snapshot fields:** `id`, `projectId`, `status`, `formulaVersion`, `extractorVersion`, `subjectSetHash`, `subjectSnapshotJson`, `windowStart`, `windowEnd`, `inputCutoffAt`, `scopeJson`, `scopeHash`, nullable `inputFingerprint`, candidate/completed/missing/failed counts, `errorCode`, lifecycle timestamps, created/updated timestamps.
+
+Composite uniqueness:
 
 ```prisma
-model VisibilityMetricSnapshot {
-  id                         String                         @id @default(uuid()) @db.Uuid
-  projectId                  String                         @db.Uuid
-  status                     VisibilityMetricSnapshotStatus @default(QUEUED)
-  formulaVersion             String
-  extractorVersion           String
-  subjectSetHash             String
-  subjectSnapshotJson        Json
-  windowStart                DateTime
-  windowEnd                  DateTime
-  inputCutoffAt              DateTime
-  scopeJson                  Json
-  scopeHash                  String
-  inputFingerprint           String?
-  candidateObservationCount  Int                            @default(0)
-  completedExtractionCount   Int                            @default(0)
-  missingExtractionCount     Int                            @default(0)
-  failedExtractionCount      Int                            @default(0)
-  errorCode                  String?
-  startedAt                  DateTime?
-  completedAt                DateTime?
-  createdAt                  DateTime                       @default(now())
-  updatedAt                  DateTime                       @updatedAt
-
-  rows VisibilityMetricRow[]
-
-  @@unique([projectId, formulaVersion, extractorVersion, subjectSetHash, windowStart, windowEnd, inputCutoffAt, scopeHash])
-  @@index([projectId, status, createdAt])
-  @@index([projectId, windowStart, windowEnd])
-}
+@@unique([projectId, formulaVersion, extractorVersion, subjectSetHash, windowStart, windowEnd, inputCutoffAt, scopeHash])
 ```
 
-**Row model contract:**
+**Row fields:** snapshot/project IDs, metric type/status, dimension type, non-null `dimensionKey`, optional `dimensionLabelSnapshot`, actor type/subject/key, numerator/denominator, candidate/eligible/notEligible/unknown counts, createdAt.
+
+Row uniqueness:
 
 ```prisma
-model VisibilityMetricRow {
-  id                          String                        @id @default(uuid()) @db.Uuid
-  visibilityMetricSnapshotId  String                        @db.Uuid
-  projectId                   String                        @db.Uuid
-  metricType                  VisibilityMetricType
-  metricStatus                VisibilityMetricStatus
-  dimensionType               VisibilityMetricDimensionType
-  dimensionKey                String
-  dimensionLabelSnapshot      String?
-  actorType                   VisibilityMetricActorType
-  actorSubjectId              String?                       @db.Uuid
-  actorKey                    String
-  numerator                   Int
-  denominator                 Int
-  candidateObservationCount   Int
-  eligibleObservationCount    Int
-  notEligibleObservationCount Int
-  unknownObservationCount     Int
-  createdAt                   DateTime                      @default(now())
-
-  snapshot VisibilityMetricSnapshot @relation(fields: [visibilityMetricSnapshotId], references: [id], onDelete: Cascade)
-
-  @@unique([visibilityMetricSnapshotId, metricType, dimensionType, dimensionKey, actorKey])
-  @@index([projectId, metricType])
-  @@index([visibilityMetricSnapshotId, dimensionType, dimensionKey])
-  @@index([actorSubjectId])
-}
+@@unique([visibilityMetricSnapshotId, metricType, dimensionType, dimensionKey, actorKey])
 ```
 
-- [ ] **Step 1: Write RED persistence test**
+- [ ] **Step 1 — RED persistence contract**
 
-Prove creation of a `QUEUED` snapshot and metric rows; assert storage Overall key is non-null `OVERALL`.
+Create QUEUED snapshot and rows; assert Overall storage key is `OVERALL`; assert exact snapshot identity and exact row identity are unique.
 
-- [ ] **Step 2: Add uniqueness/immutability-shaped persistence contracts**
+- [ ] **Step 2 — Lifecycle/cascade test**
 
-Assert duplicate exact snapshot identity is rejected/upsertable by the composite key and duplicate row identity is rejected. Assert cascade deleting the snapshot deletes only its metric rows.
+Prove snapshot row lifecycle fields persist; deleting metric snapshot cascades only its rows. Migration must enforce project scoping/FKs in the same style as existing repository migrations without adding P6-D tables.
 
-- [ ] **Step 3: Run RED**
+- [ ] **Step 3 — Run RED**
 
 ```bash
 npm test -- tests/integration/visibility-metrics.persistence.test.ts
 ```
 
-Expected: Prisma client has no P6-C models/enums.
+- [ ] **Step 4 — Implement model + exact migration**
 
-- [ ] **Step 4: Implement Prisma model and exact migration**
+Create the five enums, two tables, required constraints/indexes and snapshot→row cascade. No trend/history tables.
 
-Create `prisma/models/visibility-metrics.prisma` and `prisma/migrations/20260819215800_add_visibility_metrics/migration.sql`. Migration must include the five enums, two tables, FK from row to snapshot with cascade, uniqueness constraints and indexes above. Do not add P6-D trend/history tables.
-
-- [ ] **Step 5: Verify schema/migration GREEN**
+- [ ] **Step 5 — GREEN**
 
 ```bash
 npx prisma validate
@@ -356,7 +217,7 @@ npm test -- tests/integration/visibility-metrics.persistence.test.ts
 npm run typecheck
 ```
 
-- [ ] **Step 6: Commit and open Task 2 PR**
+- [ ] **Step 6 — Commit**
 
 ```bash
 git add prisma/models/visibility-metrics.prisma prisma/migrations/20260819215800_add_visibility_metrics/migration.sql tests/integration/visibility-metrics.persistence.test.ts
@@ -365,22 +226,22 @@ git commit -m "feat: add P6-C metric snapshot persistence"
 
 ---
 
-## Task 3: Immutable Materialization Service + Queue + Worker
+## Task 3: Materialization Repository + Service + Queue + Worker
 
 **Branch:** `feat/p6c-task-03-metric-materialization`
 
 **Files:**
-- Create: `src/modules/visibility/visibility-metrics.repository.ts`
-- Create: `src/modules/visibility/visibility-metrics.service.ts`
-- Create: `src/modules/visibility/visibility-metrics.queue.ts`
-- Create: `src/modules/visibility/visibility-metrics.worker.ts`
-- Create: `tests/integration/visibility-metrics.materialization.test.ts`
-- Create: `tests/unit/visibility-metrics.queue.test.ts`
-- Modify: `tests/unit/worker-bootstrap.test.ts`
-- Modify: `src/queue/queues.ts`
-- Modify: `src/queue/worker-bootstrap.ts`
+- Create `src/modules/visibility/visibility-metrics.repository.ts`
+- Create `src/modules/visibility/visibility-metrics.service.ts`
+- Create `src/modules/visibility/visibility-metrics.queue.ts`
+- Create `src/modules/visibility/visibility-metrics.worker.ts`
+- Create `tests/integration/visibility-metrics.materialization.test.ts`
+- Create `tests/unit/visibility-metrics.queue.test.ts`
+- Modify `tests/unit/worker-bootstrap.test.ts`
+- Modify `src/queue/queues.ts`
+- Modify `src/queue/worker-bootstrap.ts`
 
-**Service contracts:**
+**Core interfaces:**
 
 ```ts
 export interface VisibilityMetricScope {
@@ -404,107 +265,45 @@ export class VisibilityMetricsService {
 }
 ```
 
-**Repository contracts:**
+Repository exposes `createOrGetShell`, `claim` (QUEUED|FAILED only), project-scoped `get`, `completeAtomic`, and `fail`. `COMPLETED` is immutable.
 
-```ts
-createOrGetShell(input): Promise<VisibilityMetricSnapshot>;
-claim(snapshotId: string): Promise<boolean>; // only QUEUED|FAILED
-getProjectSnapshot(projectId: string, snapshotId: string): Promise<VisibilityMetricSnapshot | null>;
-completeAtomic(snapshotId: string, result): Promise<VisibilityMetricSnapshot>;
-fail(snapshotId: string, errorCode: string): Promise<VisibilityMetricSnapshot>;
-```
+- [ ] **Step 1 — RED validation/contract tests**
 
-`completeAtomic` must reject mutation of an already `COMPLETED` snapshot. For a retried failed identity, delete any stale rows inside the completion transaction before creating the full final set; no partial rows survive failure.
+Lock `windowStart < windowEnd`; max duration 31 days; `inputCutoffAt` cannot be later than injected service clock; Prompt Set count <=20 and every ID belongs to project; providers/prompt IDs sorted/deduped before scope hash. Do not impose an additional `windowEnd <= inputCutoffAt` rule: candidate `createdAt <= inputCutoffAt` is the approved evidence-horizon rule.
 
-- [ ] **Step 1: Write RED tests for request normalization and subject-contract resolution**
+- [ ] **Step 2 — Subject-contract resolution RED**
 
-Lock:
-- `windowStart < windowEnd`;
-- `windowEnd <= inputCutoffAt` and cutoff cannot be in the future relative to the resolved service clock;
-- maximum duration is 31 days;
-- Prompt Set filter count <= 20 and every ID belongs to project;
-- scope provider/prompt IDs are sorted/deduplicated before stable JSON/hash;
-- subject contract resolves from same-project P6-B extraction matching `extractorVersion + subjectSetHash`;
-- if no historical extraction exists, `VisibilitySubjectService.buildActiveSnapshot()` is allowed only if its hash exactly equals requested hash;
-- otherwise throw `VISIBILITY_METRICS_CONTRACT_NOT_FOUND` before snapshot write.
+Resolution order: same-project P6-B extraction with requested extractor/hash; verify canonical `subjectSnapshotJson`; otherwise current `VisibilitySubjectService.buildActiveSnapshot()` only when its freshly computed hash equals requested hash; else `VISIBILITY_METRICS_CONTRACT_NOT_FOUND` before write.
 
-Use an injectable clock in the service so boundary tests do not depend on wall-clock time.
+- [ ] **Step 3 — Implement shell/scope identity**
 
-- [ ] **Step 2: Run RED**
+Stable canonical scope JSON + SHA-256; formula `VISIBILITY_METRICS_V1`; exact Prisma composite identity from Task 2.
 
-```bash
-npm test -- tests/integration/visibility-metrics.materialization.test.ts
-```
+- [ ] **Step 4 — Candidate selection before extraction lookup**
 
-- [ ] **Step 3: Implement canonical scope and shell identity**
+Use half-open `observedAt` window, `createdAt <= inputCutoffAt`, optional provider and Prompt Set scope. Count first; >20,000 => `VISIBILITY_METRICS_SCOPE_TOO_LARGE`; deterministic DB batches of 500.
 
-Use stable JSON + SHA-256. Initial formula is `P6C_FORMULA_VERSION`. Snapshot identity is exactly the Prisma composite key from Task 2.
+- [ ] **Step 5 — Normalize P6-B as-of-cutoff evidence**
 
-- [ ] **Step 4: Implement candidate selection before extraction lookup**
+Only requested `extractorVersion + subjectSetHash`. A matching extraction is usable only when `status=COMPLETED` and `completedAt <= inputCutoffAt`. Missing/non-completed/post-cutoff extraction becomes normalized UNKNOWN coverage, not silently filtered. Same hash with inconsistent subject snapshot fails `VISIBILITY_METRICS_SUBJECT_SNAPSHOT_MISMATCH`.
 
-Candidate query filters:
+- [ ] **Step 6 — Build actor presence without private content**
 
-```ts
-where: {
-  projectId,
-  observedAt: { gte: windowStart, lt: windowEnd },
-  createdAt: { lte: inputCutoffAt },
-  ...(providers.length ? { provider: { in: providers } } : {}),
-  ...(promptSetIds.length ? { prompt: { promptSetId: { in: promptSetIds } } } : {})
-}
-```
+Load only fact identifiers/classification: Mention `subjectId/subjectType`; Citation `ownedSubjectId/competitorSubjectId`; observation provider/Prompt Set ID/name. Never load prompt text, answer text, citation URL/body, provider body/reasoning or secrets.
 
-Count first. If count > 20,000, fail with `VISIBILITY_METRICS_SCOPE_TOO_LARGE`. Fetch candidate IDs/metadata in deterministic batches of 500.
+- [ ] **Step 7 — Input fingerprint**
 
-- [ ] **Step 5: Normalize P6-B input as-of cutoff**
+SHA-256 over canonically sorted non-sensitive metadata: candidate observation ID, provider, Prompt Set ID, matching extraction ID or explicit missing marker, mention/citation evidence states, extraction completion identity. No content bodies/aliases/URLs/secrets.
 
-For every candidate observation load only the requested P6-B contract:
+- [ ] **Step 8 — Atomic replay tests**
 
-```ts
-extractorVersion === snapshot.extractorVersion
-subjectSetHash === snapshot.subjectSetHash
-```
+Prove exact repeated completed identity returns unchanged snapshot; later P6-B backfill cannot mutate old rows; later cutoff creates new identity; hash/version never mix; forced persistence failure leaves no partial rows and marks FAILED; FAILED retry may complete; COMPLETED cannot be reclaimed.
 
-A matching extraction is usable only when `status=COMPLETED` and `completedAt <= inputCutoffAt`.
-
-Normalize:
-- usable completed extraction => its persisted mention/citation evidence states;
-- explicit usable evidence `NOT_ELIGIBLE` remains NOT_ELIGIBLE;
-- missing extraction, RUNNING/FAILED/QUEUED, or completion after cutoff => metric input `UNKNOWN` and appropriate snapshot coverage counter;
-- subject snapshot mismatch for same hash => fail closed with `VISIBILITY_METRICS_SUBJECT_SNAPSHOT_MISMATCH`.
-
-- [ ] **Step 6: Build actor-presence input without reading private content**
-
-Load P6-B facts by extraction IDs only:
-- Mention rows: `subjectId`, `subjectType`;
-- Citation rows: `ownedSubjectId`, `competitorSubjectId`;
-- Prompt Set name for dimension label;
-- never load prompt text, answer text, citation URL/body, provider reasoning or secrets.
-
-Build booleans/sets for the pure calculator. Actors come only from the exact snapshotted subjects: one `OWNED_ROLLUP` plus one actor per `COMPETITOR` subject.
-
-- [ ] **Step 7: Build non-sensitive input fingerprint**
-
-Hash canonically sorted records containing observation ID, provider, Prompt Set ID, matching extraction ID or explicit missing marker, mention/citation evidence states, and extraction completion timestamp/identity. Do not hash prompt/answer/alias/provider body content.
-
-- [ ] **Step 8: Implement atomic completion and replay tests**
-
-Prove:
-- exact repeated request returns same completed snapshot;
-- late P6-B backfill does not mutate old snapshot/rows;
-- later `inputCutoffAt` yields a new identity;
-- subjectSetHash versions never mix;
-- extractorVersion versions never mix;
-- forced persistence failure leaves zero partial rows and marks shell FAILED;
-- FAILED can be reclaimed and completed;
-- completed cannot be reclaimed/mutated.
-
-- [ ] **Step 9: Implement `visibility-metrics` queue**
+- [ ] **Step 9 — Queue contract**
 
 ```ts
 export const VISIBILITY_METRICS_QUEUE_NAME = 'visibility-metrics' as const;
 export const VISIBILITY_METRICS_ATTEMPTS = 2;
-
 export interface MaterializeVisibilityMetricSnapshotJobData {
   projectId: string;
   snapshotId: string;
@@ -518,38 +317,24 @@ export interface MaterializeVisibilityMetricSnapshotJobData {
 }
 ```
 
-Build deterministic bounded job ID as:
+Stable bounded ID: `visibility-metrics:` + SHA-256 of canonical job identity. Job name: `materialize-metric-snapshot`.
 
-```ts
-`visibility-metrics:${sha256(stableIdentity)}`
-```
+- [ ] **Step 10 — Queue/worker tests**
 
-Queue only `materialize-metric-snapshot` jobs.
+Deterministic ID, attempts=2, same-project snapshot validation, worker invokes only `materializeSnapshot`, `globalThis.fetch`/provider spies remain zero.
 
-- [ ] **Step 10: Add queue/worker RED→GREEN tests**
+- [ ] **Step 11 — Worker bootstrap**
 
-Test deterministic job ID, attempts=2, project/snapshot validation, worker calls only `materializeSnapshot`, and `globalThis.fetch`/provider adapter spies remain at zero calls.
+Add `visibility-metrics` to `QUEUE_NAMES`; extend `workerDefinitionForQueue` to return P6-C processor at concurrency 2.
 
-- [ ] **Step 11: Activate worker bootstrap**
-
-Add `visibility-metrics` to `QUEUE_NAMES`; update:
-
-```ts
-workerDefinitionForQueue(
-  name: 'visibility' | 'visibility-extraction' | 'visibility-metrics'
-)
-```
-
-`visibility-metrics` processor = `processVisibilityMetricsJob`, concurrency = 2.
-
-- [ ] **Step 12: Verify GREEN**
+- [ ] **Step 12 — GREEN**
 
 ```bash
 npm test -- tests/unit/visibility-metrics.calculator.test.ts tests/unit/visibility-metrics.queue.test.ts tests/unit/worker-bootstrap.test.ts tests/integration/visibility-metrics.materialization.test.ts
 npm run typecheck
 ```
 
-- [ ] **Step 13: Commit and open Task 3 PR**
+- [ ] **Step 13 — Commit**
 
 ```bash
 git add src/modules/visibility/visibility-metrics.repository.ts src/modules/visibility/visibility-metrics.service.ts src/modules/visibility/visibility-metrics.queue.ts src/modules/visibility/visibility-metrics.worker.ts src/queue/queues.ts src/queue/worker-bootstrap.ts tests/unit/visibility-metrics.queue.test.ts tests/unit/worker-bootstrap.test.ts tests/integration/visibility-metrics.materialization.test.ts
@@ -563,92 +348,48 @@ git commit -m "feat: materialize immutable P6-C metric snapshots"
 **Branch:** `feat/p6c-task-04-metrics-api`
 
 **Files:**
-- Create: `src/modules/visibility/visibility-metrics.routes.ts`
-- Create: `tests/integration/visibility-metrics.api.test.ts`
-- Modify: `src/app.ts`
+- Create `src/modules/visibility/visibility-metrics.routes.ts`
+- Create `tests/integration/visibility-metrics.api.test.ts`
+- Modify `src/app.ts`
 
-**Interfaces:**
-
+**Routes:**
 - `POST /api/v1/projects/:projectId/visibility/metrics/snapshots`
 - `GET /api/v1/projects/:projectId/visibility/metrics/snapshots`
 - `GET /api/v1/projects/:projectId/visibility/metrics/snapshots/:snapshotId`
 - `GET /api/v1/projects/:projectId/visibility/metrics/latest`
 
-`AppOptions` adds:
+`AppOptions` adds `visibilityMetricsQueue?: VisibilityMetricsQueue`.
+
+- [ ] **Step 1 — RED strict validation**
+
+POST schema: ISO datetime strings; extractorVersion 1–100 chars; 64-char SHA-256 subjectSetHash; providers from existing five enums max5; Prompt Set UUID array max20; `.strict()`. Malformed/extra fields and >31-day windows produce 400 with zero snapshot write/queue call.
+
+- [ ] **Step 2 — RED access/isolation**
+
+Advanced/Enterprise allowed; Standard `403 FEATURE_NOT_AVAILABLE` before prepare/write/enqueue; foreign Prompt Set fails closed before write; foreign snapshot ID 404.
+
+- [ ] **Step 3 — Implement queue-backed POST**
+
+Gate `COMPETITOR_SOV`, parse, resolve omitted cutoff to server request time, call `prepareSnapshot`, enqueue, return 202 with safe snapshot/job/provenance identity. Lazy BullMQ port uses queue `visibility-metrics` only when no injected fake queue exists.
+
+- [ ] **Step 4 — Safe list/detail/latest**
+
+List default25/max100, deterministic ordering. Detail exposes metric/provenance/coverage only and excludes `subjectSnapshotJson`, prompt/answer, aliases/canonical subject values, citation URLs, provider bodies/reasoning/secrets. Presentation ratio only for CALCULATED + denominator>0:
 
 ```ts
-visibilityMetricsQueue?: VisibilityMetricsQueue;
+Number((row.numerator / row.denominator).toFixed(4))
 ```
 
-- [ ] **Step 1: Write RED request-validation tests**
+Otherwise `ratio=null`. Public Overall dimensionKey may be null; storage remains `OVERALL`. Latest selects one completed snapshot and never combines snapshots.
 
-POST body uses strict Zod:
-
-```ts
-z.object({
-  windowStart: z.string().datetime(),
-  windowEnd: z.string().datetime(),
-  inputCutoffAt: z.string().datetime().optional(),
-  extractorVersion: z.string().min(1).max(100),
-  subjectSetHash: z.string().regex(/^[a-f0-9]{64}$/i),
-  providers: z.array(z.enum(['OPENAI','GEMINI','PERPLEXITY','ANTHROPIC','DEEPSEEK'])).max(5).optional(),
-  promptSetIds: z.array(z.string().uuid()).max(20).optional()
-}).strict()
-```
-
-Prove malformed date/hash, unknown fields, >20 Prompt Sets and >31-day window produce 400 with zero metric snapshot writes and zero queue calls.
-
-- [ ] **Step 2: Write RED feature/project-isolation tests**
-
-Prove:
-- Advanced and Enterprise may create/read;
-- Standard returns `403 FEATURE_NOT_AVAILABLE` before `prepareSnapshot`/write/enqueue;
-- foreign Prompt Set ID returns 404/fail-closed before write;
-- foreign snapshot ID returns 404 without leaking foreign data.
-
-Use a fake `VisibilityMetricsQueuePort` like existing P6-B API tests.
-
-- [ ] **Step 3: Implement lazy queue port and routes**
-
-Use a lazy BullMQ queue named `visibility-metrics` only when no queue is injected. Gate every P6-C endpoint with existing `COMPETITOR_SOV` before side effects.
-
-POST flow:
-1. feature-gate project;
-2. parse body;
-3. resolve server cutoff (`new Date()` when omitted);
-4. call `prepareSnapshot`;
-5. enqueue snapshot job;
-6. return 202 with `snapshotId`, `jobId`, formula/extractor/subjectSetHash/scopeHash/window/cutoff.
-
-- [ ] **Step 4: Implement safe list/detail/latest serializers**
-
-List default 25/max100, deterministic ordering. Detail returns snapshot provenance, coverage and rows, but explicitly excludes:
-- `subjectSnapshotJson`;
-- prompt/answer text;
-- aliases/canonical subject values;
-- citation URLs;
-- provider bodies/reasoning/secrets.
-
-For API presentation:
-
-```ts
-ratio = row.metricStatus === 'CALCULATED' && row.denominator > 0
-  ? Number((row.numerator / row.denominator).toFixed(4))
-  : null;
-```
-
-Expose Overall `dimensionKey` as `null` while storage remains `OVERALL`.
-
-Latest must select one latest `COMPLETED` snapshot matching explicit contract filters; never combine snapshots.
-
-- [ ] **Step 5: Run GREEN + regression**
+- [ ] **Step 5 — GREEN**
 
 ```bash
 npm test -- tests/integration/visibility-metrics.api.test.ts tests/integration/visibility-intelligence.api.test.ts
 npm run typecheck
 ```
 
-- [ ] **Step 6: Commit and open Task 4 PR**
+- [ ] **Step 6 — Commit**
 
 ```bash
 git add src/modules/visibility/visibility-metrics.routes.ts src/app.ts tests/integration/visibility-metrics.api.test.ts
@@ -657,93 +398,53 @@ git commit -m "feat: add P6-C visibility metrics API"
 
 ---
 
-## Task 5: Metrics & Share of Voice Web UI
+## Task 5: Metrics & SOV Web UI
 
 **Branch:** `feat/p6c-task-05-metrics-ui`
 
 **Files:**
-- Create: `src/modules/visibility/visibility-metrics.web.repository.ts`
-- Create: `src/modules/visibility/visibility-metrics.web.routes.ts`
-- Create: `src/views/visibility/metrics.ejs`
-- Create: `tests/integration/visibility-metrics.web.test.ts`
-- Create: `tests/e2e/visibility-metrics.spec.ts`
-- Modify: `src/views/partials/sidebar.ejs`
-- Modify: `src/public/css/app.css` only for explicit metric-state presentation if necessary.
-- Modify: `src/app.ts`
-- Modify: `tests/e2e/visibility-center.spec.ts`
-- Modify: `tests/e2e/citation-monitor.spec.ts`
+- Create `src/modules/visibility/visibility-metrics.web.repository.ts`
+- Create `src/modules/visibility/visibility-metrics.web.routes.ts`
+- Create `src/views/visibility/metrics.ejs`
+- Create `tests/integration/visibility-metrics.web.test.ts`
+- Create `tests/e2e/visibility-metrics.spec.ts`
+- Modify `src/views/partials/sidebar.ejs`
+- Modify `src/public/css/app.css` only if explicit state presentation needs it
+- Modify `src/app.ts`
+- Modify `tests/e2e/visibility-center.spec.ts`
+- Modify `tests/e2e/citation-monitor.spec.ts`
 
-**Web routes:**
-- `GET /projects/:id/visibility/metrics`
-- `POST /projects/:id/visibility/metrics/snapshots`
+**Web routes:** `GET /projects/:id/visibility/metrics`, `POST /projects/:id/visibility/metrics/snapshots`, both gated by `COMPETITOR_SOV` before restricted reads/writes.
 
-Both use `COMPETITOR_SOV` before reads/writes/enqueue.
+- [ ] **Step 1 — RED rendering tests**
 
-- [ ] **Step 1: Write RED web integration tests**
+Seed safe metric snapshots/rows and assert Owned Mention Rate, Owned Citation Rate, Owned Mention SOV, coverage, competitor table, Provider breakdown, Prompt Set breakdown, formula/extractor/hash/window/cutoff provenance. Standard 403 before restricted reads.
 
-Seed snapshots/rows directly and prove page renders:
-- Owned Mention Rate;
-- Owned Citation Rate;
-- Owned Mention SOV;
-- Evidence Coverage;
-- competitor table;
-- Provider breakdown;
-- Prompt Set breakdown;
-- formulaVersion/extractorVersion/subjectSetHash/window/inputCutoffAt provenance.
+- [ ] **Step 2 — Lock visual status semantics**
 
-Prove Standard returns 403 before repository reads that expose P6-C intelligence.
+CALCULATED `0/10` renders explicit `0.0%` (or equivalent zero); UNKNOWN renders `UNKNOWN`, never 0%; NOT_ELIGIBLE, NO_DATA and NO_SIGNAL each render explicit text.
 
-- [ ] **Step 2: Lock status presentation semantics**
+- [ ] **Step 3 — Bounded web repository**
 
-Tests must distinguish exact rendered values:
-- `CALCULATED` + `0/10` => `0.0%` or equivalent explicit zero;
-- `UNKNOWN` => text `UNKNOWN`, never `0%`;
-- `NOT_ELIGIBLE` => explicit label;
-- `NO_DATA` => explicit label;
-- `NO_SIGNAL` => explicit label.
+Return project metadata, selected/latest snapshot and safe rows; up to 20 recent same-project extractor/hash contracts for generation. Never return prompt/answer, aliases/canonical subject values, citation URLs/bodies, provider raw data/reasoning.
 
-- [ ] **Step 3: Implement bounded web repository**
+- [ ] **Step 4 — Web snapshot generation**
 
-`getMetricsPage(projectId, requestedSnapshotId?)` returns only:
-- project metadata;
-- selected/latest completed snapshot metadata;
-- safe rows;
-- up to 20 recent same-project `extractorVersion + subjectSetHash` contracts for snapshot generation;
-- Prompt Set names only as historical labels already stored or safe config labels.
+GET renders selected/latest or empty state/form. POST accepts window + extractorVersion + subjectSetHash, uses server time cutoff, prepares/enqueues an unfiltered snapshot, redirects 303 to metrics with snapshotId. Provider/Prompt scoped creation remains REST API V1.
 
-Never return prompt text, answer text, aliases/canonical subject values, citation URL/body, provider raw content or reasoning.
+- [ ] **Step 5 — EJS page**
 
-- [ ] **Step 4: Implement web routes and snapshot form**
+Use existing metric-grid/card/panel/table/badge styles. Add minimal status-specific CSS only to make UNKNOWN/non-zero semantics unmistakable. No trend chart/delta/alert/history/report/P6-D claims.
 
-GET selects requested same-project snapshot or latest completed snapshot; when none exists, render an explanatory empty state and bounded generation form.
+- [ ] **Step 6 — Sidebar/old-phase assertions**
 
-POST accepts window/extractorVersion/subjectSetHash, uses server time for `inputCutoffAt`, creates/enqueues an Overall/unfiltered snapshot, then redirects 303 to `/projects/:id/visibility/metrics?snapshotId=<id>`.
+Replace disabled P6-C placeholder with active-aware `/projects/:id/visibility/metrics` link labelled `Visibility 指标`. Update P6-A/P6-B E2E so they verify those pages themselves do not calculate metrics rather than expecting a global disabled placeholder.
 
-Scoped Provider/Prompt Set creation remains available through REST API V1; the web form stays simple.
+- [ ] **Step 7 — Chromium fixture**
 
-- [ ] **Step 5: Implement `metrics.ejs`**
+Seed Prisma facts/snapshot rows in Playwright Node setup. Browser proves active metrics nav, legitimate zero vs UNKNOWN, competitor SOV, provenance/coverage, and absence of trend/alert language.
 
-Use existing `.metric-grid`, `.metric-card`, `.panel`, `.table-wrap`, `.badge` styles. Add minimal status-specific classes only when they clarify UNKNOWN vs zero.
-
-Do not add trend chart, delta, alert, historical sparkline, report button or P6-D claim.
-
-- [ ] **Step 6: Activate sidebar and update old phase assertions**
-
-Replace:
-
-```ejs
-<a href="#">P6-C 指标（未启用）</a>
-```
-
-with an active-aware link to `/projects/<id>/visibility/metrics`, label `Visibility 指标`.
-
-Update P6-A/P6-B E2E tests so they assert those pages themselves do not calculate P6-C metrics, rather than asserting the global sidebar placeholder still exists.
-
-- [ ] **Step 7: Add Chromium E2E fixture**
-
-Seed deterministic Prisma data inside Playwright test setup: Advanced project, Prompt Set/run/observations, P6-B subject/extractions/facts, then a P6-C completed snapshot with rows representing a legitimate 0%, UNKNOWN, SOV comparison and provenance. Browser asserts active sidebar, cards/table/status labels and absence of trend/alert language.
-
-- [ ] **Step 8: Verify GREEN**
+- [ ] **Step 8 — GREEN**
 
 ```bash
 npm test -- tests/integration/visibility-metrics.web.test.ts tests/integration/visibility-intelligence.web.test.ts
@@ -751,7 +452,7 @@ npm run test:e2e -- tests/e2e/visibility-metrics.spec.ts tests/e2e/visibility-ce
 npm run typecheck
 ```
 
-- [ ] **Step 9: Commit and open Task 5 PR**
+- [ ] **Step 9 — Commit**
 
 ```bash
 git add src/modules/visibility/visibility-metrics.web.repository.ts src/modules/visibility/visibility-metrics.web.routes.ts src/views/visibility/metrics.ejs src/views/partials/sidebar.ejs src/public/css/app.css src/app.ts tests/integration/visibility-metrics.web.test.ts tests/e2e/visibility-metrics.spec.ts tests/e2e/visibility-center.spec.ts tests/e2e/citation-monitor.spec.ts
@@ -760,86 +461,45 @@ git commit -m "feat: add P6-C metrics and SOV UI"
 
 ---
 
-## Task 6: Safe Observability + Operator Guide + P6-C Release Gate
+## Task 6: Observability + Operator Guide + Release Gate
 
 **Branch:** `feat/p6c-task-06-release-gate`
 
 **Files:**
-- Create: `src/modules/visibility/visibility-metrics.observability.ts`
-- Create: `tests/integration/visibility-metrics.observability.test.ts`
-- Create: `docs/development/p6c-visibility-metrics-sov.md`
-- Modify: `src/modules/visibility/visibility-metrics.queue.ts`
-- Modify: `src/modules/visibility/visibility-metrics.worker.ts`
-- Modify: `src/modules/visibility/visibility-metrics.service.ts`
-- Modify: `README.md` only after code/docs head passes the first full gate.
+- Create `src/modules/visibility/visibility-metrics.observability.ts`
+- Create `tests/integration/visibility-metrics.observability.test.ts`
+- Create `docs/development/p6c-visibility-metrics-sov.md`
+- Modify `visibility-metrics.queue.ts`, `visibility-metrics.worker.ts`, `visibility-metrics.service.ts`
+- Modify `README.md` only after the code/docs head is fully green
 
-**Allowed events only:**
+**Allowed events:** `visibility.metrics.queued`, `.started`, `.completed`, `.failed`.
 
-```ts
-type VisibilityMetricsEvent =
-  | 'visibility.metrics.queued'
-  | 'visibility.metrics.started'
-  | 'visibility.metrics.completed'
-  | 'visibility.metrics.failed';
+**Allowed fields only:** projectId, snapshotId, formulaVersion, extractorVersion, subjectSetHash, scopeHash, status, candidate/eligible/unknown/notEligible counts, errorCode, durationMs.
+
+- [ ] **Step 1 — RED safe logging tests**
+
+Pass safe fields plus forbidden promptText, answerText, alias, canonicalValue, citationUrl, providerBody, apiKey, cookie, reasoning. Assert all forbidden keys/values are absent.
+
+- [ ] **Step 2 — Implement lifecycle events**
+
+Queued only after queue add succeeds; started after valid same-project job accepted; completed after immutable completion; failed with bounded errorCode/duration. Never log subject snapshot or metric row bodies.
+
+- [ ] **Step 3 — Operator guide**
+
+Document formulas, evidence states, actor dedup, version isolation, cutoff/immutability, hard bounds, queue/retry, COMPETITOR_SOV gate, safe logging, zero-network boundary, P6-D exclusions and diagnosis of UNKNOWN/missing inputs.
+
+- [ ] **Step 4 — Commit code/docs head**
+
+```bash
+git add src/modules/visibility/visibility-metrics.observability.ts src/modules/visibility/visibility-metrics.queue.ts src/modules/visibility/visibility-metrics.worker.ts src/modules/visibility/visibility-metrics.service.ts tests/integration/visibility-metrics.observability.test.ts docs/development/p6c-visibility-metrics-sov.md
+git commit -m "chore: complete P6-C release verification"
 ```
 
-**Allowed fields only:**
-- `projectId`
-- `snapshotId`
-- `formulaVersion`
-- `extractorVersion`
-- `subjectSetHash`
-- `scopeHash`
-- `status`
-- `candidateObservationCount`
-- `eligibleObservationCount`
-- `unknownObservationCount`
-- `notEligibleObservationCount`
-- `errorCode`
-- `durationMs`
+This commit exists before CI so GitHub can verify the actual code/docs head.
 
-- [ ] **Step 1: Write RED observability tests**
+- [ ] **Step 5 — Pre-README exact-head release gate**
 
-Feed serializer safe fields plus forbidden values:
-
-```ts
-{
-  promptText: 'SECRET',
-  answerText: 'SECRET',
-  alias: 'SECRET',
-  canonicalValue: 'SECRET',
-  citationUrl: 'https://secret.example',
-  providerBody: { secret: true },
-  apiKey: 'sk-secret',
-  cookie: 'secret',
-  reasoning: 'secret'
-}
-```
-
-Assert forbidden keys/values are absent from serialized/logged events.
-
-- [ ] **Step 2: Implement strict allowlist serializer and lifecycle emissions**
-
-Emit queued after queue add succeeds; started after worker accepts a valid same-project job; completed after immutable transaction succeeds; failed with stable bounded error code/duration. Never emit input records, subject snapshot JSON or metric row bodies.
-
-- [ ] **Step 3: Write operator guide**
-
-`docs/development/p6c-visibility-metrics-sov.md` must document:
-- truth boundary and zero-network calculation;
-- Mention Rate/Citation Rate/SOV formulas;
-- UNKNOWN/KNOWN_EMPTY/NOT_ELIGIBLE/NO_DATA/NO_SIGNAL semantics;
-- actor rollup/dedup;
-- subjectSetHash/extractorVersion isolation;
-- inputCutoffAt and immutability;
-- hard bounds and queue/retry behavior;
-- `COMPETITOR_SOV` plan gate;
-- safe logging;
-- P6-D exclusions;
-- operational diagnosis for missing/unknown snapshots.
-
-- [ ] **Step 4: Run the pre-README full release gate**
-
-On the exact code/docs head run through CI or equivalent repository environment:
+Require on the exact code/docs head:
 
 ```bash
 npx prisma validate
@@ -852,74 +512,42 @@ npm run test:e2e
 npm audit --omit=dev --audit-level=high
 ```
 
-Existing `.github/workflows/ci.yml` already maps these into `verify`, `production-audit`, and Chromium `e2e`; do not edit CI unless a real repository requirement is missing.
+Existing `.github/workflows/ci.yml` maps these to `verify`, `production-audit`, Chromium `e2e`; edit CI only if an actual required command is missing.
 
-- [ ] **Step 5: Lock additional evidence before README completion marker**
+- [ ] **Step 6 — Evidence review**
 
-Confirm tests/review prove:
-1. P6-C provider/external network calls = 0;
-2. `UNKNOWN` never enters a denominator or becomes zero;
-3. `KNOWN_EMPTY` enters the appropriate denominator;
-4. legitimate 0% is visibly/semantically distinct from UNKNOWN;
-5. owned aliases/subjects cannot double-count one observation;
-6. SOV actor numerators sum exactly to denominator when calculated;
-7. subjectSetHash values never mix;
-8. extractorVersion values never mix;
-9. old snapshots remain immutable after later P6-B backfill;
-10. Standard cannot enqueue/generate/read P6-C intelligence;
-11. P1–P6-B regression suite is green;
-12. no P6-D trend/alert/report implementation exists.
+Confirm: provider/external network calls=0; UNKNOWN never denominator/zero; KNOWN_EMPTY denominator; legitimate zero distinct; owned dedup; calculated SOV numerators sum denominator; hash/version isolation; old snapshot immutable after later P6-B backfill; Standard cannot generate/read; P1–P6-B regressions green; no P6-D implementation.
 
-- [ ] **Step 6: Commit observability/operator guide after GREEN**
+- [ ] **Step 7 — README completion marker only now**
 
-```bash
-git add src/modules/visibility/visibility-metrics.observability.ts src/modules/visibility/visibility-metrics.queue.ts src/modules/visibility/visibility-metrics.worker.ts src/modules/visibility/visibility-metrics.service.ts tests/integration/visibility-metrics.observability.test.ts docs/development/p6c-visibility-metrics-sov.md
-git commit -m "chore: complete P6-C release verification"
-```
-
-- [ ] **Step 7: Update README only after the pre-README head is green**
-
-Change roadmap/current milestone to exactly:
+After Step 5/6 are green, change roadmap/current milestone to:
 
 ```text
 P6-C Visibility Metrics & Competitor Share of Voice — complete
 P6-D History, Dashboard, Alerts & Report Integration — next
 ```
 
-Add a concise P6-C release-evidence paragraph under Release verification. Do not claim P6-D implementation.
-
-Commit separately:
+Add concise P6-C release-evidence paragraph; no P6-D implementation claim.
 
 ```bash
 git add README.md
 git commit -m "docs: mark P6-C complete"
 ```
 
-- [ ] **Step 8: Run fresh exact-final-head CI**
+- [ ] **Step 8 — Fresh final-head CI**
 
-Require all three jobs green on the README final head:
-- `verify`
-- `production-audit`
-- Chromium `e2e`
+On the README commit head require `verify`, `production-audit`, and Chromium `e2e` all SUCCESS. Previous-head green evidence is not sufficient.
 
-Do not reuse a previous-head green result for the final merge.
+- [ ] **Step 9 — Scope review + exact-head merge**
 
-- [ ] **Step 9: Final scope review and exact-head merge**
+Compare `main..head`: no provider/network metric dependency; no sensitive logging; no P6-D feature. Re-read PR head SHA immediately before merge and pass that exact SHA to GitHub `expected_head_sha`.
 
-Compare `main..head` and confirm:
-- no provider adapter/network dependency introduced into calculator/materializer;
-- no prompt/answer/alias/canonical/citation-URL/private body logging;
-- no P6-D trend/alert/report/history implementation;
-- only P6-C metric snapshot capability and required docs are present.
+- [ ] **Step 10 — Post-merge + archival summary**
 
-Mark PR ready, update body with exact final head + CI run, and merge using `expected_head_sha=<exact final head>`.
-
-- [ ] **Step 10: Post-merge verification and phase summary**
-
-Verify `main` points to the merge commit and README records P6-C complete/P6-D next. Create the external archival summary document `兴善堂_SEO_GEO_P6-C_最终总结文档.docx` after merge, with architecture, formulas, data model, API/UI, safety boundaries, PR/CI evidence and next-phase boundary.
+Verify main points to merge commit and README says P6-C complete/P6-D next. Then create `兴善堂_SEO_GEO_P6-C_最终总结文档.docx` with formulas, architecture, data model, API/UI, safety boundary, PR/CI evidence and P6-D boundary.
 
 ---
 
-## P6-C Completion Definition
+## Completion Definition
 
-P6-C is complete only when all six task PRs have merged sequentially from fresh `main`, the exact final Task 6 head passes verify + production-audit + Chromium E2E, README marks P6-C complete only after that gate, and the final scope review confirms no P6-D functionality or provider/network metric calculation was introduced.
+P6-C is complete only after all six task PRs merge sequentially from fresh `main`, the exact final Task 6 head passes verify + production-audit + Chromium E2E, README is changed only after the pre-README gate, and final scope review confirms no P6-D functionality or provider/network metric calculation was introduced.
