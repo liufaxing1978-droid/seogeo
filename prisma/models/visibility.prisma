@@ -1,0 +1,187 @@
+enum VisibilityProvider {
+  OPENAI
+  GEMINI
+  PERPLEXITY
+  ANTHROPIC
+  DEEPSEEK
+}
+
+enum VisibilityChannel {
+  API
+  CONSUMER_UI
+}
+
+enum VisibilityGroundingMode {
+  WEB_SEARCH
+  SEARCH_GROUNDING
+  SONAR
+  WEB_SEARCH_TOOL
+  UNSUPPORTED_WEB_GROUNDING
+}
+
+enum VisibilityConfigStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum VisibilityRunStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  PARTIAL
+  FAILED
+  CANCELLED
+}
+
+enum VisibilityRunType {
+  MANUAL
+  SCHEDULED
+}
+
+enum PlatformObservationStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  REFUSED
+  UNSUPPORTED
+  FAILED
+  INCOMPLETE
+  BUDGET_SKIPPED
+}
+
+model VisibilityProjectSettings {
+  projectId               String   @id @db.Uuid
+  dailyBudgetMicros       Int?
+  defaultRunBudgetMicros  Int?
+  maxObservationsPerRun   Int      @default(100)
+  defaultCurrency         String   @default("USD")
+  schedulingEnabled       Boolean  @default(false)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+model VisibilityProviderConfig {
+  id                  String                    @id @default(uuid()) @db.Uuid
+  projectId           String                    @db.Uuid
+  provider            VisibilityProvider
+  enabled             Boolean                   @default(false)
+  model               String
+  channel             VisibilityChannel         @default(API)
+  groundingMode       VisibilityGroundingMode
+  maxConcurrency      Int                       @default(2)
+  defaultLocale       String?
+  defaultCountry      String?
+  providerOptionsJson Json
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+
+  @@unique([projectId, provider, model, channel, groundingMode])
+  @@index([projectId, enabled, provider])
+}
+
+model VisibilityPromptSet {
+  id             String                 @id @default(uuid()) @db.Uuid
+  projectId      String                 @db.Uuid
+  name           String
+  description    String?
+  status         VisibilityConfigStatus @default(ACTIVE)
+  defaultLocale  String?
+  defaultCountry String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  prompts VisibilityPrompt[]
+  runs    VisibilityRun[]
+
+  @@index([projectId, status])
+  @@index([projectId, createdAt])
+}
+
+model VisibilityPrompt {
+  id          String                 @id @default(uuid()) @db.Uuid
+  projectId   String                 @db.Uuid
+  promptSetId String                 @db.Uuid
+  promptKey   String
+  version     Int
+  promptText  String
+  locale      String?
+  country     String?
+  status      VisibilityConfigStatus @default(ACTIVE)
+  promptHash  String
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  promptSet    VisibilityPromptSet   @relation(fields: [promptSetId], references: [id], onDelete: Cascade)
+  observations PlatformObservation[]
+
+  @@unique([promptSetId, promptKey, version])
+  @@index([projectId, status])
+  @@index([projectId, promptKey, version])
+}
+
+model VisibilityRun {
+  id                       String              @id @default(uuid()) @db.Uuid
+  projectId                String              @db.Uuid
+  status                   VisibilityRunStatus @default(QUEUED)
+  runType                  VisibilityRunType
+  promptSetId              String              @db.Uuid
+  requestedProviderConfigs Json
+  maxObservations          Int
+  budgetCeilingMicros      Int?
+  currency                 String              @default("USD")
+  policySnapshotJson       Json
+  startedAt                DateTime?
+  finishedAt               DateTime?
+  errorCode                String?
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+
+  promptSet    VisibilityPromptSet   @relation(fields: [promptSetId], references: [id], onDelete: Cascade)
+  observations PlatformObservation[]
+
+  @@index([projectId, status])
+  @@index([projectId, createdAt])
+  @@index([promptSetId, createdAt])
+}
+
+model PlatformObservation {
+  id                   String                    @id @default(uuid()) @db.Uuid
+  projectId            String                    @db.Uuid
+  visibilityRunId      String                    @db.Uuid
+  visibilityPromptId   String                    @db.Uuid
+  promptVersion        Int
+  samplingUnitKey      String                    @unique
+  provider             VisibilityProvider
+  model                String
+  channel              VisibilityChannel
+  groundingMode        VisibilityGroundingMode
+  locale               String?
+  country              String?
+  status               PlatformObservationStatus @default(PENDING)
+  providerResponseId   String?
+  answerText           String?
+  answerHash           String?
+  citationsJson        Json
+  searchMetadataJson   Json
+  promptTokens         Int?
+  completionTokens     Int?
+  totalTokens          Int?
+  searchUnits          Int?
+  costMicros           Int?
+  costCurrency         String?
+  pricingVersion       String?
+  latencyMs            Int?
+  errorCode            String?
+  observedAt           DateTime                  @default(now())
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  run    VisibilityRun    @relation(fields: [visibilityRunId], references: [id], onDelete: Cascade)
+  prompt VisibilityPrompt @relation(fields: [visibilityPromptId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, observedAt])
+  @@index([visibilityRunId, status])
+  @@index([visibilityPromptId, observedAt])
+  @@index([projectId, provider, channel, observedAt])
+}
