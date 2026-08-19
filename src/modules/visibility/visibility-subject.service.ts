@@ -6,6 +6,10 @@ import type {
   VisibilitySubjectType
 } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
+import {
+  normalizeVisibilityDomain,
+  normalizeVisibilityName
+} from './visibility-normalization.js';
 
 export type CreateVisibilitySubjectInput =
   | { subjectType: 'OWNED_BRAND'; canonicalValue: string }
@@ -53,27 +57,10 @@ export class VisibilitySubjectError extends Error {
   }
 }
 
-function normalizeText(value: string): string {
-  return value.normalize('NFKC').trim().toLocaleLowerCase('en-US');
-}
-
-function normalizeDomain(value: string): string {
-  const raw = value.normalize('NFKC').trim().toLowerCase();
-  if (!raw) return '';
-
-  let hostname = raw;
-  try {
-    const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`;
-    hostname = new URL(withScheme).hostname.toLowerCase();
-  } catch {
-    hostname = raw.split('/')[0]?.split(':')[0]?.toLowerCase() ?? '';
-  }
-
-  return hostname.replace(/^www\./, '').replace(/\.$/, '');
-}
-
 function requireNormalized(value: string, kind: 'text' | 'domain'): string {
-  const normalized = kind === 'domain' ? normalizeDomain(value) : normalizeText(value);
+  const normalized = kind === 'domain'
+    ? normalizeVisibilityDomain(value)
+    : normalizeVisibilityName(value);
   if (!normalized) {
     throw new VisibilitySubjectError(
       'VISIBILITY_SUBJECT_VALUE_REQUIRED',
@@ -288,7 +275,7 @@ export class VisibilitySubjectService {
     }
     for (const alias of aliases) {
       if (!activeSubjectIds.has(alias.subjectId)) continue;
-      const normalizedAlias = normalizeText(alias.normalizedAlias || alias.alias);
+      const normalizedAlias = normalizeVisibilityName(alias.normalizedAlias || alias.alias);
       if (!normalizedAlias) continue;
       const owners = ownersByAlias.get(normalizedAlias) ?? new Set<string>();
       owners.add(alias.subjectId);
@@ -304,7 +291,7 @@ export class VisibilitySubjectService {
     const aliasesBySubject = new Map<string, string[]>();
     for (const alias of aliases) {
       if (!activeSubjectIds.has(alias.subjectId)) continue;
-      const normalizedAlias = normalizeText(alias.normalizedAlias || alias.alias);
+      const normalizedAlias = normalizeVisibilityName(alias.normalizedAlias || alias.alias);
       if (!normalizedAlias || ambiguous.has(normalizedAlias)) continue;
       const values = aliasesBySubject.get(alias.subjectId) ?? [];
       if (!values.includes(normalizedAlias)) values.push(normalizedAlias);
