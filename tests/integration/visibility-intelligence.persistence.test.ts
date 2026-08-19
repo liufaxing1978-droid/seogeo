@@ -206,6 +206,9 @@ describe('P6-B visibility intelligence persistence', () => {
     const run = await prisma.visibilityRun.create({
       data: { projectId: project.id, promptSetId: promptSet.id, runType: 'MANUAL', requestedProviderConfigs: [], maxObservations: 1, policySnapshotJson: {}, currency: 'USD' }
     });
+
+    // Historical observations created before citation evidence was explicit must remain UNKNOWN;
+    // an empty citations array alone is never evidence of zero citations.
     const observation = await prisma.platformObservation.create({
       data: {
         projectId: project.id,
