@@ -34,7 +34,6 @@ visibilityWebRoutes.get('/projects/:id/visibility', async (req, res, next) => {
       pageTitle: `AI Visibility · ${data.project.name}`,
       activeNav: 'visibility',
       currentProjectId: data.project.id,
-      project: data.project,
       breadcrumbs: ['项目', data.project.name, 'AI Visibility'],
       viewPath: 'visibility/index',
       ...data
@@ -51,7 +50,6 @@ visibilityWebRoutes.get('/projects/:id/visibility/prompts', async (req, res, nex
       pageTitle: `Prompt 监控 · ${data.project.name}`,
       activeNav: 'visibility-prompts',
       currentProjectId: data.project.id,
-      project: data.project,
       breadcrumbs: ['项目', data.project.name, 'AI Visibility', 'Prompt 监控'],
       viewPath: 'visibility/prompts',
       ...data
@@ -95,7 +93,6 @@ visibilityWebRoutes.get('/projects/:id/visibility/runs/:runId', async (req, res,
       pageTitle: `采样运行详情 · ${data.project.name}`,
       activeNav: 'visibility',
       currentProjectId: data.project.id,
-      project: data.project,
       breadcrumbs: ['项目', data.project.name, 'AI Visibility', '采样运行详情'],
       viewPath: 'visibility/runs/show',
       ...data
