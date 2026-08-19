@@ -28,7 +28,7 @@ test('opens Citation Monitor, configures owned subject, and keeps P6-C metrics d
   await page.getByLabel('类型').first().selectOption('OWNED_BRAND');
   await page.getByLabel('Canonical Value').fill('兴善堂');
   await page.getByRole('button', { name: '新增主体' }).click();
-  await expect(page.getByText('兴善堂', { exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '兴善堂', exact: true }).first()).toBeVisible();
 
   const row = page.locator('tr').filter({ hasText: '兴善堂' }).first();
   await row.getByLabel('Alias').fill('Xingshantang');
