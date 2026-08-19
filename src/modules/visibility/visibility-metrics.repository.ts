@@ -73,6 +73,14 @@ export class VisibilityMetricsRepository {
     input: CompleteVisibilityMetricSnapshotInput
   ): Promise<VisibilityMetricSnapshot> {
     return prisma.$transaction(async (tx) => {
+      const running = await tx.visibilityMetricSnapshot.findFirst({
+        where: { id: snapshot.id, projectId: snapshot.projectId, status: 'RUNNING' },
+        select: { id: true }
+      });
+      if (!running) {
+        throw new Error('VISIBILITY_METRICS_SNAPSHOT_NOT_RUNNING');
+      }
+
       await tx.visibilityMetricRow.deleteMany({ where: { visibilityMetricSnapshotId: snapshot.id } });
       if (input.rows.length > 0) {
         await tx.visibilityMetricRow.createMany({
@@ -96,8 +104,9 @@ export class VisibilityMetricsRepository {
           }))
         });
       }
-      return tx.visibilityMetricSnapshot.update({
-        where: { id: snapshot.id },
+
+      const finalized = await tx.visibilityMetricSnapshot.updateMany({
+        where: { id: snapshot.id, projectId: snapshot.projectId, status: 'RUNNING' },
         data: {
           status: 'COMPLETED',
           inputFingerprint: input.inputFingerprint,
@@ -109,18 +118,29 @@ export class VisibilityMetricsRepository {
           completedAt: new Date()
         }
       });
+      if (finalized.count !== 1) {
+        throw new Error('VISIBILITY_METRICS_SNAPSHOT_FINALIZE_CONFLICT');
+      }
+
+      return tx.visibilityMetricSnapshot.findFirstOrThrow({
+        where: { id: snapshot.id, projectId: snapshot.projectId }
+      });
     });
   }
 
   async fail(projectId: string, snapshotId: string, errorCode: string): Promise<VisibilityMetricSnapshot> {
-    return prisma.visibilityMetricSnapshot.update({
-      where: { id: snapshotId },
+    const failed = await prisma.visibilityMetricSnapshot.updateMany({
+      where: { id: snapshotId, projectId, status: 'RUNNING' },
       data: {
         status: 'FAILED',
         errorCode,
         completedAt: new Date()
       }
     });
+    if (failed.count !== 1) {
+      throw new Error('VISIBILITY_METRICS_SNAPSHOT_FAIL_CONFLICT');
+    }
+    return prisma.visibilityMetricSnapshot.findFirstOrThrow({ where: { id: snapshotId, projectId } });
   }
 
   async listRows(snapshotId: string): Promise<VisibilityMetricRow[]> {
