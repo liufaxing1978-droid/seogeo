@@ -1,4 +1,4 @@
-import type { VisibilityGroundingMode } from '@prisma/client';
+import type { CitationEvidenceState, VisibilityGroundingMode } from '@prisma/client';
 import {
   VisibilityProviderError,
   type VisibilityCitationSource,
@@ -129,6 +129,28 @@ function normalizeWebSearchMetadata(output: unknown[]) {
   return { webSearchCalls: calls };
 }
 
+function citationEvidenceState(output: unknown[], citations: VisibilityCitationSource[]): CitationEvidenceState {
+  let sawSearchCall = false;
+  let allSourceCollectionsExplicit = true;
+  let sourceCount = 0;
+
+  for (const item of output) {
+    const itemRecord = record(item);
+    if (itemRecord?.type !== 'web_search_call') continue;
+    sawSearchCall = true;
+    const action = record(itemRecord.action);
+    if (!Array.isArray(action?.sources)) {
+      allSourceCollectionsExplicit = false;
+      continue;
+    }
+    sourceCount += action.sources.filter((source) => Boolean(stringValue(record(source)?.url))).length;
+  }
+
+  if (citations.length > 0 || sourceCount > 0) return 'KNOWN_PRESENT';
+  if (sawSearchCall && allSourceCollectionsExplicit) return 'KNOWN_EMPTY';
+  return 'UNKNOWN';
+}
+
 function normalizeAnswer(output: unknown[]): { status: 'COMPLETED' | 'REFUSED' | 'INCOMPLETE'; answerText: string | null } {
   const texts: string[] = [];
   let refused = false;
@@ -217,6 +239,7 @@ export class OpenAIVisibilityProvider implements VisibilityProviderAdapter {
         providerResponseId: null,
         answerText: null,
         citations: [],
+        citationEvidenceState: 'NOT_APPLICABLE',
         searchMetadata: {},
         promptTokens: null,
         completionTokens: null,
@@ -291,6 +314,7 @@ export class OpenAIVisibilityProvider implements VisibilityProviderAdapter {
         providerResponseId: id,
         answerText: null,
         citations: [],
+        citationEvidenceState: 'UNKNOWN',
         searchMetadata,
         ...usage,
         searchUnits,
@@ -309,11 +333,15 @@ export class OpenAIVisibilityProvider implements VisibilityProviderAdapter {
     }
 
     const normalizedAnswer = normalizeAnswer(output);
+    const citations = normalizedAnswer.status === 'COMPLETED' ? normalizeCitations(output) : [];
     return {
       status: normalizedAnswer.status,
       providerResponseId: id,
       answerText: normalizedAnswer.answerText,
-      citations: normalizedAnswer.status === 'COMPLETED' ? normalizeCitations(output) : [],
+      citations,
+      citationEvidenceState: normalizedAnswer.status === 'COMPLETED'
+        ? citationEvidenceState(output, citations)
+        : 'UNKNOWN',
       searchMetadata,
       ...usage,
       searchUnits,
