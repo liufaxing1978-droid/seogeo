@@ -1,0 +1,93 @@
+enum VisibilityMetricSnapshotStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum VisibilityMetricType {
+  MENTION_RATE
+  CITATION_RATE
+  MENTION_SHARE_OF_VOICE
+}
+
+enum VisibilityMetricStatus {
+  CALCULATED
+  NO_SIGNAL
+  UNKNOWN
+  NOT_ELIGIBLE
+  NO_DATA
+}
+
+enum VisibilityMetricDimensionType {
+  OVERALL
+  PROVIDER
+  PROMPT_SET
+}
+
+enum VisibilityMetricActorType {
+  OWNED_ROLLUP
+  COMPETITOR
+}
+
+model VisibilityMetricSnapshot {
+  id                       String                         @id @default(uuid()) @db.Uuid
+  projectId                String                         @db.Uuid
+  status                   VisibilityMetricSnapshotStatus @default(QUEUED)
+  formulaVersion           String
+  extractorVersion         String
+  subjectSetHash           String
+  subjectSnapshotJson      Json
+  windowStart              DateTime
+  windowEnd                DateTime
+  inputCutoffAt            DateTime
+  scopeJson                Json
+  scopeHash                String
+  inputFingerprint         String?
+  candidateObservationCount Int                           @default(0)
+  completedExtractionCount Int                            @default(0)
+  missingExtractionCount   Int                            @default(0)
+  failedExtractionCount    Int                            @default(0)
+  errorCode                String?
+  startedAt                DateTime?
+  completedAt              DateTime?
+  createdAt                DateTime                       @default(now())
+  updatedAt                DateTime                       @updatedAt
+
+  rows VisibilityMetricRow[]
+
+  @@unique([projectId, formulaVersion, extractorVersion, subjectSetHash, windowStart, windowEnd, inputCutoffAt, scopeHash])
+  @@index([projectId, createdAt])
+  @@index([projectId, status])
+  @@index([projectId, windowStart, windowEnd])
+  @@index([projectId, subjectSetHash, extractorVersion])
+}
+
+model VisibilityMetricRow {
+  id                          String                        @id @default(uuid()) @db.Uuid
+  visibilityMetricSnapshotId  String                        @db.Uuid
+  projectId                   String                        @db.Uuid
+  metricType                  VisibilityMetricType
+  metricStatus                VisibilityMetricStatus
+  dimensionType               VisibilityMetricDimensionType
+  dimensionKey                String
+  dimensionLabelSnapshot      String?
+  actorType                   VisibilityMetricActorType
+  actorSubjectId              String?                       @db.Uuid
+  actorKey                    String
+  numerator                   Int
+  denominator                 Int
+  candidateObservationCount   Int
+  eligibleObservationCount    Int
+  notEligibleObservationCount Int
+  unknownObservationCount     Int
+  createdAt                   DateTime                      @default(now())
+
+  snapshot VisibilityMetricSnapshot @relation(fields: [visibilityMetricSnapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([visibilityMetricSnapshotId, metricType, dimensionType, dimensionKey, actorKey])
+  @@index([projectId, createdAt])
+  @@index([visibilityMetricSnapshotId, metricType])
+  @@index([projectId, metricType, dimensionType])
+  @@index([actorSubjectId])
+}
