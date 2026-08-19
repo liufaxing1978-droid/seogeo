@@ -2,11 +2,13 @@ import { createHash } from 'node:crypto';
 import type {
   PlatformObservationStatus,
   Prisma,
-  VisibilityGroundingMode
+  VisibilityGroundingMode,
+  VisibilityRunStatus
 } from '@prisma/client';
 import type { Job } from 'bullmq';
 import { prisma } from '../../db/prisma.js';
 import { VisibilityBudgetService, visibilityBudgetService } from './visibility-budget.js';
+import { emitVisibilityEvent } from './visibility-observability.js';
 import { defaultVisibilityProviderRegistry } from './providers/default-registry.js';
 import {
   VisibilityProviderError,
@@ -85,44 +87,83 @@ function providerOptionsForObservation(
   return {};
 }
 
-async function markRunStarted(runId: string) {
-  await prisma.visibilityRun.updateMany({
+async function markRunStarted(runId: string, projectId: string) {
+  const transition = await prisma.visibilityRun.updateMany({
     where: { id: runId, status: 'QUEUED' },
     data: { status: 'RUNNING', startedAt: new Date() }
   });
+  if (transition.count === 1) {
+    emitVisibilityEvent('visibility.run.started', {
+      projectId,
+      runId,
+      status: 'RUNNING'
+    });
+  }
 }
 
-async function finalizeVisibilityRun(runId: string) {
+function runTerminalEvent(status: VisibilityRunStatus) {
+  if (status === 'COMPLETED') return 'visibility.run.completed' as const;
+  if (status === 'PARTIAL') return 'visibility.run.partial' as const;
+  return 'visibility.run.failed' as const;
+}
+
+async function finalizeVisibilityRun(runId: string, projectId: string) {
   const observations = await prisma.platformObservation.findMany({
     where: { visibilityRunId: runId },
     select: { status: true }
   });
   if (!observations.length) return;
   if (observations.some((item) => !TERMINAL_STATUSES.has(item.status))) {
-    await prisma.visibilityRun.updateMany({
-      where: { id: runId, status: 'QUEUED' },
-      data: { status: 'RUNNING', startedAt: new Date() }
-    });
+    await markRunStarted(runId, projectId);
     return;
   }
 
   const completedCount = observations.filter((item) => item.status === 'COMPLETED').length;
-  const status = completedCount === observations.length
+  const status: VisibilityRunStatus = completedCount === observations.length
     ? 'COMPLETED'
     : completedCount > 0
       ? 'PARTIAL'
       : 'FAILED';
 
-  await prisma.visibilityRun.update({
-    where: { id: runId },
+  const transition = await prisma.visibilityRun.updateMany({
+    where: { id: runId, status: { in: ['QUEUED', 'RUNNING'] } },
     data: { status, finishedAt: new Date() }
   });
+  if (transition.count === 1) {
+    emitVisibilityEvent(runTerminalEvent(status), {
+      projectId,
+      runId,
+      status
+    });
+  }
 }
 
 function failureCode(error: unknown): string {
   return error instanceof VisibilityProviderError
     ? error.code
     : 'VISIBILITY_PROVIDER_FAILED';
+}
+
+function observationFields(loaded: {
+  id: string;
+  projectId: string;
+  visibilityRunId: string;
+  visibilityPromptId: string;
+  promptVersion: number;
+  provider: string;
+  model: string;
+  channel: string;
+}) {
+  return {
+    projectId: loaded.projectId,
+    runId: loaded.visibilityRunId,
+    observationId: loaded.id,
+    provider: loaded.provider,
+    model: loaded.model,
+    channel: loaded.channel,
+    promptId: loaded.visibilityPromptId,
+    promptVersion: loaded.promptVersion
+  };
 }
 
 export async function executeVisibilityObservation(
@@ -144,7 +185,12 @@ export async function executeVisibilityObservation(
 
   const claimed = await repository.claimPendingObservation(observationId);
   if (!claimed) return;
-  await markRunStarted(loaded.visibilityRunId);
+
+  await markRunStarted(loaded.visibilityRunId, loaded.projectId);
+  emitVisibilityEvent('visibility.observation.started', {
+    ...observationFields(loaded),
+    status: 'RUNNING'
+  });
 
   try {
     const adapter = registry.get(loaded.provider, loaded.model, loaded.channel);
@@ -157,7 +203,12 @@ export async function executeVisibilityObservation(
           observedAt: new Date()
         }
       });
-      await finalizeVisibilityRun(loaded.visibilityRunId);
+      emitVisibilityEvent('visibility.observation.unsupported', {
+        ...observationFields(loaded),
+        status: 'UNSUPPORTED',
+        errorCode: 'VISIBILITY_WEB_GROUNDING_UNSUPPORTED'
+      });
+      await finalizeVisibilityRun(loaded.visibilityRunId, loaded.projectId);
       return;
     }
 
@@ -174,7 +225,7 @@ export async function executeVisibilityObservation(
     const budgetDecision = await budgetService.preflightObservation(loaded.id, estimate);
     if (!budgetDecision.allowed) {
       await budgetService.markBudgetSkipped(loaded.id, budgetDecision.reason);
-      await finalizeVisibilityRun(loaded.visibilityRunId);
+      await finalizeVisibilityRun(loaded.visibilityRunId, loaded.projectId);
       return;
     }
 
@@ -209,19 +260,50 @@ export async function executeVisibilityObservation(
         observedAt: new Date()
       }
     });
-    await finalizeVisibilityRun(loaded.visibilityRunId);
+
+    if (response.status === 'COMPLETED') {
+      emitVisibilityEvent('visibility.observation.completed', {
+        ...observationFields(loaded),
+        status: response.status,
+        latencyMs: response.latencyMs,
+        promptTokens: response.promptTokens,
+        completionTokens: response.completionTokens,
+        totalTokens: response.totalTokens,
+        searchUnits: response.searchUnits,
+        costMicros: response.costMicros
+      });
+    } else if (response.status === 'UNSUPPORTED') {
+      emitVisibilityEvent('visibility.observation.unsupported', {
+        ...observationFields(loaded),
+        status: response.status,
+        errorCode: 'VISIBILITY_WEB_GROUNDING_UNSUPPORTED'
+      });
+    } else {
+      emitVisibilityEvent('visibility.observation.failed', {
+        ...observationFields(loaded),
+        status: response.status
+      });
+    }
+
+    await finalizeVisibilityRun(loaded.visibilityRunId, loaded.projectId);
   } catch (error) {
+    const errorCode = failureCode(error);
     await prisma.platformObservation.update({
       where: { id: loaded.id },
       data: {
         status: 'FAILED',
-        errorCode: failureCode(error),
+        errorCode,
         answerText: null,
         answerHash: null,
         observedAt: new Date()
       }
     });
-    await finalizeVisibilityRun(loaded.visibilityRunId);
+    emitVisibilityEvent('visibility.observation.failed', {
+      ...observationFields(loaded),
+      status: 'FAILED',
+      errorCode
+    });
+    await finalizeVisibilityRun(loaded.visibilityRunId, loaded.projectId);
     throw error;
   }
 }
