@@ -146,6 +146,7 @@ describe('P6-C visibility metric materialization', () => {
         citationStatus: 'KNOWN_EMPTY',
         mentionCount: 0,
         citationCount: 0,
+        createdAt: new Date('2026-08-06T00:00:00.000Z'),
         completedAt: new Date('2026-08-06T00:00:00.000Z')
       }
     });
