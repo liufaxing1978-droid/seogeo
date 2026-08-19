@@ -107,7 +107,11 @@ export class VisibilityExtractionService {
     this.citationExtractor = options.citationExtractor ?? extractCitations;
   }
 
-  async extractObservation(projectId: string, observationId: string) {
+  async extractObservation(
+    projectId: string,
+    observationId: string,
+    expectedSubjectSetHash?: string
+  ) {
     const observation = await prisma.platformObservation.findFirst({
       where: { id: observationId, projectId }
     });
@@ -126,6 +130,12 @@ export class VisibilityExtractionService {
         'Visibility subject snapshot hash mismatch'
       );
     }
+    if (expectedSubjectSetHash && expectedSubjectSetHash !== subjectSetHash) {
+      throw new VisibilityExtractionError(
+        'VISIBILITY_SUBJECT_SNAPSHOT_STALE',
+        'Visibility subject snapshot changed after extraction was queued'
+      );
+    }
 
     const extraction = await this.repository.createOrGet({
       projectId,
@@ -137,7 +147,6 @@ export class VisibilityExtractionService {
     });
 
     if (extraction.status === 'COMPLETED') return extraction;
-    if (extraction.status === 'FAILED') return extraction;
 
     const claimed = await this.repository.claim(extraction.id);
     if (!claimed) {
