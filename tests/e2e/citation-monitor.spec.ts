@@ -31,7 +31,7 @@ test('opens Citation Monitor, configures owned subject, and keeps P6-C metrics d
   await expect(page.getByRole('cell', { name: '兴善堂', exact: true }).first()).toBeVisible();
 
   const row = page.locator('tr').filter({ hasText: '兴善堂' }).first();
-  await row.getByLabel('Alias').fill('Xingshantang');
+  await row.getByLabel('Alias', { exact: true }).fill('Xingshantang');
   await row.getByLabel('类型').selectOption('NAME');
   await row.getByRole('button', { name: '添加 Alias' }).click();
   await expect(page.getByText('Xingshantang', { exact: true })).toBeVisible();
