@@ -1,4 +1,4 @@
-import { NotFoundError } from '../../core/errors.js';
+import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
 
 export type VisibilityBudgetReason =
@@ -131,7 +131,14 @@ export class VisibilityBudgetService {
     });
   }
 
-  async markBudgetSkipped(observationId: string, reason: Exclude<VisibilityBudgetReason, 'WITHIN_BUDGET'>) {
+  async markBudgetSkipped(observationId: string, reason: VisibilityBudgetReason) {
+    if (reason === 'WITHIN_BUDGET') {
+      throw new AppError(
+        'A within-budget observation cannot be marked as budget skipped',
+        400,
+        'INVALID_VISIBILITY_BUDGET_SKIP_REASON'
+      );
+    }
     const result = await prisma.platformObservation.updateMany({
       where: { id: observationId, status: 'RUNNING' },
       data: {
