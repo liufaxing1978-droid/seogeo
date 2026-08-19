@@ -197,7 +197,7 @@ export class VisibilityMetricsService {
     return {
       subjects: current.subjects,
       ambiguousAliases: current.ambiguousAliases
-    } as Prisma.InputJsonValue;
+    } as unknown as Prisma.InputJsonValue;
   }
 
   async prepareSnapshot(input: PrepareVisibilityMetricSnapshotInput): Promise<VisibilityMetricSnapshot> {
