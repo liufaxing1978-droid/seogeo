@@ -23,7 +23,7 @@
   <% if (promptSets.length) { %>
   <form action="/projects/<%= project.id %>/visibility/prompts" method="post" class="form-grid">
     <label class="field" for="prompt-set"><span>Prompt Set</span><select id="prompt-set" name="promptSetId" required>
-      <% for (const set of promptSets) { %><option value="<%= set.id %>"><%= set.name %></option><% } %>
+      <% for (const set of promptSets) { %><option value="<%= set.id %>" label="<%= set.name %>">选择此 Prompt Set</option><% } %>
     </select></label>
     <label class="field" for="prompt-key"><span>Prompt Key</span><input id="prompt-key" name="promptKey" required placeholder="discovery" /></label>
     <label class="field" for="prompt-locale"><span>语言覆盖</span><input id="prompt-locale" name="locale" placeholder="留空使用 Prompt Set 默认值" /></label>
