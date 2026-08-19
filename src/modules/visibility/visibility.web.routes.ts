@@ -35,7 +35,7 @@ visibilityWebRoutes.get('/projects/:id/visibility', async (req, res, next) => {
       activeNav: 'visibility',
       currentProjectId: data.project.id,
       breadcrumbs: ['项目', data.project.name, 'AI Visibility'],
-      viewPath: 'visibility/index',
+      bodyTemplate: 'visibility/index',
       ...data
     });
   } catch (error) { next(error); }
@@ -51,7 +51,7 @@ visibilityWebRoutes.get('/projects/:id/visibility/prompts', async (req, res, nex
       activeNav: 'visibility-prompts',
       currentProjectId: data.project.id,
       breadcrumbs: ['项目', data.project.name, 'AI Visibility', 'Prompt 监控'],
-      viewPath: 'visibility/prompts',
+      bodyTemplate: 'visibility/prompts',
       ...data
     });
   } catch (error) { next(error); }
@@ -94,7 +94,7 @@ visibilityWebRoutes.get('/projects/:id/visibility/runs/:runId', async (req, res,
       activeNav: 'visibility',
       currentProjectId: data.project.id,
       breadcrumbs: ['项目', data.project.name, 'AI Visibility', '采样运行详情'],
-      viewPath: 'visibility/runs/show',
+      bodyTemplate: 'visibility/runs/show',
       ...data
     });
   } catch (error) { next(error); }
