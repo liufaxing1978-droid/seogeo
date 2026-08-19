@@ -1,4 +1,8 @@
 import {
+  VisibilityMetricsRepository,
+  visibilityMetricsRepository
+} from './visibility-metrics.repository.js';
+import {
   VisibilityMetricsError,
   VisibilityMetricsService
 } from './visibility-metrics.service.js';
@@ -13,6 +17,7 @@ export interface VisibilityMetricsJobLike {
 
 export interface VisibilityMetricsWorkerDependencies {
   metricsService?: Pick<VisibilityMetricsService, 'materializeSnapshot'>;
+  repository?: Pick<VisibilityMetricsRepository, 'get'>;
 }
 
 function requiredString(value: unknown, field: string): string {
@@ -49,7 +54,26 @@ export async function processVisibilityMetricsJob(
       `Unsupported visibility metrics job: ${job.name}`
     );
   }
+
   const data = jobData(job.data);
+  const repository = dependencies.repository ?? visibilityMetricsRepository;
+  const snapshot = await repository.get(data.projectId, data.snapshotId);
+  const identityMatches = snapshot !== null
+    && snapshot.formulaVersion === data.formulaVersion
+    && snapshot.extractorVersion === data.extractorVersion
+    && snapshot.subjectSetHash === data.subjectSetHash
+    && snapshot.windowStart.toISOString() === data.windowStart
+    && snapshot.windowEnd.toISOString() === data.windowEnd
+    && snapshot.inputCutoffAt.toISOString() === data.inputCutoffAt
+    && snapshot.scopeHash === data.scopeHash;
+
+  if (!identityMatches) {
+    throw new VisibilityMetricsError(
+      'VISIBILITY_METRICS_SNAPSHOT_NOT_FOUND',
+      'Visibility metric snapshot job identity did not match the project snapshot'
+    );
+  }
+
   const service = dependencies.metricsService ?? new VisibilityMetricsService();
   return service.materializeSnapshot(data.projectId, data.snapshotId);
 }
