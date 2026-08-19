@@ -1,0 +1,59 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">AI Visibility · P6-A</p>
+    <h1>Prompt 监控</h1>
+    <p class="muted"><%= project.name %> · Prompt 文本采用不可变版本；修改内容会创建新版本，不覆盖历史版本。</p>
+  </div>
+  <div class="actions"><a class="button" href="/projects/<%= project.id %>/visibility">返回 AI Visibility</a></div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>创建 Prompt Set</h2><p class="muted">用于组织同一监控主题下的版本化 Prompt。</p></div></div>
+  <form action="/projects/<%= project.id %>/visibility/prompt-sets" method="post" class="form-grid">
+    <label class="field" for="prompt-set-name"><span>Prompt Set 名称</span><input id="prompt-set-name" name="name" required /></label>
+    <label class="field" for="default-locale"><span>默认语言</span><input id="default-locale" name="defaultLocale" placeholder="en-US" /></label>
+    <label class="field" for="default-country"><span>默认国家</span><input id="default-country" name="defaultCountry" placeholder="US" /></label>
+    <label class="field" for="prompt-set-description"><span>说明</span><input id="prompt-set-description" name="description" /></label>
+    <div class="actions"><button class="button" type="submit">创建 Prompt Set</button></div>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>创建 Prompt 版本</h2><p class="muted">每次提交都生成新的不可变版本，并记录确定性 hash。</p></div></div>
+  <% if (promptSets.length) { %>
+  <form action="/projects/<%= project.id %>/visibility/prompts" method="post" class="form-grid">
+    <label class="field" for="prompt-set"><span>Prompt Set</span><select id="prompt-set" name="promptSetId" required>
+      <% for (const set of promptSets) { %><option value="<%= set.id %>"><%= set.name %></option><% } %>
+    </select></label>
+    <label class="field" for="prompt-key"><span>Prompt Key</span><input id="prompt-key" name="promptKey" required placeholder="discovery" /></label>
+    <label class="field" for="prompt-locale"><span>语言覆盖</span><input id="prompt-locale" name="locale" placeholder="留空使用 Prompt Set 默认值" /></label>
+    <label class="field" for="prompt-country"><span>国家覆盖</span><input id="prompt-country" name="country" placeholder="留空使用 Prompt Set 默认值" /></label>
+    <label class="field" for="prompt-text" style="grid-column: 1 / -1"><span>Prompt 文本</span><textarea id="prompt-text" name="promptText" rows="5" required></textarea></label>
+    <div class="actions"><button class="button" type="submit">创建 Prompt 版本</button></div>
+  </form>
+  <% } else { %>
+    <p class="muted">请先创建 Prompt Set。</p>
+  <% } %>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>Prompt Sets</h2><p class="muted">配置本身不会启动 Provider 采样。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>名称</th><th>默认语言</th><th>默认国家</th><th>状态</th><th>创建时间</th></tr></thead>
+    <tbody>
+      <% for (const set of promptSets) { %><tr><td><strong><%= set.name %></strong><div class="muted"><%= set.description ?? '' %></div></td><td><%= set.defaultLocale ?? '—' %></td><td><%= set.defaultCountry ?? '—' %></td><td><%= set.status %></td><td><%= new Date(set.createdAt).toLocaleString('zh-CN') %></td></tr><% } %>
+      <% if (!promptSets.length) { %><tr><td colspan="5" class="muted">尚无 Prompt Set。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>不可变版本</h2><p class="muted">旧版本保留原始文本与 hash，后续采样永远引用具体版本。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Prompt Key</th><th>版本</th><th>Prompt 文本</th><th>Locale</th><th>Country</th><th>状态</th></tr></thead>
+    <tbody>
+      <% for (const prompt of prompts) { %><tr><td><strong><%= prompt.promptKey %></strong></td><td><span class="badge">v<%= prompt.version %></span></td><td><%= prompt.promptText %></td><td><%= prompt.locale ?? '—' %></td><td><%= prompt.country ?? '—' %></td><td><%= prompt.status %></td></tr><% } %>
+      <% if (!prompts.length) { %><tr><td colspan="6" class="muted">尚未创建 Prompt 版本。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
