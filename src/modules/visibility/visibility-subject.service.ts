@@ -10,6 +10,7 @@ import {
   normalizeVisibilityDomain,
   normalizeVisibilityName
 } from './visibility-normalization.js';
+import { emitVisibilityIntelligenceEvent } from './visibility-intelligence.observability.js';
 
 export type CreateVisibilitySubjectInput =
   | { subjectType: 'OWNED_BRAND'; canonicalValue: string }
@@ -93,7 +94,7 @@ export class VisibilitySubjectService {
     const project = await ensureProject(projectId);
     const normalizedValue = requireNormalized(project.primaryDomain, 'domain');
 
-    return prisma.visibilitySubject.upsert({
+    const subject = await prisma.visibilitySubject.upsert({
       where: {
         projectId_subjectType_normalizedValue: {
           projectId,
@@ -114,6 +115,12 @@ export class VisibilitySubjectService {
         status: 'ACTIVE'
       }
     });
+    emitVisibilityIntelligenceEvent('visibility.subject.created', {
+      projectId,
+      subjectId: subject.id,
+      status: subject.status
+    });
+    return subject;
   }
 
   async createSubject(projectId: string, input: CreateVisibilitySubjectInput): Promise<VisibilitySubject> {
@@ -126,9 +133,7 @@ export class VisibilitySubjectService {
     let competitorId: string | null = null;
 
     if (input.subjectType === 'OWNED_ENTITY') {
-      const entity = await prisma.entity.findFirst({
-        where: { id: input.entityId, projectId }
-      });
+      const entity = await prisma.entity.findFirst({ where: { id: input.entityId, projectId } });
       if (!entity) {
         throw new VisibilitySubjectError('VISIBILITY_ENTITY_NOT_FOUND', 'Visibility entity not found');
       }
@@ -137,9 +142,7 @@ export class VisibilitySubjectService {
       sourceType = 'P3_ENTITY';
       entityId = entity.id;
     } else if (input.subjectType === 'COMPETITOR') {
-      const competitor = await prisma.competitor.findFirst({
-        where: { id: input.competitorId, projectId }
-      });
+      const competitor = await prisma.competitor.findFirst({ where: { id: input.competitorId, projectId } });
       if (!competitor) {
         throw new VisibilitySubjectError('VISIBILITY_COMPETITOR_NOT_FOUND', 'Visibility competitor not found');
       }
@@ -157,7 +160,7 @@ export class VisibilitySubjectService {
       sourceType = 'PROJECT_CONFIG';
     }
 
-    return prisma.visibilitySubject.upsert({
+    const subject = await prisma.visibilitySubject.upsert({
       where: {
         projectId_subjectType_normalizedValue: {
           projectId,
@@ -182,6 +185,12 @@ export class VisibilitySubjectService {
         status: 'ACTIVE'
       }
     });
+    emitVisibilityIntelligenceEvent('visibility.subject.created', {
+      projectId,
+      subjectId: subject.id,
+      status: subject.status
+    });
+    return subject;
   }
 
   async addAlias(projectId: string, subjectId: string, input: AddVisibilityAliasInput) {
@@ -216,10 +225,15 @@ export class VisibilitySubjectService {
     ]);
 
     if (conflictingAlias || conflictingSubject) {
+      emitVisibilityIntelligenceEvent('visibility.subject.alias_ambiguous', {
+        projectId,
+        subjectId,
+        errorCode: 'AMBIGUOUS_ALIAS'
+      });
       throw new VisibilitySubjectError('AMBIGUOUS_ALIAS', 'Visibility alias is ambiguous');
     }
 
-    return prisma.visibilitySubjectAlias.upsert({
+    const createdAlias = await prisma.visibilitySubjectAlias.upsert({
       where: { subjectId_normalizedAlias: { subjectId, normalizedAlias } },
       create: {
         projectId,
@@ -236,6 +250,12 @@ export class VisibilitySubjectService {
         status: 'ACTIVE'
       }
     });
+    emitVisibilityIntelligenceEvent('visibility.subject.alias_added', {
+      projectId,
+      subjectId,
+      status: createdAlias.status
+    });
+    return createdAlias;
   }
 
   async archiveSubject(projectId: string, subjectId: string) {
@@ -249,6 +269,11 @@ export class VisibilitySubjectService {
     await prisma.visibilitySubjectAlias.updateMany({
       where: { projectId, subjectId },
       data: { status: 'ARCHIVED' }
+    });
+    emitVisibilityIntelligenceEvent('visibility.subject.archived', {
+      projectId,
+      subjectId,
+      status: 'ARCHIVED'
     });
   }
 
@@ -284,7 +309,7 @@ export class VisibilitySubjectService {
 
     const ambiguousAliases = [...ownersByAlias.entries()]
       .filter(([, owners]) => owners.size > 1)
-      .map(([alias]) => alias)
+      .map(([aliasValue]) => aliasValue)
       .sort();
     const ambiguous = new Set(ambiguousAliases);
 
@@ -309,17 +334,11 @@ export class VisibilitySubjectService {
       aliases: (aliasesBySubject.get(subject.id) ?? []).sort()
     }));
 
-    const snapshotBody = {
-      subjects: snapshotSubjects,
-      ambiguousAliases
-    };
+    const snapshotBody = { subjects: snapshotSubjects, ambiguousAliases };
     const subjectSetHash = createHash('sha256')
       .update(stableJson(snapshotBody))
       .digest('hex');
 
-    return {
-      ...snapshotBody,
-      subjectSetHash
-    };
+    return { ...snapshotBody, subjectSetHash };
   }
 }
