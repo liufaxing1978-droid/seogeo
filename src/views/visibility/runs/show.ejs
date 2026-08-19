@@ -1,0 +1,39 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">AI Visibility · P6-A</p>
+    <h1>采样运行详情</h1>
+    <p class="muted"><%= project.name %> · <%= run.id %></p>
+  </div>
+  <div class="actions"><a class="button" href="/projects/<%= project.id %>/visibility">返回 AI Visibility</a></div>
+</section>
+
+<section class="metric-grid compact">
+  <article class="metric-card"><div class="metric-title">运行状态</div><div class="metric-value"><%= run.status %></div><div class="metric-caption"><%= run.runType %></div></article>
+  <article class="metric-card"><div class="metric-title">Prompt Set</div><div class="metric-value"><%= run.promptSet.name %></div><div class="metric-caption"><%= run.maxObservations %> 最大观察数</div></article>
+  <article class="metric-card"><div class="metric-title">观察数</div><div class="metric-value"><%= run.observations.length %></div><div class="metric-caption">所有记录均标注采样 Channel</div></article>
+  <article class="metric-card"><div class="metric-title">预算上限</div><div class="metric-value"><%= run.budgetCeilingMicros == null ? '未配置' : (run.budgetCeilingMicros / 1000000).toFixed(4) %></div><div class="metric-caption"><%= run.currency %></div></article>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>API Observations</h2><p class="muted">仅展示规范化的响应事实、引用来源、用量与成本；不展示 Provider 内部推理过程。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Prompt</th><th>Provider / Model</th><th>Channel</th><th>状态</th><th>引用</th><th>用量 / 成本</th></tr></thead>
+    <tbody>
+      <% for (const observation of run.observations) { %>
+        <tr>
+          <td><strong><%= observation.prompt.promptKey %></strong><div class="muted">v<%= observation.promptVersion %> · <%= observation.locale ?? '—' %> / <%= observation.country ?? '—' %></div></td>
+          <td><strong><%= observation.provider %></strong><div class="muted"><%= observation.model %> · <%= observation.groundingMode %></div></td>
+          <td><span class="badge"><%= observation.channel %></span></td>
+          <td><span class="badge"><%= observation.status %></span><% if (observation.errorCode) { %><div class="muted"><%= observation.errorCode %></div><% } %></td>
+          <td>
+            <% if (observation.citations.length) { %>
+              <% for (const citation of observation.citations) { %><div><a href="<%= citation.url %>" rel="noreferrer"><%= citation.title ?? citation.url %></a><div class="muted"><%= citation.url %></div></div><% } %>
+            <% } else { %><span class="muted">无规范化引用来源</span><% } %>
+          </td>
+          <td><%= observation.totalTokens ?? '—' %> tokens<div class="muted"><%= observation.costMicros == null ? '成本未知' : `${(observation.costMicros / 1000000).toFixed(6)} ${observation.costCurrency ?? run.currency}` %><%= observation.pricingVersion ? ` · ${observation.pricingVersion}` : '' %></div></td>
+        </tr>
+      <% } %>
+      <% if (!run.observations.length) { %><tr><td colspan="6" class="muted">该运行尚未生成观察记录。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
