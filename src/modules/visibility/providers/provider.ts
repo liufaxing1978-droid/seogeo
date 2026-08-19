@@ -1,4 +1,5 @@
 import type {
+  CitationEvidenceState,
   VisibilityGroundingMode,
   VisibilityProvider
 } from '@prisma/client';
@@ -26,6 +27,7 @@ export interface VisibilitySampleResponse {
   providerResponseId: string | null;
   answerText: string | null;
   citations: VisibilityCitationSource[];
+  citationEvidenceState: CitationEvidenceState;
   searchMetadata: Record<string, unknown>;
   promptTokens: number | null;
   completionTokens: number | null;

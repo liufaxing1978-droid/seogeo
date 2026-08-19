@@ -1,4 +1,4 @@
-import type { VisibilityGroundingMode } from '@prisma/client';
+import type { CitationEvidenceState, VisibilityGroundingMode } from '@prisma/client';
 import {
   VisibilityProviderError,
   type VisibilityCitationSource,
@@ -35,16 +35,8 @@ class FetchGeminiVisibilityTransport implements GeminiVisibilityTransport {
       body: JSON.stringify(request.body)
     });
     let body: unknown = null;
-    try {
-      body = await response.json();
-    } catch {
-      body = null;
-    }
-    return {
-      status: response.status,
-      body,
-      latencyMs: Date.now() - startedAt
-    };
+    try { body = await response.json(); } catch { body = null; }
+    return { status: response.status, body, latencyMs: Date.now() - startedAt };
   }
 }
 
@@ -89,7 +81,6 @@ function normalizeAnswer(steps: unknown[]): string | null {
 function normalizeCitations(steps: unknown[]): VisibilityCitationSource[] {
   const citations: VisibilityCitationSource[] = [];
   const seen = new Set<string>();
-
   for (const step of steps) {
     const stepRecord = record(step);
     if (stepRecord?.type !== 'model_output' || !Array.isArray(stepRecord.content)) continue;
@@ -102,22 +93,15 @@ function normalizeCitations(steps: unknown[]): VisibilityCitationSource[] {
         const url = stringValue(annotationRecord.url);
         if (!url || seen.has(url)) continue;
         seen.add(url);
-        citations.push({
-          url,
-          title: stringValue(annotationRecord.title),
-          position: null,
-          sourceType: 'url_citation'
-        });
+        citations.push({ url, title: stringValue(annotationRecord.title), position: null, sourceType: 'url_citation' });
       }
     }
   }
-
   return citations;
 }
 
 function normalizeSearchMetadata(steps: unknown[]) {
   const results: Array<{ callId: string | null; sourceUrls: string[] }> = [];
-
   for (const step of steps) {
     const stepRecord = record(step);
     if (stepRecord?.type !== 'google_search_result') continue;
@@ -125,20 +109,34 @@ function normalizeSearchMetadata(steps: unknown[]) {
     const seen = new Set<string>();
     if (Array.isArray(stepRecord.result)) {
       for (const item of stepRecord.result) {
-        const itemRecord = record(item);
-        const url = stringValue(itemRecord?.url);
+        const url = stringValue(record(item)?.url);
         if (!url || seen.has(url)) continue;
         seen.add(url);
         sourceUrls.push(url);
       }
     }
-    results.push({
-      callId: stringValue(stepRecord.call_id),
-      sourceUrls
-    });
+    results.push({ callId: stringValue(stepRecord.call_id), sourceUrls });
   }
-
   return { googleSearchResults: results };
+}
+
+function citationEvidenceState(steps: unknown[], citations: VisibilityCitationSource[]): CitationEvidenceState {
+  let sawResultBlock = false;
+  let allResultCollectionsExplicit = true;
+  let sourceCount = 0;
+  for (const step of steps) {
+    const stepRecord = record(step);
+    if (stepRecord?.type !== 'google_search_result') continue;
+    sawResultBlock = true;
+    if (!Array.isArray(stepRecord.result)) {
+      allResultCollectionsExplicit = false;
+      continue;
+    }
+    sourceCount += stepRecord.result.filter((item) => Boolean(stringValue(record(item)?.url))).length;
+  }
+  if (citations.length > 0 || sourceCount > 0) return 'KNOWN_PRESENT';
+  if (sawResultBlock && allResultCollectionsExplicit) return 'KNOWN_EMPTY';
+  return 'UNKNOWN';
 }
 
 function countSearchCalls(steps: unknown[]) {
@@ -146,31 +144,14 @@ function countSearchCalls(steps: unknown[]) {
 }
 
 function providerHttpError(status: number): VisibilityProviderError {
-  if (status === 401 || status === 403) {
-    return new VisibilityProviderError(
-      'VISIBILITY_PROVIDER_AUTH_FAILED',
-      `Gemini visibility request failed with HTTP ${status}`,
-      { httpStatus: status, retryable: false }
-    );
-  }
-  if (status === 429) {
-    return new VisibilityProviderError(
-      'VISIBILITY_PROVIDER_RATE_LIMITED',
-      'Gemini visibility request was rate limited',
-      { httpStatus: status, retryable: false }
-    );
-  }
-  return new VisibilityProviderError(
-    'VISIBILITY_PROVIDER_FAILED',
-    `Gemini visibility request failed with HTTP ${status}`,
-    { httpStatus: status, retryable: false }
-  );
+  if (status === 401 || status === 403) return new VisibilityProviderError('VISIBILITY_PROVIDER_AUTH_FAILED', `Gemini visibility request failed with HTTP ${status}`, { httpStatus: status, retryable: false });
+  if (status === 429) return new VisibilityProviderError('VISIBILITY_PROVIDER_RATE_LIMITED', 'Gemini visibility request was rate limited', { httpStatus: status, retryable: false });
+  return new VisibilityProviderError('VISIBILITY_PROVIDER_FAILED', `Gemini visibility request failed with HTTP ${status}`, { httpStatus: status, retryable: false });
 }
 
 export class GeminiVisibilityProvider implements VisibilityProviderAdapter {
   readonly provider = 'GEMINI' as const;
   readonly channel = 'API' as const;
-
   private readonly apiKey: string;
   private readonly transport: GeminiVisibilityTransport;
 
@@ -179,113 +160,46 @@ export class GeminiVisibilityProvider implements VisibilityProviderAdapter {
     this.transport = options.transport ?? new FetchGeminiVisibilityTransport();
   }
 
-  supportsWebGrounding(mode: VisibilityGroundingMode) {
-    return mode === 'SEARCH_GROUNDING';
-  }
-
-  estimateCostMicros(_request: VisibilitySampleRequest): number | null {
-    return null;
-  }
+  supportsWebGrounding(mode: VisibilityGroundingMode) { return mode === 'SEARCH_GROUNDING'; }
+  estimateCostMicros(_request: VisibilitySampleRequest): number | null { return null; }
 
   async sample(request: VisibilitySampleRequest): Promise<VisibilitySampleResponse> {
-    if (!this.apiKey.trim()) {
-      throw new VisibilityProviderError(
-        'VISIBILITY_PROVIDER_AUTH_FAILED',
-        'Gemini API key is not configured',
-        { retryable: false }
-      );
-    }
+    if (!this.apiKey.trim()) throw new VisibilityProviderError('VISIBILITY_PROVIDER_AUTH_FAILED', 'Gemini API key is not configured', { retryable: false });
     if (!this.supportsWebGrounding(request.groundingMode)) {
-      return {
-        status: 'UNSUPPORTED',
-        providerResponseId: null,
-        answerText: null,
-        citations: [],
-        searchMetadata: {},
-        promptTokens: null,
-        completionTokens: null,
-        totalTokens: null,
-        searchUnits: null,
-        costMicros: null,
-        costCurrency: null,
-        pricingVersion: null,
-        latencyMs: null
-      };
+      return { status: 'UNSUPPORTED', providerResponseId: null, answerText: null, citations: [], citationEvidenceState: 'NOT_APPLICABLE', searchMetadata: {}, promptTokens: null, completionTokens: null, totalTokens: null, searchUnits: null, costMicros: null, costCurrency: null, pricingVersion: null, latencyMs: null };
     }
 
     let response: GeminiVisibilityHttpResponse;
     try {
-      response = await this.transport.send({
-        url: GEMINI_INTERACTIONS_URL,
-        method: 'POST',
-        headers: {
-          'x-goog-api-key': this.apiKey,
-          'Content-Type': 'application/json'
-        },
-        body: {
-          model: request.model,
-          input: request.prompt,
-          tools: [{ type: 'google_search' }]
-        }
-      });
+      response = await this.transport.send({ url: GEMINI_INTERACTIONS_URL, method: 'POST', headers: { 'x-goog-api-key': this.apiKey, 'Content-Type': 'application/json' }, body: { model: request.model, input: request.prompt, tools: [{ type: 'google_search' }] } });
     } catch (error) {
       if (error instanceof VisibilityProviderError) throw error;
-      throw new VisibilityProviderError(
-        'VISIBILITY_PROVIDER_FAILED',
-        'Gemini visibility request failed',
-        { retryable: false }
-      );
+      throw new VisibilityProviderError('VISIBILITY_PROVIDER_FAILED', 'Gemini visibility request failed', { retryable: false });
     }
-
-    if (response.status < 200 || response.status >= 300) {
-      throw providerHttpError(response.status);
-    }
+    if (response.status < 200 || response.status >= 300) throw providerHttpError(response.status);
 
     const body = record(response.body);
     const id = stringValue(body?.id);
     const status = stringValue(body?.status);
     const steps = Array.isArray(body?.steps) ? body.steps : null;
-    if (!body || !id || !status || steps === null) {
-      throw new VisibilityProviderError(
-        'VISIBILITY_PROVIDER_MALFORMED_RESPONSE',
-        'Gemini returned a malformed visibility response',
-        { httpStatus: response.status, retryable: false }
-      );
-    }
+    if (!body || !id || !status || steps === null) throw new VisibilityProviderError('VISIBILITY_PROVIDER_MALFORMED_RESPONSE', 'Gemini returned a malformed visibility response', { httpStatus: response.status, retryable: false });
 
     const usage = normalizeUsage(body.usage);
     const searchMetadata = normalizeSearchMetadata(steps);
     const searchUnits = countSearchCalls(steps);
-
     if (status === 'incomplete' || status === 'cancelled') {
-      return {
-        status: 'INCOMPLETE',
-        providerResponseId: id,
-        answerText: null,
-        citations: [],
-        searchMetadata,
-        ...usage,
-        searchUnits,
-        costMicros: null,
-        costCurrency: null,
-        pricingVersion: null,
-        latencyMs: response.latencyMs
-      };
+      return { status: 'INCOMPLETE', providerResponseId: id, answerText: null, citations: [], citationEvidenceState: 'UNKNOWN', searchMetadata, ...usage, searchUnits, costMicros: null, costCurrency: null, pricingVersion: null, latencyMs: response.latencyMs };
     }
-    if (status !== 'completed') {
-      throw new VisibilityProviderError(
-        'VISIBILITY_PROVIDER_FAILED',
-        'Gemini visibility interaction did not complete successfully',
-        { httpStatus: response.status, retryable: false }
-      );
-    }
+    if (status !== 'completed') throw new VisibilityProviderError('VISIBILITY_PROVIDER_FAILED', 'Gemini visibility interaction did not complete successfully', { httpStatus: response.status, retryable: false });
 
     const answerText = normalizeAnswer(steps);
+    const citations = answerText ? normalizeCitations(steps) : [];
     return {
       status: answerText ? 'COMPLETED' : 'INCOMPLETE',
       providerResponseId: id,
       answerText,
-      citations: answerText ? normalizeCitations(steps) : [],
+      citations,
+      citationEvidenceState: answerText ? citationEvidenceState(steps, citations) : 'UNKNOWN',
       searchMetadata,
       ...usage,
       searchUnits,

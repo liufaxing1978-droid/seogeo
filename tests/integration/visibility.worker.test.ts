@@ -16,6 +16,7 @@ class FixtureAdapter implements VisibilityProviderAdapter {
       providerResponseId: 'resp-fixture',
       answerText: 'Xingshantang is one source.',
       citations: [{ url: 'https://xingshantang.org/article', title: 'Article', position: 1, sourceType: 'web' }],
+      citationEvidenceState: 'KNOWN_PRESENT',
       searchMetadata: { grounded: true, reasoning: 'must-not-persist', nested: { thought: 'drop-me' } },
       promptTokens: 10,
       completionTokens: 20,
@@ -48,55 +49,23 @@ describe('P6-A visibility worker', () => {
 
   async function createObservation(label: string, options: { runBudget?: number | null; dailyBudget?: number | null } = {}) {
     const suffix = `${label}-${Date.now()}-${Math.random()}`;
-    const project = await prisma.project.create({
-      data: { name: `Visibility Worker ${label}`, slug: `visibility-worker-${suffix}`, primaryDomain: `visibility-worker-${suffix}.example.com`, planLevel: 'ADVANCED' }
-    });
+    const project = await prisma.project.create({ data: { name: `Visibility Worker ${label}`, slug: `visibility-worker-${suffix}`, primaryDomain: `visibility-worker-${suffix}.example.com`, planLevel: 'ADVANCED' } });
     projectIds.push(project.id);
-    await prisma.visibilityProjectSettings.create({
-      data: { projectId: project.id, dailyBudgetMicros: options.dailyBudget ?? null, defaultRunBudgetMicros: options.runBudget ?? null, maxObservationsPerRun: 20, defaultCurrency: 'USD' }
-    });
+    await prisma.visibilityProjectSettings.create({ data: { projectId: project.id, dailyBudgetMicros: options.dailyBudget ?? null, defaultRunBudgetMicros: options.runBudget ?? null, maxObservationsPerRun: 20, defaultCurrency: 'USD' } });
     const set = await prisma.visibilityPromptSet.create({ data: { projectId: project.id, name: 'Worker set', defaultLocale: 'en-US', defaultCountry: 'US' } });
-    const prompt = await prisma.visibilityPrompt.create({
-      data: { projectId: project.id, promptSetId: set.id, promptKey: 'worker', version: 1, promptText: 'Which sources explain Chinese folk religion?', locale: 'en-US', country: 'US', promptHash: `hash-${suffix}` }
-    });
-    const run = await prisma.visibilityRun.create({
-      data: {
-        projectId: project.id,
-        promptSetId: set.id,
-        runType: 'MANUAL',
-        requestedProviderConfigs: [{ id: `config-${suffix}`, provider: 'OPENAI', model: 'gpt-5-mini', channel: 'API', groundingMode: 'WEB_SEARCH', providerOptionsJson: { searchContextSize: 'medium' } }],
-        maxObservations: 1,
-        budgetCeilingMicros: options.runBudget ?? null,
-        currency: 'USD',
-        policySnapshotJson: { dailyBudgetMicros: options.dailyBudget ?? null }
-      }
-    });
-    const observation = await prisma.platformObservation.create({
-      data: {
-        projectId: project.id,
-        visibilityRunId: run.id,
-        visibilityPromptId: prompt.id,
-        promptVersion: 1,
-        samplingUnitKey: `visibility:${run.id}:${prompt.id}:OPENAI:gpt-5-mini:API:en-US:US`,
-        provider: 'OPENAI', model: 'gpt-5-mini', channel: 'API', groundingMode: 'WEB_SEARCH', locale: 'en-US', country: 'US', citationsJson: [], searchMetadataJson: {}
-      }
-    });
+    const prompt = await prisma.visibilityPrompt.create({ data: { projectId: project.id, promptSetId: set.id, promptKey: 'worker', version: 1, promptText: 'Which sources explain Chinese folk religion?', locale: 'en-US', country: 'US', promptHash: `hash-${suffix}` } });
+    const run = await prisma.visibilityRun.create({ data: { projectId: project.id, promptSetId: set.id, runType: 'MANUAL', requestedProviderConfigs: [{ id: `config-${suffix}`, provider: 'OPENAI', model: 'gpt-5-mini', channel: 'API', groundingMode: 'WEB_SEARCH', providerOptionsJson: { searchContextSize: 'medium' } }], maxObservations: 1, budgetCeilingMicros: options.runBudget ?? null, currency: 'USD', policySnapshotJson: { dailyBudgetMicros: options.dailyBudget ?? null } } });
+    const observation = await prisma.platformObservation.create({ data: { projectId: project.id, visibilityRunId: run.id, visibilityPromptId: prompt.id, promptVersion: 1, samplingUnitKey: `visibility:${run.id}:${prompt.id}:OPENAI:gpt-5-mini:API:en-US:US`, provider: 'OPENAI', model: 'gpt-5-mini', channel: 'API', groundingMode: 'WEB_SEARCH', locale: 'en-US', country: 'US', citationsJson: [], searchMetadataJson: {} } });
     return { project, prompt, run, observation };
   }
 
   it('persists one normalized completed API observation and strips reasoning-like metadata', async () => {
     const { observation, run } = await createObservation('success');
     const adapter = new FixtureAdapter();
-    const registry = new VisibilityProviderRegistry([adapter]);
-
-    await executeVisibilityObservation(observation.id, { registry });
-
+    await executeVisibilityObservation(observation.id, { registry: new VisibilityProviderRegistry([adapter]) });
     const stored = await prisma.platformObservation.findUniqueOrThrow({ where: { id: observation.id } });
     expect(adapter.calls).toBe(1);
-    expect(stored).toMatchObject({
-      status: 'COMPLETED', providerResponseId: 'resp-fixture', answerText: 'Xingshantang is one source.', promptTokens: 10,
-      completionTokens: 20, totalTokens: 30, searchUnits: 1, costMicros: 1200, costCurrency: 'USD', pricingVersion: 'fixture-1', latencyMs: 15
-    });
+    expect(stored).toMatchObject({ status: 'COMPLETED', citationEvidenceState: 'KNOWN_PRESENT', providerResponseId: 'resp-fixture', answerText: 'Xingshantang is one source.', promptTokens: 10, completionTokens: 20, totalTokens: 30, searchUnits: 1, costMicros: 1200, costCurrency: 'USD', pricingVersion: 'fixture-1', latencyMs: 15 });
     expect(stored.answerHash).toMatch(/^[a-f0-9]{64}$/);
     expect(stored.citationsJson).toEqual([{ url: 'https://xingshantang.org/article', title: 'Article', position: 1, sourceType: 'web' }]);
     expect(JSON.stringify(stored.searchMetadataJson)).not.toMatch(/reasoning|thought/i);
@@ -107,48 +76,34 @@ describe('P6-A visibility worker', () => {
     const { observation } = await createObservation('duplicate');
     const adapter = new FixtureAdapter();
     const registry = new VisibilityProviderRegistry([adapter]);
-
-    await Promise.all([
-      executeVisibilityObservation(observation.id, { registry }),
-      executeVisibilityObservation(observation.id, { registry })
-    ]);
-
+    await Promise.all([executeVisibilityObservation(observation.id, { registry }), executeVisibilityObservation(observation.id, { registry })]);
     expect(adapter.calls).toBe(1);
   });
 
   it('marks a budget-blocked sample without invoking the provider', async () => {
     const { observation } = await createObservation('budget', { runBudget: 1000 });
     const adapter = new FixtureAdapter(1200);
-    const registry = new VisibilityProviderRegistry([adapter]);
-
-    await executeVisibilityObservation(observation.id, { registry });
-
+    await executeVisibilityObservation(observation.id, { registry: new VisibilityProviderRegistry([adapter]) });
     const stored = await prisma.platformObservation.findUniqueOrThrow({ where: { id: observation.id } });
     expect(adapter.calls).toBe(0);
-    expect(stored).toMatchObject({ status: 'BUDGET_SKIPPED', errorCode: 'RUN_BUDGET_EXCEEDED', costMicros: null });
+    expect(stored).toMatchObject({ status: 'BUDGET_SKIPPED', citationEvidenceState: 'UNKNOWN', errorCode: 'RUN_BUDGET_EXCEEDED', costMicros: null });
   });
 
   it('marks unsupported grounding without invoking the adapter sample method', async () => {
     const { observation } = await createObservation('unsupported');
     const adapter = new FixtureAdapter(null, undefined, false);
-    const registry = new VisibilityProviderRegistry([adapter]);
-
-    await executeVisibilityObservation(observation.id, { registry });
-
+    await executeVisibilityObservation(observation.id, { registry: new VisibilityProviderRegistry([adapter]) });
     expect(adapter.calls).toBe(0);
-    expect(await prisma.platformObservation.findUniqueOrThrow({ where: { id: observation.id } })).toMatchObject({
-      status: 'UNSUPPORTED', errorCode: 'VISIBILITY_WEB_GROUNDING_UNSUPPORTED'
-    });
+    expect(await prisma.platformObservation.findUniqueOrThrow({ where: { id: observation.id } })).toMatchObject({ status: 'UNSUPPORTED', citationEvidenceState: 'NOT_APPLICABLE', errorCode: 'VISIBILITY_WEB_GROUNDING_UNSUPPORTED' });
   });
 
   it('maps safe provider failure state without persisting raw provider bodies', async () => {
     const { observation } = await createObservation('failure');
     const adapter = new FixtureAdapter(100, undefined, true, new VisibilityProviderError('VISIBILITY_PROVIDER_RATE_LIMITED', 'Provider rate limit reached', { httpStatus: 429 }));
-    const registry = new VisibilityProviderRegistry([adapter]);
-
-    await expect(executeVisibilityObservation(observation.id, { registry })).rejects.toMatchObject({ code: 'VISIBILITY_PROVIDER_RATE_LIMITED' });
+    await expect(executeVisibilityObservation(observation.id, { registry: new VisibilityProviderRegistry([adapter]) })).rejects.toMatchObject({ code: 'VISIBILITY_PROVIDER_RATE_LIMITED' });
     const stored = await prisma.platformObservation.findUniqueOrThrow({ where: { id: observation.id } });
     expect(stored.status).toBe('FAILED');
+    expect(stored.citationEvidenceState).toBe('UNKNOWN');
     expect(stored.errorCode).toBe('VISIBILITY_PROVIDER_RATE_LIMITED');
     expect(stored.answerText).toBeNull();
   });

@@ -23,6 +23,7 @@ export class DeepSeekVisibilityProvider implements VisibilityProviderAdapter {
       providerResponseId: null,
       answerText: null,
       citations: [],
+      citationEvidenceState: 'NOT_APPLICABLE',
       searchMetadata: {},
       promptTokens: null,
       completionTokens: null,
