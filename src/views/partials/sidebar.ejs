@@ -30,8 +30,9 @@
       <div class="nav-label">高级功能</div>
       <a class="<%= activeNav === 'visibility' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility` : '/projects' %>">AI Visibility <span class="badge premium">高级版</span></a>
       <a class="<%= activeNav === 'visibility-prompts' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility/prompts` : '/projects' %>">Prompt 监控</a>
-      <a href="#">Citation 监控</a>
-      <a href="#">Share of Voice</a>
+      <a class="<%= activeNav === 'visibility-citations' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility/citations` : '/projects' %>">Citation 监控</a>
+      <a class="<%= activeNav === 'visibility-subjects' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility/subjects` : '/projects' %>">监控主体</a>
+      <a href="#">Share of Voice <span class="badge">P6-C</span></a>
     </div>
     <div class="nav-group"><div class="nav-label">AI</div><a class="<%= activeNav === 'ai' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/ai` : '/projects' %>">DeepSeek 分析中心</a></div>
     <div class="nav-group"><div class="nav-label">其他</div><a class="<%= activeNav === 'reports' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/reports` : '/projects' %>">报告</a><a href="#">系统</a></div>
