@@ -31,7 +31,7 @@ visibilityWebRoutes.get('/projects/:id/visibility', async (req, res, next) => {
     const data = await visibilityWebRepository.getOverview(req.params.id);
     if (!data) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
     res.render('layout', {
-      pageTitle: `AI Visibility · ${data.project.name}`,
+      title: `AI Visibility · ${data.project.name}`,
       activeNav: 'visibility',
       currentProjectId: data.project.id,
       breadcrumbs: ['项目', data.project.name, 'AI Visibility'],
@@ -47,7 +47,7 @@ visibilityWebRoutes.get('/projects/:id/visibility/prompts', async (req, res, nex
     const data = await visibilityWebRepository.getPromptMonitor(req.params.id);
     if (!data) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
     res.render('layout', {
-      pageTitle: `Prompt 监控 · ${data.project.name}`,
+      title: `Prompt 监控 · ${data.project.name}`,
       activeNav: 'visibility-prompts',
       currentProjectId: data.project.id,
       breadcrumbs: ['项目', data.project.name, 'AI Visibility', 'Prompt 监控'],
@@ -90,7 +90,7 @@ visibilityWebRoutes.get('/projects/:id/visibility/runs/:runId', async (req, res,
     const data = await visibilityWebRepository.getRunDetail(req.params.id, req.params.runId);
     if (!data) throw new NotFoundError('Visibility run not found', 'VISIBILITY_RUN_NOT_FOUND');
     res.render('layout', {
-      pageTitle: `采样运行详情 · ${data.project.name}`,
+      title: `采样运行详情 · ${data.project.name}`,
       activeNav: 'visibility',
       currentProjectId: data.project.id,
       breadcrumbs: ['项目', data.project.name, 'AI Visibility', '采样运行详情'],
