@@ -25,6 +25,7 @@ describe('P6-A DeepSeek visibility adapter', () => {
       providerResponseId: null,
       answerText: null,
       citations: [],
+      citationEvidenceState: 'NOT_APPLICABLE',
       searchMetadata: {},
       promptTokens: null,
       completionTokens: null,
