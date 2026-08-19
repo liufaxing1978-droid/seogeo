@@ -12,8 +12,8 @@ P6-B deterministically transforms persisted P6-A `PlatformObservation` records i
 
 P6-B answers two factual questions only:
 
-1. Which configured owned or competitor subjects were explicitly mentioned in a saved provider answer?
-2. Which provider-native citation/source records point to owned, competitor, or other domains?
+1. Which explicitly configured owned or competitor subjects were mentioned in a saved provider answer?
+2. Which provider-native citation/source records point to owned, competitor, or third-party domains?
 
 P6-B does not calculate Mention Rate, Citation Rate, Share of Voice, visibility scores, trends, alerts, or weighted metrics. Those remain P6-C/P6-D responsibilities.
 
@@ -26,38 +26,38 @@ Authoritative P6-B facts may be derived only from already-persisted P6-A observa
 Mention authority:
 
 - source: persisted `PlatformObservation.answerText`;
-- matching: configured subject values and configured aliases only;
+- matching: configured canonical subject values and configured aliases only;
 - extraction: deterministic normalization + matching;
 - no semantic guessing.
 
 Citation authority order:
 
-1. provider-native citation/source metadata persisted by P6-A;
-2. provider-native search result metadata explicitly associated with the answer and persisted by P6-A;
+1. provider-native citation/source metadata normalized and persisted by P6-A;
+2. provider-native search-result metadata explicitly associated with the answer and normalized by P6-A;
 3. otherwise `UNKNOWN`.
 
-A URL that merely appears in generated prose is not an authoritative provider citation.
+A URL merely present in generated prose is not an authoritative provider citation.
 
-P6-B must never make a new paid provider request while extracting, retrying, refreshing, or backfilling facts.
+P6-B must never make a new paid provider request while extracting, retrying, refreshing, syncing subjects, or backfilling facts.
 
 ## 3. Phase boundary
 
 ### P6-B delivers
 
-- versioned visibility subject registry;
+- explicit visibility subject registry;
 - owned brand/domain/entity subjects;
-- competitor subjects;
+- selected competitor subjects;
 - deterministic subject aliases;
 - deterministic mention extraction;
 - deterministic citation extraction;
 - explicit extraction eligibility/status;
-- historical/replayable extraction versions;
-- backfill/refresh queue that never calls providers;
+- immutable extraction snapshots and versioning;
+- bounded backfill/refresh queue with zero provider calls;
 - project-scoped mention/citation REST reads;
 - subject/alias configuration APIs;
 - Citation Monitor web surface;
-- extraction observability;
-- tests for normalization, UNKNOWN semantics, project isolation, replay and zero-network extraction.
+- safe extraction observability;
+- tests for normalization, UNKNOWN semantics, replay, isolation, atomicity and zero-network extraction.
 
 ### P6-B does not deliver
 
@@ -65,24 +65,23 @@ P6-B must never make a new paid provider request while extracting, retrying, ref
 - Citation Rate;
 - Platform Coverage;
 - Prompt Coverage;
-- VisibilitySnapshot;
+- `VisibilitySnapshot`;
 - competitor mention share;
 - competitor citation share;
 - Share of Voice;
 - weighted visibility points;
-- trend calculations;
-- alerts;
+- trends/alerts;
 - report integration;
 - consumer UI sampling;
 - LLM review of ambiguous mentions.
 
 ## 4. Design decision: explicit subject registry
 
-P6-B introduces an explicit `VisibilitySubject` registry rather than silently inferring all monitored subjects from existing project, P3 entity, or P5 competitor records.
+P6-B introduces `VisibilitySubject` instead of silently inferring every monitored subject from Project, P3 Entity, or P5 Competitor data.
 
-This is required because not every P3 entity is an owned identity and not every competitor necessarily belongs in every future visibility comparison set.
+This is necessary because not every P3 entity represents an owned identity and not every P5 competitor belongs in every future visibility comparison set.
 
-The registry creates a durable measurement contract that can be snapshotted and replayed.
+The subject registry is the durable measurement contract used by the deterministic extractor.
 
 ### Subject types
 
@@ -91,43 +90,35 @@ The registry creates a durable measurement contract that can be snapshotted and 
 - `OWNED_ENTITY`
 - `COMPETITOR`
 
-### Subject sources
+### Subject provenance
 
-A subject may optionally link to an existing source object:
+A subject may link to an existing source object:
 
 - `Project.primaryDomain` for an owned-domain subject;
-- P3 `Entity` for an owned-entity subject;
-- P5 `Competitor` for a competitor subject;
-- explicit project configuration for an owned-brand subject.
+- P3 `Entity` for a selected owned-entity subject;
+- P5 `Competitor` for a selected competitor subject;
+- explicit project configuration for owned-brand subjects.
 
-The link supplies identity provenance. Extraction still uses the subject's own snapshotted value/aliases.
+The provenance link does not make the source table mutable through P6-B. Extraction uses a snapshotted subject/alias set.
 
-## 5. Subject bootstrap rules
+## 5. Safe bootstrap rules
 
-P6-B may bootstrap safe defaults but must not over-infer ownership.
+When a project has no visibility subjects:
 
-### Automatic bootstrap
+- bootstrap one `OWNED_DOMAIN` from normalized `Project.primaryDomain`;
+- do not automatically treat all P3 entities as owned entities;
+- do not automatically monitor all P5 competitors.
 
-When the project has no visibility subjects yet:
-
-- create one `OWNED_DOMAIN` from normalized `Project.primaryDomain`;
-- do not automatically convert every P3 `Entity` into `OWNED_ENTITY`;
-- do not automatically convert every P5 `Competitor` into a monitored competitor subject unless explicitly requested by the P6-B setup flow.
-
-### Explicit setup actions
-
-The project may add:
+Explicit setup may then add:
 
 - owned brand names;
-- selected P3 entities as owned entities;
-- selected P5 competitors as competitor subjects;
-- explicit aliases for any subject.
+- selected P3 entities;
+- selected P5 competitors;
+- explicit aliases.
 
 ## 6. Data model
 
 ### VisibilitySubject
-
-A project-scoped monitored identity.
 
 Fields:
 
@@ -140,24 +131,20 @@ Fields:
 - `entityId?` UUID
 - `competitorId?` UUID
 - `sourceType`: `PROJECT_CONFIG | PRIMARY_DOMAIN | P3_ENTITY | P5_COMPETITOR`
-- `createdAt`
-- `updatedAt`
+- timestamps
 
 Constraints:
 
-- project-scoped resource ownership;
-- `OWNED_ENTITY` may reference only an Entity in the same project;
-- `COMPETITOR` may reference only a Competitor in the same project;
-- domain subjects store a normalized registrable host form used by the extractor;
-- archived subjects remain available to historical extractions.
+- all resources are project-scoped;
+- linked Entity/Competitor must belong to the same project;
+- domain values use deterministic host normalization;
+- archived subjects remain queryable for historical facts.
 
 Recommended uniqueness:
 
 - `(projectId, subjectType, normalizedValue)`
 
 ### VisibilitySubjectAlias
-
-Explicit deterministic aliases.
 
 Fields:
 
@@ -171,17 +158,18 @@ Fields:
 - `status`: `ACTIVE | ARCHIVED`
 - timestamps
 
-Constraints:
+Rules:
 
-- alias belongs to same-project subject;
-- duplicate normalized alias for the same subject is rejected;
-- ambiguous same normalized alias across multiple active subjects is not silently accepted into authoritative extraction.
+- duplicate normalized alias for one subject is rejected;
+- aliases are bounded in length/count;
+- arbitrary executable regex is never accepted;
+- the same normalized alias cannot silently identify multiple active subjects.
 
-If one normalized alias maps to multiple active subjects, setup/refresh must surface `AMBIGUOUS_ALIAS` and the alias must be excluded from authoritative matching until resolved.
+If an alias conflicts across active subjects, the system surfaces `AMBIGUOUS_ALIAS`; that alias is excluded from authoritative matching until resolved.
 
 ### VisibilityExtraction
 
-One deterministic extraction version for one `PlatformObservation` and one subject-set snapshot.
+One extraction for one source observation under one exact subject-set snapshot.
 
 Fields:
 
@@ -190,6 +178,7 @@ Fields:
 - `platformObservationId` UUID
 - `extractorVersion` string
 - `subjectSetHash` string
+- `subjectSnapshotJson` JSON
 - `answerHash?` string
 - `mentionStatus`: `EXTRACTED | KNOWN_EMPTY | UNKNOWN | NOT_ELIGIBLE`
 - `citationStatus`: `EXTRACTED | KNOWN_EMPTY | UNKNOWN | NOT_ELIGIBLE`
@@ -204,11 +193,11 @@ Uniqueness:
 
 - `(platformObservationId, extractorVersion, subjectSetHash)`
 
-This prevents duplicate deterministic work while allowing re-extraction after subject/alias configuration changes.
+`subjectSnapshotJson` is bounded, canonically sorted and contains exactly the active measurement inputs used for that extraction: subject IDs/types, normalized canonical values, active normalized aliases and provenance IDs. It contains no secrets and no unrelated P3/P5 payloads.
+
+The hash proves identity; the snapshot makes the historical measurement set reconstructable.
 
 ### MentionObservation
-
-One subject-level deterministic mention fact inside an extraction.
 
 Fields:
 
@@ -230,11 +219,9 @@ Recommended uniqueness:
 
 - `(visibilityExtractionId, subjectId, matchedValue, mentionType)`
 
-`firstPosition` is a deterministic character/token offset in the normalized answer representation. It is not a provider rank.
+`firstPosition` is a deterministic offset in the normalized answer representation. It is not a provider ranking.
 
 ### CitationObservation
-
-One normalized provider-native citation fact inside an extraction.
 
 Fields:
 
@@ -242,6 +229,7 @@ Fields:
 - `projectId` UUID
 - `visibilityExtractionId` UUID
 - `platformObservationId` UUID
+- `citationKey` string
 - `url` string
 - `normalizedUrl` string
 - `domain` string
@@ -258,31 +246,25 @@ Fields:
 
 Recommended uniqueness:
 
-- `(visibilityExtractionId, normalizedUrl, position)` where practical;
-- otherwise a deterministic citation key generated from normalized URL + provider position + source type.
+- `(visibilityExtractionId, citationKey)`
 
-Position is stored only when P6-A normalized provider metadata has a stable citation/source order. Missing position remains null.
+`citationKey` is deterministically derived from normalized URL + provider-supplied position when present + normalized source type. Position remains null when the provider does not expose a stable order.
 
 ## 7. Subject snapshot and replay semantics
 
-Extraction results must be reproducible.
+For every extraction:
 
-For every extraction, compute a deterministic `subjectSetHash` from the active measurement inputs:
+1. load active project subjects/aliases;
+2. build a canonically sorted bounded `subjectSnapshotJson`;
+3. hash that exact serialized snapshot into `subjectSetHash`;
+4. persist both snapshot and hash with derived facts.
 
-- subject IDs;
-- subject types;
-- canonical normalized values;
-- active normalized aliases;
-- linked competitor/entity provenance identifiers where present.
+When subjects or aliases change:
 
-Sort inputs canonically before hashing.
-
-If subject configuration changes:
-
-- old `VisibilityExtraction` rows remain immutable;
-- a refresh creates a new extraction with a new `subjectSetHash`;
+- historical extraction rows remain immutable;
+- a new refresh creates a new extraction with a new subject snapshot/hash;
 - old Mention/Citation rows remain attached to the old extraction;
-- P6-C later chooses the correct extraction version according to its snapshot policy.
+- P6-C later selects an extraction version according to explicit snapshot policy.
 
 No historical extraction is silently rewritten.
 
@@ -292,150 +274,171 @@ Initial extractor version: `VISIBILITY_MENTION_V1`.
 
 Normalization steps:
 
-1. Unicode normalize to NFKC;
-2. normalize Unicode whitespace to ordinary spaces;
+1. Unicode NFKC normalization;
+2. normalize Unicode whitespace;
 3. collapse repeated whitespace;
-4. normalize punctuation variants needed for boundary matching;
-5. case-fold scripts where case is meaningful;
-6. preserve original text separately; extraction uses a derived normalized representation;
-7. normalize domain values separately from ordinary names.
+4. normalize selected punctuation variants needed for deterministic boundary matching;
+5. case-fold where language/script supports case;
+6. retain source answer unchanged; matching uses a derived normalized representation;
+7. normalize domain candidates separately from ordinary names.
 
-The extractor must support Chinese and Latin text without requiring word-space tokenization.
+The extractor must support Chinese and Latin text without requiring whitespace tokenization for CJK.
 
-### Name/alias matching
+### Authoritative matches
 
-Authoritative matches are only:
+Only these may create mention facts:
 
-- configured canonical value;
-- configured active alias;
-- selected P3 EntityAlias copied/snapshotted into `VisibilitySubjectAlias`.
+- subject canonical value;
+- active explicit alias;
+- selected P3 EntityAlias copied into `VisibilitySubjectAlias`.
 
 Do not perform:
 
 - Levenshtein/fuzzy matching;
 - embeddings;
+- semantic similarity;
 - synonym expansion;
-- stemming that changes identity meaning;
+- identity-changing stemming;
 - LLM semantic equivalence decisions.
 
 ### Boundary safety
 
-Latin aliases must use deterministic lexical boundaries so a short alias does not match inside unrelated words.
+- Latin aliases use deterministic lexical boundaries;
+- CJK aliases use exact normalized substring matching;
+- operationally ambiguous short aliases are rejected or conflict-marked instead of silently matched.
 
-CJK aliases may use exact normalized substring matching because whitespace word boundaries are not reliable.
+### Domain mentions
 
-Short aliases that are operationally ambiguous should be blocked by configuration validation or marked ambiguous instead of entering authoritative metrics.
+A normalized owned/competitor domain explicitly appearing in answer prose may create `MentionObservation(DOMAIN)`.
 
-### Domain mention matching
+It does not become a CitationObservation unless provider-native citation evidence also identifies it as a source.
 
-Domain mentions are detected from normalized answer text when an owned/competitor domain is explicitly present as a host/domain string.
+## 9. Citation evidence state — required P6-A compatibility enhancement
 
-Domain mention extraction is independent from citation extraction. A prose domain mention may produce a `MentionObservation(DOMAIN)` but does not become a `CitationObservation` unless provider-native citation metadata supports it.
+P6-B cannot safely infer citation absence from `citationsJson=[]`; an empty array may mean “known no citations” or “metadata unavailable.”
 
-## 9. Citation extraction
+Add a durable enum field to `PlatformObservation`:
+
+- `citationEvidenceState`: `KNOWN_PRESENT | KNOWN_EMPTY | UNKNOWN | NOT_APPLICABLE`
+
+Rules:
+
+- new P6-A adapters set this from the provider-native response contract without making an extra request;
+- existing pre-migration observations default to `UNKNOWN` unless deterministic persisted evidence proves another state;
+- `UNSUPPORTED_WEB_GROUNDING` maps to `NOT_APPLICABLE`;
+- migrations never reinterpret ambiguous historical empty arrays as zero citations.
+
+This compatibility field is implemented before the P6-B citation extractor.
+
+## 10. Citation extraction
 
 Initial extractor version: `VISIBILITY_CITATION_V1`.
 
-Input is the already normalized P6-A citation/search metadata in `PlatformObservation.citationsJson` and safe associated search metadata.
+Input is only normalized, persisted P6-A citation/search-source metadata plus `citationEvidenceState`.
 
-### Citation authority
+### Authority rule
 
-A citation is authoritative only if the P6-A adapter normalized it from provider-native source/citation metadata.
+A CitationObservation may be created only when the P6-A adapter normalized a provider-native source/citation record.
 
-P6-B never reparses generated prose to invent citation relationships.
+P6-B never parses generated prose to fabricate citation relationships.
 
 ### URL normalization
 
-Apply deterministic URL normalization consistent with existing crawler principles where safe:
+Apply existing deterministic URL-normalization principles where safe:
 
 - lowercase host;
-- remove URL fragment;
+- remove fragment;
 - normalize default ports;
-- normalize host aliases where existing shared URL utilities already define the rule;
-- preserve path/query unless a proven shared canonicalization rule applies;
-- retain original URL separately;
-- derive normalized host/domain deterministically.
+- use existing shared host-alias rules where defined;
+- preserve path/query unless an existing deterministic normalization rule applies;
+- retain original URL;
+- derive normalized host/domain.
 
 Do not fetch citation URLs during extraction.
 
 ### Owned/competitor classification
 
-For each normalized citation domain:
+For each citation domain:
 
-- compare against active `OWNED_DOMAIN` subjects and their domain aliases;
-- compare against active competitor subjects linked to P5 Competitor domains;
-- set `isOwnedDomain` only from deterministic domain equality/approved alias rules;
-- set competitor linkage only when deterministic domain mapping is unique.
+- compare against active OWNED_DOMAIN values/approved domain aliases;
+- compare against active competitor subjects and linked P5 competitor domains;
+- set owned/competitor linkage only when the domain mapping is deterministic and unique;
+- otherwise leave the citation third-party/unclassified.
 
-A citation may remain neither owned nor competitor.
+## 11. Eligibility and UNKNOWN semantics
 
-## 10. Eligibility and UNKNOWN semantics
+Absence of usable evidence is not automatically zero.
 
-P6-B uses explicit status semantics because an absence of usable evidence is not automatically a zero.
+### Mention status
 
-### Mention extraction
+`NOT_ELIGIBLE` for:
 
-`NOT_ELIGIBLE` when:
+- `PENDING`;
+- `RUNNING`;
+- `BUDGET_SKIPPED`;
+- `UNSUPPORTED`;
+- `FAILED`;
+- `REFUSED`.
 
-- observation status is `PENDING` or `RUNNING`;
-- observation was `BUDGET_SKIPPED`;
-- observation status is `UNSUPPORTED`;
-- observation status is `FAILED`;
-- observation was provider refusal and contains no authoritative answer text suitable for mention extraction.
+`UNKNOWN` for:
 
-`UNKNOWN` when:
+- `INCOMPLETE`;
+- completed observation with missing/corrupt authoritative answer evidence;
+- deterministic extractor failure.
 
-- observation claims completion but answer evidence is missing/corrupt;
-- bounded persisted answer was unavailable in a way that prevents authoritative extraction;
-- extractor encounters an internal deterministic parse failure.
+`KNOWN_EMPTY` only when an eligible completed answer exists, deterministic scanning succeeds, and zero configured subjects match.
 
-`KNOWN_EMPTY` when:
+`EXTRACTED` when one or more MentionObservation rows exist.
 
-- observation is eligible;
-- authoritative answer text exists;
-- deterministic scan completes successfully;
-- zero configured subjects are matched.
+### Citation status
 
-`EXTRACTED` when one or more MentionObservation rows are created.
+`NOT_ELIGIBLE` for:
 
-### Citation extraction
+- pending/running samples;
+- budget-skipped samples;
+- failed samples;
+- explicit unsupported grounding;
+- provider refusal.
 
-`NOT_ELIGIBLE` when:
+`UNKNOWN` for:
 
-- provider grounding is explicitly unsupported;
-- sample was budget-skipped, failed, pending, running, or otherwise did not produce an eligible completed grounded observation.
+- incomplete observation;
+- `citationEvidenceState=UNKNOWN`;
+- malformed/inconsistent citation metadata;
+- deterministic extractor failure.
 
-`UNKNOWN` when:
+`KNOWN_EMPTY` only when `citationEvidenceState=KNOWN_EMPTY` on an otherwise eligible completed grounded observation.
 
-- provider adapter/result did not supply enough information to distinguish “no citation” from “citation metadata unavailable”;
-- citation/search metadata is malformed or incomplete;
-- the observation's grounding state is not deterministically known.
+`EXTRACTED` only when native citation records are materialized.
 
-`KNOWN_EMPTY` only when:
+`KNOWN_PRESENT` with zero valid normalized source rows is inconsistent evidence and therefore becomes `UNKNOWN` with a stable error code, not zero.
 
-- the provider adapter contract can positively establish that the eligible grounded response completed with zero native citations/sources.
+## 12. P3 Entity integration
 
-`EXTRACTED` when one or more CitationObservation rows are created.
+P3 entities are identity evidence, not automatically monitored visibility subjects.
 
-An empty JSON array alone is insufficient proof of `KNOWN_EMPTY` unless P6-A persists/derives an explicit citation evidence state from the provider contract.
+When an Entity is explicitly selected as `OWNED_ENTITY`:
 
-## 11. Required P6-A compatibility enhancement
+- snapshot its canonical name into VisibilitySubject;
+- optionally import selected aliases into VisibilitySubjectAlias with provenance;
+- later P3 alias changes do not rewrite historical P6-B extraction facts;
+- explicit sync may update current subject configuration and schedule deterministic re-extraction.
 
-P6-B needs a deterministic citation evidence state. P6-A currently persists normalized citation arrays but an empty array can be ambiguous.
+P6-B never writes into P3 Entity/EntityAlias tables.
 
-P6-B implementation should introduce a backwards-compatible field/state on `PlatformObservation` or its normalized search metadata, for example:
+## 13. P5 Competitor integration
 
-- `citationEvidenceState`: `KNOWN_PRESENT | KNOWN_EMPTY | UNKNOWN | NOT_APPLICABLE`
+When a P5 Competitor is explicitly selected:
 
-The preferred durable schema field is an enum column rather than an untyped JSON convention.
+- create/link a COMPETITOR visibility subject;
+- snapshot competitor name;
+- snapshot normalized competitor domain as deterministic domain identity;
+- retain `competitorId` provenance;
+- later P5 edits require explicit sync/re-extraction.
 
-Existing observations created before this field exists default to `UNKNOWN` unless migration evidence can deterministically prove another state.
+P6-B never changes P5 crawl/comparison facts.
 
-Provider adapters should set the state according to their native response contract without creating new requests.
-
-## 12. Extraction service architecture
-
-P6-B adds a deterministic extraction subsystem separate from the paid P6-A worker.
+## 14. Extraction subsystem architecture
 
 Suggested modules:
 
@@ -451,100 +454,72 @@ Suggested modules:
 - `visibility-intelligence.routes.ts`
 - `visibility-intelligence.web.routes.ts`
 
-Provider adapters are not dependencies of the extraction worker.
+The deterministic extraction worker must not depend on provider adapters, provider keys, P4 AI Gateway, or network fetchers.
 
-## 13. Queue and execution
+## 15. Queue and execution
 
-Introduce a dedicated deterministic queue, recommended name:
+Introduce dedicated queue:
 
 - `visibility-extraction`
-
-Do not reuse the paid provider-call execution path.
 
 Job types:
 
 - `extract-observation`
 - `backfill-project`
 
-Stable job ID for one extraction unit:
+Stable job ID:
 
 `visibility-extract:<observationId>:<extractorVersion>:<subjectSetHash>`
 
-Execution properties:
+Properties:
 
-- no network requests;
+- zero network requests;
+- zero provider/LLM calls;
 - no provider secrets;
-- no LLM calls;
-- safe to retry deterministic failures under bounded retry policy;
+- deterministic bounded retry policy;
 - active/waiting/delayed deduplication;
-- project-scoped resource checks before materialization.
+- project ownership validation before work;
+- bounded backfill expansion to observation-level jobs.
 
-Backfill expands to observation-level jobs rather than processing an unbounded project in one job.
+Backfill must use a hard maximum and pagination/cursor semantics. One project must not become one unbounded worker job.
 
-## 14. Extraction transaction model
+## 16. Atomic extraction transaction
 
-For one observation extraction:
+For one observation:
 
-1. load observation and same-project subject snapshot;
-2. compute `subjectSetHash`;
-3. check for an already completed extraction with the same `(observation, extractorVersion, subjectSetHash)`;
+1. load source observation and same-project active subject configuration;
+2. build subject snapshot/hash;
+3. detect already-completed identical extraction;
 4. derive mention/citation statuses and rows in memory;
-5. transactionally create the `VisibilityExtraction` and all derived Mention/Citation rows;
-6. mark extraction completed;
-7. emit safe observability event.
+5. transactionally create VisibilityExtraction + MentionObservation + CitationObservation rows;
+6. complete extraction;
+7. emit safe observability.
 
-A transaction failure must not leave partial Mention/Citation rows.
+A failure cannot leave partial derived rows.
 
-No extraction transaction updates or deletes the source `PlatformObservation` answer/citation facts except the separately planned backward-compatible citation evidence-state migration/adapter normalization required by Section 11.
+The extraction transaction never mutates source answer/citation facts.
 
-## 15. Subject configuration service
-
-Subject writes are project-scoped and Advanced/Enterprise gated.
+## 17. Subject configuration service
 
 Validation:
 
-- canonical values must be non-empty after normalization;
-- domain subject values must parse as acceptable host/domain values;
-- linked Entity/Competitor must belong to the same project;
-- aliases containing secret-like configuration are irrelevant and not accepted as arbitrary JSON;
-- ambiguous aliases across active subjects are surfaced explicitly;
-- archiving a subject does not delete historical extraction facts.
+- non-empty canonical values after normalization;
+- domain subjects must parse as acceptable hosts/domains;
+- linked Entity/Competitor belongs to same project;
+- ambiguous aliases fail closed;
+- archived subjects do not delete history;
+- no arbitrary regex/programmatic match expressions from users.
 
-Recommended feature gates:
+Feature gates:
 
-- subject configuration under `AI_VISIBILITY`;
-- citation/mention reads and refresh under `CITATION_MONITOR`.
+- subject configuration: `AI_VISIBILITY`;
+- mention/citation reads and extraction refresh: `CITATION_MONITOR`.
 
-`STANDARD` remains blocked and must not enqueue extraction work.
-
-## 16. P3 Entity integration
-
-P3 entities are identity evidence, not automatically monitored visibility subjects.
-
-When a user selects a P3 entity as `OWNED_ENTITY`:
-
-- snapshot `Entity.canonicalName` into the subject canonical value;
-- optionally import selected active aliases from `EntityAlias` into `VisibilitySubjectAlias` with `sourceType=P3_ENTITY_ALIAS`;
-- future P3 alias changes do not silently rewrite historical subject aliases/extractions;
-- an explicit sync action may add/update current subject aliases and then schedule re-extraction.
-
-P6-B must not write back into P3 Entity or EntityAlias tables.
-
-## 17. P5 Competitor integration
-
-When a user selects a P5 Competitor:
-
-- create/link a `COMPETITOR` visibility subject;
-- snapshot competitor name as canonical subject value;
-- add normalized competitor domain as a DOMAIN alias or deterministic competitor-domain field;
-- store the `competitorId` provenance link;
-- future competitor edits require explicit sync/re-extraction rather than rewriting historical extraction facts.
-
-P6-B does not alter P5 competitor crawl/comparison facts.
+`STANDARD` remains blocked and cannot enqueue extraction work.
 
 ## 18. REST API
 
-P6-B extends `/api/v1/projects/:projectId/visibility`.
+Extend `/api/v1/projects/:projectId/visibility`.
 
 ### Subjects
 
@@ -554,13 +529,11 @@ P6-B extends `/api/v1/projects/:projectId/visibility`.
 - `POST /subjects/:subjectId/aliases`
 - `PATCH /subjects/:subjectId/aliases/:aliasId`
 - `POST /subjects/bootstrap`
-- `POST /subjects/:subjectId/sync` for explicit P3/P5 source synchronization where supported
+- `POST /subjects/:subjectId/sync`
 
 ### Extraction
 
 - `POST /extractions/refresh`
-  - supports bounded project backfill filters;
-  - no provider calls;
 - `GET /extractions`
 - `GET /extractions/:extractionId`
 
@@ -569,71 +542,58 @@ P6-B extends `/api/v1/projects/:projectId/visibility`.
 - `GET /mentions`
 - `GET /citations`
 
-Read filters may include:
+Filters may include observation/run, provider/model/channel, prompt/prompt-set, subject/type, competitor, domain, time range and extractor version.
 
-- observation/run;
-- provider/model/channel;
-- prompt/prompt set;
-- subject/subject type;
-- competitor;
-- domain;
-- observed-at range;
-- extraction version.
-
-All reads remain project-scoped.
+All resource reads/writes bind both projectId and resource identity.
 
 ## 19. Web UI
 
+Activate the existing `Citation 监控` navigation for Advanced/Enterprise.
+
 ### Citation Monitor
 
-Activate the existing sidebar placeholder.
+Display fact exploration only:
 
-Display deterministic fact exploration, not P6-C rates.
-
-Sections:
-
-- subject configuration summary;
-- citation evidence-state counts (`EXTRACTED / KNOWN_EMPTY / UNKNOWN / NOT_ELIGIBLE`);
-- citation-source table;
-- source domain;
+- extraction status counts (`EXTRACTED / KNOWN_EMPTY / UNKNOWN / NOT_ELIGIBLE`);
+- provider-native citation rows;
+- source URL/domain;
 - owned-domain marker;
-- linked competitor marker;
+- competitor linkage;
 - provider/model/channel;
 - prompt;
 - observed time;
-- extraction version;
-- link to source run/observation.
+- extractor version;
+- links to source run/observation.
 
-### Mention facts
+### Mention view/tab
 
-Citation Monitor may include a “提及” tab or companion view showing:
+Display:
 
-- subject;
-- subject type;
-- matched alias/value;
+- subject/type;
+- matched canonical/alias/domain value;
 - occurrence count;
 - first normalized position;
 - provider/model/channel;
 - prompt;
 - observed time.
 
-Do not show Mention Rate or Citation Rate in P6-B.
-
 ### Subject setup
 
-Provide an Advanced/Enterprise project-scoped configuration view to:
+Allow:
 
 - confirm owned primary domain;
-- add owned brand names;
-- select P3 entities;
+- add owned brand;
+- select P3 owned entities;
 - select P5 competitors;
 - manage aliases;
-- surface ambiguous alias conflicts;
+- resolve alias conflicts;
 - trigger deterministic refresh/backfill.
+
+Do not display Mention Rate, Citation Rate or Share of Voice in P6-B.
 
 ## 20. Observability
 
-Allowed new safe events:
+Allowed events:
 
 - `visibility.extraction.queued`
 - `visibility.extraction.started`
@@ -646,159 +606,99 @@ Allowed new safe events:
 
 Safe fields:
 
-- project ID;
-- observation/extraction IDs;
+- project/observation/extraction IDs;
 - subject ID/type;
 - extractor version;
 - subjectSetHash;
 - mention/citation status;
-- derived row counts;
+- derived counts;
 - error code;
 - duration.
 
-Never log:
-
-- answerText;
-- promptText;
-- provider raw response body;
-- provider reasoning;
-- secrets/auth headers;
-- unbounded aliases or citation titles/URLs in lifecycle events.
+Never log answerText, promptText, raw provider bodies, reasoning, secrets, auth headers, or unbounded citation/alias payloads.
 
 ## 21. Security and isolation
 
-- every subject/alias/extraction/fact query binds `projectId`;
-- cross-project Entity/Competitor links return not-found/fail closed;
-- no arbitrary URL fetching occurs during citation extraction;
-- no provider credentials are needed by P6-B worker;
-- input aliases are bounded in size/count;
-- backfill requests have hard maximum observation counts and pagination/cursor rules;
-- P6-B does not accept arbitrary executable regex from project users;
-- normalization rules are code/version controlled.
+- all resources are project-scoped;
+- cross-project Entity/Competitor links fail closed;
+- no citation URL fetch occurs;
+- extraction worker has no provider credential dependency;
+- aliases/backfills are bounded;
+- normalization code is version-controlled;
+- no consumer credential storage;
+- no arbitrary provider base URLs or executable user regex.
 
-## 22. Versioning
+## 22. Version constants
 
-Initial version constants:
+Initial versions:
 
 - `VISIBILITY_SUBJECT_SET_V1`
 - `VISIBILITY_MENTION_V1`
 - `VISIBILITY_CITATION_V1`
 - `VISIBILITY_EXTRACTION_V1`
 
-Version changes are required when authoritative matching/normalization behavior changes.
+Any bug fix/change that can alter authoritative derived facts increments the relevant extractor version and creates new extraction rows rather than silently rewriting history.
 
-A bug fix that can change derived facts must increment the relevant extractor version and produce new extraction rows rather than silently rewriting history.
+## 23. Migration and compatibility
 
-## 23. Migration strategy
-
-P6-B migration adds:
+P6-B adds:
 
 - subject enums/models;
 - alias model;
 - extraction model;
 - MentionObservation;
 - CitationObservation;
-- citation evidence-state support on PlatformObservation.
+- `citationEvidenceState` on PlatformObservation.
 
-Existing P6-A observations remain valid.
+Existing P6-A observations remain authoritative source records.
 
-Backfill policy:
+Backfill rules:
 
-- pre-P6-B observations default citation evidence to `UNKNOWN` unless deterministic migration evidence proves a native state;
-- mention extraction may run on eligible persisted answer text;
-- citation extraction runs only under the new explicit evidence-state semantics;
-- no historical cost/provider sampling facts are changed.
+- old citation state defaults to UNKNOWN unless deterministic persisted evidence proves otherwise;
+- eligible saved answer text may be mention-extracted;
+- citation extraction uses explicit evidence state;
+- historical cost/provider-response facts remain unchanged;
+- no migration makes provider requests.
 
 ## 24. Testing strategy
 
 ### Normalization unit tests
 
-Cover:
-
-- Chinese exact names;
-- simplified/traditional values only when explicitly configured as aliases;
-- Latin case folding;
-- punctuation/whitespace variants;
-- full-width/half-width Unicode normalization;
-- lexical boundary safety;
-- domain normalization;
-- ambiguous alias rejection;
-- no fuzzy semantic matching.
+Cover Chinese exact matching, explicit simplified/traditional aliases, Latin case folding, Unicode full/half width, punctuation/whitespace normalization, lexical boundary safety, domain normalization, alias conflicts and absence of fuzzy matching.
 
 ### Mention extractor tests
 
-Fixtures:
-
-- owned brand exact mention;
-- configured alias mention;
-- owned domain prose mention;
-- competitor mention;
-- repeated mentions and count;
-- multiple subjects;
-- no mention -> KNOWN_EMPTY;
-- failed/refused/unsupported/budget-skipped -> NOT_ELIGIBLE/UNKNOWN according to contract;
-- extraction version replay.
+Cover exact owned brand, configured alias, prose domain mention, competitor mention, repeated occurrences, multiple subjects, KNOWN_EMPTY, NOT_ELIGIBLE states, UNKNOWN/incomplete state and extraction version replay.
 
 ### Citation extractor tests
 
-Fixtures:
-
-- native owned citation;
-- native competitor citation;
-- third-party citation;
-- duplicate source URL occurrence;
-- provider position present/absent;
-- prose URL with no native citation -> no CitationObservation;
-- explicit native zero citations -> KNOWN_EMPTY;
-- ambiguous empty metadata -> UNKNOWN;
-- malformed metadata -> UNKNOWN;
-- no network access.
+Cover owned native citation, competitor citation, third-party citation, duplicate URL occurrences, stable/missing position, prose URL without native citation, explicit native zero citations, ambiguous empty metadata, malformed metadata and no network access.
 
 ### Integration tests
 
-Cover:
-
-- schema/migrations;
-- project isolation;
-- subject bootstrap;
-- P3/P5 source validation;
-- transaction atomicity;
-- stable subjectSetHash;
-- duplicate extraction idempotency;
-- re-extraction after alias change;
-- archive semantics;
-- backfill bounds;
-- feature gates;
-- REST filtering.
+Cover schema/migrations, project isolation, subject bootstrap, P3/P5 link validation, transaction atomicity, stable snapshot/hash, duplicate extraction idempotency, re-extraction after alias change, historical snapshot preservation, archive semantics, backfill bounds, feature gates and REST filters.
 
 ### Web/E2E tests
 
-Cover:
-
-- Advanced Citation Monitor loads;
-- Standard is blocked;
-- configure owned brand/competitor/alias;
-- refresh extraction without starting a provider run;
-- inspect deterministic citation/mention facts;
-- no Mention Rate/Citation Rate/SOV labels appear in P6-B view.
+Cover Advanced Citation Monitor, Standard blocking, subject/alias setup, deterministic refresh without provider sampling, fact inspection, and absence of Mention Rate/Citation Rate/SOV labels.
 
 CI must make zero live provider calls.
 
 ## 25. Implementation order
 
-1. schema: subject/alias/extraction/mention/citation + citation evidence state;
-2. subject normalization and registry service;
-3. deterministic mention extractor;
-4. deterministic citation extractor;
-5. atomic extraction repository/service;
-6. dedicated `visibility-extraction` queue + worker + backfill bounds;
-7. P6-A adapter compatibility for explicit citation evidence state;
+1. schema foundation: subject/alias/extraction/mention/citation plus `citationEvidenceState`;
+2. P6-A adapter compatibility: populate explicit citation evidence state with fixture tests and zero extra network calls;
+3. subject normalization + registry service + snapshot/hash;
+4. deterministic mention extractor;
+5. deterministic citation extractor;
+6. atomic extraction repository/service;
+7. dedicated `visibility-extraction` queue/worker + bounded backfill;
 8. REST subject/extraction/mention/citation APIs;
-9. Citation Monitor + subject setup Web UI;
-10. observability + operator documentation;
-11. P6-B release gate.
+9. Citation Monitor + subject setup UI;
+10. safe observability + operator documentation;
+11. P6-B integrated release gate.
 
-Each implementation task follows RED -> GREEN and gets its own reviewable PR/merge boundary unless a tightly coupled migration requires two adjacent substeps in one PR.
+Each implementation task follows RED -> GREEN and gets its own reviewable PR/merge boundary unless a schema/compatibility substep is inseparable for compilation.
 
 ## 26. Release gate
 
@@ -815,16 +715,16 @@ npm run test:e2e
 npm audit --omit=dev --audit-level=high
 ```
 
-Additional P6-B release evidence:
+Additional evidence:
 
 - deterministic mention extraction only;
 - native citation authority proven;
 - prose URLs do not become citations;
 - UNKNOWN vs KNOWN_EMPTY semantics proven;
-- pre-P6-B empty citation arrays do not silently become zero;
-- subjectSetHash/replay versioning proven;
+- old empty citation arrays do not silently become zero;
+- subjectSnapshotJson + subjectSetHash replay proven;
 - ambiguous aliases fail closed;
-- no P6-B extraction triggers provider network requests;
+- extraction/backfill makes zero provider calls;
 - project isolation proven;
 - P6-C metrics/SOV absent;
 - P1-P6-A regression suite green.
@@ -833,14 +733,14 @@ Additional P6-B release evidence:
 
 P6-B is complete when an Advanced/Enterprise project can:
 
-1. explicitly configure owned brand/domain/entity and competitor subjects;
+1. explicitly configure owned brand/domain/entity and selected competitor subjects;
 2. manage deterministic aliases without ambiguous silent matching;
 3. derive mentions from eligible saved provider answers;
 4. derive citations only from provider-native citation/search metadata;
-5. distinguish `EXTRACTED`, `KNOWN_EMPTY`, `UNKNOWN`, and `NOT_ELIGIBLE`;
-6. inspect owned, competitor, and third-party citation domains;
-7. re-run extraction after subject configuration changes without rewriting history;
-8. backfill existing eligible P6-A observations without new paid provider calls;
-9. inspect mention/citation facts through project-scoped API/Web views;
+5. distinguish EXTRACTED, KNOWN_EMPTY, UNKNOWN and NOT_ELIGIBLE;
+6. inspect owned, competitor and third-party citation domains;
+7. re-extract after subject changes without rewriting historical measurement sets;
+8. backfill eligible P6-A observations without new paid provider calls;
+9. inspect facts through project-scoped API/Web views;
 10. verify that P6-B exposes no rate/SOV metric before P6-C;
-11. pass the full P6-B release gate with zero live provider calls in CI.
+11. pass the full release gate with zero live provider calls in CI.
