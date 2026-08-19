@@ -150,9 +150,9 @@ export class VisibilityExtractionService {
     }
 
     try {
-      const mentionResult = observation.status === 'COMPLETED'
+      const mentionResult: MentionExtractionResult = observation.status === 'COMPLETED'
         ? this.mentionExtractor(observation.answerText, snapshot)
-        : { status: 'UNKNOWN', mentions: [] } as const;
+        : { status: 'UNKNOWN', mentions: [] };
       const citationResult = this.citationExtractor({
         id: observation.id,
         status: observation.status,
