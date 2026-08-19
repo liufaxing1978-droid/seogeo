@@ -38,6 +38,7 @@ test('opens Advanced AI Visibility and configures Prompt Monitor without startin
   await expect(page.getByText('Which websites explain Chinese folk religious traditions well?')).toBeVisible();
   await expect(page.getByText('v1')).toBeVisible();
 
+  // Configuration is not sampling: returning to the overview must still show no run was created.
   await page.getByRole('link', { name: '返回 AI Visibility' }).click();
   await expect(page.getByText('尚无采样运行。先在 Prompt 监控建立版本化 Prompt，再通过受控 API 发起采样。')).toBeVisible();
 });
