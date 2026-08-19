@@ -177,6 +177,18 @@ Never log through P6 observability:
 
 Final run events are emitted only when the database terminal-state transition succeeds, preventing duplicate terminal events from duplicate job delivery.
 
+## P6-A web surface
+
+The P6-A project UI exposes only the sampling-core views:
+
+- `/projects/:id/visibility` — API sampling readiness, Provider configuration summary, budget state and recent sampling runs;
+- `/projects/:id/visibility/prompts` — Prompt Set configuration and immutable Prompt versions;
+- `/projects/:id/visibility/runs/:runId` — normalized API observation, citation-source, usage and historical cost facts for one run.
+
+The UI must keep the `API 采样` label explicit. Visiting these pages or creating Prompt configuration does not enqueue a provider request; only the controlled run API starts sampling.
+
+`Citation 监控` and `Share of Voice` remain navigation placeholders for P6-B/P6-C. P6-A does not render Mention Rate, Citation Rate, Share of Voice, consumer-product rankings or any metric inferred from missing observations.
+
 ## Feature gates
 
 P6-A uses the existing Advanced/Enterprise gates:
