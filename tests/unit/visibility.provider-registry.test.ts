@@ -44,15 +44,15 @@ class FixtureUnsupportedDeepSeekAdapter implements VisibilityProviderAdapter {
   readonly provider = 'DEEPSEEK' as const;
   readonly channel = 'API' as const;
 
-  supportsWebGrounding() {
+  supportsWebGrounding(_mode: VisibilitySampleRequest['groundingMode']) {
     return false;
   }
 
-  estimateCostMicros() {
+  estimateCostMicros(_request: VisibilitySampleRequest) {
     return null;
   }
 
-  async sample(): Promise<VisibilitySampleResponse> {
+  async sample(_request: VisibilitySampleRequest): Promise<VisibilitySampleResponse> {
     return {
       status: 'UNSUPPORTED',
       providerResponseId: null,
