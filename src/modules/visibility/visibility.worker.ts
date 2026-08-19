@@ -7,6 +7,7 @@ import type {
 import type { Job } from 'bullmq';
 import { prisma } from '../../db/prisma.js';
 import { VisibilityBudgetService, visibilityBudgetService } from './visibility-budget.js';
+import { defaultVisibilityProviderRegistry } from './providers/default-registry.js';
 import {
   VisibilityProviderError,
   type VisibilitySampleRequest
@@ -24,7 +25,6 @@ export interface ExecuteVisibilityDependencies {
   budgetService?: VisibilityBudgetService;
 }
 
-const DEFAULT_VISIBILITY_REGISTRY = new VisibilityProviderRegistry([]);
 const MAX_PERSISTED_ANSWER_CHARS = 100_000;
 const TERMINAL_STATUSES = new Set<PlatformObservationStatus>([
   'COMPLETED',
@@ -131,7 +131,7 @@ export async function executeVisibilityObservation(
 ): Promise<void> {
   const repository = dependencies.repository ?? visibilityRepository;
   const budgetService = dependencies.budgetService ?? visibilityBudgetService;
-  const registry = dependencies.registry ?? DEFAULT_VISIBILITY_REGISTRY;
+  const registry = dependencies.registry ?? defaultVisibilityProviderRegistry;
 
   const loaded = await prisma.platformObservation.findUnique({
     where: { id: observationId },
