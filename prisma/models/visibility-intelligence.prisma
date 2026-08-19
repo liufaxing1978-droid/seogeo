@@ -1,0 +1,166 @@
+enum VisibilitySubjectType {
+  OWNED_BRAND
+  OWNED_DOMAIN
+  OWNED_ENTITY
+  COMPETITOR
+}
+
+enum VisibilitySubjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum VisibilitySubjectSource {
+  PROJECT_CONFIG
+  PRIMARY_DOMAIN
+  P3_ENTITY
+  P5_COMPETITOR
+}
+
+enum VisibilityAliasType {
+  NAME
+  DOMAIN
+  ENTITY_ALIAS
+}
+
+enum VisibilityAliasSource {
+  PROJECT_CONFIG
+  P3_ENTITY_ALIAS
+  PRIMARY_DOMAIN
+  P5_COMPETITOR
+}
+
+enum VisibilityExtractionStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum VisibilityEvidenceStatus {
+  EXTRACTED
+  KNOWN_EMPTY
+  UNKNOWN
+  NOT_ELIGIBLE
+}
+
+enum VisibilityMentionType {
+  EXACT
+  NORMALIZED_ALIAS
+  DOMAIN
+}
+
+model VisibilitySubject {
+  id              String                  @id @default(uuid()) @db.Uuid
+  projectId       String                  @db.Uuid
+  subjectType     VisibilitySubjectType
+  canonicalValue  String
+  normalizedValue String
+  status          VisibilitySubjectStatus @default(ACTIVE)
+  entityId        String?                 @db.Uuid
+  competitorId    String?                 @db.Uuid
+  sourceType      VisibilitySubjectSource
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@unique([projectId, subjectType, normalizedValue])
+  @@index([projectId, status])
+  @@index([projectId, subjectType])
+  @@index([entityId])
+  @@index([competitorId])
+}
+
+model VisibilitySubjectAlias {
+  id              String                  @id @default(uuid()) @db.Uuid
+  projectId       String                  @db.Uuid
+  subjectId       String                  @db.Uuid
+  alias           String
+  normalizedAlias String
+  aliasType       VisibilityAliasType
+  sourceType      VisibilityAliasSource
+  status          VisibilitySubjectStatus @default(ACTIVE)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@unique([subjectId, normalizedAlias])
+  @@index([projectId, status])
+  @@index([projectId, normalizedAlias])
+  @@index([subjectId, status])
+}
+
+model VisibilityExtraction {
+  id                    String                     @id @default(uuid()) @db.Uuid
+  projectId             String                     @db.Uuid
+  platformObservationId String                     @db.Uuid
+  status                VisibilityExtractionStatus @default(QUEUED)
+  extractorVersion      String
+  subjectSetHash        String
+  subjectSnapshotJson   Json
+  answerHash            String?
+  mentionStatus         VisibilityEvidenceStatus   @default(UNKNOWN)
+  citationStatus        VisibilityEvidenceStatus   @default(UNKNOWN)
+  mentionCount          Int                        @default(0)
+  citationCount         Int                        @default(0)
+  errorCode             String?
+  startedAt             DateTime?
+  completedAt           DateTime?
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
+
+  @@unique([platformObservationId, extractorVersion, subjectSetHash])
+  @@index([projectId, createdAt])
+  @@index([projectId, status])
+  @@index([platformObservationId])
+}
+
+model MentionObservation {
+  id                      String                @id @default(uuid()) @db.Uuid
+  projectId               String                @db.Uuid
+  visibilityExtractionId  String                @db.Uuid
+  platformObservationId   String                @db.Uuid
+  subjectId               String                @db.Uuid
+  subjectType             VisibilitySubjectType
+  subjectValue            String
+  matchedValue            String
+  mentionType             VisibilityMentionType
+  occurrenceCount         Int
+  firstPosition           Int?
+  extractorVersion        String
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+
+  @@unique([visibilityExtractionId, subjectId, matchedValue, mentionType])
+  @@index([projectId, createdAt])
+  @@index([platformObservationId])
+  @@index([subjectId])
+}
+
+model CitationObservation {
+  id                      String   @id @default(uuid()) @db.Uuid
+  projectId               String   @db.Uuid
+  visibilityExtractionId  String   @db.Uuid
+  platformObservationId   String   @db.Uuid
+  citationKey             String
+  url                     String
+  normalizedUrl           String
+  domain                  String
+  position                Int?
+  title                   String?
+  sourceType              String?
+  occurrenceCount         Int
+  isOwnedDomain           Boolean  @default(false)
+  ownedSubjectId          String?  @db.Uuid
+  competitorId            String?  @db.Uuid
+  competitorSubjectId     String?  @db.Uuid
+  extractorVersion        String
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@unique([visibilityExtractionId, citationKey])
+  @@index([projectId, createdAt])
+  @@index([platformObservationId])
+  @@index([domain])
+  @@index([ownedSubjectId])
+  @@index([competitorId])
+  @@index([competitorSubjectId])
+}
