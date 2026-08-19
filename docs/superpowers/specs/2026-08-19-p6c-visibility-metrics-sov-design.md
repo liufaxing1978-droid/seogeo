@@ -20,80 +20,70 @@ P6-C delivers:
 
 - Mention Rate;
 - Citation Rate;
-- Mention Share of Voice;
+- presence-based Mention Share of Voice;
 - immutable metric snapshots;
-- overall, provider and Prompt Set breakdowns;
-- deterministic coverage accounting;
-- Advanced/Enterprise API and web surfaces;
+- Overall, Provider and Prompt Set breakdowns;
+- deterministic evidence coverage accounting;
+- Advanced/Enterprise REST and web surfaces;
 - safe observability and release verification.
 
 P6-C does not deliver:
 
-- new provider sampling;
+- provider sampling;
 - DeepSeek/LLM metric calculation;
 - citation URL fetching;
-- consumer-product UI automation;
 - semantic/fuzzy subject inference;
+- consumer-product UI automation;
 - weighted visibility scoring;
 - ranking score synthesis;
-- historical trend presentation;
+- trend presentation;
 - alerts;
 - report integration.
 
-Trend visualization, alerts and report integration remain P6-D responsibilities. P6-C only creates the immutable snapshot foundation those features may later consume.
+Trend visualization, alerts and report integration remain P6-D responsibilities. P6-C only creates the immutable snapshot foundation that P6-D may later consume.
 
 ## 2. Architectural decision
 
-Three approaches were considered:
+Three approaches were considered.
 
 ### Option A — live SQL metrics
 
-Calculate metrics directly from P6-B facts at request time.
+Calculate metrics from P6-B facts at request time.
 
-Advantages:
-
-- small initial implementation;
-- no metric snapshot storage.
-
-Rejected because:
-
-- historical values can change after late extraction/backfill;
-- audit/replay is weaker;
-- API requests can become expensive and inconsistent;
-- P6-D history would need to reconstruct changing past states.
+Rejected because late extraction/backfill could change historical values, audit/replay would be weak, and P6-D history would have to reconstruct changing past states.
 
 ### Option B — immutable metric snapshots
 
-Materialize deterministic metric snapshots over an explicit time window, input cutoff, extractor version, subject-set hash and calculation scope.
+Materialize deterministic metric snapshots over an explicit time window, input cutoff, extractor version, subject-set hash and scope.
 
 Advantages:
 
 - replayable and auditable;
 - stable historical values;
 - late backfill cannot mutate an old result;
-- simple downstream reads;
-- clean foundation for P6-D.
+- cheap downstream reads;
+- clean P6-D foundation.
 
 This is the approved P6-C design.
 
-### Option C — pre-aggregated analytics cube
+### Option C — generalized analytics cube
 
-Maintain multi-dimensional provider/prompt/time/subject rollups continuously.
+Maintain continuously pre-aggregated provider/prompt/time/actor cubes.
 
-Rejected for P6-C because it is unnecessary operational complexity at the current project scale. Provider × Prompt Set cross-cubes, OLAP infrastructure and generalized analytics dimensions are deliberately deferred.
+Rejected for P6-C as premature complexity. Provider × Prompt Set cross-cubes, OLAP infrastructure and generalized arbitrary dimensions are deferred.
 
 ## 3. Truth boundary
 
-P6-C authoritative metrics may be derived only from persisted P6-A and P6-B data.
+P6-C authoritative metrics may be derived only from persisted P6-A/P6-B data.
 
 Allowed inputs:
 
 - `PlatformObservation` identity, provider, Prompt Set relationship, timestamps and source status;
-- completed `VisibilityExtraction` rows;
+- completed P6-B `VisibilityExtraction` rows;
 - P6-B `mentionStatus` and `citationStatus`;
 - P6-B `MentionObservation` facts;
 - P6-B `CitationObservation` facts;
-- the exact P6-B `subjectSetHash`, `extractorVersion` and subject snapshot used by the source extraction.
+- exact P6-B `subjectSetHash`, `extractorVersion` and subject snapshot.
 
 Forbidden inputs for authoritative P6-C calculations:
 
@@ -106,72 +96,106 @@ Forbidden inputs for authoritative P6-C calculations:
 - external URL fetches;
 - search engines;
 - consumer ChatGPT/Gemini/Perplexity/Claude UI automation;
-- current subject configuration applied retroactively to old extraction facts.
+- current subject configuration applied retroactively to old P6-B facts.
 
-The metric calculator is deterministic and database-only.
+The metric calculator and materializer are deterministic and database-only.
 
-## 4. Version and subject-set isolation
-
-P6-C must never mix facts across different measurement contracts.
+## 4. Measurement-contract isolation
 
 One metric snapshot uses exactly one:
 
+- `formulaVersion`;
 - `extractorVersion`;
 - `subjectSetHash`;
-- `formulaVersion`;
+- subject snapshot;
 - scope definition;
 - half-open observation window `[windowStart, windowEnd)`;
 - `inputCutoffAt`.
 
-If subject configuration changes, P6-B produces a new `subjectSetHash`. P6-C must create a new snapshot identity. It must not reinterpret old facts with the new subject registry.
+P6-C must never mix P6-B facts across different `subjectSetHash` values or different `extractorVersion` values.
 
-If the P6-B extractor changes, P6-C must not combine facts from multiple extractor versions inside one snapshot.
+If subject configuration changes, P6-B produces a new `subjectSetHash`; P6-C creates a new snapshot identity.
 
-Initial P6-C formula version:
+Initial formula version:
 
 `VISIBILITY_METRICS_V1`
 
-## 5. Observation window and cutoff semantics
+## 5. Time window and cutoff semantics
 
-P6-C time filtering uses `PlatformObservation.observedAt`.
+P6-C filters source data using `PlatformObservation.observedAt`.
 
 Window semantics are half-open:
 
 `windowStart <= observedAt < windowEnd`
 
-All persisted timestamps are compared in UTC. Project timezone is a display/default-window concern only; it does not change stored snapshot timestamps.
+Stored timestamps are compared in UTC. Project timezone is used only to choose/display default windows; it does not alter persisted snapshot timestamps.
 
-`inputCutoffAt` makes snapshot history immutable.
+`inputCutoffAt` freezes the evidence horizon.
 
-A candidate observation is visible to the materializer only when the source observation existed by the cutoff. A P6-B extraction is usable only when its completed authoritative state existed by the cutoff.
+A candidate P6-A observation is visible to the materializer only when:
 
-Late P6-B backfill after `inputCutoffAt` never mutates an existing metric snapshot. A user may explicitly generate a new snapshot with a later cutoff.
+- it is in the requested observation window/scope; and
+- `PlatformObservation.createdAt <= inputCutoffAt`.
+
+A P6-B extraction is usable only when:
+
+- it matches the requested project, `extractorVersion` and `subjectSetHash`;
+- `status = COMPLETED`;
+- `completedAt <= inputCutoffAt`.
+
+An extraction that completed after the cutoff is treated as missing at that cutoff. Late extraction/backfill never mutates an existing metric snapshot; a later cutoff creates a new snapshot.
 
 ## 6. Candidate observation set
 
-For one snapshot, candidate observations are project-scoped `PlatformObservation` records that:
+Candidate observations are selected from P6-A first, independently of whether a matching P6-B extraction exists.
 
+This is required so P6-C can correctly distinguish:
+
+- complete evidence;
+- explicit `NOT_ELIGIBLE`;
+- P6-B `UNKNOWN`;
+- missing extraction;
+- failed/incomplete extraction identity.
+
+A candidate observation must:
+
+- belong to the project;
 - fall inside `[windowStart, windowEnd)`;
-- match the snapshot scope;
-- existed by `inputCutoffAt`;
-- can be associated with the requested P6-B `extractorVersion` and `subjectSetHash` measurement contract.
+- satisfy `createdAt <= inputCutoffAt`;
+- match the requested Provider/Prompt Set scope.
+
+P6-C then looks up the requested P6-B measurement contract for every candidate.
 
 Scope V1 may restrict:
 
-- provider allowlist;
+- Provider allowlist;
 - Prompt Set allowlist.
 
-If no filter is supplied, all project providers and Prompt Sets represented in the time window are included.
+No filter means all project providers/Prompt Sets represented in the window.
 
-The canonical scope is sorted and serialized into `scopeJson`; `scopeHash` is the SHA-256 of that stable representation.
+The canonical scope is sorted and serialized into `scopeJson`; `scopeHash` is SHA-256 over that stable representation.
 
-## 7. Market actor model
+## 7. Resolving the subject-set contract
 
-P6-C top-line metrics use market actors rather than counting every owned alias/subject separately.
+A snapshot request must resolve the requested `subjectSetHash` to an exact same-project subject snapshot before materialization.
+
+Resolution order:
+
+1. load a same-project P6-B `VisibilityExtraction` with the requested `subjectSetHash` and `extractorVersion` and use its bounded `subjectSnapshotJson`;
+2. verify every matching extraction used by the snapshot has the same canonical subject snapshot for that hash;
+3. if no historical extraction exists for the hash, the current active subject registry may be snapshotted only when its freshly calculated hash exactly equals the requested `subjectSetHash`.
+
+If the hash cannot be resolved to a same-project subject snapshot, fail closed with a stable contract-not-found error. Do not create a metric snapshot with an unverifiable subject set.
+
+This rule also allows a valid `NO_DATA` metric snapshot when the requested hash is the current same-project subject contract even though the selected time window contains no observations.
+
+## 8. Market actor model
+
+P6-C top-line metrics use market actors rather than treating every owned alias/subject as a separate market participant.
 
 ### Owned actor
 
-All active owned subject types present in the P6-B subject snapshot roll up into one actor:
+All owned subject types from the exact P6-B subject snapshot roll up to one actor:
 
 - `OWNED_BRAND`;
 - `OWNED_DOMAIN`;
@@ -181,146 +205,114 @@ Stable actor key:
 
 `OWNED_ROLLUP`
 
-For one source observation, any number of owned subject/alias matches still create at most one owned presence unit.
+For one source observation, any number of owned subject/alias matches create at most one owned presence unit.
 
 ### Competitor actor
 
-Each monitored `COMPETITOR` subject is a separate market actor.
+Each monitored `COMPETITOR` P6-B subject is a separate actor.
 
 Stable actor key:
 
 `COMPETITOR:<subjectId>`
 
-For one source observation, repeated aliases, repeated mention occurrences and repeated mention rows for the same competitor still create at most one competitor presence unit.
+For one source observation, repeated aliases, mention rows and occurrences for the same competitor create at most one competitor presence unit.
 
-### Why presence rather than occurrence count
+### Why observation-level presence
 
-Share of Voice V1 intentionally uses observation-level presence, not raw word frequency.
+P6-C V1 uses presence, not raw occurrence frequency, because occurrence weighting would let verbose answers or repeated aliases artificially dominate Share of Voice.
 
-This prevents:
+P6-B occurrence counts remain preserved facts but are not P6-C V1 SOV weights.
 
-- one answer repeating a brand name many times from dominating SOV;
-- multiple owned aliases from inflating owned visibility;
-- verbose providers from receiving artificial weight.
-
-Occurrence counts remain available in P6-B facts but are not authoritative SOV weights in P6-C V1.
-
-## 8. Mention Rate
+## 9. Mention Rate
 
 For actor `A` in dimension `D`:
 
 `Mention Rate(A,D) = mentionedEligibleObservations(A,D) / mentionEligibleObservations(D)`
 
-### Denominator eligibility
+An observation enters the denominator only when the matching P6-B extraction has:
 
-An observation enters the Mention Rate denominator only when the matching P6-B extraction has:
-
-- `mentionStatus = EXTRACTED`, or
+- `mentionStatus = EXTRACTED`; or
 - `mentionStatus = KNOWN_EMPTY`.
 
-These are the only states that positively establish a complete deterministic mention scan.
-
-Excluded from denominator:
+Excluded from the denominator:
 
 - `UNKNOWN`;
 - `NOT_ELIGIBLE`;
 - missing matching extraction;
-- failed/incomplete metric input identity.
+- failed/incomplete extraction identity at the cutoff.
 
-### Numerator
+The numerator is the count of distinct mention-eligible source observations in which actor `A` is present.
 
-The numerator is the number of distinct eligible source observations in which actor `A` is present.
+Owned presence is true when any owned subject has at least one P6-B `MentionObservation` in that extraction.
 
-Owned actor presence is true when any owned subject has at least one P6-B `MentionObservation` in that extraction.
+Competitor presence is true when that competitor subject has at least one P6-B `MentionObservation` in that extraction.
 
-Competitor actor presence is true when that competitor subject has at least one P6-B `MentionObservation` in that extraction.
+Multiple aliases/occurrences count once per actor per source observation.
 
-Multiple aliases or multiple occurrences in the same answer count once.
+If denominator > 0, coverage is complete and numerator = 0, the result is a legitimate `CALCULATED` 0%.
 
-### Legitimate zero
-
-If the denominator is positive, coverage is complete, and actor `A` appears in zero eligible observations:
-
-- metric status is `CALCULATED`;
-- numerator is `0`;
-- the displayed rate is exactly `0%`.
-
-A legitimate zero must never be represented as `UNKNOWN`.
-
-## 9. Citation Rate
+## 10. Citation Rate
 
 For actor `A` in dimension `D`:
 
 `Citation Rate(A,D) = citedEligibleObservations(A,D) / citationEligibleObservations(D)`
 
-### Denominator eligibility
+An observation enters the denominator only when the matching P6-B extraction has:
 
-An observation enters the Citation Rate denominator only when the matching P6-B extraction has:
-
-- `citationStatus = EXTRACTED`, or
+- `citationStatus = EXTRACTED`; or
 - `citationStatus = KNOWN_EMPTY`.
 
-Excluded from denominator:
+Excluded from the denominator:
 
 - `UNKNOWN`;
 - `NOT_ELIGIBLE`;
 - missing matching extraction;
-- failed/incomplete metric input identity.
+- failed/incomplete extraction identity at the cutoff.
 
-### Numerator
+The numerator is the count of distinct citation-eligible source observations containing at least one persisted P6-B citation attributed to actor `A`.
 
-The numerator is the number of distinct citation-eligible source observations containing at least one deterministically attributed citation for actor `A`.
+Owned citation presence is based only on persisted P6-B owned classification.
 
-Owned actor citation presence is true when a P6-B `CitationObservation` is deterministically linked as owned through its persisted owned classification.
-
-Competitor citation presence is true when a P6-B `CitationObservation` is deterministically linked to that competitor subject/competitor provenance.
+Competitor citation presence is based only on persisted P6-B competitor subject/provenance classification.
 
 Repeated citations to the same actor inside one source observation count once for Citation Rate.
 
-P6-C never re-parses or fetches a citation URL to change attribution.
+P6-C never fetches or reinterprets a citation URL to change attribution.
 
-## 10. Mention Share of Voice
+## 11. Mention Share of Voice
 
-P6-C V1 uses presence-based Mention Share of Voice.
-
-For actor `A` in dimension `D`:
+P6-C V1 uses presence-based Mention Share of Voice:
 
 `Mention SOV(A,D) = actorPresenceUnits(A,D) / totalActorPresenceUnits(D)`
 
-For each mention-eligible observation:
+For each mention-eligible source observation:
 
-1. create `OWNED_ROLLUP` presence if any owned subject was mentioned;
-2. create one presence unit for each distinct competitor subject mentioned;
-3. do not count repeated occurrences or aliases more than once per actor per observation.
+1. add one `OWNED_ROLLUP` unit if any owned subject was mentioned;
+2. add one unit for each distinct competitor subject mentioned;
+3. ignore repeated aliases/occurrences for the same actor in that observation.
 
 Example:
 
-- answer 1 mentions owned + competitor A;
-- answer 2 mentions owned + competitor A + competitor B;
-- answer 3 mentions competitor B.
+- observation 1: owned + competitor A;
+- observation 2: owned + competitor A + competitor B;
+- observation 3: competitor B.
 
 Presence units:
 
 - owned = 2;
 - competitor A = 2;
 - competitor B = 2;
-- total = 6.
+- denominator = 6.
 
-Each actor SOV = `2 / 6 = 33.333...%`.
+Each SOV is `2/6`.
 
-When SOV is calculable, the stored numerators across all market actors for the same dimension must sum exactly to the stored denominator. UI percentage rounding may make displayed values differ from exactly 100.00%; the integer-unit invariant is authoritative.
+When SOV is `CALCULATED`, all actor numerators for the same snapshot/dimension must sum exactly to the shared SOV denominator. Integer-unit equality is authoritative; UI rounding is presentation only.
 
-### No-signal case
+If mention coverage is complete, mention-eligible observations exist, but total actor presence is zero, SOV status is `NO_SIGNAL`, not 0%.
 
-If mention coverage is complete, at least one mention-eligible observation exists, but no monitored actor appears anywhere, then total actor-presence units are zero.
+## 12. Metric status model
 
-SOV is not `0%` for every actor because there is no market signal denominator.
-
-The metric status is `NO_SIGNAL`.
-
-## 11. Metric status model
-
-P6-C introduces explicit metric states:
+P6-C introduces:
 
 - `CALCULATED`
 - `NO_SIGNAL`
@@ -332,102 +324,98 @@ P6-C introduces explicit metric states:
 
 Use when:
 
-- at least one eligible denominator observation exists;
-- no candidate input is unknown/missing for the requested measurement contract;
-- the metric has a defined denominator.
+- the dimension has at least one eligible denominator observation;
+- the metric has a defined denominator;
+- there are no unknown/missing required inputs for that metric/dimension.
 
 Numerator may be zero.
 
 ### `NO_SIGNAL`
 
-Used by SOV only when:
+Valid only for Mention SOV when:
 
 - mention coverage is complete;
 - at least one mention-eligible observation exists;
-- total actor presence is zero.
+- total actor-presence denominator is zero.
 
 ### `UNKNOWN`
 
-Use when any candidate observation that is relevant to the requested scope lacks a trustworthy completed P6-B state for the metric being calculated, including:
+Use when any candidate observation in the metric/dimension lacks trustworthy complete P6-B input for that metric, including:
 
 - P6-B evidence status `UNKNOWN`;
-- missing required extraction for the requested `extractorVersion + subjectSetHash`;
-- failed extraction/materialization identity at the cutoff;
-- inconsistent P6-B fact rows.
+- missing requested extraction at the cutoff;
+- failed/non-completed requested extraction at the cutoff;
+- inconsistent P6-B facts/subject snapshot.
 
-P6-C V1 is deliberately strict: it does not publish a percentage when the selected measurement set contains unknown required inputs.
-
-Coverage counts are still persisted so the UI can explain why the metric is unknown.
+P6-C V1 is deliberately strict: if required input is unknown, it does not publish a percentage for that metric/dimension. Coverage counts remain available for diagnosis.
 
 ### `NOT_ELIGIBLE`
 
-Use when:
-
-- candidate observations exist;
-- none are eligible for the metric;
-- every candidate has an explicit `NOT_ELIGIBLE` P6-B evidence state;
-- there are no unknown/missing required inputs.
+Use when candidate observations exist, none are eligible, every candidate has explicit P6-B `NOT_ELIGIBLE` for the metric, and there are no unknown/missing required inputs.
 
 ### `NO_DATA`
 
-Use when the selected time window and scope contain zero candidate P6-A observations.
+Use when the selected time window/scope contains zero candidate P6-A observations.
 
-## 12. Mixed eligible and explicit NOT_ELIGIBLE inputs
+## 13. Mixed eligible and NOT_ELIGIBLE inputs
 
-Explicit `NOT_ELIGIBLE` observations do not invalidate an otherwise complete metric.
+Explicit `NOT_ELIGIBLE` does not invalidate an otherwise complete metric.
 
 Example:
 
-- 10 candidate observations;
+- 10 candidates;
 - 6 `EXTRACTED/KNOWN_EMPTY`;
 - 4 explicit `NOT_ELIGIBLE`;
-- 0 `UNKNOWN`/missing.
+- 0 unknown/missing.
 
-The metric may be `CALCULATED` with denominator `6`.
+The metric is `CALCULATED` with denominator 6.
 
-The snapshot stores all coverage counts so users can see that only 6/10 candidates were metric-eligible.
+`NOT_ELIGIBLE` never enters a denominator and is never converted to zero.
 
-`NOT_ELIGIBLE` is never converted to zero and never enters the denominator.
+## 14. Dimensions
 
-## 13. Dimensions
-
-P6-C V1 materializes three dimension levels:
+P6-C V1 materializes:
 
 ### Overall
 
 - `dimensionType = OVERALL`
-- `dimensionKey = null`
+- internal storage key = `OVERALL`.
 
 ### Provider
 
 - `dimensionType = PROVIDER`
-- one row group per represented `VisibilityProvider`.
+- one group per represented `VisibilityProvider`;
+- storage key = provider enum string.
 
 ### Prompt Set
 
 - `dimensionType = PROMPT_SET`
-- one row group per represented `VisibilityPromptSet.id`.
+- one group per represented `VisibilityPromptSet.id`;
+- storage key = Prompt Set UUID;
+- `dimensionLabelSnapshot` stores the Prompt Set name at snapshot time for stable historical display.
 
-The Prompt Set relationship is resolved through the immutable observation prompt/run relationships. P6-C does not read or log prompt text to calculate a metric.
+Prompt text is never required for metric calculation or logging.
 
-P6-C V1 deliberately does not materialize Provider × Prompt Set cross-product rows.
+Provider × Prompt Set cross-product rows are intentionally not materialized in V1.
 
-## 14. Metric precision
+## 15. Metric precision
 
-The database stores authoritative integer numerator/denominator counts.
+Authoritative storage uses integer numerator/denominator counts.
 
-Percentages are derived from those counts for API/UI responses.
+Percentages are derived for API/UI responses and are not stored as the only truth.
 
-Do not store rounded percentage as the only truth.
+API response may expose a decimal ratio rounded to four decimal places; UI may display 1–2 decimal places.
 
-Recommended API percentage precision:
+SOV correctness is tested using integer presence units, not rounded percentages.
 
-- decimal ratio rounded for presentation to four decimal places or equivalent basis-point precision;
-- UI may display 1–2 decimal places.
+## 16. Data model
 
-For SOV, integer presence-unit sums are the invariant used for correctness tests.
+### Enum: `VisibilityMetricSnapshotStatus`
 
-## 15. Data model
+- `QUEUED`
+- `RUNNING`
+- `COMPLETED`
+- `FAILED`
 
 ### Enum: `VisibilityMetricType`
 
@@ -460,6 +448,7 @@ Fields:
 
 - `id` UUID
 - `projectId` UUID
+- `status` `VisibilityMetricSnapshotStatus`
 - `formulaVersion` string
 - `extractorVersion` string
 - `subjectSetHash` string
@@ -469,23 +458,27 @@ Fields:
 - `inputCutoffAt` DateTime
 - `scopeJson` JSON
 - `scopeHash` string
-- `inputFingerprint` string
-- `candidateObservationCount` Int
-- `completedExtractionCount` Int
-- `missingExtractionCount` Int
-- `failedExtractionCount` Int
+- `inputFingerprint` string nullable until successful derivation
+- `candidateObservationCount` Int default 0
+- `completedExtractionCount` Int default 0
+- `missingExtractionCount` Int default 0
+- `failedExtractionCount` Int default 0
+- `errorCode` string nullable
+- `startedAt` DateTime nullable
+- `completedAt` DateTime nullable
 - `createdAt` DateTime
-
-Rules:
-
-- immutable after successful materialization;
-- contains no prompt text, answer text, reasoning, provider raw body, API key or cookie;
-- `subjectSnapshotJson` is copied from the exact P6-B measurement contract and is used for historical actor reconstruction;
-- snapshot generation fails closed if matching extractions with the same `subjectSetHash` disagree on the canonical subject snapshot.
+- `updatedAt` DateTime
 
 Recommended uniqueness:
 
 `(projectId, formulaVersion, extractorVersion, subjectSetHash, windowStart, windowEnd, inputCutoffAt, scopeHash)`
+
+Rules:
+
+- a completed snapshot is immutable;
+- a failed snapshot identity may be safely retried;
+- `subjectSnapshotJson` contains only the bounded P6-B subject measurement contract;
+- no prompt text, answer text, reasoning, provider raw body, API key or cookie is stored.
 
 ### `VisibilityMetricRow`
 
@@ -497,7 +490,7 @@ Fields:
 - `metricType` enum
 - `metricStatus` enum
 - `dimensionType` enum
-- `dimensionKey` string nullable
+- `dimensionKey` string (always non-null in storage)
 - `dimensionLabelSnapshot` string nullable
 - `actorType` enum
 - `actorSubjectId` UUID nullable
@@ -512,25 +505,25 @@ Fields:
 
 Actor constraints:
 
-- `OWNED_ROLLUP` has `actorSubjectId = null`, `actorKey = OWNED_ROLLUP`;
-- `COMPETITOR` has `actorSubjectId = <P6-B competitor subjectId>` and `actorKey = COMPETITOR:<subjectId>`.
+- owned: `actorType = OWNED_ROLLUP`, `actorSubjectId = null`, `actorKey = OWNED_ROLLUP`;
+- competitor: `actorType = COMPETITOR`, `actorSubjectId = subjectId`, `actorKey = COMPETITOR:<subjectId>`.
 
 Recommended uniqueness:
 
 `(visibilityMetricSnapshotId, metricType, dimensionType, dimensionKey, actorKey)`
 
-Because PostgreSQL unique constraints treat nulls specially, implementation must normalize `OVERALL` to a stable non-null uniqueness key internally if required by Prisma/PostgreSQL constraints. The public API may still expose `dimensionKey = null` for Overall.
+Using a non-null internal dimension key avoids PostgreSQL null-uniqueness ambiguity. REST/UI may expose `dimensionKey = null` for Overall if desired, but persistence uses `OVERALL`.
 
-## 16. Input fingerprint
+## 17. Input fingerprint
 
-`inputFingerprint` makes the exact materialized evidence set auditable.
+`inputFingerprint` proves the exact materialized evidence identity.
 
-It is a deterministic hash over bounded, sorted non-sensitive metadata such as:
+It is a SHA-256 over bounded, canonically sorted non-sensitive metadata including:
 
-- source observation IDs;
-- matching extraction IDs;
-- P6-B evidence states;
-- P6-B extraction completion identity;
+- candidate observation IDs;
+- matching extraction IDs or explicit missing markers;
+- P6-B mention/citation evidence states;
+- extraction completion identity;
 - provider;
 - Prompt Set ID.
 
@@ -539,148 +532,140 @@ It must not include:
 - prompt text;
 - answer text;
 - alias strings;
-- canonical subject values outside the already-approved bounded subject snapshot;
-- citation page bodies;
 - provider raw responses;
-- reasoning;
-- secrets.
+- provider reasoning;
+- API keys/cookies;
+- fetched external content.
 
-The fingerprint is evidence identity, not a semantic score.
-
-## 17. Materialization algorithm
+## 18. Materialization algorithm
 
 For one metric snapshot request:
 
-1. validate project and Advanced/Enterprise feature access before side effects;
-2. normalize/validate `windowStart`, `windowEnd`, `inputCutoffAt` and optional scope filters;
-3. select candidate P6-A observations in the half-open window and scope;
-4. load matching P6-B extraction identity for the requested `extractorVersion + subjectSetHash` as-of cutoff;
-5. verify subject snapshot consistency;
-6. calculate candidate/completed/missing/failed coverage;
-7. construct immutable normalized input records in memory;
-8. run the pure deterministic metric calculator;
-9. build Overall, Provider and Prompt Set rows;
-10. verify invariants before persistence;
-11. transactionally insert the immutable snapshot and all rows;
-12. emit safe observability.
+1. load project and verify `COMPETITOR_SOV` feature before any write/enqueue;
+2. validate `windowStart`, `windowEnd`, `inputCutoffAt` and optional scope;
+3. resolve the requested same-project subject-set contract;
+4. create/claim the unique snapshot shell;
+5. select P6-A candidate observations independently of extraction availability;
+6. load requested P6-B extraction identities as-of cutoff;
+7. verify subject snapshot consistency;
+8. calculate completed/missing/failed and per-metric evidence coverage;
+9. build a bounded, normalized input stream;
+10. run the pure deterministic calculator;
+11. build Overall, Provider and Prompt Set rows;
+12. verify calculator/materialization invariants;
+13. transactionally replace any prior failed partial state with all final rows and mark the snapshot `COMPLETED`;
+14. emit safe completion observability.
 
-No provider/network dependency is available to the calculator or materialization worker.
+If derivation/materialization fails:
 
-## 18. Pure calculator contract
+- no partial metric rows may remain;
+- snapshot shell is marked `FAILED` with stable bounded `errorCode`;
+- retry reclaims the same snapshot identity.
 
-Introduce a pure module such as:
+No provider/network dependency is available to the calculator/materializer worker.
+
+## 19. Pure calculator contract
+
+Introduce:
 
 `visibility-metrics.calculator.ts`
 
-It receives normalized records containing only fields required for aggregation:
+The pure calculator receives normalized records containing only:
 
 - observation ID;
 - provider;
 - Prompt Set ID;
 - mention evidence status;
 - citation evidence status;
-- owned actor mention presence;
-- competitor actor mention presence set;
-- owned actor citation presence;
-- competitor actor citation presence set.
+- owned mention presence;
+- competitor mention presence set;
+- owned citation presence;
+- competitor citation presence set.
 
-It returns rows containing integer counts and status.
+It returns integer metric rows/statuses.
 
 The calculator must not import:
 
 - Prisma;
-- provider adapters;
-- HTTP clients;
-- fetch;
 - BullMQ;
+- provider adapters;
+- HTTP clients/fetch;
 - P4 AI Gateway;
-- DeepSeek SDK/client;
+- DeepSeek;
 - browser automation.
 
-This keeps formulas unit-testable and makes zero-network behavior structurally obvious.
+## 20. Calculator invariants
 
-## 19. Calculator invariants
+Enforce before completion:
 
-Before materialization completes, enforce:
+1. counts are non-negative;
+2. Mention/Citation numerator <= denominator;
+3. `CALCULATED` Mention/Citation rows require denominator > 0;
+4. legitimate zero is numerator 0 with denominator > 0;
+5. `NO_SIGNAL` is valid only for Mention SOV with positive mention-eligible observations and zero actor-presence denominator;
+6. `CALCULATED` SOV actor numerators for one dimension sum exactly to the shared SOV denominator;
+7. `UNKNOWN`, `NOT_ELIGIBLE`, `NO_DATA`, `NO_SIGNAL` expose no authoritative percentage;
+8. actor presence is deduplicated per source observation;
+9. all rows in one snapshot use the exact snapshot formula/extractor/subject-set identity;
+10. no row is created for an actor absent from the exact subject snapshot.
 
-1. no negative counts;
-2. numerator <= denominator for Mention Rate and Citation Rate;
-3. `CALCULATED` rate rows require denominator > 0;
-4. legitimate zero rate is numerator 0 with denominator > 0;
-5. `NO_SIGNAL` is valid only for Mention SOV and denominator 0 with positive mention-eligible observations;
-6. SOV `CALCULATED` actor numerators for one dimension sum exactly to the shared SOV denominator;
-7. `UNKNOWN` rows expose no authoritative percentage;
-8. `NOT_ELIGIBLE` rows expose no authoritative percentage;
-9. `NO_DATA` rows expose no authoritative percentage;
-10. actor presence is deduplicated per observation.
+Invariant failure aborts materialization.
 
-Invariant failure aborts materialization with a stable error code and no partial metric rows.
+## 21. Snapshot immutability and replay
 
-## 20. Snapshot immutability and replay
+A `COMPLETED` snapshot and its rows are immutable.
 
-A completed snapshot is immutable.
+If P6-B is backfilled later:
 
-If P6-B facts are backfilled later:
+- old snapshot remains unchanged;
+- old rows remain unchanged;
+- explicit recomputation uses a later `inputCutoffAt` and therefore a new unique snapshot identity.
 
-- old metric snapshot does not change;
-- old rows do not change;
-- explicit recomputation uses a later `inputCutoffAt` and creates a new snapshot.
+Requesting the exact same completed identity returns the existing snapshot.
 
-If the same exact snapshot identity is requested again:
+A `FAILED` snapshot may be retried under the same identity.
 
-- return the existing completed snapshot;
-- do not duplicate rows.
+## 22. Queue and worker
 
-A failed materialization may be retried under the same identity if no completed snapshot exists.
-
-## 21. Queue and worker
-
-Introduce dedicated queue:
+Dedicated queue:
 
 `visibility-metrics`
 
-Job type:
+Job:
 
-- `materialize-metric-snapshot`
+`materialize-metric-snapshot`
 
-Stable job ID derived from:
+Stable job ID is derived from:
 
 `projectId + formulaVersion + extractorVersion + subjectSetHash + windowStart + windowEnd + inputCutoffAt + scopeHash`
 
-Recommended attempts:
+Configuration:
 
-- `2`
+- attempts = 2;
+- worker concurrency = 2;
+- database-only execution;
+- no provider credentials/dependencies.
 
-Recommended worker concurrency:
+One job handles one bounded snapshot window. Historical batch creation, if later required, must expand to bounded window-level jobs rather than one unbounded history job.
 
-- `2`
+## 23. Feature gate
 
-The worker is database-only and does not depend on provider adapters.
+The repository already defines `COMPETITOR_SOV` in `src/auth/feature-flags.ts` for Advanced/Enterprise plans.
 
-A bounded project request must create one bounded snapshot job; P6-C does not run an unbounded historical backfill inside one worker execution.
+P6-C uses that existing feature code for all P6-C metric-generation/read surfaces.
 
-Historical batch generation, if later required, must expand into bounded window-level jobs.
+Required ordering:
 
-## 22. Feature gates
+- Standard rejected before snapshot shell creation;
+- Standard rejected before queue enqueue;
+- Standard rejected before REST reads;
+- Standard rejected before Metrics/SOV web reads.
 
-P6-C is Advanced/Enterprise only.
+P6-C must not create a new parallel entitlement system.
 
-Use the existing P6 feature-gating service and preserve side-effect ordering:
+## 24. REST API
 
-- Standard is rejected before metric snapshot creation;
-- Standard is rejected before queue enqueue;
-- Standard is rejected before metric API reads;
-- Standard is rejected before Metrics/SOV web reads.
-
-The implementation plan must map the final route/service surfaces to the existing feature codes already used by the repository. It must not create a parallel plan system.
-
-The top-level P6-C surface represents the roadmap capability “Competitor Share of Voice”; Mention/Citation Rate are part of the same P6-C visibility-metrics capability and inherit the same Advanced/Enterprise access boundary.
-
-## 23. REST API
-
-Extend the project-scoped visibility API.
-
-Recommended endpoints:
+Extend `/api/v1/projects/:projectId/visibility`.
 
 ### Create snapshot
 
@@ -690,19 +675,19 @@ Input:
 
 - `windowStart`;
 - `windowEnd`;
-- optional `inputCutoffAt` (server defaults to request time, then persists exact value);
+- optional `inputCutoffAt` (server defaults to request time and persists the exact resolved value);
 - `extractorVersion`;
 - `subjectSetHash`;
-- optional provider filter;
+- optional Provider filter;
 - optional Prompt Set filter.
 
 Behavior:
 
 - strict Zod validation;
-- project/plan validation before enqueue;
+- `COMPETITOR_SOV` plan gate before side effects;
+- same-project Prompt Set validation;
 - queues database-only materialization;
-- returns accepted job/snapshot identity metadata;
-- never performs provider sampling.
+- never samples a provider.
 
 ### List snapshots
 
@@ -710,10 +695,11 @@ Behavior:
 
 Filters:
 
-- time range;
+- window/date range;
 - formulaVersion;
 - extractorVersion;
 - subjectSetHash;
+- status;
 - bounded pagination.
 
 ### Snapshot detail
@@ -724,48 +710,48 @@ Returns:
 
 - snapshot provenance;
 - coverage counts;
-- metric rows grouped by Overall/Provider/Prompt Set;
+- grouped Overall/Provider/Prompt Set metric rows;
 - no prompt/answer/provider body/reasoning content.
 
 ### Latest convenience read
 
 `GET /api/v1/projects/:projectId/visibility/metrics/latest`
 
-Returns the latest completed snapshot matching explicit filters. It must not silently combine rows from multiple snapshots.
+Returns the latest `COMPLETED` snapshot matching explicit filters. It must never combine rows across snapshots.
 
-## 24. Web UI
+## 25. Web UI
 
 Primary route:
 
 `/projects/:id/visibility/metrics`
 
-The P6-C V1 page shows:
+V1 shows:
 
 ### Top cards
 
 - Owned Mention Rate;
 - Owned Citation Rate;
-- Owned Mention Share of Voice;
+- Owned Mention SOV;
 - Evidence Coverage.
 
 ### Competitor table
 
-For each monitored competitor actor:
+For each monitored competitor:
 
 - Mention Rate;
 - Citation Rate;
 - Mention SOV;
-- evidence state/status;
-- numerator/denominator tooltip or detail.
+- metric status;
+- numerator/denominator detail.
 
 ### Provider breakdown
 
-For each provider represented in the snapshot:
+For each represented provider:
 
 - Owned Mention Rate;
 - Owned Citation Rate;
 - Owned SOV;
-- competitor SOV rows or compact comparison.
+- competitor SOV comparison.
 
 ### Prompt Set breakdown
 
@@ -776,7 +762,7 @@ For each represented Prompt Set:
 - Owned SOV;
 - competitor comparison.
 
-### Provenance/coverage
+### Provenance
 
 Always show:
 
@@ -786,35 +772,33 @@ Always show:
 - windowStart/windowEnd;
 - inputCutoffAt;
 - candidate/eligible/not-eligible/unknown counts;
-- metric status.
+- snapshot/metric status.
 
-### Status presentation
+The UI must visually distinguish:
 
-The UI must visibly distinguish:
-
-- calculated `0%`;
+- calculated 0%;
 - `UNKNOWN`;
 - `NOT_ELIGIBLE`;
 - `NO_DATA`;
-- SOV `NO_SIGNAL`.
+- `NO_SIGNAL`.
 
-Do not render `UNKNOWN` as 0 or as an empty progress bar that visually implies zero.
+`UNKNOWN` must not be rendered as an empty bar/card that implies zero.
 
-## 25. P6-D boundary
+## 26. P6-D boundary
 
-P6-C may create immutable snapshots that P6-D can later query, but P6-C does not implement:
+P6-C may list/select immutable snapshots but does not implement:
 
 - trend lines;
-- day-over-day/week-over-week deltas;
+- day/week/month deltas;
 - alert thresholds;
 - scheduled notifications;
-- dashboard history widgets;
+- historical dashboard widgets;
 - report snapshot integration;
-- AI narrative explanation of visibility trends.
+- AI narrative trend explanation.
 
-The Metrics page may list/select existing snapshots for provenance, but historical trend analysis remains P6-D.
+Those remain P6-D.
 
-## 26. Observability
+## 27. Observability
 
 Allowed P6-C lifecycle events:
 
@@ -831,18 +815,17 @@ Safe fields only:
 - extractorVersion;
 - subjectSetHash;
 - scopeHash;
-- metric status/count summaries;
+- snapshot/metric statuses;
 - candidate/eligible/unknown/not-eligible counts;
 - errorCode;
 - durationMs.
 
-Do not log:
+Never log:
 
 - prompt text;
 - answer text;
-- alias strings;
-- canonical subject values;
-- citation URLs unless an existing explicitly-approved safe logging contract later requires them;
+- aliases/canonical subject values;
+- citation URLs;
 - provider raw bodies;
 - provider reasoning;
 - API keys;
@@ -850,97 +833,102 @@ Do not log:
 
 Use a strict serializer allowlist as in P6-B.
 
-## 27. Security and isolation
-
-Every snapshot and row is project-scoped.
+## 28. Security and project isolation
 
 Requirements:
 
+- every snapshot/row is project-scoped;
 - cross-project snapshot IDs return not found;
 - cross-project Prompt Set filters fail closed;
-- cross-project subjectSetHash/extractor combinations cannot leak another project's facts;
-- Standard requests fail before side effects;
-- API serializers expose only metric/provenance/coverage data needed by the client;
-- metric generation never reads secrets or provider credentials.
+- a subject-set contract must resolve inside the same project;
+- Standard fails before side effects;
+- serializers expose only metric/provenance/coverage data;
+- P6-C never reads provider secrets for calculation.
 
-## 28. Performance and bounds
+## 29. Performance bounds
 
-P6-C V1 is designed for bounded windows, not unlimited all-history aggregation.
+P6-C V1 uses explicit hard limits:
 
-Initial API bounds should include:
+- maximum snapshot observation window = 31 days;
+- maximum Prompt Set filters per request = 20;
+- Provider filter bounded by the existing provider enum;
+- maximum candidate observations per snapshot = 20,000;
+- materializer database batch size = 500;
+- snapshot list default page size = 25, maximum = 100.
 
-- maximum request window duration chosen in implementation plan based on current P6 sampling volume;
-- maximum provider filter count bounded by enum size;
-- maximum Prompt Set filter count;
-- bounded snapshot list pagination;
-- worker query pagination/batching when candidate observations exceed an in-memory safety threshold.
-
-The pure calculator may process batches into deterministic accumulator state if required, but results must be identical to single-batch calculation.
+If a request exceeds 20,000 candidate observations, fail with a stable `VISIBILITY_METRICS_SCOPE_TOO_LARGE` error and require a narrower window/scope.
 
 No arbitrary user SQL/grouping expression is accepted.
 
-## 29. Testing strategy
+Batching must produce the same deterministic result as single-batch calculation.
 
-### Unit tests — calculator
+## 30. Testing strategy
 
-Lock these contracts:
+### Unit tests — pure calculator
+
+Lock:
 
 - `KNOWN_EMPTY` enters denominators;
 - `UNKNOWN` never enters denominators;
 - `NOT_ELIGIBLE` never enters denominators;
-- legitimate `0%` is `CALCULATED`;
+- legitimate 0% is `CALCULATED`;
 - owned aliases/subjects dedupe to one presence per observation;
 - competitor aliases/occurrences dedupe to one presence per competitor per observation;
-- SOV actor numerators sum to denominator;
+- SOV actor numerators sum exactly to denominator;
 - no-signal SOV returns `NO_SIGNAL`;
-- provider breakdown matches overall source partition;
-- Prompt Set breakdown matches overall source partition;
-- unknown/missing required input makes the affected metric `UNKNOWN`;
+- Provider breakdown partitions correctly;
+- Prompt Set breakdown partitions correctly;
+- unknown/missing required input makes the affected metric/dimension `UNKNOWN`;
 - no candidate input returns `NO_DATA`;
 - all explicit ineligible input returns `NOT_ELIGIBLE`.
 
-### Integration tests — persistence
+### Integration tests — persistence/materialization
 
 Lock:
 
 - snapshot identity/idempotency;
+- `QUEUED/RUNNING/COMPLETED/FAILED` lifecycle;
+- failed retry safety;
 - historical snapshot immutability after later P6-B backfill;
 - `inputCutoffAt` behavior;
+- candidate observation selection independent of extraction availability;
 - subjectSetHash isolation;
 - extractorVersion isolation;
 - subject snapshot consistency validation;
 - transaction rollback on invariant/materialization failure;
+- 20,000-candidate hard bound;
 - project isolation;
 - Standard denied before writes/enqueue.
 
 ### Network boundary tests
 
-The metric calculator/materializer/worker must make zero provider or external-content network calls.
+Calculator/materializer/worker provider/external-content network call count must be zero.
 
-Tests should fail if provider adapters, P4 AI Gateway or external fetch transports are invoked from P6-C.
+Tests fail if P6-C invokes provider adapters, P4 AI Gateway, DeepSeek, browser automation or external fetch transports.
 
 ### API tests
 
 Lock:
 
 - strict validation;
+- 31-day window bound;
+- Prompt Set filter bound and same-project ownership;
 - bounded pagination;
 - project-scoped reads;
 - safe serializers;
-- no prompt/answer/reasoning/raw provider body exposure;
 - Standard 403 before side effects.
 
 ### Browser tests
 
 Lock:
 
-- calculated 0% visually differs from UNKNOWN;
-- NOT_ELIGIBLE/NO_DATA/NO_SIGNAL labels are explicit;
+- calculated 0% differs visibly from UNKNOWN;
+- NOT_ELIGIBLE/NO_DATA/NO_SIGNAL are explicit;
 - owned/competitor SOV comparison renders;
-- provenance is visible;
-- no P6-D trend claims appear in P6-C V1.
+- provenance/coverage is visible;
+- no P6-D trend claim appears.
 
-## 30. Release gate
+## 31. Release gate
 
 Run on the exact final P6-C head:
 
@@ -957,32 +945,32 @@ npm audit --omit=dev --audit-level=high
 
 Additional required evidence:
 
-1. metric calculator/provider network calls = 0;
+1. P6-C provider/external network calls = 0;
 2. `UNKNOWN` never enters a denominator or becomes zero;
 3. `KNOWN_EMPTY` does enter the appropriate denominator;
 4. legitimate 0% remains distinguishable from UNKNOWN;
-5. owned aliases/subjects cannot double-count one source observation;
-6. SOV presence numerators sum exactly to the SOV denominator when calculated;
-7. subjectSetHash versions never mix;
-8. extractorVersion versions never mix;
+5. owned aliases/subjects cannot double-count one observation;
+6. SOV actor numerators sum exactly to denominator when calculated;
+7. subjectSetHash values never mix;
+8. extractorVersion values never mix;
 9. old snapshots remain immutable after later P6-B backfill;
 10. Standard cannot enqueue/generate/read P6-C intelligence;
 11. P1–P6-B regression suite remains green;
-12. no P6-D trend/alert/report feature is introduced;
+12. no P6-D trend/alert/report implementation is introduced;
 13. exact-final-head verify, production-audit and Chromium E2E are green.
 
-Only after this gate may README change to:
+Only after this gate may README state:
 
 - `P6-C Visibility Metrics & Competitor Share of Voice — complete`
 - `P6-D History, Dashboard, Alerts & Report Integration — next`
 
-## 31. Implementation decomposition
+## 32. Implementation decomposition
 
 P6-C is implemented in six sequential tasks.
 
 ### Task 1 — metric contracts and pure calculator
 
-- enums/types;
+- types/contracts;
 - normalized input contract;
 - market actor rollup;
 - Mention Rate;
@@ -991,71 +979,70 @@ P6-C is implemented in six sequential tasks.
 - metric status semantics;
 - pure unit tests and invariants.
 
-No Prisma schema changes are required in the first RED/GREEN calculator slice unless the implementation plan deliberately stacks Task 1 with Task 2 for type generation reasons.
-
 ### Task 2 — Prisma snapshot model and migration
 
+- P6-C enums;
 - `VisibilityMetricSnapshot`;
 - `VisibilityMetricRow`;
-- metric enums;
 - indexes/uniqueness;
 - migration;
-- schema validation tests.
+- schema validation.
 
-### Task 3 — materialization service, repository, queue and worker
+### Task 3 — materialization repository/service/queue/worker
 
+- subject-contract resolution;
 - candidate selection;
 - cutoff semantics;
 - P6-B contract isolation;
 - input fingerprint;
-- transactional materialization;
-- idempotency/retry;
+- transaction/idempotency/retry;
+- hard bounds;
 - `visibility-metrics` queue;
-- safe database-only worker.
+- zero-network worker.
 
 ### Task 4 — project-scoped REST API
 
-- enqueue/create snapshot;
-- list/detail/latest reads;
-- strict validation;
-- plan gates;
+- create/enqueue snapshot;
+- list/detail/latest;
+- Zod/bounds;
+- `COMPETITOR_SOV` gate;
 - safe serialization;
 - project isolation.
 
 ### Task 5 — Metrics & SOV web UI
 
 - top cards;
-- evidence coverage;
+- coverage;
 - competitor comparison;
-- provider breakdown;
-- Prompt Set breakdown;
-- explicit status semantics;
+- Provider/Prompt Set breakdowns;
+- explicit status presentation;
 - provenance;
 - Chromium E2E.
 
-### Task 6 — observability, operations guide and P6-C release gate
+### Task 6 — observability, operator guide and release gate
 
-- strict allowlist events;
+- strict allowlist lifecycle events;
 - operator guide;
-- final regression/evidence checks;
+- full regression/evidence review;
 - exact-head release gate;
-- README P6-C completion marker only after green code/docs head.
+- README completion marker only after code/docs head is green.
 
-## 32. Acceptance criteria
+## 33. Acceptance criteria
 
-P6-C is complete only when all of the following are true:
+P6-C is complete only when:
 
-- users can materialize an immutable visibility metric snapshot from saved P6-B facts;
-- Owned Mention Rate is deterministic and auditable;
-- Owned Citation Rate is deterministic and auditable;
-- competitor Mention/Citation Rates are deterministic and auditable;
-- presence-based owned/competitor Mention SOV is deterministic and auditable;
-- overall/provider/Prompt Set dimensions are available;
-- evidence coverage and metric state are explicit;
-- legitimate zero is distinct from unknown/no-data/no-signal;
+- immutable visibility metric snapshots can be materialized from saved P6-B facts;
+- Owned Mention Rate is deterministic/auditable;
+- Owned Citation Rate is deterministic/auditable;
+- competitor Mention/Citation Rates are deterministic/auditable;
+- presence-based owned/competitor Mention SOV is deterministic/auditable;
+- Overall/Provider/Prompt Set dimensions are available;
+- metric state and evidence coverage are explicit;
+- legitimate zero differs from unknown/no-data/no-signal;
+- missing extraction is represented as unknown rather than silently filtered;
 - subject/extractor versions never mix;
 - snapshots are immutable across later backfill;
 - calculator/materializer make zero provider/external-content calls;
-- Standard cannot access the feature;
+- Standard cannot access P6-C;
 - no P6-D feature is silently introduced;
-- full release gate passes on the exact final head.
+- full exact-head release gate passes.
