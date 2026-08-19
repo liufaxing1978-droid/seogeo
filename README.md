@@ -2,7 +2,7 @@
 
 Independent SEO / GEO platform for `seo.xingshantang.org`.
 
-Current milestone: **P6 AI Visibility Advanced module — next**.
+Current milestone: **P6-B Citation & Mention Intelligence — next**.
 
 ## Architecture
 
@@ -14,17 +14,20 @@ Current milestone: **P6 AI Visibility Advanced module — next**.
 - Redis / BullMQ
 - Zod
 - Vitest / Supertest / Playwright
-- DeepSeek through a provider-neutral AI Gateway
+- DeepSeek through a provider-neutral advisory AI Gateway
+- Official-provider adapters through the separate P6 visibility sampling pipeline
 
 ## Core boundary
 
 Deterministic crawler, SEO, GEO, content, competitor and reporting facts remain authoritative. AI may explain, summarize, prioritize and recommend, but it does not determine crawl/HTTP facts, SEO/GEO issue state, readiness scores, competitor metrics or verified-fix state.
 
+P6 external visibility observations are authoritative only when the system actually performs a supported official-provider API sample and persists the normalized result. API sampling is never labeled as a consumer-product web/app ranking.
+
 Provider reasoning is never persisted, logged or rendered.
 
 ## P4 DeepSeek AI Gateway
 
-P4 provides the project-scoped AI Analysis Center and durable AI task execution.
+P4 provides the project-scoped AI Analysis Center and durable advisory AI task execution.
 
 Environment:
 
@@ -38,7 +41,7 @@ AI_MAX_INPUT_CHARS=200000
 AI_MAX_OUTPUT_TOKENS=8192
 ```
 
-The application starts without `DEEPSEEK_API_KEY`; only an actual AI request fails safely when no key is configured.
+The application starts without `DEEPSEEK_API_KEY`; only an actual advisory AI request fails safely when no key is configured.
 
 Model routes:
 
@@ -77,6 +80,40 @@ Report generation itself is database-only; it does not crawl or call DeepSeek. O
 
 Operational details: `docs/development/p5c-reporting.md`.
 
+## P6-A Prompt Monitor & Sampling Core
+
+P6-A provides the Advanced/Enterprise foundation for externally sampled AI Visibility observations.
+
+Delivered capabilities:
+
+- project-level visibility settings and budget ceilings;
+- API-only provider configurations without persisted secrets;
+- immutable versioned Prompt Sets / Prompts;
+- bounded manual sampling runs and stable sampling-unit idempotency;
+- dedicated `visibility` BullMQ worker with paid attempts set to 1;
+- preflight daily/run budget enforcement;
+- normalized official API adapters for OpenAI, Gemini, Perplexity and Anthropic;
+- explicit zero-network `UNSUPPORTED_WEB_GROUNDING` behavior for DeepSeek;
+- project-scoped REST API;
+- AI Visibility and Prompt Monitor web UI with explicit `API 采样` labeling;
+- safe lifecycle observability with an allowlist that excludes prompt/answer bodies, secrets and provider reasoning.
+
+P6-A does **not** calculate Mention Rate, Citation Rate or Share of Voice. Those belong to P6-B/P6-C and require deterministic extraction/metric layers built on persisted P6 observations.
+
+Provider secrets remain server-side environment variables:
+
+```text
+OPENAI_API_KEY=
+GEMINI_API_KEY=
+PERPLEXITY_API_KEY=
+ANTHROPIC_API_KEY=
+```
+
+Operational details:
+
+- `docs/development/p6a-visibility-sampling.md`
+- `docs/development/p6a-release-verification.md`
+
 ## Feature gates
 
 Base project features available to Standard / Advanced / Enterprise include:
@@ -88,12 +125,14 @@ Base project features available to Standard / Advanced / Enterprise include:
 - Reporting
 - AI Analysis
 
-P6 monitoring gates remain separate:
+P6 Advanced / Enterprise monitoring gates remain separate:
 
 - AI Visibility
 - Prompt Monitor
 - Citation Monitor
 - Competitor Share of Voice
+
+P6-A activates AI Visibility and Prompt Monitor. Citation Monitor and Competitor Share of Voice remain future P6-B/P6-C capabilities.
 
 `ADVANCED_REPORTS` remains reserved for future advanced scheduling/bundling/distribution rather than the base P5 report snapshot feature.
 
@@ -110,7 +149,7 @@ npm run test:e2e
 
 ## Release verification
 
-P5 was released only after the final head passed all of the following checks in CI:
+Release gates use:
 
 ```bash
 npx prisma validate
@@ -123,7 +162,7 @@ npm run test:e2e
 npm audit --omit=dev --audit-level=high
 ```
 
-CI does not call live DeepSeek or live competitor sites.
+P6-A additionally requires proof that duplicate delivery cannot duplicate a paid adapter call, budget-skipped observations make zero provider calls, Standard projects cannot enqueue visibility sampling, DeepSeek unsupported grounding makes zero network calls, provider secrets are not persisted, API sampling is not mislabeled as consumer-product ranking, and CI uses fixture transports instead of live provider APIs.
 
 ## Roadmap
 
@@ -133,4 +172,7 @@ CI does not call live DeepSeek or live competitor sites.
 - P3 GEO Engine + Citability + Entity — complete
 - P4 DeepSeek AI Gateway + Intelligence — complete
 - P5 Content, competitor analysis, reports — complete
-- P6 AI Visibility Advanced module — next
+- P6-A Prompt Monitor & Sampling Core — complete
+- P6-B Citation & Mention Intelligence — next
+- P6-C Visibility Metrics & Competitor Share of Voice — planned
+- P6-D History, Dashboard, Alerts & Report Integration — planned
