@@ -137,10 +137,10 @@ describe('P6-C visibility metric materialization', () => {
         status: 'COMPLETED',
         extractorVersion: EXTRACTOR,
         subjectSetHash: fixture.subjectSnapshot.subjectSetHash,
-        subjectSnapshotJson: {
+        subjectSnapshotJson: JSON.parse(JSON.stringify({
           subjects: fixture.subjectSnapshot.subjects,
           ambiguousAliases: fixture.subjectSnapshot.ambiguousAliases
-        },
+        })),
         answerHash: observation.answerHash,
         mentionStatus: 'KNOWN_EMPTY',
         citationStatus: 'KNOWN_EMPTY',
