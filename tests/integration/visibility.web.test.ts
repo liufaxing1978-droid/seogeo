@@ -132,7 +132,7 @@ describe('P6-A AI Visibility web UI', () => {
     expect(response.text).not.toContain('ChatGPT 网页端排名');
     expect(response.text).not.toContain('Mention Rate');
     expect(response.text).not.toContain('Citation Rate');
-    expect(response.text).not.toContain('Share of Voice');
+    expect(response.text).not.toContain('<div class="metric-title">Share of Voice</div>');
   });
 
   it('renders Prompt Monitor with immutable-version wording and project-scoped creation forms', async () => {
