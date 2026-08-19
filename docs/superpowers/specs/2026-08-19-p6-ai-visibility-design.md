@@ -28,7 +28,7 @@ Examples:
 - valid: `OpenAI API visibility`, `Gemini API visibility`, `Perplexity API visibility`, `Anthropic API visibility`;
 - invalid unless separately implemented: `ChatGPT web ranking`, `Gemini App ranking`, `Claude.ai ranking`, `Perplexity web UI ranking`.
 
-The `channel` field is therefore mandatory on every observation.
+The `channel` field is mandatory on every observation.
 
 Initial channel:
 
@@ -92,6 +92,7 @@ P6 is split into four sequential sub-phases.
 
 Deliver:
 
+- project visibility settings and provider configurations;
 - prompt sets;
 - versioned prompts;
 - platform adapters;
@@ -164,6 +165,47 @@ P5 reports may read P6 snapshots only after P6 metrics exist. P5 report generati
 
 ## 6. Data model
 
+### VisibilityProjectSettings
+
+One project-level P6 policy row.
+
+Fields:
+
+- `projectId` (unique)
+- `dailyBudgetMicros?`
+- `defaultRunBudgetMicros?`
+- `maxObservationsPerRun`
+- `defaultCurrency` (initially `USD`)
+- `schedulingEnabled`
+- timestamps
+
+This model holds durable safety policy. A `VisibilityRun` copies the relevant effective limits into its own immutable request snapshot so later settings changes do not alter historical interpretation.
+
+### VisibilityProviderConfig
+
+Durable project/provider configuration without secrets.
+
+Fields:
+
+- `id`
+- `projectId`
+- `provider`: `OPENAI | GEMINI | PERPLEXITY | ANTHROPIC | DEEPSEEK`
+- `enabled`
+- `model`
+- `channel`: initially `API`
+- `groundingMode`
+- `maxConcurrency`
+- `defaultLocale?`
+- `defaultCountry?`
+- `providerOptionsJson` (allowlisted non-secret options only)
+- timestamps
+
+Uniqueness:
+
+- `(projectId, provider, model, channel, groundingMode)`
+
+API keys are never stored here. They remain server-side secret configuration.
+
 ### VisibilityPromptSet
 
 Represents a project-owned collection of prompts.
@@ -217,6 +259,8 @@ Fields:
 - `requestedProviderConfigs` JSON
 - `maxObservations`
 - `budgetCeilingMicros?`
+- `currency`
+- `policySnapshotJson`
 - `startedAt?`
 - `finishedAt?`
 - `errorCode?`
@@ -252,6 +296,8 @@ Fields:
 - `totalTokens?`
 - `searchUnits?`
 - `costMicros?`
+- `costCurrency?`
+- `pricingVersion?`
 - `latencyMs?`
 - `errorCode?`
 - `observedAt`
@@ -260,6 +306,8 @@ Fields:
 Never persist chain-of-thought/reasoning traces.
 
 If a provider returns reasoning/thought/search planning fields, adapters must discard them before persistence.
+
+Historical `costMicros`, `costCurrency`, and `pricingVersion` are immutable facts once recorded. A provider price change never rewrites old observations.
 
 ### MentionObservation
 
@@ -409,8 +457,10 @@ Required safeguards:
 - provider enable/disable controls;
 - per-provider concurrency limits;
 - persisted aggregate token/search usage;
-- cost estimate/fact field with currency/version metadata where provider pricing can be mapped reliably;
+- persisted historical currency and pricing-version metadata;
 - fail closed when budget is exhausted.
+
+Budget checks use already-recorded spend plus a conservative preflight estimate for the next sampling unit. If the estimate would cross a hard ceiling, the unit is skipped with an explicit budget status and no provider request is made.
 
 A provider price-table change must not rewrite historical cost facts.
 
@@ -533,6 +583,10 @@ P6 remains available only to `ADVANCED` and `ENTERPRISE` under the current featu
 
 P6-A/B/C target API surface:
 
+- `GET /api/v1/projects/:projectId/visibility/settings`
+- `PATCH /api/v1/projects/:projectId/visibility/settings`
+- `GET /api/v1/projects/:projectId/visibility/providers`
+- `PUT /api/v1/projects/:projectId/visibility/providers/:providerConfigId`
 - `GET /api/v1/projects/:projectId/visibility/prompt-sets`
 - `POST /api/v1/projects/:projectId/visibility/prompt-sets`
 - `GET /api/v1/projects/:projectId/visibility/prompts`
@@ -587,7 +641,7 @@ Never display an API observation as a consumer app ranking.
 
 ## 20. Scheduling and monitoring
 
-P6-A persistence should support scheduled runs, but the first implementation milestone may expose manual runs before recurring scheduling UI.
+P6-A persistence supports scheduled-run policy, but the first implementation milestone exposes manual runs before recurring scheduling UI.
 
 Recommended defaults once scheduling is enabled:
 
@@ -668,7 +722,8 @@ Provider contract fixtures must include:
 - rate-limit/provider failure;
 - malformed/partial citation metadata;
 - unsupported grounding;
-- duplicate queue delivery.
+- duplicate queue delivery;
+- budget-preflight skip.
 
 ## 24. Migration / compatibility
 
@@ -686,11 +741,11 @@ The P4 DeepSeek AI Gateway remains advisory-only and is not repurposed as the P6
 
 Implementation order:
 
-1. P6-A persistence + prompt sets/prompts;
+1. P6-A settings/provider configs + prompt sets/prompts persistence;
 2. provider-neutral sampling adapter contract;
 3. fixture adapter + visibility queue/worker;
-4. one real official API adapter at a time: OpenAI → Gemini → Perplexity → Anthropic;
-5. manual run API/UI + budget controls;
+4. manual run API/UI + budget controls;
+5. one real official API adapter at a time: OpenAI → Gemini → Perplexity → Anthropic;
 6. P6-B deterministic mention/citation extraction;
 7. P6-C metric snapshots + competitor SOV;
 8. P6-D dashboard/history/report integration;
@@ -728,13 +783,14 @@ Additional P6 requirements:
 
 P6 is successful when an Advanced/Enterprise project can:
 
-1. configure versioned unbranded/branded prompt sets;
-2. run a bounded, budget-controlled official API sampling batch;
-3. inspect each provider observation separately;
-4. see deterministic owned/competitor mentions and native citations;
-5. see transparent, sample-backed AI Visibility/SOV metrics;
-6. see UNKNOWN/error counts instead of fabricated zeros;
-7. inspect history/trends;
-8. include persisted P6 facts in future project reports;
-9. verify that no result is mislabeled as consumer-product ranking;
-10. pass the full release gate without any live provider calls in CI.
+1. configure durable provider policy without storing provider secrets;
+2. configure versioned unbranded/branded prompt sets;
+3. run a bounded, budget-controlled official API sampling batch;
+4. inspect each provider observation separately;
+5. see deterministic owned/competitor mentions and native citations;
+6. see transparent, sample-backed AI Visibility/SOV metrics;
+7. see UNKNOWN/error counts instead of fabricated zeros;
+8. inspect history/trends;
+9. include persisted P6 facts in future project reports;
+10. verify that no result is mislabeled as consumer-product ranking;
+11. pass the full release gate without any live provider calls in CI.
