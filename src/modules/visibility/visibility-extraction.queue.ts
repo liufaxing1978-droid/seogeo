@@ -1,3 +1,5 @@
+import { emitVisibilityIntelligenceEvent } from './visibility-intelligence.observability.js';
+
 export const VISIBILITY_EXTRACTION_QUEUE_NAME = 'visibility-extraction' as const;
 export const VISIBILITY_EXTRACTION_ATTEMPTS = 2;
 
@@ -51,7 +53,7 @@ export class VisibilityExtractionQueue {
   constructor(private readonly queue: VisibilityExtractionQueuePort) {}
 
   async enqueueObservation(data: ExtractVisibilityObservationJobData) {
-    return this.queue.add('extract-observation', data as unknown as Record<string, unknown>, {
+    const result = await this.queue.add('extract-observation', data as unknown as Record<string, unknown>, {
       jobId: buildVisibilityExtractionJobId(
         data.observationId,
         data.extractorVersion,
@@ -59,10 +61,18 @@ export class VisibilityExtractionQueue {
       ),
       attempts: VISIBILITY_EXTRACTION_ATTEMPTS
     });
+    emitVisibilityIntelligenceEvent('visibility.extraction.queued', {
+      projectId: data.projectId,
+      observationId: data.observationId,
+      extractorVersion: data.extractorVersion,
+      subjectSetHash: data.subjectSetHash,
+      status: 'QUEUED'
+    });
+    return result;
   }
 
   async enqueueBackfill(data: BackfillVisibilityProjectJobData) {
-    return this.queue.add('backfill-project', data as unknown as Record<string, unknown>, {
+    const result = await this.queue.add('backfill-project', data as unknown as Record<string, unknown>, {
       jobId: buildVisibilityBackfillJobId(
         data.projectId,
         data.extractorVersion,
@@ -71,5 +81,12 @@ export class VisibilityExtractionQueue {
       ),
       attempts: VISIBILITY_EXTRACTION_ATTEMPTS
     });
+    emitVisibilityIntelligenceEvent('visibility.extraction.backfill_queued', {
+      projectId: data.projectId,
+      extractorVersion: data.extractorVersion,
+      subjectSetHash: data.subjectSetHash,
+      status: 'QUEUED'
+    });
+    return result;
   }
 }
