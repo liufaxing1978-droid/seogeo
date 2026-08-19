@@ -23,7 +23,7 @@ test('opens Citation Monitor, configures owned subject, and keeps P6-C metrics d
 
   await page.getByRole('link', { name: '监控主体' }).first().click();
   await expect(page.getByRole('main').getByRole('heading', { level: 1, name: '监控主体' })).toBeVisible();
-  await expect(page.getByText(`citation-monitor-${suffix}.example.com`, { exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: `citation-monitor-${suffix}.example.com`, exact: true }).first()).toBeVisible();
 
   await page.getByLabel('类型').first().selectOption('OWNED_BRAND');
   await page.getByLabel('Canonical Value').fill('兴善堂');
