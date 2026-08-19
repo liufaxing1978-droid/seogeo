@@ -176,6 +176,7 @@ Fields:
 - `id` UUID
 - `projectId` UUID
 - `platformObservationId` UUID
+- `status`: `QUEUED | RUNNING | COMPLETED | FAILED`
 - `extractorVersion` string
 - `subjectSetHash` string
 - `subjectSnapshotJson` JSON
@@ -483,21 +484,25 @@ Properties:
 
 Backfill must use a hard maximum and pagination/cursor semantics. One project must not become one unbounded worker job.
 
-## 16. Atomic extraction transaction
+## 16. Extraction lifecycle and atomic materialization
 
 For one observation:
 
 1. load source observation and same-project active subject configuration;
 2. build subject snapshot/hash;
-3. detect already-completed identical extraction;
-4. derive mention/citation statuses and rows in memory;
-5. transactionally create VisibilityExtraction + MentionObservation + CitationObservation rows;
-6. complete extraction;
-7. emit safe observability.
+3. detect an already-completed identical extraction;
+4. create or claim the unique VisibilityExtraction shell as `RUNNING` and record `startedAt`;
+5. derive mention/citation statuses and rows in memory;
+6. transactionally materialize all MentionObservation/CitationObservation rows and mark the extraction `COMPLETED` with counts/statuses/completedAt;
+7. emit safe completion observability.
 
-A failure cannot leave partial derived rows.
+If deterministic derivation/materialization fails:
 
-The extraction transaction never mutates source answer/citation facts.
+- no partial Mention/Citation rows may remain;
+- the extraction shell is marked `FAILED` with a stable bounded `errorCode` in a separate failure path;
+- retry may re-claim the same failed extraction identity rather than creating a duplicate historical measurement set.
+
+The extraction worker never mutates source answer/citation facts.
 
 ## 17. Subject configuration service
 
@@ -645,7 +650,7 @@ P6-B adds:
 
 - subject enums/models;
 - alias model;
-- extraction model;
+- extraction model/lifecycle status;
 - MentionObservation;
 - CitationObservation;
 - `citationEvidenceState` on PlatformObservation.
@@ -676,7 +681,7 @@ Cover owned native citation, competitor citation, third-party citation, duplicat
 
 ### Integration tests
 
-Cover schema/migrations, project isolation, subject bootstrap, P3/P5 link validation, transaction atomicity, stable snapshot/hash, duplicate extraction idempotency, re-extraction after alias change, historical snapshot preservation, archive semantics, backfill bounds, feature gates and REST filters.
+Cover schema/migrations, extraction lifecycle transitions, project isolation, subject bootstrap, P3/P5 link validation, transaction atomicity, stable snapshot/hash, duplicate extraction idempotency, failed-shell retry, re-extraction after alias change, historical snapshot preservation, archive semantics, backfill bounds, feature gates and REST filters.
 
 ### Web/E2E tests
 
@@ -691,7 +696,7 @@ CI must make zero live provider calls.
 3. subject normalization + registry service + snapshot/hash;
 4. deterministic mention extractor;
 5. deterministic citation extractor;
-6. atomic extraction repository/service;
+6. atomic extraction repository/service and lifecycle handling;
 7. dedicated `visibility-extraction` queue/worker + bounded backfill;
 8. REST subject/extraction/mention/citation APIs;
 9. Citation Monitor + subject setup UI;
