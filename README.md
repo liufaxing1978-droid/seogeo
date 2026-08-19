@@ -2,7 +2,7 @@
 
 Independent SEO / GEO platform for `seo.xingshantang.org`.
 
-Current milestone: **P6-B Citation & Mention Intelligence — next**.
+Current milestone: **P6-B Citation & Mention Intelligence — complete**. Next milestone: **P6-C Visibility Metrics & Competitor Share of Voice — next**.
 
 ## Architecture
 
@@ -98,7 +98,7 @@ Delivered capabilities:
 - AI Visibility and Prompt Monitor web UI with explicit `API 采样` labeling;
 - safe lifecycle observability with an allowlist that excludes prompt/answer bodies, secrets and provider reasoning.
 
-P6-A does **not** calculate Mention Rate, Citation Rate or Share of Voice. Those belong to P6-B/P6-C and require deterministic extraction/metric layers built on persisted P6 observations.
+P6-A does **not** calculate Mention Rate, Citation Rate or Share of Voice. P6-B adds deterministic, replayable Mention and Citation facts over persisted P6-A observations. Rate, trend and Share-of-Voice metrics remain P6-C responsibilities.
 
 Provider secrets remain server-side environment variables:
 
@@ -113,6 +113,16 @@ Operational details:
 
 - `docs/development/p6a-visibility-sampling.md`
 - `docs/development/p6a-release-verification.md`
+
+## P6-B Citation & Mention Intelligence
+
+P6-B materializes deterministic, replayable Mention and Citation facts from persisted P6-A observations without live provider calls, external citation fetching, LLM extraction, embeddings or fuzzy semantic inference.
+
+Evidence states preserve the distinction between `KNOWN_EMPTY`, `UNKNOWN` and `NOT_ELIGIBLE`; prose URLs never become Citations unless provider-native citation/search metadata supports them. Historical extractions are immutable across subject configuration changes, and subject snapshots are versioned by `subjectSetHash`.
+
+Advanced/Enterprise Citation Monitor surfaces expose project-scoped subject configuration, extraction refresh/backfill, Mention facts, Citation facts, evidence state and provenance. Standard projects are blocked before restricted reads or side effects. P6-B does not calculate Mention Rate, Citation Rate, trends, weighted visibility or Share of Voice.
+
+Operational details: `docs/development/p6b-citation-mention-intelligence.md`.
 
 ## Feature gates
 
@@ -132,7 +142,7 @@ P6 Advanced / Enterprise monitoring gates remain separate:
 - Citation Monitor
 - Competitor Share of Voice
 
-P6-A activates AI Visibility and Prompt Monitor. Citation Monitor and Competitor Share of Voice remain future P6-B/P6-C capabilities.
+P6-A activates AI Visibility and Prompt Monitor. P6-B activates Citation Monitor. Competitor Share of Voice remains a P6-C capability.
 
 `ADVANCED_REPORTS` remains reserved for future advanced scheduling/bundling/distribution rather than the base P5 report snapshot feature.
 
@@ -164,6 +174,8 @@ npm audit --omit=dev --audit-level=high
 
 P6-A additionally requires proof that duplicate delivery cannot duplicate a paid adapter call, budget-skipped observations make zero provider calls, Standard projects cannot enqueue visibility sampling, DeepSeek unsupported grounding makes zero network calls, provider secrets are not persisted, API sampling is not mislabeled as consumer-product ranking, and CI uses fixture transports instead of live provider APIs.
 
+P6-B additionally requires proof that extraction makes zero provider/network calls, `UNKNOWN` is never coerced to zero, historical extractions remain immutable after subject changes, prose URLs are never promoted to Citations, Standard cannot enqueue or read restricted Citation Monitor intelligence, prior P1–P6-A regression coverage remains green, and no P6-C metric model/calculator is introduced.
+
 ## Roadmap
 
 - P0 Platform foundation — complete
@@ -173,6 +185,6 @@ P6-A additionally requires proof that duplicate delivery cannot duplicate a paid
 - P4 DeepSeek AI Gateway + Intelligence — complete
 - P5 Content, competitor analysis, reports — complete
 - P6-A Prompt Monitor & Sampling Core — complete
-- P6-B Citation & Mention Intelligence — next
-- P6-C Visibility Metrics & Competitor Share of Voice — planned
+- P6-B Citation & Mention Intelligence — complete
+- P6-C Visibility Metrics & Competitor Share of Voice — next
 - P6-D History, Dashboard, Alerts & Report Integration — planned
