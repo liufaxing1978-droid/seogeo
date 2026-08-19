@@ -36,7 +36,7 @@ test('opens Citation Monitor, configures owned subject, and keeps P6-C metrics d
   await row.getByRole('button', { name: '添加 Alias' }).click();
   await expect(row).toContainText('Xingshantang');
 
-  await page.getByRole('link', { name: 'Citation 监控' }).click();
+  await page.getByRole('main').getByRole('link', { name: 'Citation 监控', exact: true }).click();
   await expect(page.getByRole('main').getByRole('heading', { level: 1, name: 'Citation 监控' })).toBeVisible();
   await expect(page.getByText('P6-C 指标（未启用）')).toBeVisible();
 });
