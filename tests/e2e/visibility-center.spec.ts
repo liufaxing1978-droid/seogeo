@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('opens Advanced AI Visibility and configures Prompt Monitor without starting provider sampling', async ({ page }) => {
+test('opens Advanced AI Visibility, configures Prompt Monitor, and leaves sampling run empty', async ({ page }) => {
   const suffix = Date.now();
   await page.goto('/projects/new');
   await page.getByLabel('项目名称').fill('AI Visibility Smoke');
