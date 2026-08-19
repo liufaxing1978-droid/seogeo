@@ -23,6 +23,8 @@ import type { SeoService } from './modules/seo/seo.service.js';
 import { createVisibilityRoutes } from './modules/visibility/visibility.routes.js';
 import type { VisibilityRunService } from './modules/visibility/visibility-run.service.js';
 import { visibilityWebRoutes } from './modules/visibility/visibility.web.routes.js';
+import { createVisibilityIntelligenceRoutes } from './modules/visibility/visibility-intelligence.routes.js';
+import type { VisibilityExtractionQueue } from './modules/visibility/visibility-extraction.queue.js';
 import { webRoutes } from './web/routes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -35,6 +37,7 @@ export interface AppOptions {
   contentService?: ContentService;
   competitorService?: CompetitorService;
   visibilityRunService?: VisibilityRunService;
+  visibilityExtractionQueue?: VisibilityExtractionQueue;
 }
 
 export function createApp(options: AppOptions = {}) {
@@ -55,6 +58,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/v1', createCompetitorRoutes(options.competitorService, options.aiTaskService));
   app.use('/api/v1', createReportRoutes(options.aiTaskService));
   app.use('/api/v1', createVisibilityRoutes(options.visibilityRunService));
+  app.use('/api/v1', createVisibilityIntelligenceRoutes(options.visibilityExtractionQueue));
   app.use('/', contentWebRoutes);
   app.use('/', competitorWebRoutes);
   app.use('/', reportWebRoutes);
