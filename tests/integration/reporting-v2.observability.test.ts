@@ -43,7 +43,7 @@ describe('PROJECT_REPORT_V2 safe observability', () => {
 
   it('does not emit a success event when report generation cannot persist', async () => {
     const sink = vi.fn();
-    await expect(generateProjectReportV2('missing-project', {
+    await expect(generateProjectReportV2('00000000-0000-0000-0000-000000000001', {
       p6dObservability: new VisibilityHistoryObservability(sink)
     })).rejects.toMatchObject({ code: 'PROJECT_NOT_FOUND' });
     expect(sink).not.toHaveBeenCalled();
