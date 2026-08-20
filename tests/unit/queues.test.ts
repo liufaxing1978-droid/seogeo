@@ -11,6 +11,7 @@ describe('queue registry', () => {
       'competitor',
       'visibility',
       'visibility-extraction',
+      'visibility-metrics',
       'ai',
       'report'
     ]);
