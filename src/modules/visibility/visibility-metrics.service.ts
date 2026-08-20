@@ -6,6 +6,7 @@ import type {
 } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { calculateVisibilityMetrics } from './visibility-metrics.calculator.js';
+import { emitVisibilityMetricsEvent } from './visibility-metrics.observability.js';
 import {
   P6C_FORMULA_VERSION,
   type VisibilityMetricActor,
@@ -148,6 +149,22 @@ function actorsFromSnapshot(value: unknown): VisibilityMetricActor[] {
 function metricEvidenceStatus(value: string): VisibilityMetricEvidenceStatus {
   if (value === 'EXTRACTED' || value === 'KNOWN_EMPTY' || value === 'NOT_ELIGIBLE') return value;
   return 'UNKNOWN';
+}
+
+function lifecycleCoverage(records: VisibilityMetricInputRecord[]) {
+  let eligibleCount = 0;
+  let unknownCount = 0;
+  let notEligibleCount = 0;
+  for (const record of records) {
+    if (record.mentionStatus === 'UNKNOWN' || record.citationStatus === 'UNKNOWN') {
+      unknownCount += 1;
+    } else if (record.mentionStatus === 'NOT_ELIGIBLE' && record.citationStatus === 'NOT_ELIGIBLE') {
+      notEligibleCount += 1;
+    } else {
+      eligibleCount += 1;
+    }
+  }
+  return { eligibleCount, unknownCount, notEligibleCount };
 }
 
 export class VisibilityMetricsService {
@@ -305,6 +322,7 @@ export class VisibilityMetricsService {
       throw new VisibilityMetricsError('VISIBILITY_METRICS_SNAPSHOT_BUSY', 'Visibility metric snapshot is already running');
     }
 
+    const lifecycleStartedAt = Date.now();
     try {
       const rawScope = snapshot.scopeJson as Record<string, unknown>;
       const scope = normalizeScope({
@@ -441,7 +459,7 @@ export class VisibilityMetricsService {
 
       const actors = actorsFromSnapshot(snapshot.subjectSnapshotJson);
       const rows = calculateVisibilityMetrics({ records, actors });
-      return await this.repository.completeAtomic(snapshot, {
+      const completed = await this.repository.completeAtomic(snapshot, {
         inputFingerprint: hashJson(fingerprintRows.sort((left, right) =>
           String(left.observationId).localeCompare(String(right.observationId)))),
         candidateObservationCount: candidates.length,
@@ -450,11 +468,36 @@ export class VisibilityMetricsService {
         failedExtractionCount,
         rows
       });
+      const coverage = lifecycleCoverage(records);
+      emitVisibilityMetricsEvent('visibility.metrics.completed', {
+        projectId: snapshot.projectId,
+        snapshotId: snapshot.id,
+        formulaVersion: snapshot.formulaVersion,
+        extractorVersion: snapshot.extractorVersion,
+        subjectSetHash: snapshot.subjectSetHash,
+        scopeHash: snapshot.scopeHash,
+        status: 'COMPLETED',
+        candidateCount: candidates.length,
+        ...coverage,
+        durationMs: Math.max(0, Date.now() - lifecycleStartedAt)
+      });
+      return completed;
     } catch (error) {
       const code = error instanceof VisibilityMetricsError
         ? error.code
         : 'VISIBILITY_METRICS_MATERIALIZATION_FAILED';
       await this.repository.fail(projectId, snapshotId, code);
+      emitVisibilityMetricsEvent('visibility.metrics.failed', {
+        projectId: snapshot.projectId,
+        snapshotId: snapshot.id,
+        formulaVersion: snapshot.formulaVersion,
+        extractorVersion: snapshot.extractorVersion,
+        subjectSetHash: snapshot.subjectSetHash,
+        scopeHash: snapshot.scopeHash,
+        status: 'FAILED',
+        errorCode: code,
+        durationMs: Math.max(0, Date.now() - lifecycleStartedAt)
+      });
       throw error;
     }
   }
