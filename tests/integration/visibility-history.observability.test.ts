@@ -171,13 +171,14 @@ describe('P6-D safe observability', () => {
     await expect(missing.materializeForSnapshot('project-1', 'missing')).rejects.toMatchObject({
       code: 'VISIBILITY_HISTORY_SNAPSHOT_NOT_FOUND'
     });
-    expect(sink).toHaveBeenCalledWith({
+    expect(sink).toHaveBeenCalledWith(expect.objectContaining({
       event: 'visibility.history.comparison.failed',
       projectId: 'project-1',
       currentSnapshotId: 'missing',
       status: 'FAILED',
-      reasonCode: 'VISIBILITY_HISTORY_SNAPSHOT_NOT_FOUND'
-    });
+      reasonCode: 'VISIBILITY_HISTORY_SNAPSHOT_NOT_FOUND',
+      durationMs: expect.any(Number)
+    }));
   });
 
   it('emits reconciliation completion only after all enqueue writes succeed', async () => {
