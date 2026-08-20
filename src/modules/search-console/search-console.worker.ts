@@ -335,7 +335,7 @@ export async function syncSearchConsoleDay(
       inputHash: hash,
       completedAt
     });
-    await dependencies.repository.updatePropertyLastSyncAt(input.propertyId, completedAt);
+    await dependencies.repository.updatePropertyLastSyncAt(input.propertyId, completedAt).catch(() => undefined);
 
     dependencies.observability.emit({
       event: 'gsc.sync.completed',
