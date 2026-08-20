@@ -245,6 +245,40 @@ export class SearchConsoleRepository implements OAuthCredentialStore {
     });
   }
 
+  async findPropertyForSync(projectId: string, propertyId: string) {
+    return prisma.searchConsoleProperty.findFirst({
+      where: {
+        id: propertyId,
+        projectId,
+        isActive: true,
+        connection: { status: 'CONNECTED' }
+      },
+      select: {
+        id: true,
+        projectId: true,
+        connectionId: true,
+        propertyUri: true,
+        isActive: true
+      }
+    });
+  }
+
+  async nextDailySyncVersion(projectId: string, propertyId: string, date: Date): Promise<number> {
+    const latest = await prisma.gscDailySnapshot.findFirst({
+      where: { projectId, propertyId, date },
+      select: { syncVersion: true },
+      orderBy: [{ syncVersion: 'desc' }, { createdAt: 'desc' }]
+    });
+    return (latest?.syncVersion ?? 0) + 1;
+  }
+
+  async updatePropertyLastSyncAt(propertyId: string, lastSyncAt: Date): Promise<void> {
+    await prisma.searchConsoleProperty.update({
+      where: { id: propertyId },
+      data: { lastSyncAt }
+    });
+  }
+
   async createDailySnapshot(input: CreateGscDailySnapshotInput): Promise<GscDailySnapshot> {
     const property = await prisma.searchConsoleProperty.findUnique({ where: { id: input.propertyId } });
     if (!property) throw new Error('Search Console property not found');
