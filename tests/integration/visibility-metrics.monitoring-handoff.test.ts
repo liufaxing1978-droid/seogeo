@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../src/db/prisma.js';
 import { VisibilityMetricsService } from '../../src/modules/visibility/visibility-metrics.service.js';
+import { processVisibilityMetricsJob } from '../../src/modules/visibility/visibility-metrics.worker.js';
 import { VisibilitySubjectService } from '../../src/modules/visibility/visibility-subject.service.js';
 
 const NOW = new Date('2026-08-10T00:00:00.000Z');
@@ -42,6 +43,20 @@ async function prepare(service: VisibilityMetricsService, fixture: Awaited<Retur
   });
 }
 
+function jobData(shell: Awaited<ReturnType<typeof prepare>>) {
+  return {
+    projectId: shell.projectId,
+    snapshotId: shell.id,
+    formulaVersion: shell.formulaVersion,
+    extractorVersion: shell.extractorVersion,
+    subjectSetHash: shell.subjectSetHash,
+    windowStart: shell.windowStart.toISOString(),
+    windowEnd: shell.windowEnd.toISOString(),
+    inputCutoffAt: shell.inputCutoffAt.toISOString(),
+    scopeHash: shell.scopeHash
+  };
+}
+
 describe('P6-C completion to P6-D monitoring handoff', () => {
   afterAll(async () => {
     for (const projectId of projectIds) {
@@ -52,20 +67,25 @@ describe('P6-C completion to P6-D monitoring handoff', () => {
 
   it('enqueues monitoring only after the P6-C snapshot is durably COMPLETED', async () => {
     const fixture = await createFixture('P6-D Monitoring After Completion');
-    const calls: Array<{ projectId: string; snapshotId: string; statusAtEnqueue: string }> = [];
-    const monitoringQueue = {
-      async enqueueSnapshot(projectId: string, snapshotId: string) {
-        const snapshot = await prisma.visibilityMetricSnapshot.findFirstOrThrow({
-          where: { id: snapshotId, projectId },
-          select: { status: true }
-        });
-        calls.push({ projectId, snapshotId, statusAtEnqueue: snapshot.status });
-      }
-    };
-    const service = new VisibilityMetricsService({ now: () => NOW, monitoringQueue });
+    const service = new VisibilityMetricsService({ now: () => NOW });
     const shell = await prepare(service, fixture);
+    const calls: Array<{ projectId: string; snapshotId: string; statusAtEnqueue: string }> = [];
 
-    const completed = await service.materializeSnapshot(fixture.project.id, shell.id);
+    const completed = await processVisibilityMetricsJob(
+      { name: 'materialize-metric-snapshot', data: jobData(shell) },
+      {
+        metricsService: service,
+        monitoringQueue: {
+          async enqueueSnapshot(projectId: string, snapshotId: string) {
+            const snapshot = await prisma.visibilityMetricSnapshot.findFirstOrThrow({
+              where: { id: snapshotId, projectId },
+              select: { status: true }
+            });
+            calls.push({ projectId, snapshotId, statusAtEnqueue: snapshot.status });
+          }
+        }
+      }
+    );
 
     expect(completed.status).toBe('COMPLETED');
     expect(calls).toEqual([{
@@ -77,22 +97,23 @@ describe('P6-C completion to P6-D monitoring handoff', () => {
 
   it('keeps the valid P6-C snapshot COMPLETED when the P6-D monitoring queue insertion fails', async () => {
     const fixture = await createFixture('P6-D Monitoring Queue Failure');
+    const service = new VisibilityMetricsService({ now: () => NOW });
+    const shell = await prepare(service, fixture);
     let attempts = 0;
-    const service = new VisibilityMetricsService({
-      now: () => NOW,
-      monitoringQueue: {
-        async enqueueSnapshot() {
-          attempts += 1;
-          throw new Error('fixture monitoring queue unavailable');
+
+    await expect(processVisibilityMetricsJob(
+      { name: 'materialize-metric-snapshot', data: jobData(shell) },
+      {
+        metricsService: service,
+        monitoringQueue: {
+          async enqueueSnapshot() {
+            attempts += 1;
+            throw new Error('fixture monitoring queue unavailable');
+          }
         }
       }
-    });
-    const shell = await prepare(service, fixture);
+    )).resolves.toMatchObject({ id: shell.id, status: 'COMPLETED' });
 
-    await expect(service.materializeSnapshot(fixture.project.id, shell.id)).resolves.toMatchObject({
-      id: shell.id,
-      status: 'COMPLETED'
-    });
     expect(attempts).toBe(1);
     expect(await prisma.visibilityMetricSnapshot.findFirstOrThrow({
       where: { id: shell.id, projectId: fixture.project.id },
