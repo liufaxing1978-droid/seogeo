@@ -7,7 +7,8 @@ export type PromptId =
   | 'content-brief-v1'
   | 'content-optimization-v1'
   | 'competitor-gap-v1'
-  | 'project-report-summary-v1';
+  | 'project-report-summary-v1'
+  | 'visibility-trend-analysis-v1';
 
 export interface PromptDefinition {
   id: PromptId;
@@ -69,6 +70,12 @@ const PROJECT_REPORT_SUMMARY_PROMPT: PromptDefinition = Object.freeze({
   buildUserMessage: (facts: unknown) => buildUserMessage('Create an executive summary from the supplied persisted report snapshot.', { summary: 'Executive summary', keyFindings: [{ category: 'SEO', finding: 'Finding grounded in the report', sourceRefs: ['REPORT_SNAPSHOT:<id>'] }], priorities: [{ priority: 'HIGH', action: 'Action', rationale: 'Why it matters', sourceRefs: ['REPORT_SNAPSHOT:<id>'] }], unavailableFacts: ['AI Visibility'], sourceReferences: ['REPORT_SNAPSHOT:<id>'] }, facts)
 });
 
+const VISIBILITY_TREND_PROMPT: PromptDefinition = Object.freeze({
+  id: 'visibility-trend-analysis-v1', version: 'v1', mode: 'REASONING', responseFormat: 'JSON',
+  system: `${FACT_GUARDRAILS}\nExplain only the supplied persisted AI Visibility trend facts. Treat UNKNOWN, NO_DATA, NOT_ELIGIBLE and NO_SIGNAL as non-numeric states, never as zero. The output is advisory only and must not claim that deterministic visibility facts, comparisons or alerts were changed. Do not invent prompt text, answer content, citation URLs, provider data, rankings or traffic.`,
+  buildUserMessage: (facts: unknown) => buildUserMessage('Explain the supplied persisted AI Visibility trend and suggest bounded follow-up actions.', { summary: 'Trend summary', trends: [{ metricType: 'MENTION_RATE', direction: 'IMPROVED', explanation: 'Explanation grounded in supplied delta/status facts', sourceRefs: ['VISIBILITY_METRIC_COMPARISON:<id>'] }], priorities: [{ priority: 'HIGH', action: 'Follow-up action', rationale: 'Why the supplied facts support it', sourceRefs: ['VISIBILITY_METRIC_COMPARISON:<id>'] }], caveats: ['UNKNOWN is unavailable evidence, not zero.'], sourceReferences: ['VISIBILITY_METRIC_COMPARISON:<id>'] }, facts)
+});
+
 export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = Object.freeze([
   SEO_PROMPT,
   GEO_PROMPT,
@@ -76,7 +83,8 @@ export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = Object.freeze([
   CONTENT_BRIEF_PROMPT,
   CONTENT_OPTIMIZATION_PROMPT,
   COMPETITOR_GAP_PROMPT,
-  PROJECT_REPORT_SUMMARY_PROMPT
+  PROJECT_REPORT_SUMMARY_PROMPT,
+  VISIBILITY_TREND_PROMPT
 ]);
 
 const PROMPT_BY_ID = new Map<PromptId, PromptDefinition>(PROMPT_DEFINITIONS.map((prompt) => [prompt.id, prompt]));

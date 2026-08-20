@@ -3,7 +3,7 @@ import { hasFeature } from '../../auth/feature-flags.js';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { createReportExecutiveSummaryTask } from '../ai/report-intelligence.js';
 import { aiTaskService } from '../ai/ai.service.js';
-import { generateProjectReport } from './report-builder.js';
+import { generateProjectReport, generateProjectReportV2 } from './report-builder.js';
 import { reportWebRepository } from './report.web.repository.js';
 
 export const reportWebRoutes = Router();
@@ -31,6 +31,16 @@ reportWebRoutes.post('/projects/:id/reports', async (req, res, next) => {
     if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
     assertFeature(model.project);
     await generateProjectReport(model.project.id);
+    res.redirect(303, `/projects/${model.project.id}/reports`);
+  } catch (error) { next(error); }
+});
+
+reportWebRoutes.post('/projects/:id/reports/v2', async (req, res, next) => {
+  try {
+    const model = await reportWebRepository.getCenter(req.params.id);
+    if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
+    assertFeature(model.project);
+    await generateProjectReportV2(model.project.id);
     res.redirect(303, `/projects/${model.project.id}/reports`);
   } catch (error) { next(error); }
 });

@@ -1,22 +1,24 @@
 <section class="page-header">
   <div>
-    <p class="eyebrow">Reporting · P5-C</p>
+    <p class="eyebrow">Reporting · P6-D</p>
     <h1>报告中心</h1>
     <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
   </div>
   <div class="actions">
-    <form action="/projects/<%= project.id %>/reports" method="post"><button class="button" type="submit">生成项目报告</button></form>
+    <form action="/projects/<%= project.id %>/reports" method="post"><button class="button secondary" type="submit">生成项目报告 V1</button></form>
+    <form action="/projects/<%= project.id %>/reports/v2" method="post"><button class="button" type="submit">生成项目报告 V2</button></form>
   </div>
 </section>
 
 <section class="panel">
   <h2>可复现快照</h2>
-  <p class="muted">PROJECT_REPORT_V1 只聚合已保存的 SEO、GEO、Content 与 Competitor 数据。确定性事实与 AI 建议分开保存；生成报告本身不会调用 DeepSeek，也不会产生 P6 AI Visibility / Share of Voice 数据。</p>
+  <p class="muted">PROJECT_REPORT_V1 保持兼容且不可变；PROJECT_REPORT_V2 在套餐允许时额外冻结已持久化的 AI Visibility 历史、比较与告警事实。两种生成入口都只读取数据库快照，不触发采样、提取、指标计算或 DeepSeek。</p>
 </section>
 
 <section class="metric-grid compact">
   <article class="metric-card"><div class="metric-title">报告快照</div><div class="metric-value"><%= reports.length %></div><div class="metric-caption">历史可追溯</div></article>
-  <article class="metric-card"><div class="metric-title">当前版本</div><div class="metric-value">V1</div><div class="metric-caption">PROJECT_REPORT_V1</div></article>
+  <article class="metric-card"><div class="metric-title">兼容版本</div><div class="metric-value">V1</div><div class="metric-caption">PROJECT_REPORT_V1</div></article>
+  <article class="metric-card"><div class="metric-title">当前版本</div><div class="metric-value">V2</div><div class="metric-caption">PROJECT_REPORT_V2</div></article>
   <article class="metric-card"><div class="metric-title">导出</div><div class="metric-value">JSON</div><div class="metric-caption">原始快照</div></article>
 </section>
 
@@ -32,6 +34,6 @@
       <td><a href="/projects/<%= project.id %>/reports/<%= report.id %>">查看报告</a></td>
     </tr>
   <% } %>
-  <% if (!reports.length) { %><tr><td colspan="5" class="muted">尚无报告。点击“生成项目报告”创建第一份确定性快照。</td></tr><% } %>
+  <% if (!reports.length) { %><tr><td colspan="5" class="muted">尚无报告。可按需生成 V1 兼容快照或 V2 可见度快照。</td></tr><% } %>
   </tbody></table></div>
 </section>

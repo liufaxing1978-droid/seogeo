@@ -1,0 +1,118 @@
+<% 
+  const pct = (value) => value == null ? '—' : `${(value * 100).toFixed(1)}%`;
+  const latestPoint = (points) => points.length ? points[points.length - 1] : null;
+  const metricCards = [
+    ['Owned Mention Rate', series.mentionRate],
+    ['Owned Citation Rate', series.citationRate],
+    ['Owned Mention SOV', series.ownedSov]
+  ];
+  const latestSnapshot = snapshots[0] ?? null;
+%>
+<section class="page-header">
+  <div>
+    <p class="eyebrow">AI Visibility · P6-D</p>
+    <h1>Visibility 历史趋势</h1>
+    <p class="muted"><%= project.name %> · 仅使用已完成的不可变 P6-C 指标快照。</p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/projects/<%= project.id %>/visibility">AI Visibility</a>
+    <a class="button" href="/projects/<%= project.id %>/visibility/alerts">告警</a>
+  </div>
+</section>
+
+<section class="metric-grid compact">
+  <% for (const [label, points] of metricCards) { const point = latestPoint(points); %>
+    <article class="metric-card">
+      <div class="metric-title"><%= label %></div>
+      <div class="metric-value"><%= point?.value ? pct(point.value.ratio) : '—' %></div>
+      <div class="metric-caption"><%= point?.value?.status ?? 'NO_DATA' %></div>
+    </article>
+  <% } %>
+  <article class="metric-card">
+    <div class="metric-title">Evidence Coverage</div>
+    <div class="metric-value"><%= latestSnapshot ? pct(latestSnapshot.evidenceCoverageRatio) : '—' %></div>
+    <div class="metric-caption"><%= latestSnapshot ? `${latestSnapshot.completedExtractionCount}/${latestSnapshot.candidateObservationCount}` : 'NO_DATA' %></div>
+  </article>
+</section>
+
+<% if (latestSnapshot) { %>
+<section class="panel">
+  <div class="panel-header"><div><h2>当前快照合同</h2><p class="muted">页面上的当前指标均来自同一个 snapshot，不跨合同拼接。</p></div></div>
+  <div class="table-wrap"><table>
+    <tbody>
+      <tr><th>Snapshot</th><td><code><%= latestSnapshot.id %></code></td><th>窗口</th><td><%= new Date(latestSnapshot.windowStart).toLocaleDateString('zh-CN') %> → <%= new Date(latestSnapshot.windowEnd).toLocaleDateString('zh-CN') %></td></tr>
+      <tr><th>Formula</th><td><%= latestSnapshot.formulaVersion %></td><th>Extractor</th><td><%= latestSnapshot.extractorVersion %></td></tr>
+      <tr><th>Subject Set</th><td><code><%= latestSnapshot.subjectSetHash %></code></td><th>Scope</th><td><code><%= latestSnapshot.scopeHash %></code></td></tr>
+      <tr><th>Input Cutoff</th><td colspan="3"><%= new Date(latestSnapshot.inputCutoffAt).toLocaleString('zh-CN') %></td></tr>
+    </tbody>
+  </table></div>
+</section>
+<% } %>
+
+<% for (const [label, points] of metricCards) { %>
+<section class="panel">
+  <div class="panel-header"><div><h2><%= label %></h2><p class="muted">非 CALCULATED 状态显示为断点，不会按 0% 绘制。</p></div></div>
+  <% const width = 720, height = 160, pad = 18, count = Math.max(points.length - 1, 1); %>
+  <svg viewBox="0 0 <%= width %> <%= height %>" role="img" aria-label="<%= label %> history" style="width:100%;height:160px;overflow:visible">
+    <% for (let i = 1; i < points.length; i += 1) {
+      const a = points[i - 1]?.value?.ratio;
+      const b = points[i]?.value?.ratio;
+      if (a != null && b != null) {
+        const x1 = pad + ((i - 1) / count) * (width - pad * 2);
+        const x2 = pad + (i / count) * (width - pad * 2);
+        const y1 = height - pad - a * (height - pad * 2);
+        const y2 = height - pad - b * (height - pad * 2);
+    %><line x1="<%= x1 %>" y1="<%= y1 %>" x2="<%= x2 %>" y2="<%= y2 %>" stroke="currentColor" stroke-width="2" opacity="0.55" /><% } } %>
+    <% for (let i = 0; i < points.length; i += 1) {
+      const value = points[i]?.value?.ratio;
+      if (value != null) {
+        const x = pad + (i / count) * (width - pad * 2);
+        const y = height - pad - value * (height - pad * 2);
+    %><circle cx="<%= x %>" cy="<%= y %>" r="4" fill="currentColor"><title><%= pct(value) %> · <%= new Date(points[i].windowEnd).toLocaleDateString('zh-CN') %></title></circle><% } } %>
+  </svg>
+  <div class="table-wrap"><table>
+    <thead><tr><th>窗口</th><th>状态</th><th>值</th><th>分子 / 分母</th></tr></thead>
+    <tbody>
+      <% for (const point of [...points].reverse().slice(0, 12)) { %>
+        <tr><td><%= new Date(point.windowStart).toLocaleDateString('zh-CN') %> → <%= new Date(point.windowEnd).toLocaleDateString('zh-CN') %></td><td><span class="badge"><%= point.value?.status ?? 'NO_DATA' %></span></td><td><%= pct(point.value?.ratio ?? null) %></td><td><%= point.value ? `${point.value.numerator} / ${point.value.denominator}` : '—' %></td></tr>
+      <% } %>
+      <% if (!points.length) { %><tr><td colspan="4" class="muted">尚无历史数据。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
+<% } %>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>Competitor SOV</h2><p class="muted">仅展示 Overall competitor SOV；每个 actor 保持自己的历史合同。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Actor</th><th>当前状态</th><th>当前值</th><th>数据点</th></tr></thead>
+    <tbody>
+      <% for (const competitor of series.competitors) { const point = latestPoint(competitor.points); %>
+        <tr><td><code><%= competitor.actorKey %></code></td><td><%= point?.value?.status ?? 'NO_DATA' %></td><td><%= pct(point?.value?.ratio ?? null) %></td><td><%= competitor.points.length %></td></tr>
+      <% } %>
+      <% if (!series.competitors.length) { %><tr><td colspan="4" class="muted">尚无 competitor SOV 历史。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>兼容期比较</h2><p class="muted">delta 为绝对百分点变化（basis points），仅在两侧均为 CALCULATED 时存在。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Comparison</th><th>当前 / 前序</th><th>Gap</th><th>Overall 变化</th></tr></thead>
+    <tbody>
+      <% for (const comparison of comparisons) { %>
+        <tr>
+          <td><code><%= comparison.id.slice(0, 8) %></code></td>
+          <td><code><%= comparison.currentSnapshotId.slice(0, 8) %></code> / <code><%= comparison.previousSnapshotId.slice(0, 8) %></code></td>
+          <td><%= comparison.gapDurationMs %> ms</td>
+          <td>
+            <% for (const row of comparison.rows.slice(0, 6)) { %>
+              <div><%= row.metricType %> · <%= row.actorKey %>: <%= row.deltaBasisPoints == null ? `${row.previousMetricStatus} → ${row.currentMetricStatus}` : `${row.deltaBasisPoints > 0 ? '+' : ''}${row.deltaBasisPoints} bp` %></div>
+            <% } %>
+          </td>
+        </tr>
+      <% } %>
+      <% if (!comparisons.length) { %><tr><td colspan="4" class="muted">尚无可比前序快照；不会生成伪造的 0 delta。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>

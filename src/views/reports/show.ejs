@@ -1,7 +1,7 @@
-<% const facts = report.factSnapshot || {}; const seo = facts.seo || {}; const geo = facts.geo || {}; const content = facts.content || {}; const competitors = facts.competitors || {}; const advisory = report.advisorySnapshot || {}; const advisoryAi = Array.isArray(advisory.ai) ? advisory.ai : []; const executiveResult = executiveTask?.runs?.[0]?.result ?? null; %>
+<% const facts = report.factSnapshot || {}; const seo = facts.seo || {}; const geo = facts.geo || {}; const content = facts.content || {}; const competitors = facts.competitors || {}; const visibility = facts.visibility || null; const advisory = report.advisorySnapshot || {}; const advisoryAi = Array.isArray(advisory.ai) ? advisory.ai : []; const executiveResult = executiveTask?.runs?.[0]?.result ?? null; const formatMetricRatio = (metric) => metric && metric.status === 'CALCULATED' && typeof metric.ratio === 'number' ? `${(metric.ratio * 100).toFixed(1)}%` : (metric?.status || 'UNKNOWN'); const formatCoverageRatio = (coverage) => coverage && typeof coverage.ratio === 'number' ? `${(coverage.ratio * 100).toFixed(1)}%` : 'UNKNOWN'; const formatDelta = (value) => typeof value === 'number' ? `${value > 0 ? '+' : ''}${value} bp` : 'UNKNOWN'; %>
 <section class="page-header">
   <div>
-    <p class="eyebrow">Reporting · P5-C</p>
+    <p class="eyebrow">Reporting · P6-D</p>
     <h1>项目报告</h1>
     <p class="muted"><%= report.reportVersion %> · <%= new Date(report.createdAt).toLocaleString('zh-CN') %></p>
   </div>
@@ -14,7 +14,7 @@
 
 <section class="panel">
   <h2>确定性事实</h2>
-  <p class="muted">以下数据来自报告生成时已保存的 P2/P3/P5 数据。缺失事实显示 UNKNOWN，不会按 0 处理。</p>
+  <p class="muted">以下数据来自报告生成时已经持久化的事实快照。缺失或 UNKNOWN 状态不会按 0 处理。</p>
 </section>
 
 <section class="metric-grid compact">
@@ -23,6 +23,39 @@
   <article class="metric-card"><div class="metric-title">Content Docs</div><div class="metric-value"><%= content.documentCount ?? 0 %></div><div class="metric-caption">Open opportunities: <%= content.openOpportunityCount ?? 0 %></div></article>
   <article class="metric-card"><div class="metric-title">Competitors</div><div class="metric-value"><%= competitors.count ?? 0 %></div><div class="metric-caption">Compared: <%= competitors.comparedCount ?? 0 %></div></article>
 </section>
+
+<% if (visibility) { %>
+<section class="panel">
+  <div class="panel-header"><div><h2>AI Visibility</h2><p class="muted">仅展示 PROJECT_REPORT_V2 生成时冻结的 P6 持久化事实，不在报告页面重新采样或计算。</p></div></div>
+  <p class="muted">窗口：<%= new Date(visibility.snapshot.windowStart).toLocaleString('zh-CN') %> — <%= new Date(visibility.snapshot.windowEnd).toLocaleString('zh-CN') %> · <%= visibility.snapshot.formulaVersion %></p>
+  <div class="metric-grid compact">
+    <article class="metric-card"><div class="metric-title">Mention Rate</div><div class="metric-value"><%= formatMetricRatio(visibility.metrics?.mentionRate) %></div><div class="metric-caption"><%= visibility.metrics?.mentionRate?.status ?? 'UNKNOWN' %></div></article>
+    <article class="metric-card"><div class="metric-title">Citation Rate</div><div class="metric-value"><%= formatMetricRatio(visibility.metrics?.citationRate) %></div><div class="metric-caption"><%= visibility.metrics?.citationRate?.status ?? 'UNKNOWN' %></div></article>
+    <article class="metric-card"><div class="metric-title">Owned SOV</div><div class="metric-value"><%= formatMetricRatio(visibility.metrics?.ownedSov) %></div><div class="metric-caption"><%= visibility.metrics?.ownedSov?.status ?? 'UNKNOWN' %></div></article>
+    <article class="metric-card"><div class="metric-title">Evidence Coverage</div><div class="metric-value"><%= formatCoverageRatio(visibility.evidenceCoverage) %></div><div class="metric-caption"><%= visibility.evidenceCoverage?.completedExtractionCount ?? 0 %> / <%= visibility.evidenceCoverage?.candidateObservationCount ?? 0 %> completed</div></article>
+    <article class="metric-card"><div class="metric-title">Open Alerts</div><div class="metric-value"><%= visibility.alerts?.openTotal ?? 0 %></div><div class="metric-caption">INFO <%= visibility.alerts?.bySeverity?.INFO ?? 0 %> · WARNING <%= visibility.alerts?.bySeverity?.WARNING ?? 0 %> · CRITICAL <%= visibility.alerts?.bySeverity?.CRITICAL ?? 0 %></div></article>
+  </div>
+
+  <% if (visibility.comparison) { %>
+  <h3>兼容历史比较</h3>
+  <p class="muted">Previous snapshot: <%= visibility.comparison.previousSnapshotId %> · gap <%= visibility.comparison.gapDurationMs %> ms。存在 gap 时不宣称连续周环比/月环比。</p>
+  <div class="table-wrap"><table><thead><tr><th>Metric</th><th>Actor</th><th>Previous</th><th>Current</th><th>Delta</th></tr></thead><tbody>
+    <% for (const row of visibility.comparison.deltas || []) { %>
+      <tr><td><%= row.metricType %></td><td><%= row.actorKey %></td><td><%= row.previousMetricStatus %></td><td><%= row.currentMetricStatus %></td><td><%= formatDelta(row.deltaBasisPoints) %></td></tr>
+    <% } %>
+  </tbody></table></div>
+  <% } else { %>
+    <p class="muted">当前快照没有可兼容的历史比较；不会生成虚假的 0 delta。</p>
+  <% } %>
+
+  <% if (Array.isArray(visibility.competitorSov) && visibility.competitorSov.length) { %>
+  <h3>Competitor SOV（最多 20）</h3>
+  <div class="table-wrap"><table><thead><tr><th>Actor</th><th>Status</th><th>SOV</th></tr></thead><tbody>
+    <% for (const row of visibility.competitorSov) { %><tr><td><%= row.actorKey %></td><td><%= row.status %></td><td><%= row.status === 'CALCULATED' && typeof row.ratio === 'number' ? `${(row.ratio * 100).toFixed(1)}%` : row.status %></td></tr><% } %>
+  </tbody></table></div>
+  <% } %>
+</section>
+<% } %>
 
 <section class="panel">
   <h2>SEO / Content 优先级事实</h2>
@@ -60,5 +93,9 @@
 
 <section class="panel">
   <h2>边界声明</h2>
-  <p class="muted">本报告不包含 P6 AI Visibility、Prompt Rank、Citation Share、Share of Voice、搜索排名或第三方流量估算，除非未来对应的确定性采样模块明确提供这些事实。</p>
+  <% if (visibility) { %>
+    <p class="muted">本 V2 报告的 AI Visibility、Citation Rate 与 Share of Voice 均来自已持久化的确定性 P6 快照。报告生成不会触发新的采样、提取、指标计算或外部网络调用。</p>
+  <% } else { %>
+    <p class="muted">本报告没有冻结 P6 AI Visibility 事实；不会把缺失的可见度、引用或 Share of Voice 数据伪装为 0。</p>
+  <% } %>
 </section>

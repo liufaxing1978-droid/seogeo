@@ -56,7 +56,20 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
       - name: Test
-        run: npm test
+        shell: bash
+        run: |
+          set +e
+          npm test > /tmp/vitest.log 2>&1
+          test_exit=$?
+          set -e
+          if [ "$test_exit" -ne 0 ]; then
+            echo "--- concise Vitest failure summary ---"
+            grep -n -E 'FAIL|Failed Tests|AssertionError|Error:|tests/(integration|unit)/' /tmp/vitest.log | tail -n 180 || true
+            echo "--- final Vitest output ---"
+            tail -n 140 /tmp/vitest.log
+            exit "$test_exit"
+          fi
+          tail -n 30 /tmp/vitest.log
       - name: Build
         run: npm run build
 

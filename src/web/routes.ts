@@ -14,7 +14,8 @@ import { ProjectService } from '../modules/projects/project.service.js';
 import { projectRepository } from '../modules/projects/project.repository.js';
 import { seoService } from '../modules/seo/seo.service.js';
 import { seoWebRepository } from '../modules/seo/seo.web.repository.js';
-import { dashboardMetrics, projectTabs } from './view-models.js';
+import { dashboardRepository } from './dashboard.repository.js';
+import { projectTabs } from './view-models.js';
 
 const projectService = new ProjectService(projectRepository);
 export const webRoutes = Router();
@@ -37,7 +38,8 @@ function assertAiAnalysisFeature(project: { planLevel: 'STANDARD' | 'ADVANCED' |
 
 webRoutes.get('/', async (_req, res, next) => {
   try {
-    render(res, 'dashboard', { metrics: dashboardMetrics });
+    const portfolio = await dashboardRepository.getPortfolio({ limit: 50 });
+    render(res, 'dashboard', { portfolio });
   } catch (error) {
     next(error);
   }
@@ -394,12 +396,14 @@ webRoutes.post('/projects/:id/ai/tasks/:taskId/retry', async (req, res, next) =>
 webRoutes.get('/projects/:id', async (req, res, next) => {
   try {
     const project = await projectService.get(req.params.id);
+    const dashboard = await dashboardRepository.getProjectFacts(project);
     render(res, 'projects/show', {
       title: project.name,
       activeNav: 'projects',
       currentProjectId: project.id,
       project,
-      tabs: projectTabs
+      tabs: projectTabs,
+      dashboard
     });
   } catch (error) {
     next(error);

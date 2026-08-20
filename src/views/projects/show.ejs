@@ -1,6 +1,6 @@
 <section class="page-heading project-heading">
   <div><p class="eyebrow">项目详情</p><h2><%= project.name %></h2><p class="muted"><%= project.primaryDomain %></p></div>
-  <div class="actions"><button class="button secondary" disabled title="P1 接入">立即抓取 · 尚未接入</button><button class="button secondary" disabled title="P3 接入">GEO 审计 · 尚未接入</button></div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/seo">SEO 审计</a><a class="button secondary" href="/projects/<%= project.id %>/geo">GEO 审计</a></div>
 </section>
 <div class="project-meta">
   <span class="badge success"><%= project.status %></span>
@@ -15,11 +15,39 @@
   <% }) %>
 </nav>
 <section class="metric-grid compact">
-  <% ['SEO Score','GEO Score','AI Visibility','Citability','Entity Authority','Critical Issues'].forEach((metric) => { %>
-    <article class="metric-card"><div class="metric-title"><%= metric %></div><div class="metric-value">--</div><div class="metric-caption">等待数据</div></article>
-  <% }) %>
+  <article class="metric-card"><div class="metric-title">SEO Score</div><div class="metric-value"><%= dashboard.seoScore === null ? '--' : dashboard.seoScore.toFixed(1) %></div><div class="metric-caption">最新持久化 SEO Score</div></article>
+  <article class="metric-card"><div class="metric-title">GEO Score</div><div class="metric-value"><%= dashboard.geoScore === null ? '--' : dashboard.geoScore.toFixed(1) %></div><div class="metric-caption">GEO_READINESS_V1</div></article>
+  <article class="metric-card"><div class="metric-title">Citability</div><div class="metric-value"><%= !dashboard.citability || dashboard.citability.value === null ? (dashboard.citability?.status || '--') : dashboard.citability.value.toFixed(1) %></div><div class="metric-caption">最新 GEO Score 的 CITABILITY 组件</div></article>
+  <article class="metric-card"><div class="metric-title">Critical Issues</div><div class="metric-value"><%= dashboard.criticalIssueCount %></div><div class="metric-caption">当前未解决 CRITICAL SEO 问题</div></article>
 </section>
+
+<% if (dashboard.visibility) { %>
+  <section class="panel">
+    <div class="panel-header"><div><h3>AI Visibility · 持久化事实</h3><p>只读取同一个最新完成 P6-C 快照；UNKNOWN / NO_DATA 不转换为 0。</p></div><a class="button secondary" href="/projects/<%= project.id %>/visibility/history">查看历史</a></div>
+    <section class="metric-grid compact">
+      <% [
+        ['Owned Mention Rate', dashboard.visibility.mentionRate],
+        ['Owned Citation Rate', dashboard.visibility.citationRate],
+        ['Owned Mention SOV', dashboard.visibility.ownedSov]
+      ].forEach(([label, metric]) => { %>
+        <article class="metric-card">
+          <div class="metric-title"><%= label %></div>
+          <div class="metric-value"><%= metric.ratio === null ? metric.status : `${(metric.ratio * 100).toFixed(1)}%` %></div>
+          <div class="metric-caption">Snapshot <%= dashboard.visibility.snapshotId.slice(0, 8) %></div>
+        </article>
+      <% }) %>
+      <article class="metric-card"><div class="metric-title">Open Alerts</div><div class="metric-value"><%= dashboard.visibility.openAlertCount %></div><div class="metric-caption">站内未确认 / 未解决告警</div></article>
+    </section>
+  </section>
+<% } else if (project.planLevel === 'STANDARD') { %>
+  <section class="panel">
+    <div class="panel-header"><div><h3>AI Visibility · 高级版</h3><p>升级到 Advanced 或 Enterprise 后显示持久化 Visibility 指标。</p></div></div>
+  </section>
+<% } else { %>
+  <section class="panel"><div class="panel-header"><div><h3>AI Visibility</h3><p>尚无完成的 P6-C 指标快照。</p></div></div></section>
+<% } %>
+
 <section class="dashboard-grid">
   <article class="panel panel-wide"><h3>项目概览</h3><dl class="detail-list"><div><dt>主域名</dt><dd><%= project.primaryDomain %></dd></div><div><dt>行业</dt><dd><%= project.industry || '未设置' %></dd></div><div><dt>创建时间</dt><dd><%= new Date(project.createdAt).toLocaleString('zh-CN') %></dd></div></dl></article>
-  <article class="panel"><h3>DeepSeek Intelligence</h3><div class="empty-state">P4 接入 AI Gateway 后显示真实分析。</div></article>
+  <article class="panel"><h3>数据原则</h3><div class="empty-state">Dashboard 只显示已落库事实；AI 分析与采样不会在页面渲染时触发。</div></article>
 </section>

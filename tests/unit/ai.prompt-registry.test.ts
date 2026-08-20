@@ -5,7 +5,7 @@ import {
 } from '../../src/modules/ai/prompts/prompt-registry.js';
 
 describe('versioned AI prompt registry', () => {
-  it('defines immutable v1 prompt identities for P4 and P5 intelligence', () => {
+  it('defines immutable v1 prompt identities for P4 through P6 intelligence', () => {
     expect(PROMPT_DEFINITIONS.map((prompt) => prompt.id)).toEqual([
       'seo-audit-analysis-v1',
       'geo-readiness-analysis-v1',
@@ -13,7 +13,8 @@ describe('versioned AI prompt registry', () => {
       'content-brief-v1',
       'content-optimization-v1',
       'competitor-gap-v1',
-      'project-report-summary-v1'
+      'project-report-summary-v1',
+      'visibility-trend-analysis-v1'
     ]);
     expect(new Set(PROMPT_DEFINITIONS.map((prompt) => prompt.id)).size).toBe(PROMPT_DEFINITIONS.length);
     expect(PROMPT_DEFINITIONS.every((prompt) => prompt.version === 'v1')).toBe(true);
@@ -40,7 +41,7 @@ describe('versioned AI prompt registry', () => {
     }
   });
 
-  it('uses FAST only for bounded SEO analysis and REASONING for semantic P4/P5 work', () => {
+  it('uses FAST only for bounded SEO analysis and REASONING for semantic P4-P6 work', () => {
     expect(getPromptDefinition('seo-audit-analysis-v1').mode).toBe('FAST');
     for (const promptId of [
       'geo-readiness-analysis-v1',
@@ -48,7 +49,8 @@ describe('versioned AI prompt registry', () => {
       'content-brief-v1',
       'content-optimization-v1',
       'competitor-gap-v1',
-      'project-report-summary-v1'
+      'project-report-summary-v1',
+      'visibility-trend-analysis-v1'
     ] as const) {
       expect(getPromptDefinition(promptId).mode).toBe('REASONING');
     }

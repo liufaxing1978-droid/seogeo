@@ -4,7 +4,7 @@ import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
 import { createReportExecutiveSummaryTask } from '../ai/report-intelligence.js';
 import { aiTaskService, type AiTaskService } from '../ai/ai.service.js';
-import { generateProjectReport } from './report-builder.js';
+import { generateProjectReport, generateProjectReportV2 } from './report-builder.js';
 
 async function requireProject(projectId: string) {
   const project = await prisma.project.findUnique({ where: { id: projectId } });
@@ -27,6 +27,14 @@ export function createReportRoutes(aiService: AiTaskService = aiTaskService) {
     try {
       await requireProject(req.params.projectId);
       const report = await generateProjectReport(req.params.projectId);
+      res.status(201).json({ data: report });
+    } catch (error) { next(error); }
+  });
+
+  router.post('/projects/:projectId/reports/v2', async (req, res, next) => {
+    try {
+      await requireProject(req.params.projectId);
+      const report = await generateProjectReportV2(req.params.projectId);
       res.status(201).json({ data: report });
     } catch (error) { next(error); }
   });

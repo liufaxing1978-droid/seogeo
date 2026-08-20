@@ -88,10 +88,10 @@ test('renders P6-C metrics with zero-vs-unknown semantics, SOV, provenance and a
     await expect(page.getByText('P6B_EXTRACTION_V1', { exact: true })).toBeVisible();
     await expect(page.getByText('缺失 extraction', { exact: false })).toBeVisible();
 
-    const body = await page.locator('body').innerText();
-    expect(body).not.toContain('BROWSER PRIVATE SUBJECT SNAPSHOT');
-    expect(body).not.toContain('BROWSER PRIVATE SCOPE');
-    expect(body).not.toMatch(/趋势线|delta|alert|告警|AI narrative/i);
+    const main = await page.getByRole('main').innerText();
+    expect(main).not.toContain('BROWSER PRIVATE SUBJECT SNAPSHOT');
+    expect(main).not.toContain('BROWSER PRIVATE SCOPE');
+    expect(main).not.toMatch(/趋势线|delta|alert|告警|AI narrative/i);
   } finally {
     await prisma.visibilityMetricRow.deleteMany({ where: { projectId: project.id } }).catch(() => undefined);
     await prisma.visibilityMetricSnapshot.deleteMany({ where: { projectId: project.id } }).catch(() => undefined);

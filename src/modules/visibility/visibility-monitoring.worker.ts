@@ -1,9 +1,14 @@
+import { VisibilityAlertsService } from './visibility-alerts.service.js';
 import {
   VisibilityHistoryRepository,
   visibilityHistoryRepository
 } from './visibility-history.repository.js';
 import { VisibilityHistoryService } from './visibility-history.service.js';
 import { VisibilityHistoryError } from './visibility-history.types.js';
+import {
+  VisibilityHistoryObservability,
+  visibilityHistoryObservability
+} from './visibility-history.observability.js';
 import type { VisibilityMonitoringQueue } from './visibility-monitoring.queue.js';
 
 export const VISIBILITY_MONITORING_WORKER_CONCURRENCY = 2;
@@ -16,8 +21,10 @@ export interface VisibilityMonitoringJobLike {
 
 export interface VisibilityMonitoringWorkerDependencies {
   historyService?: Pick<VisibilityHistoryService, 'materializeForSnapshot'>;
+  alertsService?: Pick<VisibilityAlertsService, 'evaluateComparison'>;
   repository?: Pick<VisibilityHistoryRepository, 'listReconciliationCandidates'>;
   queue?: Pick<VisibilityMonitoringQueue, 'enqueueSnapshot'>;
+  observability?: VisibilityHistoryObservability;
 }
 
 function requiredString(value: unknown, field: string) {
@@ -37,11 +44,16 @@ export async function processVisibilityMonitoringJob(
   if (job.name === 'evaluate-snapshot') {
     const projectId = requiredString(job.data.projectId, 'projectId');
     const snapshotId = requiredString(job.data.snapshotId, 'snapshotId');
-    const service = dependencies.historyService ?? new VisibilityHistoryService();
-    return service.materializeForSnapshot(projectId, snapshotId);
+    const historyService = dependencies.historyService ?? new VisibilityHistoryService();
+    const history = await historyService.materializeForSnapshot(projectId, snapshotId);
+    if (!history.comparisonId) return { ...history, alerts: { triggered: 0, resolved: 0 } };
+    const alertsService = dependencies.alertsService ?? new VisibilityAlertsService();
+    const alerts = await alertsService.evaluateComparison(projectId, history.comparisonId);
+    return { ...history, alerts };
   }
 
   if (job.name === 'reconcile-history') {
+    const startedAt = Date.now();
     const repository = dependencies.repository ?? visibilityHistoryRepository;
     if (!dependencies.queue) {
       throw new VisibilityHistoryError(
@@ -50,14 +62,19 @@ export async function processVisibilityMonitoringJob(
       );
     }
 
-    const candidates = await repository.listReconciliationCandidates(
-      VISIBILITY_MONITORING_RECONCILE_LIMIT
-    );
+    const candidates = await repository.listReconciliationCandidates(VISIBILITY_MONITORING_RECONCILE_LIMIT);
     let enqueued = 0;
     for (const candidate of candidates) {
       await dependencies.queue.enqueueSnapshot(candidate.projectId, candidate.id);
       enqueued += 1;
     }
+    (dependencies.observability ?? visibilityHistoryObservability).emit({
+      event: 'visibility.monitoring.reconcile.completed',
+      processedCount: candidates.length,
+      enqueuedCount: enqueued,
+      status: 'COMPLETED',
+      durationMs: Date.now() - startedAt
+    });
     return { processed: candidates.length, enqueued };
   }
 

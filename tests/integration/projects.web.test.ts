@@ -16,7 +16,8 @@ describe('admin web UI', () => {
     for (const text of ['SEO GEO', '概览', '项目', 'SEO', 'GEO', 'AI Visibility', 'DeepSeek', '报告', '系统']) {
       expect(response.text).toContain(text);
     }
-    expect(response.text).toContain('等待数据');
+    expect(response.text).toContain('尚无项目');
+    expect(response.text).toContain('只展示已持久化的项目事实');
   });
 
   it('renders project list and new project form', async () => {
