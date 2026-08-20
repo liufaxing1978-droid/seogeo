@@ -132,6 +132,13 @@ export class SearchConsoleRepository implements OAuthCredentialStore {
   }
 
   async createConnection(input: CreateSearchConsoleConnectionInput): Promise<SearchConsoleConnection> {
+    const credential = await prisma.oAuthCredentialRecord.findUnique({ where: { id: input.credentialRef } });
+    if (!credential) throw new Error('OAuth credential not found');
+    if (credential.projectId !== input.projectId) {
+      throw new Error('OAuth credential project does not match Search Console connection project');
+    }
+    if (credential.revokedAt) throw new Error('OAuth credential is revoked');
+
     return prisma.searchConsoleConnection.create({
       data: {
         projectId: input.projectId,
@@ -143,6 +150,12 @@ export class SearchConsoleRepository implements OAuthCredentialStore {
   }
 
   async createProperty(input: CreateSearchConsolePropertyInput): Promise<SearchConsoleProperty> {
+    const connection = await prisma.searchConsoleConnection.findUnique({ where: { id: input.connectionId } });
+    if (!connection) throw new Error('Search Console connection not found');
+    if (connection.projectId !== input.projectId) {
+      throw new Error('Search Console connection project does not match property project');
+    }
+
     return prisma.searchConsoleProperty.create({
       data: {
         projectId: input.projectId,
@@ -156,6 +169,12 @@ export class SearchConsoleRepository implements OAuthCredentialStore {
   }
 
   async createDailySnapshot(input: CreateGscDailySnapshotInput): Promise<GscDailySnapshot> {
+    const property = await prisma.searchConsoleProperty.findUnique({ where: { id: input.propertyId } });
+    if (!property) throw new Error('Search Console property not found');
+    if (property.projectId !== input.projectId) {
+      throw new Error('Search Console property project does not match GSC daily snapshot project');
+    }
+
     return prisma.gscDailySnapshot.create({
       data: {
         projectId: input.projectId,
