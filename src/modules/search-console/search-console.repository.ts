@@ -72,6 +72,11 @@ export type CreateOAuthStateNonceInput = {
 };
 
 export class SearchConsoleRepository implements OAuthCredentialStore {
+  async projectExists(projectId: string): Promise<boolean> {
+    const project = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true } });
+    return Boolean(project);
+  }
+
   async createOAuthStateNonce(input: CreateOAuthStateNonceInput): Promise<OAuthStateNonce> {
     return prisma.oAuthStateNonce.create({ data: input });
   }
@@ -138,6 +143,13 @@ export class SearchConsoleRepository implements OAuthCredentialStore {
     return asStoredCredential(record);
   }
 
+  async findActiveConnection(projectId: string): Promise<SearchConsoleConnection | null> {
+    return prisma.searchConsoleConnection.findFirst({
+      where: { projectId, status: 'CONNECTED' },
+      orderBy: [{ connectedAt: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }]
+    });
+  }
+
   async createConnection(input: CreateSearchConsoleConnectionInput): Promise<SearchConsoleConnection> {
     const credential = await prisma.oAuthCredentialRecord.findUnique({ where: { id: input.credentialRef } });
     if (!credential) throw new Error('OAuth credential not found');
@@ -153,6 +165,21 @@ export class SearchConsoleRepository implements OAuthCredentialStore {
         googleAccountRef: input.googleAccountRef ?? null,
         status: input.status ?? 'CONNECTED'
       }
+    });
+  }
+
+  async disconnectConnection(connectionId: string, disconnectedAt: Date): Promise<SearchConsoleConnection> {
+    return prisma.$transaction(async (tx) => {
+      const connection = await tx.searchConsoleConnection.findUnique({ where: { id: connectionId } });
+      if (!connection) throw new Error('Search Console connection not found');
+      await tx.searchConsoleProperty.updateMany({
+        where: { connectionId, isActive: true },
+        data: { isActive: false }
+      });
+      return tx.searchConsoleConnection.update({
+        where: { id: connectionId },
+        data: { status: 'DISCONNECTED', revokedAt: disconnectedAt }
+      });
     });
   }
 
@@ -172,6 +199,49 @@ export class SearchConsoleRepository implements OAuthCredentialStore {
         permissionState: input.permissionState,
         isActive: input.isActive ?? false
       }
+    });
+  }
+
+  async listProperties(projectId: string, connectionId: string): Promise<SearchConsoleProperty[]> {
+    return prisma.searchConsoleProperty.findMany({
+      where: { projectId, connectionId },
+      orderBy: [{ isActive: 'desc' }, { createdAt: 'asc' }, { id: 'asc' }]
+    });
+  }
+
+  async bindProperty(input: {
+    projectId: string;
+    connectionId: string;
+    propertyUri: string;
+    propertyType: string;
+    permissionState: string;
+  }): Promise<SearchConsoleProperty> {
+    return prisma.$transaction(async (tx) => {
+      const connection = await tx.searchConsoleConnection.findUnique({ where: { id: input.connectionId } });
+      if (!connection) throw new Error('Search Console connection not found');
+      if (connection.projectId !== input.projectId) {
+        throw new Error('Search Console connection project does not match property project');
+      }
+      await tx.searchConsoleProperty.updateMany({
+        where: { projectId: input.projectId, isActive: true },
+        data: { isActive: false }
+      });
+      const existing = await tx.searchConsoleProperty.findFirst({
+        where: { connectionId: input.connectionId, propertyUri: input.propertyUri }
+      });
+      if (existing) {
+        return tx.searchConsoleProperty.update({
+          where: { id: existing.id },
+          data: {
+            propertyType: input.propertyType,
+            permissionState: input.permissionState,
+            isActive: true
+          }
+        });
+      }
+      return tx.searchConsoleProperty.create({
+        data: { ...input, isActive: true }
+      });
     });
   }
 
