@@ -26,6 +26,8 @@ import { visibilityWebRoutes } from './modules/visibility/visibility.web.routes.
 import { createVisibilityIntelligenceRoutes } from './modules/visibility/visibility-intelligence.routes.js';
 import { visibilityIntelligenceWebRoutes } from './modules/visibility/visibility-intelligence.web.routes.js';
 import type { VisibilityExtractionQueue } from './modules/visibility/visibility-extraction.queue.js';
+import { createVisibilityMetricsRoutes } from './modules/visibility/visibility-metrics.routes.js';
+import type { VisibilityMetricsQueue } from './modules/visibility/visibility-metrics.queue.js';
 import { webRoutes } from './web/routes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -39,6 +41,7 @@ export interface AppOptions {
   competitorService?: CompetitorService;
   visibilityRunService?: VisibilityRunService;
   visibilityExtractionQueue?: VisibilityExtractionQueue;
+  visibilityMetricsQueue?: VisibilityMetricsQueue;
 }
 
 export function createApp(options: AppOptions = {}) {
@@ -60,6 +63,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/v1', createReportRoutes(options.aiTaskService));
   app.use('/api/v1', createVisibilityRoutes(options.visibilityRunService));
   app.use('/api/v1', createVisibilityIntelligenceRoutes(options.visibilityExtractionQueue));
+  app.use('/api/v1', createVisibilityMetricsRoutes(options.visibilityMetricsQueue));
   app.use('/', contentWebRoutes);
   app.use('/', competitorWebRoutes);
   app.use('/', reportWebRoutes);
