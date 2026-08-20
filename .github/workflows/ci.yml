@@ -56,7 +56,18 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
       - name: Test
-        run: npm test
+        shell: bash
+        run: |
+          set +e
+          npm test -- --reporter=verbose 2>&1 | tee /tmp/vitest.log
+          status=${PIPESTATUS[0]}
+          {
+            echo '## Vitest tail'
+            echo '```text'
+            tail -n 200 /tmp/vitest.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
       - name: Build
         run: npm run build
 
