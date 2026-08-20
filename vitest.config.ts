@@ -6,6 +6,6 @@ export default defineConfig({
     clearMocks: true,
     exclude: ['tests/e2e/**', '**/node_modules/**', '**/dist/**'],
     fileParallelism: false,
-    testNamePattern: 'preserves V1 snapshots and skips restricted P6 reads entirely for Standard'
+    testNamePattern: 'freezes one latest completed P6-C snapshot with safe metrics, bounded competitors, compatible deltas, evidence coverage and open alert severity counts'
   }
 });
