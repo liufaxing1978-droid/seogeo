@@ -7,13 +7,13 @@ Base: P0-P6 complete on `main` at `dd4b24a2e61bfc978d4eff380288777a48e47e61`
 
 ## 1. Goal
 
-P7-A turns the deterministic facts already produced by P2/P3/P5/P6, plus real Google Search Console performance data, into a single auditable answer to:
+P7-A turns deterministic facts already produced by P2/P3/P5/P6, plus real Google Search Console performance data, into a single auditable answer to:
 
 > What should this project optimize next, and why is it more important than the other available opportunities?
 
 P7-A is a **growth decision layer**, not another audit engine and not an automation executor.
 
-The primary product object is an immutable, versioned `GROWTH_OPPORTUNITY_V1` snapshot built around a stable Query + Page identity, with deterministic scoring, evidence provenance, lifecycle tracking, topic rollups, keyword-cannibalization detection, and conservative new-content discovery.
+The primary product object is an immutable, versioned `GROWTH_OPPORTUNITY_V1` snapshot built around a stable logical opportunity identity, with deterministic scoring, evidence provenance, lifecycle tracking, topic rollups, keyword-cannibalization detection, and conservative new-content discovery.
 
 The end-to-end boundary is:
 
@@ -40,7 +40,7 @@ src/modules/search-console
 src/modules/growth
 ```
 
-`search-console` owns Google OAuth, Search Console property binding, daily synchronization, immutable GSC facts, source freshness, and synchronization health.
+`search-console` owns Google OAuth, Search Console property binding, daily synchronization, immutable GSC facts, source freshness, synchronization health, and a server-only OAuth credential vault abstraction.
 
 `growth` owns opportunity identity, immutable snapshots, evidence normalization/deduplication, score calculation, opportunity detection, keyword cannibalization, new-content detection, topic clustering/rollups, lifecycle reconciliation, API/UI reads, and optional advisory AI explanation.
 
@@ -58,7 +58,7 @@ P7-A follows the existing platform rules established through P6:
 - immutable materialized facts are never silently rewritten;
 - `UNKNOWN` is not zero;
 - query/render paths do not trigger paid/external work;
-- DeepSeek may explain, summarize, prioritize in prose, and recommend investigation, but it cannot change deterministic facts or score values;
+- DeepSeek may explain and recommend priorities in prose, but it cannot change authoritative ordering, score, priority, trigger state, or evidence;
 - all high-value decisions retain provenance and formula/version metadata;
 - historical interpretation is frozen to the evidence and formula version that existed when the snapshot was materialized;
 - automation and site mutation are out of scope for P7-A.
@@ -100,30 +100,55 @@ P7-A must not convert missing upstream evidence into a PASS or zero score.
 
 P7-A uses **Google OAuth 2.0** with Search Console read-only access.
 
-The intended scope is:
+The V1 scope is exactly:
 
 ```text
 https://www.googleapis.com/auth/webmasters.readonly
 ```
 
-The OAuth flow must use anti-CSRF `state` validation. Long-lived credentials must be stored through the server-side encrypted credential/secret mechanism selected by the implementation plan, not in general business tables.
+The OAuth flow must use a random high-entropy `state` nonce. Only a hash of the nonce is persisted, with project/user association, expiry, and consumed-at state. Callback handling is single-use: an expired, mismatched, or already-consumed state fails closed.
 
-Business persistence stores only a reference to the credential material and safe connection metadata.
+The OAuth request may ask for offline access when a refresh token is needed for scheduled sync, but no refresh token is exposed outside the credential vault.
 
-### 6.2 SearchConsoleConnection
+### 6.2 OAuthCredentialVault
+
+The repository currently has no general OAuth credential store, so P7-A introduces a narrow server-only abstraction:
+
+```text
+OAuthCredentialVault
+  put(projectId, provider, credentialPayload) -> credentialRef
+  get(credentialRef) -> credentialPayload
+  replace(credentialRef, credentialPayload)
+  revoke(credentialRef)
+```
+
+V1 default persistence encrypts credential JSON at rest with **AES-256-GCM**. The encryption key is supplied only by server environment/configuration, never stored in the database:
+
+```text
+OAUTH_CREDENTIAL_ENCRYPTION_KEY=
+OAUTH_CREDENTIAL_KEY_VERSION=v1
+```
+
+The vault persistence stores only ciphertext, IV/nonce, authentication tag, key version, provider, and safe timestamps. It never logs plaintext credential payloads. A missing/invalid encryption key prevents OAuth credential writes and scheduled refreshes rather than falling back to plaintext.
+
+`SearchConsoleConnection` stores only `credentialRef` and safe metadata.
+
+### 6.3 SearchConsoleConnection
 
 Suggested fields:
 
 - `id`
 - `projectId`
 - `googleAccountRef` — non-secret stable account reference where available
-- `credentialRef` — opaque reference to encrypted OAuth credential material
+- `credentialRef` — opaque reference into `OAuthCredentialVault`
 - `status`
 - `connectedAt`
 - `revokedAt`
 - `lastVerifiedAt`
 
-Suggested statuses:
+V1 enforces at most one active Search Console connection per project.
+
+Connection statuses:
 
 - `CONNECTED`
 - `TOKEN_REVOKED`
@@ -132,7 +157,7 @@ Suggested statuses:
 
 A revoked or unusable token fails closed. P7-A must not continue to present stale connection health as current.
 
-### 6.3 SearchConsoleProperty
+### 6.4 SearchConsoleProperty
 
 A Search Console property binding is separate from the OAuth connection.
 
@@ -168,6 +193,7 @@ Suggested fields:
 - `inputHash`
 - `rowCount`
 - `sourceFreshness`
+- `sourceCompletenessState`
 - `startedAt`
 - `completedAt`
 - `createdAt`
@@ -178,13 +204,17 @@ Status:
 PENDING -> RUNNING -> COMPLETED | FAILED
 ```
 
-A completed snapshot is immutable. If a source day must be re-imported because Google later exposes corrected/finalized data, a new version is created and the prior completed version remains auditable.
+Uniqueness is versioned by `(projectId, propertyId, date, syncVersion)`.
 
-The authoritative current version selector is deterministic and must be recorded by downstream materialization provenance.
+A completed snapshot is immutable. If a source day must be re-imported because Google later exposes corrected/finalized data, a new `syncVersion` is created and the prior completed version remains auditable.
+
+For any source date, the authoritative selector chooses the highest completed `syncVersion`. Downstream Growth snapshots freeze the exact selected daily snapshot IDs/versions, so a later source correction cannot reinterpret old Growth history.
+
+`sourceCompletenessState` must distinguish Google’s bounded/top-row source behavior from a claim of a complete keyword universe.
 
 ### 7.2 GscQueryPageFact
 
-The V1 authoritative growth unit is Query + canonical Page.
+The V1 authoritative search-performance unit is Query + canonical Page.
 
 Suggested fields:
 
@@ -194,6 +224,7 @@ Suggested fields:
 - `date`
 - `query`
 - `normalizedQuery`
+- `normalizationVersion`
 - `page`
 - `canonicalPage`
 - `clicks`
@@ -203,7 +234,7 @@ Suggested fields:
 
 V1 scores the overall Query + Page view. Country/device dimensions may be retained by a future source model, but they do not create independent authoritative opportunity scores in P7-A V1.
 
-Query normalization is deterministic and versioned. It includes safe normalization such as Unicode normalization, case normalization where applicable, whitespace/punctuation normalization, Simplified/Traditional alias normalization when a deterministic mapping is configured, and explicit project alias mapping. It does not use an LLM.
+Query normalization is deterministic and versioned. It includes Unicode normalization, case normalization where applicable, whitespace/punctuation normalization, Simplified/Traditional alias normalization only when a deterministic mapping is configured, and explicit project alias mapping. It does not use an LLM.
 
 Canonical-page normalization must reuse or remain compatible with the project’s existing URL/canonical semantics. Canonically equivalent URLs must not become separate cannibalization actors.
 
@@ -216,7 +247,7 @@ The default source cutoff excludes the most recent **3 calendar days** so recent
 Example on 2026-08-20:
 
 ```text
-cutoff date: 2026-08-17
+cutoff date:     2026-08-17
 current window:  2026-07-21 .. 2026-08-17  (28 days)
 previous window: 2026-06-23 .. 2026-07-20  (28 days)
 ```
@@ -230,13 +261,15 @@ Every materialized snapshot freezes:
 - `dataCutoffAt`
 - selected GSC daily snapshot/version provenance
 
+A window is eligible only if all expected source dates have a selected completed daily snapshot. A failed/missing source day makes the window incomplete; it is not treated as a zero-impression day.
+
 The implementation must not relabel a different or incomplete range as the same 28-day contract.
 
 ## 9. Growth opportunity persistence
 
 ### 9.1 GrowthOpportunityIdentity
 
-This is the long-lived identity for one logical opportunity. It does not store a mutable current score.
+This is the long-lived identity for one logical opportunity. It does not store a mutable current score or dynamic primary type.
 
 Suggested fields:
 
@@ -244,16 +277,23 @@ Suggested fields:
 - `projectId`
 - `opportunityKey`
 - `identityVersion`
-- `primaryIdentityType`
+- `identityType`
 - `normalizedQuery`
-- `canonicalPage`
-- `topicClusterId`
+- `canonicalPage` — nullable for non-single-page identities
 - `createdAt`
 
-Normal Query + Page identity:
+Stable V1 identity types:
 
 ```text
-projectId + opportunityType + normalizedQuery + canonicalPage
+QUERY_PAGE_GROWTH
+KEYWORD_CANNIBALIZATION
+NEW_CONTENT_OPPORTUNITY
+```
+
+Normal merged Query + Page identity:
+
+```text
+projectId + QUERY_PAGE_GROWTH + normalizedQuery + canonicalPage
 ```
 
 Keyword-cannibalization identity:
@@ -262,7 +302,15 @@ Keyword-cannibalization identity:
 projectId + KEYWORD_CANNIBALIZATION + normalizedQuery + sortedCanonicalPages
 ```
 
-The serialized identity is hashed into a deterministic `opportunityKey`. Sorted page identity prevents Page A/Page B order changes from creating duplicates.
+New-content identity:
+
+```text
+projectId + NEW_CONTENT_OPPORTUNITY + normalizedQuery
+```
+
+The serialized identity is hashed into a deterministic `opportunityKey` using a versioned canonical serializer. A normal Query + Page retains its lifecycle even if the snapshot’s dynamic `primaryType` changes from ranking to CTR/content/etc. across windows.
+
+For cannibalization, sorted page identity prevents Page A/Page B order changes from creating duplicates. If the material set of competing canonical pages changes, a new cannibalization identity is created; prior lifecycle/history remains intact.
 
 ### 9.2 GrowthOpportunitySnapshot
 
@@ -284,6 +332,7 @@ Suggested fields:
 - `previousWindowStart`
 - `previousWindowEnd`
 - `dataCutoffAt`
+- `topicClusterId` — nullable / snapshot-scoped
 - `primaryType`
 - `secondaryTypes`
 - `score`
@@ -296,6 +345,8 @@ Suggested fields:
 
 A materialized snapshot is never updated in place. New stable windows create new snapshots under the same stable opportunity identity when the logical opportunity persists.
 
+Topic membership is snapshot-scoped so later topic-model changes do not mutate stable opportunity identity.
+
 ### 9.3 GrowthScoreBreakdown
 
 Suggested fields:
@@ -305,7 +356,9 @@ Suggested fields:
 - `positionPotentialScore`
 - `ctrGapScore`
 - `siteGapScore`
-- `trendVisibilityScore`
+- `gscTrendScore`
+- `p6VisibilityScore`
+- `trendVisibilityDisplayScore`
 - `availableWeight`
 - `evidenceCoverage`
 - `weightedTotal`
@@ -354,7 +407,7 @@ Snapshot facts and workflow state are separated.
 
 ### 10.1 GrowthOpportunityLifecycle
 
-Suggested statuses:
+Statuses:
 
 ```text
 NEW
@@ -423,8 +476,8 @@ Suggested fields:
 
 An active opportunity may transition to `RESOLVED` only when deterministic evidence shows either:
 
-- it no longer satisfies its trigger for **two consecutive stable materialization windows**; or
-- its authoritative score remains below `25` for **two consecutive stable windows** and the trigger-specific evidence no longer indicates an actionable high-severity condition.
+- it no longer satisfies any actionable trigger for **two consecutive stable materialization windows**; or
+- its authoritative score remains below `25` for **two consecutive stable windows** and trigger-specific evidence no longer indicates an actionable high-severity condition.
 
 The two-window rule prevents one noisy window from erasing a real opportunity.
 
@@ -438,33 +491,44 @@ P7-A V1 supports nine authoritative opportunity types.
 
 ### 11.1 `RANKING_UPSIDE`
 
-A Query + Page has real demand and a position range with practical room to improve. Position 4-20 is the strongest V1 ranking-upside region.
+Trigger:
+
+- current-window impressions >0;
+- average position is between 4 and 20 inclusive.
+
+The score still incorporates Demand, so very small opportunities do not automatically become top priorities.
 
 ### 11.2 `CTR_UNDERPERFORMANCE`
 
-A Query + Page has sufficient demand and actual CTR materially below the project’s own expected CTR curve for the matching position bucket.
+Trigger:
+
+- current-window impressions >0;
+- project expected CTR for the position bucket is known;
+- `CTR Gap Score >=30`, corresponding to at least a 5% relative shortfall from expected CTR.
 
 ### 11.3 `SEO_GAP`
 
-P2 provides deterministic SEO issue evidence attached to the relevant page. P7-A does not rerun the P2 rule engine.
+Trigger when at least one unique P2 page-level deterministic FAIL/issue with actionable severity `LOW`, `MEDIUM`, or `HIGH` is attached to the canonical page. INFO-only evidence may remain visible but does not independently trigger `SEO_GAP`.
+
+P7-A does not rerun the P2 rule engine.
 
 ### 11.4 `GEO_CITABILITY_GAP`
 
-P3 provides deterministic GEO/Citability/Entity readiness evidence indicating an actionable page gap.
+Trigger when persisted P3 deterministic GEO/Citability/Entity evidence marks the canonical page as failing an applicable V1 readiness/citability requirement. Unknown P3 evidence does not trigger a gap.
 
 ### 11.5 `CONTENT_GAP`
 
-P5 Content Intelligence provides deterministic content evidence such as title/H1/basic completeness, content depth, heading structure, internal-link support, structured-data support, entity support, or citability support.
+Trigger when at least one unique persisted P5 `EvaluatedContentRule` for the canonical page has `status=FAIL`. P5 UNKNOWN evidence does not trigger a content gap.
 
 ### 11.6 `AI_VISIBILITY_GAP`
 
-Persisted P6 evidence shows weak/declining Mention Rate, Citation Rate, SOV, competitor SOV relationship, compatible visibility comparison, or deterministic visibility alerts.
+Trigger when at least one known P6 V1 visibility signal in section 13.6 scores `>=25`.
 
 P7-A never triggers provider sampling to create this opportunity.
 
 ### 11.7 `DECLINING_PERFORMANCE`
 
-Current 28-day GSC performance is deterministically worse than the previous 28-day window in one or more of impressions, clicks, CTR, or average position.
+Trigger when at least one known current-vs-previous GSC trend metric has a degradation ratio `>=5%` under section 13.5.
 
 ### 11.8 `KEYWORD_CANNIBALIZATION`
 
@@ -498,24 +562,52 @@ secondaryTypes:
 
 `KEYWORD_CANNIBALIZATION` and `NEW_CONTENT_OPPORTUNITY` are special identities and are not merged into an unrelated single-page identity.
 
-For a normal Query + Page, primary type is chosen deterministically by the triggered type contributing the greatest weighted opportunity signal. Ties use a versioned fixed catalog order. DeepSeek does not choose the primary type.
+For a normal Query + Page, primary type is chosen deterministically by the triggered type contributing the greatest weighted opportunity signal. Type-to-signal mapping is versioned:
+
+- `RANKING_UPSIDE` -> Position Potential contribution;
+- `CTR_UNDERPERFORMANCE` -> CTR Gap contribution;
+- `SEO_GAP`, `GEO_CITABILITY_GAP`, `CONTENT_GAP` -> the root-cause share of Site Gap contribution;
+- `AI_VISIBILITY_GAP` -> P6 Visibility contribution;
+- `DECLINING_PERFORMANCE` -> GSC Trend contribution.
+
+Ties use this fixed V1 order:
+
+```text
+DECLINING_PERFORMANCE
+RANKING_UPSIDE
+CTR_UNDERPERFORMANCE
+AI_VISIBILITY_GAP
+GEO_CITABILITY_GAP
+CONTENT_GAP
+SEO_GAP
+```
+
+DeepSeek does not choose the primary type.
 
 ## 13. Opportunity Score V1
 
-Formula:
+Top-level business weights:
 
 ```text
-Opportunity Score =
-  Demand                  * 30%
-+ Position Potential      * 25%
-+ CTR Gap                 * 20%
-+ Site Gap                * 15%
-+ Trend / Visibility Gap  * 10%
+Demand                  30%
+Position Potential      25%
+CTR Gap                 20%
+Site Gap                15%
+Trend / Visibility Gap  10%
 ```
 
-Each available dimension is normalized to 0-100 before weighting.
+For missing-evidence accounting, the final 10% is represented as two independent subweights:
 
-The formula version is persisted as a stable constant, initially:
+```text
+GSC Trend signal        6%
+P6 Visibility signal    4%
+```
+
+Thus authoritative total calculation is over six atomic weights: `30 + 25 + 20 + 15 + 6 + 4 = 100`.
+
+Each available component is normalized to 0-100 before weighting.
+
+Formula version:
 
 ```text
 GROWTH_SCORE_V1
@@ -523,7 +615,9 @@ GROWTH_SCORE_V1
 
 ### 13.1 Demand Score — 30%
 
-Demand is based on current-window Query + Page GSC impressions relative to other eligible Query + Page rows in the same project/window.
+Demand is based on current-window Query + Page GSC impressions relative to eligible Query + Page rows in the same project/window.
+
+The percentile population includes current-window Query + Page aggregates with `impressions > 0` and valid canonical-page identity.
 
 V1 percentile bands:
 
@@ -537,7 +631,7 @@ V1 percentile bands:
 | 0 impressions | 0 |
 | No valid GSC evidence | UNKNOWN |
 
-The percentile thresholds used by a materialization are frozen in provenance so historical scores are not reinterpreted against future traffic distributions.
+Quantile cutoff values are calculated deterministically from the sorted impression counts and frozen in materialization provenance so historical scores are not reinterpreted against future traffic distributions.
 
 ### 13.2 Position Potential — 25%
 
@@ -557,7 +651,7 @@ Position 1-3 remains valuable, but V1 treats it mainly as a CTR/defense opportun
 
 P7-A uses the project’s own historical CTR curve, not a web-wide industry benchmark.
 
-Initial position buckets:
+Position buckets:
 
 ```text
 1
@@ -571,7 +665,11 @@ Initial position buckets:
 >50
 ```
 
-For each bucket, `PROJECT_CTR_CURVE_V1` uses the median CTR of eligible historical Query + Page rows. V1 eligibility requires at least 10 impressions for an individual sample row and at least 30 eligible samples in the bucket. If a bucket lacks 30 eligible samples, expected CTR for that bucket is `UNKNOWN`; V1 does not silently borrow an industry curve.
+`PROJECT_CTR_CURVE_V1` is built from the union of **current-window and previous-window Query + Page aggregates**, using at most one aggregate sample per Query + Page per window. This creates a frozen 56-day evidence basis without over-weighting a Query simply because it appears every day.
+
+An individual sample is eligible when `impressions >=10`. A bucket requires at least **30 eligible aggregate samples**. Otherwise expected CTR for the bucket is `UNKNOWN`; V1 does not borrow an industry curve or neighboring bucket.
+
+Expected CTR is the median of eligible sample CTRs.
 
 For a known expected CTR:
 
@@ -579,7 +677,7 @@ For a known expected CTR:
 gapRatio = max(0, (expectedCtr - actualCtr) / expectedCtr)
 ```
 
-If `expectedCtr <= 0`, CTR Gap is `UNKNOWN` rather than dividing by zero.
+If `expectedCtr <=0`, CTR Gap is `UNKNOWN` rather than dividing by zero.
 
 | Gap ratio | Score |
 | --- | ---: |
@@ -606,49 +704,118 @@ Severity mapping:
 
 V1 Site Gap is the arithmetic mean of unique valid root-cause severity units for the page.
 
-If no eligible Site Gap evidence exists because the upstream state is genuinely not applicable, the dimension is `NOT_APPLICABLE`. If evidence should exist but is unavailable/unknown, the dimension is `UNKNOWN`.
+If no eligible Site Gap evidence exists because upstream state is genuinely not applicable, the dimension is `NOT_APPLICABLE`. If evidence should exist but is unavailable/unknown, the dimension is `UNKNOWN`.
 
-### 13.5 Trend / Visibility Gap — 10%
+The score breakdown stores root-cause contribution totals per SEO/GEO/Content source family so primary-type selection is reproducible without double-counting shared P3/P5 provenance.
 
-Internal split:
+### 13.5 GSC Trend Score — atomic weight 6%
 
-```text
-GSC trend signal:       60%
-P6 visibility signal:  40%
-```
-
-GSC compares current vs previous 28-day windows for:
+Compare current vs previous 28-day Query + Page aggregates for:
 
 - impressions;
 - clicks;
 - CTR;
-- average position, where a higher numeric position is worse.
+- average position.
 
-Each comparable metric produces a deterministic degradation signal. Missing metrics are excluded rather than treated as zero. The component is `UNKNOWN` when no GSC trend metric is comparable.
+For impressions, clicks, and CTR when `previous >0`:
 
-The P6 component consumes only persisted compatible P6 metric/comparison/alert facts. Missing P6 evidence is `UNKNOWN` and does not create an artificial visibility penalty.
+```text
+degradationRatio = max(0, (previous - current) / previous)
+```
+
+If `previous = 0`, a current value >=0 is not classified as a decline; the metric signal is `0` when both values are known.
+
+For average position when `previousPosition >0`:
+
+```text
+degradationRatio = max(0, (currentPosition - previousPosition) / previousPosition)
+```
+
+Per-metric mapping:
+
+| Degradation ratio | Signal score |
+| --- | ---: |
+| >=30% | 100 |
+| 15-29.999% | 75 |
+| 5-14.999% | 50 |
+| >0 and <5% | 20 |
+| no degradation / improvement | 0 |
+
+The GSC Trend Score is the arithmetic mean of known per-metric signal scores. Missing metrics are excluded. If none are comparable, GSC Trend is `UNKNOWN`.
+
+### 13.6 P6 Visibility Score — atomic weight 4%
+
+P7-A uses persisted P6 facts only. It derives unique known signals from compatible P6 comparisons/current SOV facts; P6 alert rows are provenance for their underlying signal and do not get counted a second time.
+
+For owned Mention Rate, Citation Rate, or owned SOV absolute **drop** between compatible snapshots, and for competitor SOV absolute **rise**, use the magnitude of P6 `deltaBasisPoints`:
+
+| Adverse absolute delta | Signal score |
+| --- | ---: |
+| >=1000 bp (10.0 pp) | 100 |
+| 500-999 bp | 75 |
+| 200-499 bp | 50 |
+| 1-199 bp | 25 |
+| no adverse delta | 0 |
+
+For current owned-vs-top-competitor SOV when both are `CALCULATED`:
+
+```text
+competitorGapBp = round((topCompetitorRatio - ownedRatio) * 10000)
+```
+
+| Competitor advantage | Signal score |
+| --- | ---: |
+| >=2000 bp (20 pp) | 100 |
+| 1000-1999 bp | 75 |
+| 500-999 bp | 50 |
+| 1-499 bp | 25 |
+| owned >= competitor | 0 |
+
+`METRIC_BECAME_UNKNOWN` or other unknown-source transitions remain visible evidence but **do not become a numeric performance penalty**. They reduce evidence coverage instead.
+
+The P6 Visibility Score is the maximum unique known adverse signal for the Query/Topic mapping in V1. If no eligible P6 signal is mappable, it is `UNKNOWN`, not zero.
+
+### 13.7 Trend / Visibility display score
+
+For UI explanation only:
+
+```text
+TrendVisibilityDisplayScore =
+  weighted average of known(GSC Trend * 60, P6 Visibility * 40)
+```
+
+Authoritative total Opportunity Score does not treat the display score as a 10% atomic component; it uses the separate 6% and 4% weights so missing P6 evidence cannot be silently replaced by GSC trend evidence.
 
 ## 14. Missing-weight and evidence-quality contract
 
-For each available dimension:
+For each known atomic component:
 
 ```text
-weightedContribution = dimensionScore * dimensionWeight
-availableWeight = sum(weights whose state is KNOWN)
+weightedContribution = componentScore * atomicWeight
+availableWeight = sum(atomicWeights whose state is KNOWN)
 normalizedScore = round(sum(weightedContribution) / availableWeight)
 evidenceCoverage = availableWeight / 100
 ```
 
-The normalization keeps the score on a 0-100 scale without treating missing dimensions as zero.
+Atomic weights are:
+
+```text
+Demand 30
+Position 25
+CTR Gap 20
+Site Gap 15
+GSC Trend 6
+P6 Visibility 4
+```
+
+The normalization keeps the score on a 0-100 scale without treating missing components as zero.
 
 V1 states:
 
-- `availableWeight = 100` -> score is calculated, `evidenceQuality=COMPLETE`, `rankingEligible=true`;
-- `70 <= availableWeight < 100` -> score is calculated, `evidenceQuality=PARTIAL`, `rankingEligible=true`;
-- `50 <= availableWeight < 70` -> a diagnostic normalized score and priority may be displayed with `evidenceQuality=PARTIAL`, but `rankingEligible=false`; it is excluded from the default Top Opportunities ranking;
-- `availableWeight < 50` -> authoritative score/priority are `UNKNOWN`, `rankingEligible=false`.
-
-This resolves the distinction between a useful partial diagnostic and a score reliable enough to drive project-wide ordering.
+- `availableWeight =100` -> score is calculated, `evidenceQuality=COMPLETE`, `rankingEligible=true`;
+- `70 <= availableWeight <100` -> score is calculated, `evidenceQuality=PARTIAL`, `rankingEligible=true`;
+- `50 <= availableWeight <70` -> a diagnostic normalized score and priority may be displayed with `evidenceQuality=PARTIAL`, but `rankingEligible=false`; it is excluded from the default Top Opportunities ranking;
+- `availableWeight <50` -> authoritative score/priority are `UNKNOWN`, `rankingEligible=false`.
 
 Priority mapping for a calculated score:
 
@@ -667,14 +834,17 @@ Evidence quality is displayed separately from priority, so `HIGH / PARTIAL` is v
 
 The V1 detector is intentionally balanced rather than hypersensitive.
 
-### 15.1 Candidate requirements
+### 15.1 Candidate demand floor
 
 For one normalized Query in one current stable window:
 
 - at least two distinct canonical pages have valid impressions;
 - canonical-equivalent URLs are collapsed before evaluation;
-- the Query passes the same project demand floor used to suppress low-volume noise;
+- total Query impressions are at least **20**;
+- total Query impressions are also at or above the project’s **Query-level current-window P50** impression threshold;
 - each candidate page retains impressions, clicks, CTR, and average position provenance.
+
+The absolute floor protects very small projects from one/two-impression noise; the project-relative P50 floor keeps the detector focused on material Queries for that project.
 
 ### 15.2 Competitive share
 
@@ -684,7 +854,7 @@ For each page:
 pageShare = pageImpressions / totalQueryImpressions
 ```
 
-At least two pages must have `pageShare >= 20%`, and no dominant page may have `pageShare >= 80%`.
+At least two pages must have `pageShare >=20%`, and no dominant page may have `pageShare >=80%`.
 
 ### 15.3 Ranking competition
 
@@ -704,13 +874,13 @@ Tie-break order:
 3. higher CTR;
 4. stronger deduplicated P3/P5 content/entity evidence.
 
-If the evidence does not establish a meaningful winner, the candidate is `UNKNOWN`.
+A candidate is selected only when one page wins at the first tie-break dimension where values differ by more than the stored comparison precision. If all four dimensions tie at stored precision or required evidence is insufficient, the candidate is `UNKNOWN`.
 
 ### 15.5 Persisted evidence
 
 A cannibalization snapshot records the sorted competing canonical pages and each page’s impressions, share, clicks, CTR, position, supporting content/entity evidence, reason codes, and primary-page candidate state.
 
-The V1 detector must cap competing pages at 20 per Query.
+The V1 detector caps competing pages at **20 per Query**, ordered by impressions descending before the cap.
 
 ## 16. New Content Detector V1
 
@@ -719,12 +889,12 @@ The V1 detector must cap competing pages at 20 per Query.
 All required conditions:
 
 - Demand Score >=65;
-- Query impressions are at or above the project’s current-window P50 demand threshold;
+- Query impressions are at or above the project’s current-window Query-level P50 threshold;
 - the best existing page has average position >20;
 - no page owns >=70% of Query impressions;
 - at least one valid P3/P5 content, entity, or citability coverage gap exists;
 - deterministic canonical/topic checks do not identify an already strong duplicate landing page;
-- evidence coverage satisfies the detector’s minimum authoritative requirements;
+- all required GSC fields and at least one P3/P5 coverage signal are known;
 - no active `KEYWORD_CANNIBALIZATION` identity for the same normalized Query is selected as the primary issue for the window.
 
 If a required input is unknown, the detector returns an explicit unknown/ineligible reason instead of inferring that new content is needed.
@@ -739,7 +909,7 @@ Primary authority:
 
 1. existing P3 Entity / Topic relationships;
 2. explicit project alias/normalization maps;
-3. deterministic normalized primary Query fallback.
+3. deterministic normalized primary Query fallback only when a stable page/topic relationship exists.
 
 DeepSeek and embeddings do not establish authoritative membership in V1.
 
@@ -775,7 +945,7 @@ Each stable window creates an immutable topic snapshot with:
 - trend/visibility state;
 - current/previous window provenance.
 
-V1 Topic Score:
+V1 Topic Score business weights:
 
 ```text
 Top Opportunity signal         50%
@@ -783,7 +953,13 @@ Demand-weighted opportunities  30%
 Trend / AI Visibility signal   20%
 ```
 
-Unknown sub-signals follow the same non-zero-coercion principle and record coverage.
+`Top Opportunity signal` is the highest `rankingEligible=true` member score.
+
+`Demand-weighted opportunities` is the impression-weighted mean of calculated member scores, capped so a Query+Page contributes once.
+
+`Trend / AI Visibility signal` uses the topic’s aggregated GSC trend and mapped P6 visibility facts with the same unknown-preserving principle as section 13.
+
+If a topic has no ranking-eligible opportunity, its Top Opportunity sub-signal is `UNKNOWN`. Topic subweights are normalized over known values and topic evidence coverage is stored. A Topic Score is ranking-eligible only with at least **70%** available topic weight; 50-69% may be displayed as diagnostic PARTIAL; below 50% is UNKNOWN.
 
 Priority uses the same CRITICAL/HIGH/MEDIUM/LOW/MONITOR thresholds.
 
@@ -822,13 +998,13 @@ A Growth Center GET request also makes zero external calls and performs no autho
 Responsibilities:
 
 - validate active connection/property;
-- refresh OAuth credentials through the secret mechanism when needed;
+- refresh OAuth credentials through `OAuthCredentialVault` when needed;
 - fetch one bounded source day at a time;
 - normalize and persist Query + Page facts;
 - finalize immutable daily snapshot/version;
 - emit safe lifecycle observability.
 
-Failure classes include:
+Failure classes:
 
 - `TOKEN_REVOKED`
 - `PERMISSION_DENIED`
@@ -837,14 +1013,17 @@ Failure classes include:
 - `TRANSIENT_PROVIDER_ERROR`
 - `INVALID_RESPONSE`
 - `PERSISTENCE_FAILED`
+- `CREDENTIAL_VAULT_UNAVAILABLE`
 
-Retries must be bounded and must not create duplicate completed daily facts.
+Retries are bounded to **2 attempts** for transient provider/persistence failures. Authentication, permission, invalid-response, and vault-configuration failures are not blindly retried. Deterministic job identity is based on project, property, source date, and intended sync version/request identity.
+
+Duplicate delivery must not create duplicate completed daily facts.
 
 ### 19.2 `growth-materialization`
 
 Responsibilities:
 
-- resolve stable windows;
+- resolve complete stable windows;
 - aggregate persisted GSC facts;
 - calculate CTR curve;
 - join persisted P2/P3/P5/P6 evidence;
@@ -853,7 +1032,9 @@ Responsibilities:
 - persist immutable snapshots and topic rollups;
 - reconcile lifecycle.
 
-The queue uses deterministic idempotency keys based on project, formula/materialization version, current/previous windows, data cutoff, and selected source-version identity.
+The queue uses **2 attempts** and deterministic idempotency keys based on project, formula/materialization version, current/previous windows, data cutoff, and selected source-version identity.
+
+A failed materialization does not mutate a prior completed Growth snapshot set.
 
 ## 20. REST API
 
@@ -865,18 +1046,23 @@ Prefix:
 /api/projects/:projectId/search-console
 ```
 
-V1 routes should cover:
+V1 routes cover:
 
 - connection status;
 - begin OAuth connection;
-- OAuth callback handling;
 - list authorized properties;
 - bind/unbind active property;
 - sync status and source freshness;
 - bounded manual sync request;
 - daily snapshot/history metadata.
 
-OAuth callback routes may require a non-project-prefixed callback endpoint internally, but project association must be recovered through signed/validated state rather than user-controlled callback parameters.
+OAuth callback handling uses a dedicated callback route such as:
+
+```text
+/auth/google/search-console/callback
+```
+
+Project/user association is recovered only through the stored single-use OAuth state record, not trusted callback query parameters.
 
 ### 20.2 Growth API
 
@@ -886,7 +1072,7 @@ Prefix:
 /api/projects/:projectId/growth
 ```
 
-V1 routes should cover:
+V1 routes cover:
 
 - Opportunity list/filter/sort;
 - Opportunity detail;
@@ -900,7 +1086,7 @@ V1 routes should cover:
 - explicit user-triggered DeepSeek explanation;
 - project Growth summary for dashboard integration.
 
-All list routes are bounded and paginated.
+All list routes are bounded and paginated. Opportunity page size is at most 100.
 
 ## 21. Web UI
 
@@ -926,6 +1112,7 @@ The screen clearly labels the integration **read-only** and displays:
 - last successful sync;
 - latest complete source date;
 - available date coverage;
+- source completeness limitation state;
 - current connection/sync health.
 
 ### 21.2 Growth Opportunities Center
@@ -955,7 +1142,7 @@ Default table fields:
 - Trend;
 - Lifecycle.
 
-Default ordering uses `rankingEligible=true` and Opportunity Score descending. Low-evidence diagnostic scores do not outrank authoritative opportunities.
+Default ordering includes only `rankingEligible=true` and sorts Opportunity Score descending with deterministic tie-breaks: Priority band, Demand Score, current impressions, then `opportunityKey` ascending. Low-evidence diagnostic scores remain filterable but do not outrank authoritative opportunities.
 
 ### 21.3 Opportunity detail
 
@@ -1006,7 +1193,7 @@ Shows Topic Score, member Query count, member pages, impressions, clicks, demand
 
 P7-A extends the existing project dashboard rather than creating a second dashboard shell.
 
-Project dashboard Growth Intelligence section may show:
+Project dashboard Growth Intelligence section shows:
 
 - Top Opportunity Score;
 - CRITICAL/HIGH opportunity count;
@@ -1017,7 +1204,7 @@ Project dashboard Growth Intelligence section may show:
 - GSC data freshness;
 - link to the full Growth Opportunities Center.
 
-Enterprise portfolio dashboard may show:
+Enterprise portfolio dashboard shows:
 
 - project top opportunity;
 - critical count;
@@ -1030,7 +1217,7 @@ Dashboard rendering reads persisted P7-A summary facts only and does not call Go
 
 ## 23. Optional DeepSeek explanation
 
-Add a new P4 advisory AI task, tentatively:
+Add the P4 advisory AI task:
 
 ```text
 GROWTH_OPPORTUNITY_EXPLANATION
@@ -1070,7 +1257,7 @@ P7-A introduces explicit feature semantics rather than overloading P6/Reporting 
 - `GROWTH_AI_EXPLANATION`
 - `PORTFOLIO_GROWTH`
 
-Recommended plan boundary:
+Plan boundary:
 
 ### Standard
 
@@ -1095,14 +1282,14 @@ Recommended plan boundary:
 
 - Portfolio Growth Intelligence;
 - cross-project prioritization;
-- higher retention/capacity bounds defined by plan policy;
+- higher retention/capacity bounds set by existing plan-limit policy;
 - future P8/P9 enterprise automation entry points.
 
 Restricted features fail before restricted data reads or side effects.
 
 ## 25. Hard bounds
 
-Initial V1 safety bounds:
+V1 safety bounds:
 
 - GSC Query + Page rows per project per source day: **25,000**;
 - Growth candidates per materialization: **50,000**;
@@ -1118,7 +1305,7 @@ When Google returns only a bounded/top-row Search Analytics result set, P7-A rec
 
 ## 26. Safe observability
 
-Allowlisted lifecycle events include:
+Allowlisted lifecycle events:
 
 ```text
 gsc.connection.connected
@@ -1138,7 +1325,7 @@ growth.ai_explanation.failed
 Safe metadata may include:
 
 - projectId;
-- property ID/hash or safe internal ID;
+- safe internal connection/property ID;
 - source date/window bounds;
 - counts;
 - duration;
@@ -1149,6 +1336,8 @@ Safe metadata may include:
 Logs must not contain:
 
 - OAuth access/refresh tokens;
+- OAuth state plaintext;
+- encryption keys;
 - client secrets;
 - full Google account credentials;
 - unbounded Query lists;
@@ -1158,28 +1347,28 @@ Logs must not contain:
 
 ## 27. Error and UNKNOWN semantics
 
-P7-A must distinguish:
+P7-A distinguishes:
 
 - zero — valid measured absence or zero value;
 - `UNKNOWN` — evidence expected but unavailable/unreliable;
-- `NOT_APPLICABLE` — dimension does not apply;
+- `NOT_APPLICABLE` — component does not apply;
 - `PARTIAL` — enough evidence exists for a bounded diagnostic/calculated result but the evidence set is incomplete;
 - source failure — synchronization/materialization failed before authoritative output.
 
 No error path writes a fabricated successful Opportunity snapshot.
 
-A failed GSC source day must not be treated as a zero-impression day.
+A failed GSC source day is never a zero-impression day.
 
-A missing P6 visibility fact must not penalize a project as if its Mention/Citation/SOV were zero.
+A missing P6 visibility fact never penalizes a project as if its Mention/Citation/SOV were zero.
 
 ## 28. Security and privacy
 
 Required controls:
 
-- read-only Google Search Console scope;
-- OAuth state validation;
-- encrypted/secret-managed credential storage through opaque `credentialRef`;
-- no OAuth tokens in business snapshot tables;
+- exact read-only Google Search Console scope;
+- single-use OAuth state validation with expiry;
+- AES-256-GCM encrypted credential vault with environment-held key and key version;
+- no OAuth plaintext tokens in business snapshot tables;
 - no secrets in logs, HTML, reports, or AI requests;
 - project scoping on every connection/property/fact/opportunity route;
 - plan gates before restricted reads or writes;
@@ -1194,38 +1383,43 @@ P7-A is release-ready only when fresh exact-head verification proves all of the 
 
 ### 29.1 Search Console / OAuth
 
-- only the intended read-only Search Console scope is requested;
-- OAuth state validation rejects tampering/replay as designed;
+- only `webmasters.readonly` is requested for Search Console access;
+- OAuth state is random, expiring, single-use, and rejects tampering/replay;
+- credential payloads are AES-256-GCM encrypted at rest and cannot be written when the encryption key is unavailable;
 - revoked/invalid credentials fail closed;
 - unauthorized/unavailable properties cannot be bound or imported;
 - CI/test runs use fixtures/mocks and do not call live Google APIs;
 - duplicate synchronization cannot create duplicate completed daily facts;
 - completed daily snapshot versions are immutable;
-- source freshness and failed days are explicit.
+- source freshness, source boundedness, and failed days are explicit.
 
 ### 29.2 Deterministic scoring
 
 - identical persisted inputs + formula version produce identical score/breakdown;
-- all five weight components and normalized-score math match `GROWTH_SCORE_V1`;
+- all atomic weights and normalized-score math match `GROWTH_SCORE_V1`;
 - `UNKNOWN` is never coerced to zero;
 - evidence coverage and ranking eligibility follow section 14;
 - Demand percentile bands are frozen per materialization;
-- CTR curve minimum-sample rules are deterministic;
+- CTR curve uses the frozen current+previous aggregate sample set and minimum-sample rules;
+- GSC trend boundary calculations are deterministic;
+- P6 adverse-delta/SOV-gap mappings are deterministic and UNKNOWN transitions do not become numeric penalties;
 - root-cause evidence dedupe prevents double scoring;
 - DeepSeek output cannot mutate or replace deterministic score/priority.
 
-### 29.3 Detectors
+### 29.3 Opportunity identity and detectors
 
+- a normal Query + Page identity remains stable when dynamic primary type changes;
+- Cannibalization sorted-page identity is deterministic;
 - balanced Cannibalization rules pass positive/negative boundary tests;
 - canonical-equivalent pages do not create false cannibalization;
-- low-demand noise does not create a high-priority cannibalization opportunity;
+- absolute + project-relative demand floors suppress low-volume cannibalization noise;
 - primary-page candidate tie-breaks are deterministic and may return UNKNOWN;
 - conservative New Content rules pass positive/negative tests;
 - active cannibalization prevents conflicting New Content recommendation for the same Query/window.
 
 ### 29.4 History and lifecycle
 
-- stable opportunity identity remains stable across windows;
+- stable opportunity identity remains stable across eligible windows;
 - old Opportunity and Topic snapshots remain immutable;
 - two-window resolution rule is enforced;
 - DONE/RESOLVED opportunity recurrence creates REOPENED without deleting prior events;
@@ -1236,13 +1430,13 @@ P7-A is release-ready only when fresh exact-head verification proves all of the 
 
 - Standard/Advanced/Enterprise feature gates match policy;
 - restricted reads fail before restricted database reads or queue side effects;
-- OAuth secrets never appear in logs, snapshots, rendered HTML, reports, or AI input fixtures;
+- OAuth secrets/encryption keys/state plaintext never appear in logs, snapshots, rendered HTML, reports, or AI input fixtures;
 - Growth Center/dashboard reads perform zero Google/P6-provider/DeepSeek calls;
 - lifecycle observability is allowlisted and bounded.
 
 ### 29.6 Full project gate
 
-The final exact head must pass the repository’s full verification path, including:
+The final exact head must pass the repository’s full verification path:
 
 ```text
 npx prisma validate
@@ -1259,25 +1453,25 @@ Production dependency audit and Chromium/browser smoke remain required CI jobs i
 
 ## 30. Suggested implementation decomposition
 
-The implementation plan should preserve the following dependency order, but exact Task numbering is deferred until the written spec is approved:
+The implementation plan must preserve this dependency order; exact Task sizing is written only after this spec is approved:
 
-1. Search Console persistence + credential-reference boundary;
-2. OAuth/property binding flow;
+1. Search Console persistence + AES-GCM OAuth credential vault;
+2. OAuth state/property binding flow;
 3. fixture-safe Search Console client + daily immutable synchronization;
-4. GSC aggregation/window/CTR-curve primitives;
-5. Growth persistence foundation: identity/snapshot/evidence/lifecycle/topic models;
-6. evidence adapters/deduplication for P2/P3/P5/P6;
-7. deterministic Opportunity Score V1;
-8. Opportunity Catalog detection;
+4. GSC window aggregation + Demand percentile + CTR-curve primitives;
+5. Growth persistence foundation: stable identity/snapshot/evidence/lifecycle/topic models;
+6. evidence adapters/root-cause deduplication for P2/P3/P5/P6;
+7. deterministic `GROWTH_SCORE_V1` including GSC trend and P6 signal mapping;
+8. Opportunity Catalog detection + primary/secondary type selection;
 9. Cannibalization + New Content detectors;
 10. materialization queue/worker + lifecycle reconciliation;
 11. Growth REST API;
 12. Search Console settings + Growth Opportunity Center + topic/special views;
 13. project/portfolio dashboard integration;
-14. optional P4 DeepSeek `GROWTH_OPPORTUNITY_EXPLANATION`;
+14. P4 DeepSeek `GROWTH_OPPORTUNITY_EXPLANATION`;
 15. safe observability/operator guide/final release gate.
 
-The final implementation plan must break these into independently testable tasks and must use TDD for behavior changes.
+The final implementation plan must break these into independently testable tasks and use TDD for behavior changes.
 
 ## 31. Acceptance summary
 
