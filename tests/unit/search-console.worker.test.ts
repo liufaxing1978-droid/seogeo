@@ -257,14 +257,17 @@ describe('P7-A Search Console daily sync worker', () => {
   });
 
   it('uses a stable typed error for missing/inactive properties', async () => {
-    const { deps } = makeDependencies({
-      repository: {
-        ...new MemorySyncRepository(),
-        findPropertyForSync: async () => null
-      } as SearchConsoleSyncRepository
-    });
+    const repository = new MemorySyncRepository();
+    repository.findPropertyForSync = async () => null;
+    const { deps } = makeDependencies({ repository });
 
-    await expect(syncSearchConsoleDay(input, deps)).rejects.toBeInstanceOf(SearchConsoleSyncError);
-    await expect(syncSearchConsoleDay(input, deps)).rejects.toMatchObject({ reason: 'PROPERTY_UNAVAILABLE' });
+    let caught: unknown;
+    try {
+      await syncSearchConsoleDay(input, deps);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(SearchConsoleSyncError);
+    expect(caught).toMatchObject({ reason: 'PROPERTY_UNAVAILABLE' });
   });
 });
