@@ -1,3 +1,4 @@
+import { VisibilityAlertsService } from './visibility-alerts.service.js';
 import {
   VisibilityHistoryRepository,
   visibilityHistoryRepository
@@ -16,6 +17,7 @@ export interface VisibilityMonitoringJobLike {
 
 export interface VisibilityMonitoringWorkerDependencies {
   historyService?: Pick<VisibilityHistoryService, 'materializeForSnapshot'>;
+  alertsService?: Pick<VisibilityAlertsService, 'evaluateComparison'>;
   repository?: Pick<VisibilityHistoryRepository, 'listReconciliationCandidates'>;
   queue?: Pick<VisibilityMonitoringQueue, 'enqueueSnapshot'>;
 }
@@ -37,8 +39,12 @@ export async function processVisibilityMonitoringJob(
   if (job.name === 'evaluate-snapshot') {
     const projectId = requiredString(job.data.projectId, 'projectId');
     const snapshotId = requiredString(job.data.snapshotId, 'snapshotId');
-    const service = dependencies.historyService ?? new VisibilityHistoryService();
-    return service.materializeForSnapshot(projectId, snapshotId);
+    const historyService = dependencies.historyService ?? new VisibilityHistoryService();
+    const history = await historyService.materializeForSnapshot(projectId, snapshotId);
+    if (!history.comparisonId) return { ...history, alerts: { triggered: 0, resolved: 0 } };
+    const alertsService = dependencies.alertsService ?? new VisibilityAlertsService();
+    const alerts = await alertsService.evaluateComparison(projectId, history.comparisonId);
+    return { ...history, alerts };
   }
 
   if (job.name === 'reconcile-history') {
