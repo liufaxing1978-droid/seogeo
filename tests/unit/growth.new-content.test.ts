@@ -34,7 +34,10 @@ describe('P7-A conservative new content opportunity detector', () => {
   it('requires Demand Score >=65 and query impressions >= project P50', () => {
     expect(detectNewContentOpportunity(valid({ demandScore: 64 }), context).state).toBe('NOT_DETECTED');
     expect(detectNewContentOpportunity(valid({ queryImpressions: 79 }), context).state).toBe('NOT_DETECTED');
-    expect(detectNewContentOpportunity(valid({ queryImpressions: 80 }), context).state).toBe('DETECTED');
+    expect(detectNewContentOpportunity(valid({
+      queryImpressions: 80,
+      pages: [page('https://e.com/a', 48, 24), page('https://e.com/b', 32, 30)]
+    }), context).state).toBe('DETECTED');
   });
 
   it('requires best existing page position strictly greater than 20', () => {
