@@ -29,6 +29,8 @@
     <div class="nav-group">
       <div class="nav-label">高级功能</div>
       <a class="<%= activeNav === 'visibility' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility` : '/projects' %>">AI Visibility <span class="badge premium">高级版</span></a>
+      <a class="<%= activeNav === 'visibility-history' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility/history` : '/projects' %>">Visibility 历史</a>
+      <a class="<%= activeNav === 'visibility-alerts' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility/alerts` : '/projects' %>">Visibility 告警</a>
       <a class="<%= activeNav === 'visibility-prompts' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility/prompts` : '/projects' %>">Prompt 监控</a>
       <a class="<%= activeNav === 'visibility-citations' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility/citations` : '/projects' %>">Citation 监控</a>
       <a class="<%= activeNav === 'visibility-subjects' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility/subjects` : '/projects' %>">监控主体</a>
