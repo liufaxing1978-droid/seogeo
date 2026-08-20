@@ -135,8 +135,7 @@ export class VisibilityHistoryRepository {
     const snapshots = await prisma.visibilityMetricSnapshot.findMany({
       where: { status: 'COMPLETED' },
       orderBy: [{ completedAt: 'desc' }, { createdAt: 'desc' }],
-      take: boundedLimit,
-      select: { id: true, projectId: true }
+      take: boundedLimit
     });
     if (snapshots.length === 0) return [];
 
@@ -148,7 +147,17 @@ export class VisibilityHistoryRepository {
       select: { currentSnapshotId: true }
     });
     const processed = new Set(existing.map((row) => row.currentSnapshotId));
-    return snapshots.filter((snapshot) => !processed.has(snapshot.id)).slice(0, boundedLimit);
+    const candidates: Array<{ id: string; projectId: string }> = [];
+
+    for (const snapshot of snapshots) {
+      if (processed.has(snapshot.id)) continue;
+      const previous = await this.findNearestCompatiblePrevious(snapshot);
+      if (!previous) continue;
+      candidates.push({ id: snapshot.id, projectId: snapshot.projectId });
+      if (candidates.length >= boundedLimit) break;
+    }
+
+    return candidates;
   }
 }
 
