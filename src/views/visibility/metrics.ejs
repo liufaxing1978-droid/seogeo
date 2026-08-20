@@ -1,0 +1,169 @@
+<%
+  const ownedMention = rows.find((row) => row.dimensionType === 'OVERALL' && row.actorType === 'OWNED_ROLLUP' && row.metricType === 'MENTION_RATE');
+  const ownedCitation = rows.find((row) => row.dimensionType === 'OVERALL' && row.actorType === 'OWNED_ROLLUP' && row.metricType === 'CITATION_RATE');
+  const ownedSov = rows.find((row) => row.dimensionType === 'OVERALL' && row.actorType === 'OWNED_ROLLUP' && row.metricType === 'MENTION_SHARE_OF_VOICE');
+  const competitorSov = rows.filter((row) => row.dimensionType === 'OVERALL' && row.actorType === 'COMPETITOR' && row.metricType === 'MENTION_SHARE_OF_VOICE');
+  const providerRows = rows.filter((row) => row.dimensionType === 'PROVIDER');
+  const promptRows = rows.filter((row) => row.dimensionType === 'PROMPT_SET');
+  const defaultContract = contracts[0] ?? null;
+  const metricValue = (row) => {
+    if (!row) return '—';
+    if (row.metricStatus === 'CALCULATED' && row.denominator > 0) return `${((row.numerator / row.denominator) * 100).toFixed(1)}%`;
+    return row.metricStatus;
+  };
+  const metricCaption = (row) => row
+    ? `${row.numerator}/${row.denominator} · eligible ${row.eligibleObservationCount} · unknown ${row.unknownObservationCount}`
+    : '暂无已完成指标';
+%>
+
+<section class="page-heading">
+  <div>
+    <p class="eyebrow">AI Visibility · P6-C</p>
+    <h1>Visibility 指标</h1>
+    <p class="muted"><%= project.name %> · Mention Rate、Citation Rate 与 presence-based Mention Share of Voice。</p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/projects/<%= project.id %>/visibility/citations">Citation 监控</a>
+    <a class="button secondary" href="/projects/<%= project.id %>/visibility">AI Visibility</a>
+  </div>
+</section>
+
+<section class="panel form-panel">
+  <div class="panel-header">
+    <div>
+      <h3>生成指标快照</h3>
+      <p>只使用已持久化 P6-A/P6-B 事实；计算过程不调用 Provider、DeepSeek 或外部网络。</p>
+    </div>
+  </div>
+  <form method="post" action="/projects/<%= project.id %>/visibility/metrics/snapshots" class="form-grid" style="margin-top:16px">
+    <label>窗口开始
+      <input type="datetime-local" name="windowStart" value="<%= formWindowStart %>" required>
+    </label>
+    <label>窗口结束
+      <input type="datetime-local" name="windowEnd" value="<%= formWindowEnd %>" required>
+    </label>
+    <label>Extractor Version
+      <input name="extractorVersion" value="<%= defaultContract?.extractorVersion ?? '' %>" maxlength="100" required>
+    </label>
+    <label>Subject Set Hash
+      <input name="subjectSetHash" value="<%= defaultContract?.subjectSetHash ?? '' %>" pattern="[A-Fa-f0-9]{64}" required>
+    </label>
+    <div class="form-actions"><button class="button" type="submit">生成指标快照</button></div>
+  </form>
+  <% if (!contracts.length) { %>
+    <p class="muted small">当前没有已完成 extraction contract 可供预填；先完成 Citation/Mention extraction，或填写一个当前可解析的 extractor/hash contract。</p>
+  <% } %>
+</section>
+
+<% if (!snapshot) { %>
+  <section class="panel" style="margin-top:18px">
+    <div class="empty-state">
+      <strong>尚无 Visibility 指标快照</strong>
+      <div class="small" style="margin-top:8px">生成后，这里会显示确定性指标、覆盖度与版本 provenance。</div>
+    </div>
+  </section>
+<% } else { %>
+  <section class="project-meta" style="margin-top:18px">
+    <span>快照 <code><%= snapshot.id.slice(0, 8) %></code></span>
+    <span>状态 <span class="badge <%= snapshot.status === 'COMPLETED' ? 'success' : 'neutral' %>"><%= snapshot.status %></span></span>
+    <span>候选 observations <strong><%= snapshot.candidateObservationCount %></strong></span>
+    <span>完成 extraction <strong><%= snapshot.completedExtractionCount %></strong></span>
+    <span>缺失 extraction <strong><%= snapshot.missingExtractionCount %></strong></span>
+    <span>失败 extraction <strong><%= snapshot.failedExtractionCount %></strong></span>
+  </section>
+
+  <section class="metric-grid">
+    <article class="metric-card">
+      <div class="metric-title">Owned Mention Rate</div>
+      <div class="metric-value"><%= metricValue(ownedMention) %></div>
+      <div class="metric-caption"><%= metricCaption(ownedMention) %></div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">Owned Citation Rate</div>
+      <div class="metric-value"><%= metricValue(ownedCitation) %></div>
+      <div class="metric-caption"><%= metricCaption(ownedCitation) %></div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">Owned Mention SOV</div>
+      <div class="metric-value"><%= metricValue(ownedSov) %></div>
+      <div class="metric-caption"><%= metricCaption(ownedSov) %></div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">Evidence Coverage</div>
+      <div class="metric-value"><%= snapshot.candidateObservationCount === 0 ? 'NO_DATA' : `${snapshot.completedExtractionCount}/${snapshot.candidateObservationCount}` %></div>
+      <div class="metric-caption">missing <%= snapshot.missingExtractionCount %> · failed <%= snapshot.failedExtractionCount %></div>
+    </article>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header"><div><h3>Provenance</h3><p>单个快照冻结版本、subject set、窗口与 cutoff；不会跨快照拼接。</p></div></div>
+    <dl class="detail-list" style="margin-top:16px">
+      <div><dt>Formula</dt><dd><code><%= snapshot.formulaVersion %></code></dd></div>
+      <div><dt>Extractor</dt><dd><code><%= snapshot.extractorVersion %></code></dd></div>
+      <div><dt>Subject Set</dt><dd><code><%= snapshot.subjectSetHash.slice(0, 12) %>…</code></dd></div>
+      <div><dt>Window</dt><dd><%= new Date(snapshot.windowStart).toISOString() %><br><%= new Date(snapshot.windowEnd).toISOString() %></dd></div>
+      <div><dt>Input Cutoff</dt><dd><%= new Date(snapshot.inputCutoffAt).toISOString() %></dd></div>
+      <div><dt>Scope Hash</dt><dd><code><%= snapshot.scopeHash.slice(0, 12) %>…</code></dd></div>
+      <div><dt>Input Fingerprint</dt><dd><code><%= snapshot.inputFingerprint ? `${snapshot.inputFingerprint.slice(0, 12)}…` : '—' %></code></dd></div>
+      <div><dt>Completed At</dt><dd><%= snapshot.completedAt ? new Date(snapshot.completedAt).toISOString() : '—' %></dd></div>
+      <div><dt>Error Code</dt><dd><%= snapshot.errorCode ?? '—' %></dd></div>
+    </dl>
+  </section>
+
+  <section class="panel" style="margin-top:18px">
+    <div class="panel-header"><div><h3>Competitor Mention SOV</h3><p>按 observation 中 actor 是否出现计数，每个 actor 每条 observation 最多贡献一个 presence unit。</p></div></div>
+    <div class="table-wrap" style="margin-top:12px"><table>
+      <thead><tr><th>Actor</th><th>状态</th><th>Presence</th><th>共享分母</th><th>SOV</th><th>Coverage</th></tr></thead>
+      <tbody>
+        <% for (const row of competitorSov) { %>
+          <tr>
+            <td><strong><%= row.actorKey %></strong></td>
+            <td><span class="badge <%= row.metricStatus === 'CALCULATED' ? 'success' : 'neutral' %>"><%= row.metricStatus %></span></td>
+            <td><%= row.numerator %></td><td><%= row.denominator %></td><td><%= metricValue(row) %></td>
+            <td>eligible <%= row.eligibleObservationCount %> · unknown <%= row.unknownObservationCount %></td>
+          </tr>
+        <% } %>
+        <% if (!competitorSov.length) { %><tr><td colspan="6" class="empty-cell">当前快照没有 competitor SOV 行。</td></tr><% } %>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="panel" style="margin-top:18px">
+    <div class="panel-header"><div><h3>Provider Breakdown</h3><p>Provider 维度独立计算，不与 Prompt Set 交叉成 cube。</p></div></div>
+    <div class="table-wrap" style="margin-top:12px"><table>
+      <thead><tr><th>Provider</th><th>Metric</th><th>Actor</th><th>状态</th><th>值</th><th>Coverage</th></tr></thead>
+      <tbody>
+        <% for (const row of providerRows) { %>
+          <tr><td><strong><%= row.dimensionLabelSnapshot ?? row.dimensionKey %></strong></td><td><%= row.metricType %></td><td><%= row.actorKey %></td><td><%= row.metricStatus %></td><td><%= metricValue(row) %></td><td>eligible <%= row.eligibleObservationCount %> · unknown <%= row.unknownObservationCount %></td></tr>
+        <% } %>
+        <% if (!providerRows.length) { %><tr><td colspan="6" class="empty-cell">当前快照没有 Provider 维度行。</td></tr><% } %>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="panel" style="margin-top:18px">
+    <div class="panel-header"><div><h3>Prompt Set Breakdown</h3><p>Prompt Set 标签来自快照时的安全 label snapshot。</p></div></div>
+    <div class="table-wrap" style="margin-top:12px"><table>
+      <thead><tr><th>Prompt Set</th><th>Metric</th><th>Actor</th><th>状态</th><th>值</th><th>Coverage</th></tr></thead>
+      <tbody>
+        <% for (const row of promptRows) { %>
+          <tr><td><strong><%= row.dimensionLabelSnapshot ?? row.dimensionKey %></strong></td><td><%= row.metricType %></td><td><%= row.actorKey %></td><td><%= row.metricStatus %></td><td><%= metricValue(row) %></td><td>eligible <%= row.eligibleObservationCount %> · unknown <%= row.unknownObservationCount %></td></tr>
+        <% } %>
+        <% if (!promptRows.length) { %><tr><td colspan="6" class="empty-cell">当前快照没有 Prompt Set 维度行。</td></tr><% } %>
+      </tbody>
+    </table></div>
+  </section>
+<% } %>
+
+<section class="panel" style="margin-top:18px">
+  <div class="panel-header"><div><h3>可用 Extraction Contract</h3><p>最多展示 20 个同项目已完成 extractor/hash 组合，只用于生成表单选择。</p></div></div>
+  <div class="table-wrap" style="margin-top:12px"><table>
+    <thead><tr><th>Extractor</th><th>Subject Set</th><th>Completed</th></tr></thead>
+    <tbody>
+      <% for (const contract of contracts) { %>
+        <tr><td><code><%= contract.extractorVersion %></code></td><td><code><%= contract.subjectSetHash.slice(0, 12) %>…</code></td><td><%= contract.completedAt ? new Date(contract.completedAt).toISOString() : '—' %></td></tr>
+      <% } %>
+      <% if (!contracts.length) { %><tr><td colspan="3" class="empty-cell">暂无可用 extraction contract。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
