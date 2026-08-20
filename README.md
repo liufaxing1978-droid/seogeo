@@ -2,7 +2,7 @@
 
 Independent SEO / GEO platform for `seo.xingshantang.org`.
 
-Current milestone: **P6-C Visibility Metrics & Competitor Share of Voice — complete**. Next milestone: **P6-D History, Dashboard, Alerts & Report Integration — next**.
+Current milestone: **P0 - P6 complete**. P6-D History, Dashboard, Alerts & Report Integration has passed its pre-release verification gate.
 
 ## Architecture
 
@@ -98,7 +98,7 @@ Delivered capabilities:
 - AI Visibility and Prompt Monitor web UI with explicit `API 采样` labeling;
 - safe lifecycle observability with an allowlist that excludes prompt/answer bodies, secrets and provider reasoning.
 
-P6-A does **not** calculate Mention Rate, Citation Rate or Share of Voice. P6-B adds deterministic, replayable Mention and Citation facts over persisted P6-A observations. P6-C now materializes the deterministic rate and Share-of-Voice layer over those persisted facts.
+P6-A does **not** calculate Mention Rate, Citation Rate or Share of Voice. P6-B adds deterministic, replayable Mention and Citation facts over persisted P6-A observations. P6-C materializes the deterministic rate and Share-of-Voice layer over those persisted facts, and P6-D consumes those immutable facts for history, comparisons, alerts and reporting.
 
 Provider secrets remain server-side environment variables:
 
@@ -142,9 +142,31 @@ Delivered capabilities:
 - safe allowlisted `queued / started / completed / failed` observability;
 - hard bounds for 31-day windows, 20 Prompt Set filters, 20,000 candidates and 500-row DB batches.
 
-P6-C does **not** provide trend lines, period deltas, alerts, scheduled notifications, historical dashboard widgets, report integration or AI narrative trend explanation. Those remain P6-D responsibilities.
+P6-C remains the authoritative metric layer. It does not mutate historical facts to provide trends. P6-D now provides the separate immutable comparison, history, alert and report-integration layer over completed P6-C snapshots.
 
 Operational details: `docs/development/p6c-visibility-metrics-sov.md`.
+
+## P6-D History, Dashboard, Alerts & Report Integration
+
+P6-D completes the AI Visibility product loop without changing P6-A/P6-B/P6-C fact semantics. Authoritative history, comparisons, alerts, dashboards and report generation consume persisted database facts only and make zero provider/external network calls.
+
+Delivered capabilities:
+
+- immutable `VISIBILITY_COMPARISON_V1` period comparisons over compatible completed P6-C snapshots;
+- exact current/previous window provenance and explicit gap duration;
+- absolute percentage-point deltas stored as basis points;
+- `UNKNOWN`, `NO_DATA`, `NOT_ELIGIBLE` and `NO_SIGNAL` preserved as non-numeric states rather than coerced to zero;
+- deterministic in-app alert rules and immutable trigger evidence with `OPEN -> ACKNOWLEDGED -> RESOLVED` lifecycle;
+- bounded `visibility-monitoring` reconciliation for missed database-only handoffs;
+- real AI Visibility history, alert, project-overview and portfolio dashboard surfaces;
+- `PROJECT_REPORT_V2` with frozen safe P6 facts, bounded competitor SOV, latest compatible comparison and alert counts while preserving `PROJECT_REPORT_V1` compatibility;
+- optional `VISIBILITY_TREND_ANALYSIS` through the existing P4 DeepSeek gateway using bounded persisted facts only;
+- strict P6-D observability allowlists covering comparison, alert, reconciliation and Report V2 lifecycle events;
+- operator guidance for retention, comparison semantics, UNKNOWN handling, rollout, incident triage and rollback.
+
+P6-D V1 alerts are **in-app only**; it does not claim email, Slack, SMS, WeChat or other external delivery. `VISIBILITY_TREND_ANALYSIS` is **explicitly user-triggered only** and never runs automatically. Its output is advisory `AiAnalysisResult` data and cannot mutate deterministic P6 snapshots, rows, comparisons or alert evidence.
+
+Operational details: `docs/development/p6d-history-dashboard-alerts-report.md`.
 
 ## Feature gates
 
@@ -164,9 +186,9 @@ P6 Advanced / Enterprise monitoring gates remain separate:
 - Citation Monitor
 - Competitor Share of Voice
 
-P6-A activates AI Visibility and Prompt Monitor. P6-B activates Citation Monitor. P6-C activates Competitor Share of Voice / Visibility Metrics. Standard projects are rejected before restricted P6-C reads, snapshot writes or queue side effects.
+P6-A activates AI Visibility and Prompt Monitor. P6-B activates Citation Monitor. P6-C activates Competitor Share of Voice / Visibility Metrics. P6-D extends those gated P6 capabilities with history, comparisons, in-app alerts, Report V2 visibility facts and explicit user-triggered trend analysis. Standard projects are rejected before restricted P6 reads, writes or queue side effects.
 
-`ADVANCED_REPORTS` remains reserved for future advanced scheduling/bundling/distribution rather than the base P5 report snapshot feature.
+`ADVANCED_REPORTS` remains reserved for future advanced scheduling/bundling/distribution rather than the base project report snapshot feature.
 
 ## Development
 
@@ -200,6 +222,8 @@ P6-B additionally requires proof that extraction makes zero provider/network cal
 
 P6-C release evidence requires proof that authoritative metric materialization makes zero provider/external network calls; `UNKNOWN` never enters a denominator or becomes zero; `KNOWN_EMPTY` enters the correct denominator; legitimate zero stays `CALCULATED`; owned/competitor presence is deduplicated per observation; calculated SOV actor numerators sum exactly to the shared denominator; extractor/hash contracts never mix; old completed snapshots stay immutable after later P6-B backfill; Standard cannot generate/read P6-C; safe lifecycle logs exclude private content and secrets; prior P1–P6-B regression tests, build, Chromium smoke tests and runtime dependency audit all pass.
 
+P6-D release evidence requires proof that comparisons only use compatible immutable P6-C snapshots; no-comparison/UNKNOWN states are never fabricated as numeric zero; trigger evidence remains immutable through acknowledge/resolve; reconciliation is bounded and zero-network; dashboards and `PROJECT_REPORT_V2` read persisted facts only; optional DeepSeek trend analysis is explicit user-triggered advisory work and cannot mutate deterministic P6 facts; P6-D lifecycle observability excludes prompt/answer/provider bodies, secrets, private aliases, citation URLs, reasoning and full report payloads; full Vitest, build, Chromium smoke tests and runtime dependency audit all pass.
+
 ## Roadmap
 
 - P0 Platform foundation — complete
@@ -211,4 +235,4 @@ P6-C release evidence requires proof that authoritative metric materialization m
 - P6-A Prompt Monitor & Sampling Core — complete
 - P6-B Citation & Mention Intelligence — complete
 - P6-C Visibility Metrics & Competitor Share of Voice — complete
-- P6-D History, Dashboard, Alerts & Report Integration — next
+- P6-D History, Dashboard, Alerts & Report Integration — complete
