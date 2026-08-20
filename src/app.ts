@@ -30,6 +30,7 @@ import { createVisibilityMetricsRoutes } from './modules/visibility/visibility-m
 import type { VisibilityMetricsQueue } from './modules/visibility/visibility-metrics.queue.js';
 import { createVisibilityMetricsWebRoutes } from './modules/visibility/visibility-metrics.web.routes.js';
 import { createVisibilityHistoryRoutes } from './modules/visibility/visibility-history.routes.js';
+import { visibilityHistoryWebRoutes } from './modules/visibility/visibility-history.web.routes.js';
 import { webRoutes } from './web/routes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -73,6 +74,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/', visibilityWebRoutes);
   app.use('/', visibilityIntelligenceWebRoutes);
   app.use('/', createVisibilityMetricsWebRoutes(options.visibilityMetricsQueue));
+  app.use('/', visibilityHistoryWebRoutes);
   app.use('/', webRoutes);
   app.use(errorHandler);
   return app;
