@@ -183,7 +183,7 @@ describe('P6-D safe observability', () => {
   it('emits reconciliation completion only after all enqueue writes succeed', async () => {
     const sink = vi.fn();
     const observability = new VisibilityHistoryObservability(sink);
-    const queue = { enqueueSnapshot: vi.fn(async () => undefined) };
+    const queue = { enqueueSnapshot: vi.fn(async () => ({ id: 'monitoring-job' })) };
     const repository = {
       listReconciliationCandidates: vi.fn(async () => [
         { id: 'snapshot-a', projectId: 'project-a' },
