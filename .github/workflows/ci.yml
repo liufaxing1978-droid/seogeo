@@ -56,26 +56,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
       - name: Test
-        shell: bash
-        run: |
-          set +e
-          npm test -- --reporter=verbose 2>&1 | tee /tmp/vitest.log
-          status=${PIPESTATUS[0]}
-          {
-            echo '## Vitest tail'
-            echo '```text'
-            tail -n 200 /tmp/vitest.log
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
-      - name: Upload Vitest log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: verify-vitest-log
-          path: /tmp/vitest.log
-          if-no-files-found: error
-          retention-days: 1
+        run: npm test
       - name: Build
         run: npm run build
 
