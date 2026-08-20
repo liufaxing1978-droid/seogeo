@@ -1,14 +1,36 @@
-model VisibilityMetricComparison {
-  id                String   @id @default(uuid()) @db.Uuid
-  projectId         String   @db.Uuid
-  comparisonVersion String
-  currentSnapshotId String   @db.Uuid
-  previousSnapshotId String  @db.Uuid
-  windowDurationMs  BigInt
-  gapDurationMs     BigInt
-  createdAt         DateTime @default(now())
+enum VisibilityAlertRuleType {
+  OWNED_MENTION_RATE_DROP
+  OWNED_CITATION_RATE_DROP
+  OWNED_SOV_DROP
+  COMPETITOR_SOV_RISE
+  EVIDENCE_COVERAGE_DROP
+  METRIC_BECAME_UNKNOWN
+}
 
-  rows VisibilityMetricDeltaRow[]
+enum VisibilityAlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum VisibilityAlertEventStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+model VisibilityMetricComparison {
+  id                 String   @id @default(uuid()) @db.Uuid
+  projectId          String   @db.Uuid
+  comparisonVersion  String
+  currentSnapshotId  String   @db.Uuid
+  previousSnapshotId String   @db.Uuid
+  windowDurationMs   BigInt
+  gapDurationMs      BigInt
+  createdAt          DateTime @default(now())
+
+  rows   VisibilityMetricDeltaRow[]
+  alerts VisibilityAlertEvent[]
 
   @@unique([projectId, comparisonVersion, currentSnapshotId, previousSnapshotId], map: "VMComparison_identity_key")
   @@index([projectId, createdAt], map: "VMComparison_project_created_idx")
@@ -41,4 +63,49 @@ model VisibilityMetricDeltaRow {
   @@index([projectId, createdAt], map: "VMDelta_project_created_idx")
   @@index([visibilityMetricComparisonId, metricType], map: "VMDelta_comparison_metric_idx")
   @@index([actorSubjectId], map: "VMDelta_actor_subject_idx")
+}
+
+model VisibilityAlertRule {
+  id                   String                  @id @default(uuid()) @db.Uuid
+  projectId            String                  @db.Uuid
+  ruleType             VisibilityAlertRuleType
+  name                 String
+  enabled              Boolean                 @default(true)
+  severity             VisibilityAlertSeverity @default(WARNING)
+  thresholdBasisPoints Int?
+  actorSubjectId       String?                 @db.Uuid
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+
+  events VisibilityAlertEvent[]
+
+  @@index([projectId, enabled], map: "VAlertRule_project_enabled_idx")
+  @@index([actorSubjectId], map: "VAlertRule_actor_subject_idx")
+}
+
+model VisibilityAlertEvent {
+  id                   String                     @id @default(uuid()) @db.Uuid
+  projectId            String                     @db.Uuid
+  alertRuleId          String                     @db.Uuid
+  comparisonId         String                     @db.Uuid
+  actorKey             String?
+  eventFingerprint     String                     @unique
+  status               VisibilityAlertEventStatus @default(OPEN)
+  severity             VisibilityAlertSeverity
+  reasonCode           String
+  deltaBasisPoints     Int?
+  previousMetricStatus VisibilityMetricStatus?
+  currentMetricStatus  VisibilityMetricStatus?
+  triggeredAt          DateTime
+  acknowledgedAt       DateTime?
+  resolvedAt           DateTime?
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
+
+  rule       VisibilityAlertRule        @relation(fields: [alertRuleId], references: [id], onDelete: Restrict)
+  comparison VisibilityMetricComparison @relation(fields: [comparisonId], references: [id], onDelete: Restrict)
+
+  @@index([projectId, status, triggeredAt], map: "VAlertEvent_project_status_time_idx")
+  @@index([alertRuleId, actorKey, triggeredAt], map: "VAlertEvent_rule_actor_time_idx")
+  @@index([comparisonId], map: "VAlertEvent_comparison_idx")
 }
