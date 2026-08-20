@@ -10,6 +10,7 @@ describe('queue registry', () => {
       'content',
       'competitor',
       'search-console-sync',
+      'growth-materialization',
       'visibility',
       'visibility-extraction',
       'visibility-metrics',
