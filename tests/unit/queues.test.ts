@@ -12,6 +12,7 @@ describe('queue registry', () => {
       'visibility',
       'visibility-extraction',
       'visibility-metrics',
+      'visibility-monitoring',
       'ai',
       'report'
     ]);
