@@ -65,17 +65,27 @@ export function parseOAuthCredentialKey(value: string | undefined): Buffer {
   return key;
 }
 
-function encryptPayload(payload: unknown, key: Buffer, keyVersion: string): EncryptedCredential {
+function credentialAad(projectId: string, provider: OAuthCredentialProviderName, keyVersion: string): Buffer {
+  return Buffer.from(JSON.stringify({ projectId, provider, keyVersion }), 'utf8');
+}
+
+function encryptPayload(
+  payload: unknown,
+  key: Buffer,
+  metadata: { projectId: string; provider: OAuthCredentialProviderName; keyVersion: string }
+): EncryptedCredential {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
+  cipher.setAAD(credentialAad(metadata.projectId, metadata.provider, metadata.keyVersion));
   const plaintext = Buffer.from(JSON.stringify(payload), 'utf8');
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const authTag = cipher.getAuthTag();
-  return { ciphertext, iv, authTag, keyVersion };
+  return { ciphertext, iv, authTag, keyVersion: metadata.keyVersion };
 }
 
 function decryptPayload(record: StoredOAuthCredentialRecord, key: Buffer): unknown {
   const decipher = createDecipheriv('aes-256-gcm', key, record.iv, { authTagLength: 16 });
+  decipher.setAAD(credentialAad(record.projectId, record.provider, record.keyVersion));
   decipher.setAuthTag(record.authTag);
   const plaintext = Buffer.concat([decipher.update(record.ciphertext), decipher.final()]);
   try {
@@ -102,7 +112,7 @@ export function createOAuthCredentialVault(options: OAuthCredentialVaultOptions)
 
   return {
     async put(projectId, provider, payload) {
-      const encrypted = encryptPayload(payload, key, keyVersion);
+      const encrypted = encryptPayload(payload, key, { projectId, provider, keyVersion });
       const record = await options.store.createCredentialRecord({ projectId, provider, ...encrypted });
       return record.id;
     },
@@ -112,10 +122,14 @@ export function createOAuthCredentialVault(options: OAuthCredentialVaultOptions)
     },
 
     async replace(credentialRef, payload) {
-      await requireActive(credentialRef);
+      const record = await requireActive(credentialRef);
       await options.store.replaceCredentialCiphertext(
         credentialRef,
-        encryptPayload(payload, key, keyVersion)
+        encryptPayload(payload, key, {
+          projectId: record.projectId,
+          provider: record.provider,
+          keyVersion
+        })
       );
     },
 
