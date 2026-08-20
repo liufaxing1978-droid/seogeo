@@ -18,11 +18,25 @@ import {
   processVisibilityMetricsJob,
   VISIBILITY_METRICS_WORKER_CONCURRENCY
 } from '../modules/visibility/visibility-metrics.worker.js';
+import {
+  VISIBILITY_MONITORING_ATTEMPTS,
+  VISIBILITY_MONITORING_QUEUE_NAME,
+  VisibilityMonitoringQueue,
+  type VisibilityMonitoringQueuePort
+} from '../modules/visibility/visibility-monitoring.queue.js';
+import {
+  processVisibilityMonitoringJob,
+  VISIBILITY_MONITORING_WORKER_CONCURRENCY
+} from '../modules/visibility/visibility-monitoring.worker.js';
 import { processVisibilityJob, type VisibilityJobData } from '../modules/visibility/visibility.worker.js';
 import { createRedisConnection } from './connection.js';
 import { QUEUE_NAMES } from './queues.js';
 
-export function workerDefinitionForQueue(name: 'visibility' | 'visibility-extraction' | 'visibility-metrics') {
+const VISIBILITY_MONITORING_RECONCILE_EVERY_MS = 60 * 60 * 1000;
+
+export function workerDefinitionForQueue(
+  name: 'visibility' | 'visibility-extraction' | 'visibility-metrics' | 'visibility-monitoring'
+) {
   if (name === 'visibility') {
     return {
       processor: processVisibilityJob,
@@ -41,12 +55,25 @@ export function workerDefinitionForQueue(name: 'visibility' | 'visibility-extrac
       concurrency: VISIBILITY_METRICS_WORKER_CONCURRENCY
     } as const;
   }
+  if (name === 'visibility-monitoring') {
+    return {
+      processor: processVisibilityMonitoringJob,
+      concurrency: VISIBILITY_MONITORING_WORKER_CONCURRENCY
+    } as const;
+  }
   throw new Error(`Unsupported worker definition: ${name}`);
 }
 
 export async function startWorkers() {
   const connection = createRedisConnection();
   const supportQueues: Queue[] = [];
+
+  const monitoringSupportQueue = new Queue(VISIBILITY_MONITORING_QUEUE_NAME, { connection });
+  supportQueues.push(monitoringSupportQueue);
+  const monitoringQueue = new VisibilityMonitoringQueue(
+    monitoringSupportQueue as unknown as VisibilityMonitoringQueuePort
+  );
+
   const workers = QUEUE_NAMES.map((name) => {
     if (name === 'crawl') return new Worker<CrawlJobData>(name, processCrawlJob, { connection });
     if (name === 'seo-audit') return new Worker<SeoAuditJobData>(name, processSeoAuditJob, { connection });
@@ -77,13 +104,36 @@ export async function startWorkers() {
     if (name === VISIBILITY_METRICS_QUEUE_NAME) {
       return new Worker<Record<string, unknown>>(
         name,
-        async (job) => processVisibilityMetricsJob({ name: job.name, data: job.data }),
+        async (job) => processVisibilityMetricsJob(
+          { name: job.name, data: job.data },
+          { monitoringQueue }
+        ),
         { connection, concurrency: VISIBILITY_METRICS_WORKER_CONCURRENCY }
+      );
+    }
+    if (name === VISIBILITY_MONITORING_QUEUE_NAME) {
+      return new Worker<Record<string, unknown>>(
+        name,
+        async (job) => processVisibilityMonitoringJob(
+          { name: job.name, data: job.data },
+          { queue: monitoringQueue }
+        ),
+        { connection, concurrency: VISIBILITY_MONITORING_WORKER_CONCURRENCY }
       );
     }
     if (name === 'ai') return new Worker<AiJobData>(name, processAiJob, { connection });
     return new Worker(name, async () => undefined, { connection });
   });
+
+  await monitoringSupportQueue.upsertJobScheduler(
+    'visibility-monitoring-hourly-reconcile',
+    { every: VISIBILITY_MONITORING_RECONCILE_EVERY_MS },
+    {
+      name: 'reconcile-history',
+      data: {},
+      opts: { attempts: VISIBILITY_MONITORING_ATTEMPTS }
+    }
+  );
 
   return {
     async close() {
