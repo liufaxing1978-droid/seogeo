@@ -261,7 +261,6 @@ describe('P7-A persisted growth evidence adapters', () => {
     });
 
     const modules = new Set(rows.map((row) => row.sourceModule));
-    expect(modules).toEqual(expect.objectContaining ? modules : modules);
     expect(modules.has('P2_SEO')).toBe(true);
     expect(modules.has('P3_CITABILITY')).toBe(true);
     expect(modules.has('P5_CONTENT')).toBe(true);
