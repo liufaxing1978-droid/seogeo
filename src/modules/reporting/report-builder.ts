@@ -2,6 +2,10 @@ import { Prisma } from '@prisma/client';
 import { hasFeature } from '../../auth/feature-flags.js';
 import { NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
+import {
+  visibilityHistoryObservability,
+  type VisibilityHistoryObservability
+} from '../visibility/visibility-history.observability.js';
 import { reportObservability, type ReportObservability } from './report-observability.js';
 
 export const PROJECT_REPORT_VERSION = 'PROJECT_REPORT_V1';
@@ -360,8 +364,13 @@ export async function generateProjectReport(projectId: string, observability: Re
 
 export async function generateProjectReportV2(
   projectId: string,
-  options: { visibilityReader?: ReportVisibilityReader; observability?: ReportObservability } = {}
+  options: {
+    visibilityReader?: ReportVisibilityReader;
+    observability?: ReportObservability;
+    p6dObservability?: VisibilityHistoryObservability;
+  } = {}
 ) {
+  const startedAt = Date.now();
   const base = await collectProjectReportBase(projectId);
   const observability = options.observability ?? reportObservability;
   let visibility: ReportVisibilityBundle | null = null;
@@ -377,7 +386,7 @@ export async function generateProjectReportV2(
     ? [...base.sourceReferences, ...visibility.sourceReferences]
     : base.sourceReferences;
 
-  return persistProjectReport({
+  const report = await persistProjectReport({
     projectId,
     reportVersion: PROJECT_REPORT_V2_VERSION,
     factSnapshot,
@@ -385,4 +394,11 @@ export async function generateProjectReportV2(
     sourceReferences,
     observability
   });
+  (options.p6dObservability ?? visibilityHistoryObservability).emit({
+    event: 'report.v2.generated',
+    projectId,
+    status: 'COMPLETED',
+    durationMs: Date.now() - startedAt
+  });
+  return report;
 }
