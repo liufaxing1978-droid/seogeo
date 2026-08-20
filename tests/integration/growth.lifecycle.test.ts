@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PrismaClient, type GrowthLifecycleStatus } from '@prisma/client';
 import { GrowthRepository } from '../../src/modules/growth/growth.repository.js';
 import { reconcileOpportunityLifecycle } from '../../src/modules/growth/growth.service.js';
@@ -64,6 +64,32 @@ describe('P7-A Growth lifecycle reconciliation', () => {
     expect(await prisma.growthOpportunityLifecycleEvent.findFirst({
       where: { opportunityIdentityId: row.id, eventType: 'AUTO_RESOLVED' }
     })).not.toBeNull();
+  });
+
+  it('emits a bounded growth.lifecycle.changed event for automatic transitions', async () => {
+    const row = await identity('REVIEWED');
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      await reconcileOpportunityLifecycle(row.id, { id: null, actionable: false }, [
+        { actionable: false }, { actionable: false }
+      ]);
+      const payload = info.mock.calls
+        .map(([value]) => value)
+        .find((value) => value && typeof value === 'object' && (value as Record<string, unknown>).event === 'growth.lifecycle.changed') as Record<string, unknown> | undefined;
+
+      expect(payload).toMatchObject({
+        event: 'growth.lifecycle.changed',
+        projectId,
+        identityId: row.id,
+        lifecycleEventType: 'AUTO_RESOLVED',
+        lifecycleStatus: 'RESOLVED',
+        reasonCode: 'GROWTH_OPPORTUNITY_NON_ACTIONABLE_TWO_WINDOWS'
+      });
+      expect(payload).not.toHaveProperty('normalizedQuery');
+      expect(payload).not.toHaveProperty('evidence');
+    } finally {
+      info.mockRestore();
+    }
   });
 
   it.each(['DONE', 'RESOLVED'] as const)('AUTO_REOPENs recurrence after %s', async (status) => {
