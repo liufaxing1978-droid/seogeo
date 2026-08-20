@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { hasFeature } from '../../auth/feature-flags.js';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
+import { createVisibilityTrendAnalysisTask } from '../ai/visibility-trend-analysis.js';
 import {
   VisibilityAlertsError,
   VisibilityAlertsService
@@ -282,6 +283,24 @@ export function createVisibilityHistoryRoutes(alertsService = new VisibilityAler
           gapDurationMs: comparison.gapDurationMs.toString(),
           currentSnapshot: byId.get(comparison.currentSnapshotId) ?? null,
           previousSnapshot: byId.get(comparison.previousSnapshotId) ?? null
+        }
+      });
+    } catch (error) { next(error); }
+  });
+
+  router.post('/projects/:projectId/visibility/history/comparisons/:comparisonId/trend-analysis', async (req, res, next) => {
+    try {
+      await requireHistoryProject(req.params.projectId);
+      z.object({}).strict().parse(req.body ?? {});
+      const task = await createVisibilityTrendAnalysisTask(req.params.projectId, req.params.comparisonId);
+      res.status(202).json({
+        data: {
+          id: task.id,
+          projectId: task.projectId,
+          taskType: task.taskType,
+          status: task.status,
+          promptVersion: task.promptVersion,
+          createdAt: task.createdAt
         }
       });
     } catch (error) { next(error); }
