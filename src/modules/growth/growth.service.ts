@@ -12,6 +12,7 @@ import {
   type GrowthEvidence
 } from './growth-evidence.js';
 import { detectNormalOpportunityTypes, selectPrimaryType } from './growth-detectors.js';
+import { emitGrowthEvent } from './growth.observability.js';
 import { growthRepository } from './growth.repository.js';
 import {
   calculateGrowthScore,
@@ -174,14 +175,15 @@ export async function reconcileOpportunityLifecycle(
   history: readonly GrowthLifecycleSnapshotState[]
 ) {
   const lifecycle = await prisma.growthOpportunityLifecycle.findUnique({
-    where: { opportunityIdentityId: identityId }
+    where: { opportunityIdentityId: identityId },
+    include: { identity: { select: { projectId: true } } }
   });
   if (!lifecycle) throw new Error('Growth opportunity lifecycle not found');
 
   const now = new Date();
   if (currentSnapshot.actionable) {
     if (lifecycle.status === 'DONE' || lifecycle.status === 'RESOLVED') {
-      return growthRepository.updateLifecycle(
+      const updated = await growthRepository.updateLifecycle(
         identityId,
         {
           status: 'REOPENED',
@@ -194,6 +196,14 @@ export async function reconcileOpportunityLifecycle(
           reasonCode: 'GROWTH_OPPORTUNITY_RECURRED'
         }
       );
+      emitGrowthEvent('growth.lifecycle.changed', {
+        projectId: lifecycle.identity.projectId,
+        identityId,
+        lifecycleEventType: 'AUTO_REOPENED',
+        lifecycleStatus: 'REOPENED',
+        reasonCode: 'GROWTH_OPPORTUNITY_RECURRED'
+      });
+      return updated;
     }
 
     if (currentSnapshot.id && lifecycle.latestSnapshotId !== currentSnapshot.id) {
@@ -212,7 +222,7 @@ export async function reconcileOpportunityLifecycle(
     lifecycle.status !== 'DISMISSED' &&
     lifecycle.status !== 'RESOLVED'
   ) {
-    return growthRepository.updateLifecycle(
+    const updated = await growthRepository.updateLifecycle(
       identityId,
       {
         status: 'RESOLVED',
@@ -224,6 +234,14 @@ export async function reconcileOpportunityLifecycle(
         reasonCode: 'GROWTH_OPPORTUNITY_NON_ACTIONABLE_TWO_WINDOWS'
       }
     );
+    emitGrowthEvent('growth.lifecycle.changed', {
+      projectId: lifecycle.identity.projectId,
+      identityId,
+      lifecycleEventType: 'AUTO_RESOLVED',
+      lifecycleStatus: 'RESOLVED',
+      reasonCode: 'GROWTH_OPPORTUNITY_NON_ACTIONABLE_TWO_WINDOWS'
+    });
+    return updated;
   }
 
   return lifecycle;
