@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('opens Citation Monitor, configures owned subject, and keeps P6-C metrics disabled', async ({ page }) => {
+test('opens Citation Monitor, configures owned subject, and keeps metrics on the dedicated P6-C page', async ({ page }) => {
   const suffix = Date.now();
   await page.goto('/projects/new');
   await page.getByLabel('项目名称').fill('Citation Monitor Smoke');
@@ -17,9 +17,10 @@ test('opens Citation Monitor, configures owned subject, and keeps P6-C metrics d
   await expect(page.getByRole('main').getByRole('heading', { level: 1, name: 'Citation 监控' })).toBeVisible();
   await expect(page.getByText('UNKNOWN 与 NOT_ELIGIBLE 不等于零', { exact: false })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Citation 监控' })).toHaveClass(/active/);
-  await expect(page.getByText('Mention Rate')).toHaveCount(0);
-  await expect(page.getByText('Citation Rate')).toHaveCount(0);
-  await expect(page.getByText('Share of Voice')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Visibility 指标' })).toBeVisible();
+  await expect(page.getByRole('main').getByText('Mention Rate')).toHaveCount(0);
+  await expect(page.getByRole('main').getByText('Citation Rate')).toHaveCount(0);
+  await expect(page.getByRole('main').getByText('Share of Voice')).toHaveCount(0);
 
   await page.getByRole('link', { name: '监控主体' }).first().click();
   await expect(page.getByRole('main').getByRole('heading', { level: 1, name: '监控主体' })).toBeVisible();
@@ -38,5 +39,6 @@ test('opens Citation Monitor, configures owned subject, and keeps P6-C metrics d
 
   await page.getByRole('main').getByRole('link', { name: 'Citation 监控', exact: true }).click();
   await expect(page.getByRole('main').getByRole('heading', { level: 1, name: 'Citation 监控' })).toBeVisible();
-  await expect(page.getByText('P6-C 指标（未启用）')).toBeVisible();
+  await expect(page.getByRole('main').getByText('Mention Rate')).toHaveCount(0);
+  await expect(page.getByRole('main').getByText('Citation Rate')).toHaveCount(0);
 });
