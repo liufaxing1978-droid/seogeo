@@ -10,10 +10,10 @@ model VisibilityMetricComparison {
 
   rows VisibilityMetricDeltaRow[]
 
-  @@unique([projectId, comparisonVersion, currentSnapshotId, previousSnapshotId])
-  @@index([projectId, createdAt])
-  @@index([currentSnapshotId])
-  @@index([previousSnapshotId])
+  @@unique([projectId, comparisonVersion, currentSnapshotId, previousSnapshotId], map: "VMComparison_identity_key")
+  @@index([projectId, createdAt], map: "VMComparison_project_created_idx")
+  @@index([currentSnapshotId], map: "VMComparison_current_idx")
+  @@index([previousSnapshotId], map: "VMComparison_previous_idx")
 }
 
 model VisibilityMetricDeltaRow {
@@ -37,8 +37,8 @@ model VisibilityMetricDeltaRow {
 
   comparison VisibilityMetricComparison @relation(fields: [visibilityMetricComparisonId], references: [id], onDelete: Cascade)
 
-  @@unique([visibilityMetricComparisonId, metricType, dimensionType, dimensionKey, actorKey])
-  @@index([projectId, createdAt])
-  @@index([visibilityMetricComparisonId, metricType])
-  @@index([actorSubjectId])
+  @@unique([visibilityMetricComparisonId, metricType, dimensionType, dimensionKey, actorKey], map: "VMDelta_identity_key")
+  @@index([projectId, createdAt], map: "VMDelta_project_created_idx")
+  @@index([visibilityMetricComparisonId, metricType], map: "VMDelta_comparison_metric_idx")
+  @@index([actorSubjectId], map: "VMDelta_actor_subject_idx")
 }
