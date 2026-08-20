@@ -50,7 +50,7 @@ export type GrowthMaterializationDeps = {
 };
 
 export type GrowthLifecycleSnapshotState = {
-  id: string | null;
+  id?: string | null;
   actionable: boolean;
 };
 
