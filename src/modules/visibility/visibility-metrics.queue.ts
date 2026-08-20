@@ -41,7 +41,7 @@ export function buildVisibilityMetricsJobId(
   data: MaterializeVisibilityMetricSnapshotJobData
 ): string {
   const digest = createHash('sha256').update(canonicalJobIdentity(data)).digest('hex');
-  return `visibility-metrics:${digest}`;
+  return `visibility-metrics-${digest}`;
 }
 
 export class VisibilityMetricsQueue {
