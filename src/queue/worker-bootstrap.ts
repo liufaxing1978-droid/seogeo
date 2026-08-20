@@ -5,6 +5,12 @@ import { processContentRefreshJob, type ContentRefreshJobData } from '../modules
 import { processCrawlJob, type CrawlJobData } from '../modules/crawler/crawl.worker.js';
 import { processGeoAuditJob, type GeoAuditJobData } from '../modules/geo/geo.worker.js';
 import {
+  GROWTH_MATERIALIZATION_QUEUE_NAME,
+  GROWTH_MATERIALIZATION_WORKER_CONCURRENCY,
+  processGrowthMaterializationJob,
+  type GrowthMaterializationJobData
+} from '../modules/growth/growth.worker.js';
+import {
   processSearchConsoleSyncJob,
   SEARCH_CONSOLE_SYNC_QUEUE_NAME,
   SEARCH_CONSOLE_SYNC_WORKER_CONCURRENCY,
@@ -41,12 +47,24 @@ import { QUEUE_NAMES } from './queues.js';
 const VISIBILITY_MONITORING_RECONCILE_EVERY_MS = 60 * 60 * 1000;
 
 export function workerDefinitionForQueue(
-  name: 'search-console-sync' | 'visibility' | 'visibility-extraction' | 'visibility-metrics' | 'visibility-monitoring'
+  name:
+    | 'search-console-sync'
+    | 'growth-materialization'
+    | 'visibility'
+    | 'visibility-extraction'
+    | 'visibility-metrics'
+    | 'visibility-monitoring'
 ) {
   if (name === SEARCH_CONSOLE_SYNC_QUEUE_NAME) {
     return {
       processor: processSearchConsoleSyncJob,
       concurrency: SEARCH_CONSOLE_SYNC_WORKER_CONCURRENCY
+    } as const;
+  }
+  if (name === GROWTH_MATERIALIZATION_QUEUE_NAME) {
+    return {
+      processor: processGrowthMaterializationJob,
+      concurrency: GROWTH_MATERIALIZATION_WORKER_CONCURRENCY
     } as const;
   }
   if (name === 'visibility') {
@@ -97,6 +115,13 @@ export async function startWorkers() {
         connection,
         concurrency: SEARCH_CONSOLE_SYNC_WORKER_CONCURRENCY
       });
+    }
+    if (name === GROWTH_MATERIALIZATION_QUEUE_NAME) {
+      return new Worker<GrowthMaterializationJobData>(
+        name,
+        async (job) => processGrowthMaterializationJob({ name: job.name, data: job.data }),
+        { connection, concurrency: GROWTH_MATERIALIZATION_WORKER_CONCURRENCY }
+      );
     }
     if (name === 'visibility') {
       return new Worker<VisibilityJobData>(name, processVisibilityJob, {
