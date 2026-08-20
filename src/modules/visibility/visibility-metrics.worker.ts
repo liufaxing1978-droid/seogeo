@@ -16,9 +16,14 @@ export interface VisibilityMetricsJobLike {
   data: Record<string, unknown>;
 }
 
+export interface VisibilityMonitoringHandoffPort {
+  enqueueSnapshot(projectId: string, snapshotId: string): Promise<unknown>;
+}
+
 export interface VisibilityMetricsWorkerDependencies {
   metricsService?: Pick<VisibilityMetricsService, 'materializeSnapshot'>;
   repository?: Pick<VisibilityMetricsRepository, 'get'>;
+  monitoringQueue?: VisibilityMonitoringHandoffPort;
 }
 
 function requiredString(value: unknown, field: string): string {
@@ -86,5 +91,15 @@ export async function processVisibilityMetricsJob(
   });
 
   const service = dependencies.metricsService ?? new VisibilityMetricsService();
-  return service.materializeSnapshot(data.projectId, data.snapshotId);
+  const completed = await service.materializeSnapshot(data.projectId, data.snapshotId);
+
+  if (completed.status === 'COMPLETED' && dependencies.monitoringQueue) {
+    try {
+      await dependencies.monitoringQueue.enqueueSnapshot(data.projectId, data.snapshotId);
+    } catch {
+      // P6-C truth is already durable. P6-D reconciliation repairs a missed handoff.
+    }
+  }
+
+  return completed;
 }
