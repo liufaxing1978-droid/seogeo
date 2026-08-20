@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { emitVisibilityMetricsEvent } from './visibility-metrics.observability.js';
 
 export const VISIBILITY_METRICS_QUEUE_NAME = 'visibility-metrics' as const;
 export const VISIBILITY_METRICS_ATTEMPTS = 2;
@@ -48,7 +49,7 @@ export class VisibilityMetricsQueue {
   constructor(private readonly queue: VisibilityMetricsQueuePort) {}
 
   async enqueueSnapshot(data: MaterializeVisibilityMetricSnapshotJobData) {
-    return this.queue.add(
+    const result = await this.queue.add(
       'materialize-metric-snapshot',
       data as unknown as Record<string, unknown>,
       {
@@ -56,5 +57,17 @@ export class VisibilityMetricsQueue {
         attempts: VISIBILITY_METRICS_ATTEMPTS
       }
     );
+
+    emitVisibilityMetricsEvent('visibility.metrics.queued', {
+      projectId: data.projectId,
+      snapshotId: data.snapshotId,
+      formulaVersion: data.formulaVersion,
+      extractorVersion: data.extractorVersion,
+      subjectSetHash: data.subjectSetHash,
+      scopeHash: data.scopeHash,
+      status: 'QUEUED'
+    });
+
+    return result;
   }
 }
