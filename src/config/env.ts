@@ -6,6 +6,11 @@ const optionalNonBlankString = z.preprocess(
   z.string().min(1).optional()
 );
 
+const optionalUrl = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().url().optional()
+);
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -27,7 +32,12 @@ const schema = z.object({
   DEEPSEEK_REASONING_MODEL: z.string().min(1).default('deepseek-v4-pro'),
   DEEPSEEK_TIMEOUT_MS: z.coerce.number().int().min(1000).max(600000).default(180000),
   AI_MAX_INPUT_CHARS: z.coerce.number().int().min(1000).max(2000000).default(200000),
-  AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1).max(65536).default(8192)
+  AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(1).max(65536).default(8192),
+  GOOGLE_OAUTH_CLIENT_ID: optionalNonBlankString,
+  GOOGLE_OAUTH_CLIENT_SECRET: optionalNonBlankString,
+  GOOGLE_OAUTH_REDIRECT_URI: optionalUrl,
+  OAUTH_CREDENTIAL_ENCRYPTION_KEY: optionalNonBlankString,
+  OAUTH_CREDENTIAL_KEY_VERSION: z.string().min(1).default('v1')
 });
 
 export const env = schema.parse(process.env);
