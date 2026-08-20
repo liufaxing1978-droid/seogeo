@@ -1,10 +1,13 @@
+<% const pct = (value) => value == null ? '—' : `${(value * 100).toFixed(1)}%`; %>
 <section class="page-header">
   <div>
-    <p class="eyebrow">AI Visibility · P6-A</p>
+    <p class="eyebrow">AI Visibility · P6</p>
     <h1>AI Visibility</h1>
     <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
   </div>
   <div class="actions">
+    <a class="button secondary" href="/projects/<%= project.id %>/visibility/history">历史趋势</a>
+    <a class="button secondary" href="/projects/<%= project.id %>/visibility/alerts">告警</a>
     <a class="button" href="/projects/<%= project.id %>/visibility/prompts">配置 Prompt</a>
   </div>
 </section>
@@ -13,11 +16,40 @@
   <div class="panel-header">
     <div>
       <h2>官方 API 可见性采样</h2>
-      <p class="muted">本阶段记录官方 Provider API 的真实采样观察；它不等同于任何消费者产品网页端结果。</p>
+      <p class="muted">采样记录官方 Provider API 的观察结果；它不等同于消费者产品网页端排名或展示结果。</p>
     </div>
     <span class="badge">API 采样</span>
   </div>
 </section>
+
+<% if (visibilitySummary) { %>
+<section class="panel">
+  <div class="panel-header">
+    <div><h2>最新 Visibility 指标</h2><p class="muted">全部来自同一个最新 COMPLETED P6-C snapshot；UNKNOWN / NO_DATA 不会按 0 计算。</p></div>
+    <span class="badge"><%= visibilitySummary.snapshot.formulaVersion %></span>
+  </div>
+  <section class="metric-grid compact">
+    <article class="metric-card"><div class="metric-title">Owned Mention Rate</div><div class="metric-value"><%= pct(visibilitySummary.mentionRate?.ratio ?? null) %></div><div class="metric-caption"><%= visibilitySummary.mentionRate?.status ?? 'NO_DATA' %></div></article>
+    <article class="metric-card"><div class="metric-title">Owned Citation Rate</div><div class="metric-value"><%= pct(visibilitySummary.citationRate?.ratio ?? null) %></div><div class="metric-caption"><%= visibilitySummary.citationRate?.status ?? 'NO_DATA' %></div></article>
+    <article class="metric-card"><div class="metric-title">Owned Mention SOV</div><div class="metric-value"><%= pct(visibilitySummary.ownedSov?.ratio ?? null) %></div><div class="metric-caption"><%= visibilitySummary.ownedSov?.status ?? 'NO_DATA' %></div></article>
+    <article class="metric-card"><div class="metric-title">Evidence Coverage</div><div class="metric-value"><%= pct(visibilitySummary.evidenceCoverageRatio) %></div><div class="metric-caption"><%= visibilitySummary.snapshot.completedExtractionCount %>/<%= visibilitySummary.snapshot.candidateObservationCount %></div></article>
+  </section>
+  <div class="table-wrap"><table>
+    <tbody>
+      <tr><th>Measurement Window</th><td><%= new Date(visibilitySummary.snapshot.windowStart).toLocaleDateString('zh-CN') %> → <%= new Date(visibilitySummary.snapshot.windowEnd).toLocaleDateString('zh-CN') %></td><th>Input Cutoff</th><td><%= new Date(visibilitySummary.snapshot.inputCutoffAt).toLocaleString('zh-CN') %></td></tr>
+      <tr><th>Provider Coverage</th><td><%= visibilitySummary.providerCoverageCount %> 个 provider 维度</td><th>Open Alerts</th><td><%= visibilitySummary.openAlertCount %></td></tr>
+      <tr><th>Extractor</th><td><%= visibilitySummary.snapshot.extractorVersion %></td><th>Latest Comparison</th><td><%= visibilitySummary.comparison ? visibilitySummary.comparison.id : 'NO_COMPATIBLE_PREVIOUS' %></td></tr>
+    </tbody>
+  </table></div>
+  <% if (visibilitySummary.comparison?.deltas?.length) { %>
+    <div class="table-wrap"><table><thead><tr><th>Metric</th><th>Previous → Current</th><th>Delta</th></tr></thead><tbody>
+      <% for (const delta of visibilitySummary.comparison.deltas) { %><tr><td><%= delta.metricType %></td><td><%= delta.previousMetricStatus %> → <%= delta.currentMetricStatus %></td><td><%= delta.deltaBasisPoints == null ? '—' : `${delta.deltaBasisPoints > 0 ? '+' : ''}${delta.deltaBasisPoints} bp` %></td></tr><% } %>
+    </tbody></table></div>
+  <% } %>
+</section>
+<% } else { %>
+<section class="panel"><div class="panel-header"><div><h2>Visibility 指标</h2><p class="muted">尚无完成的 P6-C metric snapshot。页面访问不会触发采样或指标计算。</p></div></div></section>
+<% } %>
 
 <section class="metric-grid compact">
   <article class="metric-card">
@@ -73,7 +105,7 @@
 </section>
 
 <section class="panel">
-  <div class="panel-header"><div><h2>最近采样运行</h2><p class="muted">这里展示采样状态与观察数量，不推导下一阶段的引用/提及指标。</p></div></div>
+  <div class="panel-header"><div><h2>最近采样运行</h2><p class="muted">这里展示采样状态与观察数量，不在渲染阶段重新推导提及/引用事实。</p></div></div>
   <div class="table-wrap"><table>
     <thead><tr><th>运行</th><th>类型</th><th>状态</th><th>观察数</th><th>预算上限</th><th>创建时间</th></tr></thead>
     <tbody>
