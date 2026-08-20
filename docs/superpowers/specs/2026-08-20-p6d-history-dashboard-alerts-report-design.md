@@ -30,7 +30,7 @@ Rejected alternatives:
 1. **Query-time-only trend calculation** — simpler initially, but historical interpretation would depend on current query code and would be harder to audit or alert from reliably.
 2. **Full analytics/OLAP cube** — too large for the current product and would duplicate P6-C calculation responsibilities.
 
-P6-D therefore stores comparison/delta facts that reference two already-completed P6-C snapshots. It never mutates either source snapshot.
+P6-D stores comparison/delta facts that reference two already-completed P6-C snapshots. It never mutates either source snapshot.
 
 ## 3. Non-goals
 
@@ -46,7 +46,7 @@ P6-D does not:
 - send email, Slack, SMS, WeChat, or other external notifications in V1;
 - build a general-purpose BI/OLAP warehouse.
 
-The P6-D V1 notification channel is an **in-app alert inbox**. External delivery can be a later extension over the same immutable AlertEvent facts.
+The P6-D V1 notification channel is an **in-app alert inbox**. External delivery can be a later extension over the same AlertEvent trigger facts.
 
 ## 4. Source-of-truth boundary
 
@@ -80,7 +80,7 @@ The normal automatic selector chooses the nearest earlier compatible completed s
 
 A gap between the two windows is allowed, but the comparison records `gapDurationMs`. The UI must display the two exact date ranges and must not label a gapped comparison as “week-over-week” or another contiguous-period claim.
 
-A snapshot that fails any compatibility rule is not silently coerced into a comparison. The service either selects a different compatible predecessor or records/returns an explicit incomparable reason.
+If no compatible predecessor exists, the service returns an explicit `NO_COMPATIBLE_PREVIOUS` state and emits safe observability. It does **not** persist a fake comparison row and does not create a zero delta.
 
 ### 5.1 Row identity
 
@@ -131,7 +131,7 @@ These are state transitions, not zero-valued deltas.
 
 ## 6. Persistence design
 
-Create a dedicated P6-D Prisma model file, for example:
+Create a dedicated P6-D Prisma model file:
 
 ```text
 prisma/models/visibility-history.prisma
@@ -139,7 +139,7 @@ prisma/models/visibility-history.prisma
 
 ### 6.1 VisibilityMetricComparison
 
-One immutable comparison between two P6-C snapshots.
+A row exists only for a successfully materialized compatible pair. Incompatible/no-predecessor states are returned/logged rather than stored as fake comparison objects.
 
 Fields:
 
@@ -148,12 +148,9 @@ Fields:
 - `comparisonVersion` — initial `VISIBILITY_COMPARISON_V1`
 - `currentSnapshotId`
 - `previousSnapshotId`
-- `status`: `COMPLETED | INCOMPARABLE | FAILED`
-- `reasonCode?`
 - `windowDurationMs`
 - `gapDurationMs`
 - `createdAt`
-- `completedAt?`
 
 Uniqueness:
 
@@ -161,7 +158,7 @@ Uniqueness:
 (projectId, comparisonVersion, currentSnapshotId, previousSnapshotId)
 ```
 
-A comparison references source snapshots but never updates them.
+Both snapshot foreign keys use restrictive semantics: deleting P6-D data must never delete or cascade into P6-C source snapshots.
 
 ### 6.2 VisibilityMetricDeltaRow
 
@@ -193,6 +190,8 @@ Uniqueness:
 (comparisonId, metricType, dimensionType, dimensionKey, actorKey)
 ```
 
+Comparison and all delta rows are written transactionally. A failure leaves no partial completed comparison.
+
 ### 6.3 VisibilityAlertRule
 
 Project-owned deterministic alert configuration.
@@ -215,7 +214,7 @@ Fields:
 - `enabled`
 - `severity`: `INFO | WARNING | CRITICAL`
 - `thresholdBasisPoints?`
-- `actorSubjectId?` — required only for a competitor-specific rule when one actor is targeted
+- `actorSubjectId?` — optional for “any competitor”; required when one competitor is targeted
 - timestamps
 
 V1 numeric alert rules evaluate the `OVERALL` dimension only. Provider/Prompt-Set-specific alert rules are deferred to avoid alert storms and configuration complexity.
@@ -224,7 +223,7 @@ A project may have at most 50 active alert rules.
 
 ### 6.4 VisibilityAlertEvent
 
-Immutable trigger evidence plus lifecycle acknowledgement.
+Trigger evidence is immutable; only inbox lifecycle state/timestamps may change.
 
 Fields:
 
@@ -248,7 +247,9 @@ Fields:
 
 `eventFingerprint` is deterministic over rule/comparison/actor identity and unique, preventing duplicate inbox events from duplicate jobs.
 
-Resolution is deterministic: when the next compatible comparison for the same rule/actor no longer satisfies the rule, the latest open/acknowledged event may transition to `RESOLVED`. Event trigger facts are never deleted.
+`reasonCode`, source comparison, actor identity, delta/status transition and `triggeredAt` never change after creation. Acknowledge/resolve actions may update only lifecycle state and timestamps.
+
+Resolution is deterministic: when the next compatible comparison for the same rule/actor no longer satisfies the rule, the latest open/acknowledged event may transition to `RESOLVED`. Trigger evidence is never deleted.
 
 ## 7. Evidence coverage comparison
 
@@ -265,8 +266,6 @@ It is numeric only when `candidateObservationCount > 0`.
 ## 8. Comparison materialization service
 
 Introduce a pure comparison calculator and a persistence service.
-
-Conceptual split:
 
 ```text
 visibility-history.calculator.ts
@@ -287,8 +286,6 @@ visibility-history.service.ts
 ```
 
 The pure calculator must have no Prisma, BullMQ, provider, DeepSeek, or network dependency.
-
-A persistence failure must not leave a partially completed delta-row set.
 
 ## 9. Monitoring queue and reliability
 
@@ -313,10 +310,11 @@ Behavior:
 
 1. validate same-project completed snapshot;
 2. select nearest compatible predecessor;
-3. materialize or reuse immutable comparison;
-4. evaluate enabled alert rules;
-5. persist idempotent alert events;
-6. emit safe lifecycle observability.
+3. if none exists, finish as a normal no-comparison state;
+4. otherwise materialize or reuse the immutable comparison;
+5. evaluate enabled alert rules;
+6. persist idempotent alert events/resolutions;
+7. emit safe lifecycle observability.
 
 Attempts: `2` because the job is database-only and creates no paid provider request.
 
@@ -334,7 +332,7 @@ A monitoring-queue insertion failure must **not** roll back or mark the already-
 
 ### 9.3 reconcile-history
 
-A bounded recurring reconciliation job catches completed snapshots that have no comparison attempt because of prior queue/infrastructure failure.
+A bounded recurring reconciliation job catches completed snapshots that have no comparison work because of prior queue/infrastructure failure.
 
 V1 uses one global hourly reconciliation schedule. It is not a user-facing notification schedule.
 
@@ -349,8 +347,6 @@ The sweep never calls providers or DeepSeek.
 ## 10. Alert evaluation semantics
 
 Numeric rules trigger only when the comparison row is numeric on both sides.
-
-Examples:
 
 ```text
 OWNED_MENTION_RATE_DROP:
@@ -386,16 +382,16 @@ Base:
 /api/v1/projects/:projectId/visibility/history
 ```
 
-V1 read surface:
+V1 surface:
 
-- `GET /snapshots` — bounded completed P6-C snapshot summaries suitable for history navigation;
-- `GET /series` — one bounded time series for a requested metric/dimension/actor;
+- `GET /snapshots` — bounded completed P6-C snapshot summaries;
+- `GET /series` — one bounded metric/dimension/actor time series;
 - `GET /comparisons` — bounded comparison summaries;
 - `GET /comparisons/:comparisonId` — comparison + safe delta rows;
 - `GET /alerts` — bounded in-app alert inbox;
 - `GET /alert-rules` — project rules;
 - `POST /alert-rules` — create rule;
-- `PATCH /alert-rules/:ruleId` — enable/disable/update threshold/name/severity;
+- `PATCH /alert-rules/:ruleId` — update enabled/name/severity/threshold;
 - `POST /alerts/:alertId/acknowledge` — acknowledge one event.
 
 Hard bounds:
@@ -426,10 +422,10 @@ Show:
 - Owned Mention SOV history;
 - configured competitor SOV history;
 - Evidence Coverage history;
-- current vs previous compatible period delta;
+- current vs previous compatible-period delta;
 - exact current/previous date windows;
 - formula/extractor/subject-set/scope provenance;
-- status transitions and incomparable reasons.
+- status transitions and no-comparison reasons.
 
 Series gaps remain gaps. `UNKNOWN`, `NO_DATA`, `NOT_ELIGIBLE`, and `NO_SIGNAL` must not be plotted at 0%.
 
@@ -452,14 +448,14 @@ No external notification delivery is claimed.
 
 Upgrade `/projects/:id/visibility` from sampling-core-only overview to a real P6 overview while preserving P6-A sampling configuration/run access.
 
-For Advanced/Enterprise projects, show from the latest completed P6-C snapshot:
+For Advanced/Enterprise projects, show from one latest completed P6-C snapshot:
 
 - Owned Mention Rate;
 - Owned Citation Rate;
 - Owned Mention SOV;
 - Evidence Coverage;
 - latest compatible delta when available;
-- latest sampling time / latest metric cutoff;
+- latest sampling time / metric cutoff;
 - provider coverage summary;
 - open alert count.
 
@@ -500,7 +496,7 @@ This keeps ratios attached to their own project/sample contract.
 
 Reuse existing gates rather than inventing a new plan tier.
 
-- P6 history, comparisons, alerts and P6 dashboard details require `COMPETITOR_SOV` / the existing Advanced/Enterprise P6 access boundary.
+- P6 history, comparisons, alerts and P6 dashboard details require `COMPETITOR_SOV`, matching the P6-C Advanced/Enterprise boundary.
 - Sampling controls retain `AI_VISIBILITY` / `PROMPT_MONITOR` boundaries.
 - Optional trend AI requires both `AI_ANALYSIS` and P6 visibility access.
 - Base P5 reporting remains `REPORTING`.
@@ -548,7 +544,7 @@ It uses the existing P4 AI Gateway, not a P6 provider adapter.
 
 The fact packet is bounded and may include only:
 
-- project identity fields already safe for P4;
+- safe project identity fields;
 - current/previous P6-C snapshot IDs and date ranges;
 - safe Overall metric statuses/numerators/denominators;
 - P6-D delta rows;
@@ -579,7 +575,7 @@ Allowlisted fields only:
 
 - projectId;
 - current/previous snapshot IDs;
-- comparisonId;
+- comparisonId when one exists;
 - ruleId / alertId;
 - metricType;
 - actorKey where it is an internal bounded actor identifier, not a private alias;
@@ -615,7 +611,7 @@ Existing `PROJECT_REPORT_V1` rows remain immutable and readable. New report gene
 
 ## 21. Error handling
 
-Stable comparison errors/reasons should include:
+Stable comparison errors/reasons include:
 
 - `VISIBILITY_HISTORY_SNAPSHOT_NOT_FOUND`
 - `VISIBILITY_HISTORY_SNAPSHOT_NOT_COMPLETED`
@@ -635,8 +631,6 @@ A missing compatible predecessor is a normal “no comparison yet” state, not 
 
 ## 22. Testing strategy
 
-Required layers:
-
 ### Pure unit tests
 
 - compatibility matrix;
@@ -652,11 +646,11 @@ Required layers:
 ### Persistence integration
 
 - comparison/delta uniqueness;
-- immutable source snapshot references;
+- restrictive source snapshot references;
 - transactional comparison row completion;
 - project isolation;
 - alert rule/event uniqueness and lifecycle;
-- no cascade from P6-D deleting P6-C source snapshots.
+- deleting P6-D data cannot delete P6-C source snapshots.
 
 ### Worker / queue integration
 
@@ -665,6 +659,7 @@ Required layers:
 - duplicate delivery creates one comparison/event set;
 - monitoring queue failure does not invalidate completed P6-C;
 - reconciliation catches missing comparison work;
+- no compatible predecessor is a normal terminal path;
 - zero provider/network calls.
 
 ### REST integration
