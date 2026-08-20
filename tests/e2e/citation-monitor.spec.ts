@@ -17,7 +17,7 @@ test('opens Citation Monitor, configures owned subject, and keeps metrics on the
   await expect(page.getByRole('main').getByRole('heading', { level: 1, name: 'Citation 监控' })).toBeVisible();
   await expect(page.getByText('UNKNOWN 与 NOT_ELIGIBLE 不等于零', { exact: false })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Citation 监控' })).toHaveClass(/active/);
-  await expect(page.getByRole('link', { name: 'Visibility 指标' })).toBeVisible();
+  await expect(page.getByRole('navigation').getByRole('link', { name: 'Visibility 指标' })).toBeVisible();
   await expect(page.getByRole('main').getByText('Mention Rate')).toHaveCount(0);
   await expect(page.getByRole('main').getByText('Citation Rate')).toHaveCount(0);
   await expect(page.getByRole('main').getByText('Share of Voice')).toHaveCount(0);
