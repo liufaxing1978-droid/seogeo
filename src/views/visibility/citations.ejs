@@ -2,10 +2,11 @@
   <div>
     <p class="eyebrow">AI Visibility · P6-B</p>
     <h1>Citation 监控</h1>
-    <p class="muted"><%= project.name %> · 这里只展示持久化 observation 派生出的确定性 Mention / Citation 事实；P6-C 聚合指标尚未启用。</p>
+    <p class="muted"><%= project.name %> · 这里只展示持久化 observation 派生出的确定性 Mention / Citation 事实；聚合指标请前往独立的 Visibility 指标页面。</p>
   </div>
   <div class="actions">
     <a class="button" href="/projects/<%= project.id %>/visibility/subjects">监控主体</a>
+    <a class="button" href="/projects/<%= project.id %>/visibility/metrics">Visibility 指标</a>
     <a class="button" href="/projects/<%= project.id %>/visibility">返回 AI Visibility</a>
   </div>
 </section>

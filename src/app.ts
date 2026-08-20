@@ -28,6 +28,7 @@ import { visibilityIntelligenceWebRoutes } from './modules/visibility/visibility
 import type { VisibilityExtractionQueue } from './modules/visibility/visibility-extraction.queue.js';
 import { createVisibilityMetricsRoutes } from './modules/visibility/visibility-metrics.routes.js';
 import type { VisibilityMetricsQueue } from './modules/visibility/visibility-metrics.queue.js';
+import { createVisibilityMetricsWebRoutes } from './modules/visibility/visibility-metrics.web.routes.js';
 import { webRoutes } from './web/routes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -69,6 +70,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/', reportWebRoutes);
   app.use('/', visibilityWebRoutes);
   app.use('/', visibilityIntelligenceWebRoutes);
+  app.use('/', createVisibilityMetricsWebRoutes(options.visibilityMetricsQueue));
   app.use('/', webRoutes);
   app.use(errorHandler);
   return app;

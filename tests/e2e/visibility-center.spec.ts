@@ -17,9 +17,11 @@ test('opens Advanced AI Visibility, configures Prompt Monitor, and leaves sampli
   await expect(page.getByRole('main').getByRole('heading', { level: 1, name: 'AI Visibility' })).toBeVisible();
   await expect(page.getByText('API 采样', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: /AI Visibility/ })).toHaveClass(/active/);
+  await expect(page.getByRole('link', { name: 'Visibility 指标' })).toBeVisible();
   await expect(page.getByText('ChatGPT 网页端排名')).toHaveCount(0);
-  await expect(page.getByText('Share of Voice')).toHaveCount(0);
-  await expect(page.getByText('P6-C 指标（未启用）')).toBeVisible();
+  await expect(page.getByRole('main').getByText('Mention Rate')).toHaveCount(0);
+  await expect(page.getByRole('main').getByText('Citation Rate')).toHaveCount(0);
+  await expect(page.getByRole('main').getByText('Share of Voice')).toHaveCount(0);
 
   await page.getByRole('link', { name: 'Prompt 监控' }).click();
   await expect(page.getByRole('main').getByRole('heading', { level: 1, name: 'Prompt 监控' })).toBeVisible();
