@@ -14,7 +14,7 @@ test('generates and opens a project report without invoking DeepSeek', async ({ 
 
   await page.goto(`/projects/${projectId}/reports`);
   await expect(page.getByRole('main').getByRole('heading', { level: 1, name: '报告中心' })).toBeVisible();
-  await page.getByRole('button', { name: '生成项目报告' }).click();
+  await page.getByRole('button', { name: '生成项目报告 V1', exact: true }).click();
   await expect(page.getByRole('table').getByText('PROJECT_REPORT_V1', { exact: true })).toBeVisible();
   await page.getByRole('link', { name: '查看报告' }).first().click();
   await expect(page.getByText('确定性事实', { exact: true })).toBeVisible();
