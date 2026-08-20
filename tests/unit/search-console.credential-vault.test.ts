@@ -75,6 +75,28 @@ describe('P7-A Search Console OAuth credential vault', () => {
     });
   });
 
+  it('binds ciphertext to project/provider metadata so record swaps fail authentication', async () => {
+    const store = new MemoryCredentialStore();
+    const vault = createOAuthCredentialVault({ key: Buffer.alloc(32, 8), keyVersion: 'v1', store });
+    const firstRef = await vault.put('00000000-0000-0000-0000-000000000010', 'GOOGLE_SEARCH_CONSOLE', {
+      access_token: 'first-token'
+    });
+    const secondRef = await vault.put('00000000-0000-0000-0000-000000000020', 'GOOGLE_SEARCH_CONSOLE', {
+      access_token: 'second-token'
+    });
+    const first = store.rows.get(firstRef)!;
+    const second = store.rows.get(secondRef)!;
+
+    store.rows.set(firstRef, {
+      ...first,
+      ciphertext: Buffer.from(second.ciphertext),
+      iv: Buffer.from(second.iv),
+      authTag: Buffer.from(second.authTag)
+    });
+
+    await expect(vault.get(firstRef)).rejects.toThrow();
+  });
+
   it('replaces encrypted material without changing the opaque reference', async () => {
     const store = new MemoryCredentialStore();
     const vault = createOAuthCredentialVault({ key: Buffer.alloc(32, 9), keyVersion: 'v1', store });
