@@ -1,0 +1,44 @@
+model VisibilityMetricComparison {
+  id                String   @id @default(uuid()) @db.Uuid
+  projectId         String   @db.Uuid
+  comparisonVersion String
+  currentSnapshotId String   @db.Uuid
+  previousSnapshotId String  @db.Uuid
+  windowDurationMs  BigInt
+  gapDurationMs     BigInt
+  createdAt         DateTime @default(now())
+
+  rows VisibilityMetricDeltaRow[]
+
+  @@unique([projectId, comparisonVersion, currentSnapshotId, previousSnapshotId])
+  @@index([projectId, createdAt])
+  @@index([currentSnapshotId])
+  @@index([previousSnapshotId])
+}
+
+model VisibilityMetricDeltaRow {
+  id                           String                        @id @default(uuid()) @db.Uuid
+  visibilityMetricComparisonId String                        @db.Uuid
+  projectId                    String                        @db.Uuid
+  metricType                   VisibilityMetricType
+  dimensionType                VisibilityMetricDimensionType
+  dimensionKey                 String
+  actorType                    VisibilityMetricActorType
+  actorSubjectId               String?                       @db.Uuid
+  actorKey                     String
+  previousMetricStatus         VisibilityMetricStatus
+  currentMetricStatus          VisibilityMetricStatus
+  previousNumerator            Int
+  previousDenominator          Int
+  currentNumerator             Int
+  currentDenominator           Int
+  deltaBasisPoints             Int?
+  createdAt                    DateTime                      @default(now())
+
+  comparison VisibilityMetricComparison @relation(fields: [visibilityMetricComparisonId], references: [id], onDelete: Cascade)
+
+  @@unique([visibilityMetricComparisonId, metricType, dimensionType, dimensionKey, actorKey])
+  @@index([projectId, createdAt])
+  @@index([visibilityMetricComparisonId, metricType])
+  @@index([actorSubjectId])
+}
