@@ -23,7 +23,11 @@ class SuccessfulQueuePort implements VisibilityMetricsQueuePort {
 }
 
 class FailingQueuePort implements VisibilityMetricsQueuePort {
-  async add() {
+  async add(
+    _name: string,
+    _data: Record<string, unknown>,
+    _options: { jobId: string; attempts: number }
+  ): Promise<{ id?: string | null }> {
     throw new Error('queue unavailable');
   }
 }
@@ -253,7 +257,7 @@ describe('P6-C visibility metrics observability', () => {
         formulaVersion: 'VISIBILITY_METRICS_V1',
         extractorVersion: 'P6B_EXTRACTION_V1',
         subjectSetHash: contract.subjectSetHash,
-        subjectSnapshotJson: { subjects: contract.subjects, ambiguousAliases: contract.ambiguousAliases },
+        subjectSnapshotJson: { subjects: [], ambiguousAliases: [] },
         windowStart: new Date(now.getTime() - 4 * 60 * 60 * 1000),
         windowEnd: new Date(now.getTime() - 3 * 60 * 60 * 1000),
         inputCutoffAt: now,
