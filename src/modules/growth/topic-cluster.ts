@@ -121,7 +121,8 @@ export function scoreTopicCluster(input: TopicScoreInput): TopicScoreResult {
     : demandDenominator > 0
       ? eligible.reduce((sum, row) => sum + row.score * row.demand, 0) / demandDenominator
       : eligible.reduce((sum, row) => sum + row.score, 0) / eligible.length;
-  const trendKnown = validScore(input.trendVisibilityScore);
+  const trendVisibilityScore = input.trendVisibilityScore;
+  const trendKnown = validScore(trendVisibilityScore);
 
   let weighted = 0;
   let availableWeight = 0;
@@ -134,7 +135,7 @@ export function scoreTopicCluster(input: TopicScoreInput): TopicScoreResult {
     availableWeight += 30;
   }
   if (trendKnown) {
-    weighted += input.trendVisibilityScore * 20;
+    weighted += trendVisibilityScore * 20;
     availableWeight += 20;
   }
 
