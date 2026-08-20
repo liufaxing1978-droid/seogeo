@@ -124,7 +124,10 @@ jobs:
         run: npx prisma migrate deploy
       - name: Install Chromium system dependencies
         timeout-minutes: 10
-        run: node node_modules/@playwright/test/cli.js install-deps chromium
+        run: |
+          sudo sed -i 's|https\?://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update
+          node node_modules/@playwright/test/cli.js install-deps chromium
       - name: Install Chromium browser
         timeout-minutes: 10
         run: node node_modules/@playwright/test/cli.js install chromium
