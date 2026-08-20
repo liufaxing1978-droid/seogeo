@@ -1,0 +1,283 @@
+enum GrowthIdentityType {
+  QUERY_PAGE_GROWTH
+  KEYWORD_CANNIBALIZATION
+  NEW_CONTENT_OPPORTUNITY
+}
+
+enum GrowthOpportunityType {
+  RANKING_UPSIDE
+  CTR_UNDERPERFORMANCE
+  CONTENT_GAP
+  SEO_GAP
+  GEO_CITABILITY_GAP
+  AI_VISIBILITY_GAP
+  KEYWORD_CANNIBALIZATION
+  DECLINING_PERFORMANCE
+  NEW_CONTENT_OPPORTUNITY
+}
+
+enum GrowthPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  MONITOR
+  UNKNOWN
+}
+
+enum GrowthScoreState {
+  KNOWN
+  UNKNOWN
+}
+
+enum GrowthEvidenceQuality {
+  COMPLETE
+  PARTIAL
+  UNKNOWN
+}
+
+enum GrowthComponentState {
+  KNOWN
+  UNKNOWN
+  NOT_APPLICABLE
+}
+
+enum GrowthEvidenceState {
+  PASS
+  FAIL
+  UNKNOWN
+  NOT_APPLICABLE
+}
+
+enum GrowthEvidenceSeverity {
+  HIGH
+  MEDIUM
+  LOW
+  INFO
+}
+
+enum GrowthEvidenceSourceModule {
+  GSC
+  P2_SEO
+  P3_GEO
+  P3_ENTITY
+  P3_CITABILITY
+  P5_CONTENT
+  P5_COMPETITOR
+  P6_VISIBILITY
+  P6_ALERT
+}
+
+enum GrowthLifecycleStatus {
+  NEW
+  REVIEWED
+  PLANNED
+  IN_PROGRESS
+  DONE
+  DISMISSED
+  RESOLVED
+  REOPENED
+}
+
+enum GrowthLifecycleEventType {
+  CREATED
+  REVIEWED
+  PLANNED
+  STARTED
+  DONE
+  DISMISSED
+  AUTO_RESOLVED
+  AUTO_REOPENED
+}
+
+enum GrowthLifecycleActorType {
+  USER
+  SYSTEM
+}
+
+model GrowthOpportunityIdentity {
+  id              String             @id @default(uuid()) @db.Uuid
+  projectId       String             @db.Uuid
+  opportunityKey  String
+  identityVersion String
+  identityType    GrowthIdentityType
+  normalizedQuery String
+  canonicalPage   String?
+  identityPayload Json
+  createdAt       DateTime           @default(now())
+
+  snapshots      GrowthOpportunitySnapshot[]
+  lifecycle      GrowthOpportunityLifecycle?
+  lifecycleEvents GrowthOpportunityLifecycleEvent[]
+
+  @@unique([projectId, opportunityKey], map: "GrowthOpportunityIdentity_project_key")
+  @@index([projectId, identityType], map: "GrowthOpportunityIdentity_project_type_idx")
+  @@index([projectId, normalizedQuery], map: "GrowthOpportunityIdentity_project_query_idx")
+}
+
+model GrowthOpportunitySnapshot {
+  id                    String                @id @default(uuid()) @db.Uuid
+  opportunityIdentityId String                @db.Uuid
+  projectId             String                @db.Uuid
+  snapshotVersion       String
+  formulaVersion        String
+  currentWindowStart    DateTime              @db.Date
+  currentWindowEnd      DateTime              @db.Date
+  previousWindowStart   DateTime              @db.Date
+  previousWindowEnd     DateTime              @db.Date
+  dataCutoffAt          DateTime
+  topicClusterId        String?               @db.Uuid
+  primaryType           GrowthOpportunityType
+  secondaryTypes        GrowthOpportunityType[]
+  score                 Int?
+  priority              GrowthPriority
+  scoreState            GrowthScoreState
+  evidenceQuality       GrowthEvidenceQuality
+  evidenceCoverage      Float
+  rankingEligible       Boolean
+  sourceProvenance      Json
+  createdAt             DateTime              @default(now())
+
+  identity     GrowthOpportunityIdentity @relation(fields: [opportunityIdentityId], references: [id], onDelete: Cascade)
+  topicCluster GrowthTopicCluster?        @relation(fields: [topicClusterId], references: [id], onDelete: Restrict)
+  breakdown    GrowthScoreBreakdown?
+  evidence     GrowthOpportunityEvidence[]
+
+  @@unique([opportunityIdentityId, snapshotVersion, currentWindowStart, currentWindowEnd], map: "GrowthOpportunitySnapshot_identity_window_key")
+  @@index([projectId, currentWindowEnd, rankingEligible], map: "GrowthOpportunitySnapshot_project_window_idx")
+  @@index([projectId, priority, score], map: "GrowthOpportunitySnapshot_project_priority_idx")
+  @@index([topicClusterId, currentWindowEnd], map: "GrowthOpportunitySnapshot_topic_window_idx")
+}
+
+model GrowthScoreBreakdown {
+  snapshotId                     String               @id @db.Uuid
+  demandState                    GrowthComponentState
+  demandScore                    Int?
+  positionPotentialState         GrowthComponentState
+  positionPotentialScore         Int?
+  ctrGapState                    GrowthComponentState
+  ctrGapScore                    Int?
+  siteGapState                   GrowthComponentState
+  siteGapScore                   Int?
+  gscTrendState                  GrowthComponentState
+  gscTrendScore                  Int?
+  p6VisibilityState              GrowthComponentState
+  p6VisibilityScore              Int?
+  trendVisibilityDisplayState    GrowthComponentState
+  trendVisibilityDisplayScore    Int?
+  availableWeight                Int
+  evidenceCoverage               Float
+  weightedTotal                  Float?
+  formulaVersion                 String
+  createdAt                      DateTime             @default(now())
+
+  snapshot GrowthOpportunitySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+}
+
+model GrowthOpportunityEvidence {
+  id                String                     @id @default(uuid()) @db.Uuid
+  snapshotId        String                     @db.Uuid
+  projectId         String                     @db.Uuid
+  sourceModule      GrowthEvidenceSourceModule
+  sourceType        String
+  sourceId          String
+  sourceFactVersion String
+  ruleKey           String
+  rootCauseKey      String
+  evidenceState     GrowthEvidenceState
+  severity          GrowthEvidenceSeverity?
+  numericValue      Float?
+  textSummary       String?
+  fingerprint       String
+  createdAt         DateTime                   @default(now())
+
+  snapshot GrowthOpportunitySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, fingerprint], map: "GrowthOpportunityEvidence_snapshot_fingerprint_key")
+  @@index([projectId, sourceModule], map: "GrowthOpportunityEvidence_project_source_idx")
+  @@index([snapshotId, rootCauseKey], map: "GrowthOpportunityEvidence_snapshot_root_idx")
+}
+
+model GrowthOpportunityLifecycle {
+  opportunityIdentityId String                @id @db.Uuid
+  status                GrowthLifecycleStatus @default(NEW)
+  latestSnapshotId      String?               @db.Uuid
+  reviewedAt            DateTime?
+  plannedAt             DateTime?
+  startedAt             DateTime?
+  doneAt                DateTime?
+  dismissedAt           DateTime?
+  resolvedAt            DateTime?
+  reopenedAt            DateTime?
+  updatedAt             DateTime              @updatedAt
+
+  identity GrowthOpportunityIdentity @relation(fields: [opportunityIdentityId], references: [id], onDelete: Cascade)
+
+  @@index([status, updatedAt], map: "GrowthOpportunityLifecycle_status_idx")
+}
+
+model GrowthOpportunityLifecycleEvent {
+  id                    String                   @id @default(uuid()) @db.Uuid
+  opportunityIdentityId String                   @db.Uuid
+  eventType             GrowthLifecycleEventType
+  actorType             GrowthLifecycleActorType
+  actorId               String?
+  fromStatus            GrowthLifecycleStatus?
+  toStatus              GrowthLifecycleStatus
+  reasonCode            String
+  createdAt             DateTime                 @default(now())
+
+  identity GrowthOpportunityIdentity @relation(fields: [opportunityIdentityId], references: [id], onDelete: Cascade)
+
+  @@index([opportunityIdentityId, createdAt], map: "GrowthLifecycleEvent_identity_created_idx")
+}
+
+model GrowthTopicCluster {
+  id                   String   @id @default(uuid()) @db.Uuid
+  projectId            String   @db.Uuid
+  topicKey             String
+  topicIdentityVersion String
+  primaryEntityId      String?  @db.Uuid
+  primaryQuery         String
+  createdAt            DateTime @default(now())
+
+  snapshots            GrowthTopicClusterSnapshot[]
+  opportunitySnapshots GrowthOpportunitySnapshot[]
+
+  @@unique([projectId, topicIdentityVersion, topicKey], map: "GrowthTopicCluster_project_identity_key")
+  @@index([projectId, primaryQuery], map: "GrowthTopicCluster_project_query_idx")
+}
+
+model GrowthTopicClusterSnapshot {
+  id                     String                @id @default(uuid()) @db.Uuid
+  topicClusterId         String                @db.Uuid
+  projectId              String                @db.Uuid
+  snapshotVersion        String
+  currentWindowStart     DateTime              @db.Date
+  currentWindowEnd       DateTime              @db.Date
+  previousWindowStart    DateTime              @db.Date
+  previousWindowEnd      DateTime              @db.Date
+  dataCutoffAt           DateTime
+  memberQueries          Json
+  memberPages            Json
+  sourceProvenance       Json
+  totalImpressions       Int
+  totalClicks            Int
+  ctr                    Float
+  position               Float?
+  topOpportunityScore    Int?
+  topicScore             Int?
+  priority               GrowthPriority
+  scoreState             GrowthScoreState
+  evidenceQuality        GrowthEvidenceQuality
+  evidenceCoverage       Float
+  rankingEligible        Boolean
+  trendVisibilityState   GrowthComponentState
+  createdAt              DateTime              @default(now())
+
+  topicCluster GrowthTopicCluster @relation(fields: [topicClusterId], references: [id], onDelete: Cascade)
+
+  @@unique([topicClusterId, snapshotVersion, currentWindowStart, currentWindowEnd], map: "GrowthTopicSnapshot_identity_window_key")
+  @@index([projectId, currentWindowEnd, rankingEligible], map: "GrowthTopicSnapshot_project_window_idx")
+  @@index([projectId, priority, topicScore], map: "GrowthTopicSnapshot_project_priority_idx")
+}
