@@ -71,7 +71,7 @@ describe('P7-A Search Console persistence foundation', () => {
       status: 'RUNNING'
     });
     await repository.completeDailySnapshot(v1.id, {
-      rowCount: 1,
+      rowCount: 0,
       sourceCompletenessState: 'TOP_ROWS_ONLY',
       sourceFreshness: new Date('2026-08-04T00:00:00.000Z')
     });
@@ -84,7 +84,7 @@ describe('P7-A Search Console persistence foundation', () => {
       status: 'RUNNING'
     });
     await repository.completeDailySnapshot(v2.id, {
-      rowCount: 2,
+      rowCount: 0,
       sourceCompletenessState: 'TOP_ROWS_ONLY',
       sourceFreshness: new Date('2026-08-05T00:00:00.000Z')
     });
