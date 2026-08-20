@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../src/db/prisma.js';
+import { visibilityHistoryRepository } from '../../src/modules/visibility/visibility-history.repository.js';
 import { VisibilityHistoryService } from '../../src/modules/visibility/visibility-history.service.js';
 import { VisibilityHistoryError } from '../../src/modules/visibility/visibility-history.types.js';
 
@@ -164,6 +165,27 @@ describe('P6-D visibility history materialization', () => {
 
     expect(result).toEqual({ comparisonId: null, outcome: 'NO_COMPATIBLE_PREVIOUS' });
     expect(await prisma.visibilityMetricComparison.count({ where: { projectId: project.id } })).toBe(0);
+  });
+
+  it('reconciles only snapshots that currently have a compatible predecessor', async () => {
+    const project = await createProject('P6-D Reconciliation Eligibility');
+    const first = await createSnapshot({
+      projectId: project.id,
+      windowStart: '2026-07-08T00:00:00.000Z',
+      windowEnd: '2026-07-15T00:00:00.000Z'
+    });
+
+    const beforeBackfill = await visibilityHistoryRepository.listReconciliationCandidates(100);
+    expect(beforeBackfill.some((candidate) => candidate.id === first.id)).toBe(false);
+
+    await createSnapshot({
+      projectId: project.id,
+      windowStart: '2026-07-01T00:00:00.000Z',
+      windowEnd: '2026-07-08T00:00:00.000Z'
+    });
+
+    const afterBackfill = await visibilityHistoryRepository.listReconciliationCandidates(100);
+    expect(afterBackfill.some((candidate) => candidate.id === first.id)).toBe(true);
   });
 
   it('ignores an earlier snapshot whose subject contract is incompatible', async () => {
