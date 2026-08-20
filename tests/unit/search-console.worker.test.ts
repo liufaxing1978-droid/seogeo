@@ -36,6 +36,7 @@ class MemorySyncRepository implements SearchConsoleSyncRepository {
   facts = new Map<string, Array<Record<string, unknown>>>();
   lastSyncAt: Date | null = null;
   failReplace = false;
+  failLastSyncUpdate = false;
   sequence = 0;
 
   async findPropertyForSync(projectId: string, propertyId: string) {
@@ -96,6 +97,7 @@ class MemorySyncRepository implements SearchConsoleSyncRepository {
   }
 
   async updatePropertyLastSyncAt(_propertyId: string, lastSyncAt: Date) {
+    if (this.failLastSyncUpdate) throw new Error('fixture metadata update failure');
     this.lastSyncAt = lastSyncAt;
   }
 }
@@ -235,6 +237,17 @@ describe('P7-A Search Console daily sync worker', () => {
 
     await expect(syncSearchConsoleDay(input, deps)).rejects.toMatchObject({ reason: 'PERSISTENCE_FAILED' });
     expect(repository.snapshots[0]).toMatchObject({ status: 'FAILED', errorCode: 'PERSISTENCE_FAILED' });
+  });
+
+  it('keeps an already durable COMPLETED day authoritative when only lastSyncAt metadata update fails', async () => {
+    const { deps, repository, events } = makeDependencies();
+    repository.failLastSyncUpdate = true;
+
+    const result = await syncSearchConsoleDay(input, deps);
+
+    expect(result).toMatchObject({ state: 'COMPLETED', syncVersion: 1, rowCount: 1 });
+    expect(repository.snapshots[0]).toMatchObject({ status: 'COMPLETED', errorCode: null });
+    expect(events.map((event) => event.event)).toEqual(['gsc.sync.started', 'gsc.sync.completed']);
   });
 
   it('emits only allowlisted safe sync observability metadata', async () => {
