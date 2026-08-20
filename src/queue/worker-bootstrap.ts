@@ -4,6 +4,12 @@ import { processCompetitorCrawlJob, type CompetitorCrawlJobData } from '../modul
 import { processContentRefreshJob, type ContentRefreshJobData } from '../modules/content/content.worker.js';
 import { processCrawlJob, type CrawlJobData } from '../modules/crawler/crawl.worker.js';
 import { processGeoAuditJob, type GeoAuditJobData } from '../modules/geo/geo.worker.js';
+import {
+  processSearchConsoleSyncJob,
+  SEARCH_CONSOLE_SYNC_QUEUE_NAME,
+  SEARCH_CONSOLE_SYNC_WORKER_CONCURRENCY,
+  type SearchConsoleSyncJobData
+} from '../modules/search-console/search-console.worker.js';
 import { processSeoAuditJob, type SeoAuditJobData } from '../modules/seo/seo.worker.js';
 import {
   VISIBILITY_EXTRACTION_QUEUE_NAME,
@@ -35,8 +41,14 @@ import { QUEUE_NAMES } from './queues.js';
 const VISIBILITY_MONITORING_RECONCILE_EVERY_MS = 60 * 60 * 1000;
 
 export function workerDefinitionForQueue(
-  name: 'visibility' | 'visibility-extraction' | 'visibility-metrics' | 'visibility-monitoring'
+  name: 'search-console-sync' | 'visibility' | 'visibility-extraction' | 'visibility-metrics' | 'visibility-monitoring'
 ) {
+  if (name === SEARCH_CONSOLE_SYNC_QUEUE_NAME) {
+    return {
+      processor: processSearchConsoleSyncJob,
+      concurrency: SEARCH_CONSOLE_SYNC_WORKER_CONCURRENCY
+    } as const;
+  }
   if (name === 'visibility') {
     return {
       processor: processVisibilityJob,
@@ -80,6 +92,12 @@ export async function startWorkers() {
     if (name === 'geo-audit') return new Worker<GeoAuditJobData>(name, processGeoAuditJob, { connection });
     if (name === 'content') return new Worker<ContentRefreshJobData>(name, processContentRefreshJob, { connection, concurrency: 2 });
     if (name === 'competitor') return new Worker<CompetitorCrawlJobData>(name, processCompetitorCrawlJob, { connection, concurrency: 2 });
+    if (name === SEARCH_CONSOLE_SYNC_QUEUE_NAME) {
+      return new Worker<SearchConsoleSyncJobData>(name, processSearchConsoleSyncJob, {
+        connection,
+        concurrency: SEARCH_CONSOLE_SYNC_WORKER_CONCURRENCY
+      });
+    }
     if (name === 'visibility') {
       return new Worker<VisibilityJobData>(name, processVisibilityJob, {
         connection,

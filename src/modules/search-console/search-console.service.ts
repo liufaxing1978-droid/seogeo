@@ -235,6 +235,10 @@ export class SearchConsoleService {
     return { connection, accessToken: credential.access_token };
   }
 
+  async getAccessTokenForSync(projectId: string): Promise<string> {
+    return (await this.accessToken(projectId)).accessToken;
+  }
+
   async listReadableProperties(projectId: string): Promise<GoogleSiteEntry[]> {
     const { accessToken } = await this.accessToken(projectId);
     const sites = await this.dependencies.transport.listSites(accessToken);
@@ -242,10 +246,8 @@ export class SearchConsoleService {
   }
 
   async bindProperty(projectId: string, propertyUri: string): Promise<SafeProperty> {
-    const { connection } = await this.accessToken(projectId);
-    const sites = await this.dependencies.transport.listSites(
-      (await this.accessToken(projectId)).accessToken
-    );
+    const { connection, accessToken } = await this.accessToken(projectId);
+    const sites = await this.dependencies.transport.listSites(accessToken);
     const selected = sites.find(
       (site) => site.siteUrl === propertyUri && READABLE_PERMISSION_LEVELS.has(site.permissionLevel)
     );
