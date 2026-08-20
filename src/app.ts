@@ -63,11 +63,11 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api', createCrawlRoutes(options.crawlService));
   app.use('/api', createSeoRoutes(options.seoService));
   app.use('/api', createGeoRoutes(options.geoService));
+  app.use('/api', createSearchConsoleRoutes(options.searchConsoleService));
   app.use('/api/v1', createAiRoutes(options.aiTaskService));
   app.use('/api/v1', createContentRoutes(options.contentService, options.aiTaskService));
   app.use('/api/v1', createCompetitorRoutes(options.competitorService, options.aiTaskService));
   app.use('/api/v1', createReportRoutes(options.aiTaskService));
-  app.use('/api/v1', createSearchConsoleRoutes(options.searchConsoleService));
   app.use('/api/v1', createVisibilityRoutes(options.visibilityRunService));
   app.use('/api/v1', createVisibilityIntelligenceRoutes(options.visibilityExtractionQueue));
   app.use('/api/v1', createVisibilityMetricsRoutes(options.visibilityMetricsQueue));
