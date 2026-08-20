@@ -17,6 +17,12 @@ import type {
   StoredOAuthCredentialRecord
 } from './oauth-credential-vault.js';
 
+function asPrismaBytes(value: Uint8Array): Uint8Array<ArrayBuffer> {
+  const copy = new Uint8Array(value.byteLength);
+  copy.set(value);
+  return copy;
+}
+
 function asStoredCredential(record: {
   id: string;
   projectId: string;
@@ -87,9 +93,9 @@ export class SearchConsoleRepository implements OAuthCredentialStore {
       data: {
         projectId: input.projectId,
         provider: input.provider,
-        ciphertext: input.ciphertext,
-        iv: input.iv,
-        authTag: input.authTag,
+        ciphertext: asPrismaBytes(input.ciphertext),
+        iv: asPrismaBytes(input.iv),
+        authTag: asPrismaBytes(input.authTag),
         keyVersion: input.keyVersion
       }
     });
@@ -108,9 +114,9 @@ export class SearchConsoleRepository implements OAuthCredentialStore {
     const record = await prisma.oAuthCredentialRecord.update({
       where: { id },
       data: {
-        ciphertext: encrypted.ciphertext,
-        iv: encrypted.iv,
-        authTag: encrypted.authTag,
+        ciphertext: asPrismaBytes(encrypted.ciphertext),
+        iv: asPrismaBytes(encrypted.iv),
+        authTag: asPrismaBytes(encrypted.authTag),
         keyVersion: encrypted.keyVersion
       }
     });
