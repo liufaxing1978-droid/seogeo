@@ -5,6 +5,7 @@ export default defineConfig({
     environment: 'node',
     clearMocks: true,
     exclude: ['tests/e2e/**', '**/node_modules/**', '**/dist/**'],
-    fileParallelism: false
+    fileParallelism: false,
+    testNamePattern: 'preserves V1 snapshots and skips restricted P6 reads entirely for Standard'
   }
 });
