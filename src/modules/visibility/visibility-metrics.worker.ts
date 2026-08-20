@@ -1,3 +1,4 @@
+import { emitVisibilityMetricsEvent } from './visibility-metrics.observability.js';
 import {
   VisibilityMetricsRepository,
   visibilityMetricsRepository
@@ -73,6 +74,16 @@ export async function processVisibilityMetricsJob(
       'Visibility metric snapshot job identity did not match the project snapshot'
     );
   }
+
+  emitVisibilityMetricsEvent('visibility.metrics.started', {
+    projectId: data.projectId,
+    snapshotId: data.snapshotId,
+    formulaVersion: data.formulaVersion,
+    extractorVersion: data.extractorVersion,
+    subjectSetHash: data.subjectSetHash,
+    scopeHash: data.scopeHash,
+    status: 'RUNNING'
+  });
 
   const service = dependencies.metricsService ?? new VisibilityMetricsService();
   return service.materializeSnapshot(data.projectId, data.snapshotId);

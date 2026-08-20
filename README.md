@@ -2,7 +2,7 @@
 
 Independent SEO / GEO platform for `seo.xingshantang.org`.
 
-Current milestone: **P6-B Citation & Mention Intelligence — complete**. Next milestone: **P6-C Visibility Metrics & Competitor Share of Voice — next**.
+Current milestone: **P6-C Visibility Metrics & Competitor Share of Voice — complete**. Next milestone: **P6-D History, Dashboard, Alerts & Report Integration — next**.
 
 ## Architecture
 
@@ -98,7 +98,7 @@ Delivered capabilities:
 - AI Visibility and Prompt Monitor web UI with explicit `API 采样` labeling;
 - safe lifecycle observability with an allowlist that excludes prompt/answer bodies, secrets and provider reasoning.
 
-P6-A does **not** calculate Mention Rate, Citation Rate or Share of Voice. P6-B adds deterministic, replayable Mention and Citation facts over persisted P6-A observations. Rate, trend and Share-of-Voice metrics remain P6-C responsibilities.
+P6-A does **not** calculate Mention Rate, Citation Rate or Share of Voice. P6-B adds deterministic, replayable Mention and Citation facts over persisted P6-A observations. P6-C now materializes the deterministic rate and Share-of-Voice layer over those persisted facts.
 
 Provider secrets remain server-side environment variables:
 
@@ -120,9 +120,31 @@ P6-B materializes deterministic, replayable Mention and Citation facts from pers
 
 Evidence states preserve the distinction between `KNOWN_EMPTY`, `UNKNOWN` and `NOT_ELIGIBLE`; prose URLs never become Citations unless provider-native citation/search metadata supports them. Historical extractions are immutable across subject configuration changes, and subject snapshots are versioned by `subjectSetHash`.
 
-Advanced/Enterprise Citation Monitor surfaces expose project-scoped subject configuration, extraction refresh/backfill, Mention facts, Citation facts, evidence state and provenance. Standard projects are blocked before restricted reads or side effects. P6-B does not calculate Mention Rate, Citation Rate, trends, weighted visibility or Share of Voice.
+Advanced/Enterprise Citation Monitor surfaces expose project-scoped subject configuration, extraction refresh/backfill, Mention facts, Citation facts, evidence state and provenance. Standard projects are blocked before restricted reads or side effects. P6-B itself does not calculate Mention Rate, Citation Rate or Share of Voice; those are materialized separately by P6-C.
 
 Operational details: `docs/development/p6b-citation-mention-intelligence.md`.
+
+## P6-C Visibility Metrics & Competitor Share of Voice
+
+P6-C materializes immutable, deterministic metric snapshots over persisted P6-A/P6-B evidence. Authoritative calculation is database-only and makes zero provider/external network calls.
+
+Delivered capabilities:
+
+- `VISIBILITY_METRICS_V1` Mention Rate and Citation Rate;
+- presence-based Mention Share of Voice with owned-subject rollup and per-competitor actors;
+- explicit `CALCULATED`, `NO_SIGNAL`, `UNKNOWN`, `NOT_ELIGIBLE` and `NO_DATA` states;
+- `KNOWN_EMPTY` denominator semantics and legitimate calculated 0% distinct from UNKNOWN;
+- immutable snapshots frozen by extractor version, subject-set hash, window, cutoff and canonical scope;
+- Overall, Provider and Prompt Set dimensions;
+- dedicated `visibility-metrics` BullMQ queue/worker with deterministic bounded job identity and attempts=2;
+- Advanced/Enterprise project-scoped REST API;
+- dedicated `Visibility 指标` web UI with competitor SOV, coverage and provenance;
+- safe allowlisted `queued / started / completed / failed` observability;
+- hard bounds for 31-day windows, 20 Prompt Set filters, 20,000 candidates and 500-row DB batches.
+
+P6-C does **not** provide trend lines, period deltas, alerts, scheduled notifications, historical dashboard widgets, report integration or AI narrative trend explanation. Those remain P6-D responsibilities.
+
+Operational details: `docs/development/p6c-visibility-metrics-sov.md`.
 
 ## Feature gates
 
@@ -142,7 +164,7 @@ P6 Advanced / Enterprise monitoring gates remain separate:
 - Citation Monitor
 - Competitor Share of Voice
 
-P6-A activates AI Visibility and Prompt Monitor. P6-B activates Citation Monitor. Competitor Share of Voice remains a P6-C capability.
+P6-A activates AI Visibility and Prompt Monitor. P6-B activates Citation Monitor. P6-C activates Competitor Share of Voice / Visibility Metrics. Standard projects are rejected before restricted P6-C reads, snapshot writes or queue side effects.
 
 `ADVANCED_REPORTS` remains reserved for future advanced scheduling/bundling/distribution rather than the base P5 report snapshot feature.
 
@@ -176,6 +198,8 @@ P6-A additionally requires proof that duplicate delivery cannot duplicate a paid
 
 P6-B additionally requires proof that extraction makes zero provider/network calls, `UNKNOWN` is never coerced to zero, historical extractions remain immutable after subject changes, prose URLs are never promoted to Citations, Standard cannot enqueue or read restricted Citation Monitor intelligence, prior P1–P6-A regression coverage remains green, and no P6-C metric model/calculator is introduced.
 
+P6-C release evidence requires proof that authoritative metric materialization makes zero provider/external network calls; `UNKNOWN` never enters a denominator or becomes zero; `KNOWN_EMPTY` enters the correct denominator; legitimate zero stays `CALCULATED`; owned/competitor presence is deduplicated per observation; calculated SOV actor numerators sum exactly to the shared denominator; extractor/hash contracts never mix; old completed snapshots stay immutable after later P6-B backfill; Standard cannot generate/read P6-C; safe lifecycle logs exclude private content and secrets; prior P1–P6-B regression tests, build, Chromium smoke tests and runtime dependency audit all pass.
+
 ## Roadmap
 
 - P0 Platform foundation — complete
@@ -186,5 +210,5 @@ P6-B additionally requires proof that extraction makes zero provider/network cal
 - P5 Content, competitor analysis, reports — complete
 - P6-A Prompt Monitor & Sampling Core — complete
 - P6-B Citation & Mention Intelligence — complete
-- P6-C Visibility Metrics & Competitor Share of Voice — next
-- P6-D History, Dashboard, Alerts & Report Integration — planned
+- P6-C Visibility Metrics & Competitor Share of Voice — complete
+- P6-D History, Dashboard, Alerts & Report Integration — next
