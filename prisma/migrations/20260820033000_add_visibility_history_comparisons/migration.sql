@@ -31,22 +31,22 @@ CREATE TABLE "VisibilityMetricDeltaRow" (
   CONSTRAINT "VisibilityMetricDeltaRow_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX "VisibilityMetricComparison_projectId_comparisonVersion_currentSnapshotId_previousSnapshotId_key"
+CREATE UNIQUE INDEX "VMComparison_identity_key"
   ON "VisibilityMetricComparison"("projectId", "comparisonVersion", "currentSnapshotId", "previousSnapshotId");
-CREATE INDEX "VisibilityMetricComparison_projectId_createdAt_idx"
+CREATE INDEX "VMComparison_project_created_idx"
   ON "VisibilityMetricComparison"("projectId", "createdAt");
-CREATE INDEX "VisibilityMetricComparison_currentSnapshotId_idx"
+CREATE INDEX "VMComparison_current_idx"
   ON "VisibilityMetricComparison"("currentSnapshotId");
-CREATE INDEX "VisibilityMetricComparison_previousSnapshotId_idx"
+CREATE INDEX "VMComparison_previous_idx"
   ON "VisibilityMetricComparison"("previousSnapshotId");
 
-CREATE UNIQUE INDEX "VisibilityMetricDeltaRow_visibilityMetricComparisonId_metricType_dimensionType_dimensionKey_actorKey_key"
+CREATE UNIQUE INDEX "VMDelta_identity_key"
   ON "VisibilityMetricDeltaRow"("visibilityMetricComparisonId", "metricType", "dimensionType", "dimensionKey", "actorKey");
-CREATE INDEX "VisibilityMetricDeltaRow_projectId_createdAt_idx"
+CREATE INDEX "VMDelta_project_created_idx"
   ON "VisibilityMetricDeltaRow"("projectId", "createdAt");
-CREATE INDEX "VisibilityMetricDeltaRow_visibilityMetricComparisonId_metricType_idx"
+CREATE INDEX "VMDelta_comparison_metric_idx"
   ON "VisibilityMetricDeltaRow"("visibilityMetricComparisonId", "metricType");
-CREATE INDEX "VisibilityMetricDeltaRow_actorSubjectId_idx"
+CREATE INDEX "VMDelta_actor_subject_idx"
   ON "VisibilityMetricDeltaRow"("actorSubjectId");
 
 ALTER TABLE "VisibilityMetricComparison"
