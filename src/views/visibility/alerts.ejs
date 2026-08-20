@@ -1,0 +1,90 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">AI Visibility · P6-D</p>
+    <h1>Visibility 告警</h1>
+    <p class="muted"><%= project.name %> · V1 为站内告警，不宣称外部通知投递。</p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/projects/<%= project.id %>/visibility">AI Visibility</a>
+    <a class="button" href="/projects/<%= project.id %>/visibility/history">历史趋势</a>
+  </div>
+</section>
+
+<section class="metric-grid compact">
+  <% const openCount = alerts.filter((item) => item.status === 'OPEN').length; const ackCount = alerts.filter((item) => item.status === 'ACKNOWLEDGED').length; const resolvedCount = alerts.filter((item) => item.status === 'RESOLVED').length; %>
+  <article class="metric-card"><div class="metric-title">OPEN</div><div class="metric-value"><%= openCount %></div><div class="metric-caption">等待处理</div></article>
+  <article class="metric-card"><div class="metric-title">ACKNOWLEDGED</div><div class="metric-value"><%= ackCount %></div><div class="metric-caption">已确认，证据不变</div></article>
+  <article class="metric-card"><div class="metric-title">RESOLVED</div><div class="metric-value"><%= resolvedCount %></div><div class="metric-caption">后续兼容比较已恢复</div></article>
+  <article class="metric-card"><div class="metric-title">规则</div><div class="metric-value"><%= rules.length %></div><div class="metric-caption"><%= rules.filter((rule) => rule.enabled).length %> 条启用</div></article>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>新建规则</h2><p class="muted">数值阈值单位为 basis points；500 bp = 5.0 个百分点。</p></div></div>
+  <form method="post" action="/projects/<%= project.id %>/visibility/alerts/rules" class="form-grid">
+    <label>名称<input name="name" required maxlength="120" placeholder="Owned Mention Rate 下滑" /></label>
+    <label>规则类型<select name="ruleType" required>
+      <option value="OWNED_MENTION_RATE_DROP">Owned Mention Rate Drop</option>
+      <option value="OWNED_CITATION_RATE_DROP">Owned Citation Rate Drop</option>
+      <option value="OWNED_SOV_DROP">Owned SOV Drop</option>
+      <option value="COMPETITOR_SOV_RISE">Competitor SOV Rise</option>
+      <option value="EVIDENCE_COVERAGE_DROP">Evidence Coverage Drop</option>
+      <option value="METRIC_BECAME_UNKNOWN">Metric Became UNKNOWN</option>
+    </select></label>
+    <label>严重级别<select name="severity"><option>INFO</option><option selected>WARNING</option><option>CRITICAL</option></select></label>
+    <label>阈值 bp<input name="thresholdBasisPoints" type="number" min="1" max="10000" value="500" /></label>
+    <label>Competitor Subject ID（可选）<input name="actorSubjectId" placeholder="UUID，仅定向 competitor 规则使用" /></label>
+    <div class="actions"><button class="button" type="submit">创建规则</button></div>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>规则配置</h2><p class="muted">最多 50 条启用规则；V1 数值规则仅评估 OVERALL 维度。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>名称</th><th>类型</th><th>严重级别</th><th>阈值</th><th>状态</th><th>更新</th></tr></thead>
+    <tbody>
+      <% for (const rule of rules) { %>
+        <tr>
+          <td><strong><%= rule.name %></strong></td><td><code><%= rule.ruleType %></code></td><td><%= rule.severity %></td><td><%= rule.thresholdBasisPoints == null ? '状态型' : `${rule.thresholdBasisPoints} bp` %></td><td><%= rule.enabled ? '启用' : '停用' %></td>
+          <td>
+            <form method="post" action="/projects/<%= project.id %>/visibility/alerts/rules/<%= rule.id %>" class="inline-form">
+              <input name="name" value="<%= rule.name %>" required maxlength="120" />
+              <select name="severity"><option <%= rule.severity === 'INFO' ? 'selected' : '' %>>INFO</option><option <%= rule.severity === 'WARNING' ? 'selected' : '' %>>WARNING</option><option <%= rule.severity === 'CRITICAL' ? 'selected' : '' %>>CRITICAL</option></select>
+              <input name="thresholdBasisPoints" type="number" min="1" max="10000" value="<%= rule.thresholdBasisPoints ?? '' %>" placeholder="状态型留空" />
+              <input name="actorSubjectId" value="<%= rule.actorSubjectId ?? '' %>" placeholder="Competitor UUID" />
+              <label><input name="enabled" type="checkbox" <%= rule.enabled ? 'checked' : '' %> /> 启用</label>
+              <button class="button secondary" type="submit">保存</button>
+            </form>
+          </td>
+        </tr>
+      <% } %>
+      <% if (!rules.length) { %><tr><td colspan="6" class="muted">尚未配置告警规则。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>站内告警收件箱</h2><p class="muted">触发证据不可变；确认/解决只更新生命周期字段。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>状态</th><th>严重级别</th><th>规则 / 原因</th><th>变化</th><th>比较窗口</th><th>操作</th></tr></thead>
+    <tbody>
+      <% for (const alert of alerts) { %>
+        <tr>
+          <td><span class="badge"><%= alert.status %></span></td>
+          <td><%= alert.severity %></td>
+          <td><strong><%= alert.rule.name %></strong><div class="muted"><%= alert.reasonCode %><%= alert.actorKey ? ` · ${alert.actorKey}` : '' %></div></td>
+          <td><%= alert.deltaBasisPoints == null ? `${alert.previousMetricStatus ?? '—'} → ${alert.currentMetricStatus ?? '—'}` : `${alert.deltaBasisPoints > 0 ? '+' : ''}${alert.deltaBasisPoints} bp` %></td>
+          <td>
+            <% if (alert.comparison.previousWindow && alert.comparison.currentWindow) { %>
+              <div><%= new Date(alert.comparison.previousWindow.windowStart).toLocaleDateString('zh-CN') %> → <%= new Date(alert.comparison.previousWindow.windowEnd).toLocaleDateString('zh-CN') %></div>
+              <div><%= new Date(alert.comparison.currentWindow.windowStart).toLocaleDateString('zh-CN') %> → <%= new Date(alert.comparison.currentWindow.windowEnd).toLocaleDateString('zh-CN') %></div>
+            <% } else { %>—<% } %>
+          </td>
+          <td>
+            <% if (alert.status === 'OPEN') { %><form method="post" action="/projects/<%= project.id %>/visibility/alerts/<%= alert.id %>/acknowledge"><button class="button secondary" type="submit">确认</button></form><% } else { %><%= alert.status === 'RESOLVED' ? '已解决' : '已确认' %><% } %>
+          </td>
+        </tr>
+      <% } %>
+      <% if (!alerts.length) { %><tr><td colspan="6" class="muted">当前没有告警事件。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
