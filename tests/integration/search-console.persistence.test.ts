@@ -193,4 +193,42 @@ describe('P7-A Search Console persistence foundation', () => {
     await prisma.gscQueryPageFact.create({ data: fact });
     await expect(prisma.gscQueryPageFact.create({ data: fact })).rejects.toBeTruthy();
   });
+
+  it('rejects cross-project credential, connection and property references', async () => {
+    const repository = new SearchConsoleRepository();
+    const first = await createProject('P7-A tenant isolation A');
+    const second = await createProject('P7-A tenant isolation B');
+    const credential = await repository.createCredentialRecord({
+      projectId: first.id,
+      provider: 'GOOGLE_SEARCH_CONSOLE',
+      ciphertext: Buffer.from('ciphertext'),
+      iv: Buffer.alloc(12, 3),
+      authTag: Buffer.alloc(16, 4),
+      keyVersion: 'v1'
+    });
+
+    await expect(repository.createConnection({
+      projectId: second.id,
+      credentialRef: credential.id,
+      status: 'CONNECTED'
+    })).rejects.toThrow(/project/i);
+
+    const { connection, property } = await createConnectionFixture(repository, first.id);
+    await expect(repository.createProperty({
+      projectId: second.id,
+      connectionId: connection.id,
+      propertyUri: 'sc-domain:wrong.example',
+      propertyType: 'DOMAIN',
+      permissionState: 'SITE_OWNER',
+      isActive: false
+    })).rejects.toThrow(/project/i);
+
+    await expect(repository.createDailySnapshot({
+      projectId: second.id,
+      propertyId: property.id,
+      date: new Date('2026-08-04T00:00:00.000Z'),
+      syncVersion: 1,
+      status: 'RUNNING'
+    })).rejects.toThrow(/project/i);
+  });
 });
