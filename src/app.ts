@@ -18,6 +18,8 @@ import { healthRoutes } from './modules/health/health.routes.js';
 import { projectRoutes } from './modules/projects/project.routes.js';
 import { createReportRoutes } from './modules/reporting/report.routes.js';
 import { reportWebRoutes } from './modules/reporting/report.web.routes.js';
+import { createSearchConsoleRoutes } from './modules/search-console/search-console.routes.js';
+import type { SearchConsoleService } from './modules/search-console/search-console.service.js';
 import { createSeoRoutes } from './modules/seo/seo.routes.js';
 import type { SeoService } from './modules/seo/seo.service.js';
 import { createVisibilityRoutes } from './modules/visibility/visibility.routes.js';
@@ -42,6 +44,7 @@ export interface AppOptions {
   aiTaskService?: AiTaskService;
   contentService?: ContentService;
   competitorService?: CompetitorService;
+  searchConsoleService?: SearchConsoleService;
   visibilityRunService?: VisibilityRunService;
   visibilityExtractionQueue?: VisibilityExtractionQueue;
   visibilityMetricsQueue?: VisibilityMetricsQueue;
@@ -64,6 +67,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/v1', createContentRoutes(options.contentService, options.aiTaskService));
   app.use('/api/v1', createCompetitorRoutes(options.competitorService, options.aiTaskService));
   app.use('/api/v1', createReportRoutes(options.aiTaskService));
+  app.use('/api/v1', createSearchConsoleRoutes(options.searchConsoleService));
   app.use('/api/v1', createVisibilityRoutes(options.visibilityRunService));
   app.use('/api/v1', createVisibilityIntelligenceRoutes(options.visibilityExtractionQueue));
   app.use('/api/v1', createVisibilityMetricsRoutes(options.visibilityMetricsQueue));
