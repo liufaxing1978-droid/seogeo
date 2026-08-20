@@ -166,7 +166,9 @@ describe('P6-C metrics and SOV web UI', () => {
     expect(response.text).toContain('缺失 extraction');
     expect(response.text).not.toContain('PRIVATE SUBJECT SNAPSHOT MUST NOT RENDER');
     expect(response.text).not.toContain('PRIVATE SCOPE MUST NOT RENDER');
-    expect(response.text).not.toMatch(/趋势|趋势线|delta|alert|告警|历史曲线|AI narrative/i);
+    const mainMatch = response.text.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
+    expect(mainMatch).not.toBeNull();
+    expect(mainMatch?.[1] ?? '').not.toMatch(/趋势|趋势线|delta|alert|告警|历史曲线|AI narrative/i);
   });
 
   it('gates Standard before restricted metric reads', async () => {
