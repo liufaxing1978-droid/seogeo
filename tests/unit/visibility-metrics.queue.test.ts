@@ -42,14 +42,15 @@ const SNAPSHOT = {
 };
 
 describe('P6-C visibility metrics queue', () => {
-  it('uses the dedicated queue, attempts=2 and deterministic bounded job identity', async () => {
+  it('uses the dedicated queue, attempts=2 and deterministic BullMQ-safe bounded job identity', async () => {
     expect(VISIBILITY_METRICS_QUEUE_NAME).toBe('visibility-metrics');
     expect(VISIBILITY_METRICS_ATTEMPTS).toBe(2);
 
     const first = buildVisibilityMetricsJobId(JOB);
     const second = buildVisibilityMetricsJobId({ ...JOB });
     expect(first).toBe(second);
-    expect(first).toMatch(/^visibility-metrics:[a-f0-9]{64}$/);
+    expect(first).toMatch(/^visibility-metrics-[a-f0-9]{64}$/);
+    expect(first).not.toContain(':');
 
     const port = new FakeQueue();
     const queue = new VisibilityMetricsQueue(port);
