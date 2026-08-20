@@ -95,9 +95,9 @@ async function seedTrendFacts(projectId: string) {
           numerator: row.previousNumerator,
           denominator: row.previousDenominator,
           candidateObservationCount: 10,
-          eligibleObservationCount: row.previousStatus === 'CALCULATED' ? 10 : 8,
+          eligibleObservationCount: 10,
           notEligibleObservationCount: 0,
-          unknownObservationCount: row.previousStatus === 'UNKNOWN' ? 2 : 0
+          unknownObservationCount: 0
         },
         {
           visibilityMetricSnapshotId: current.id,
