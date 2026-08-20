@@ -1,6 +1,7 @@
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../src/db/prisma.js';
 import { VisibilityAlertsService } from '../../src/modules/visibility/visibility-alerts.service.js';
+import { VisibilityHistoryObservability } from '../../src/modules/visibility/visibility-history.observability.js';
 
 const projectIds: string[] = [];
 
@@ -85,14 +86,15 @@ describe('P6-D visibility alerts persistence', () => {
     }
   });
 
-  it('deduplicates triggers, acknowledges lifecycle only, and resolves on the next non-triggering comparison', async () => {
+  it('deduplicates triggers, acknowledges lifecycle only, resolves on recovery, and emits after durable state', async () => {
     const project = await createProject('P6-D Alert Lifecycle');
     const s1 = await createSnapshot(project.id, '2026-07-01T00:00:00.000Z', '2026-07-08T00:00:00.000Z');
     const s2 = await createSnapshot(project.id, '2026-07-08T00:00:00.000Z', '2026-07-15T00:00:00.000Z');
     const s3 = await createSnapshot(project.id, '2026-07-15T00:00:00.000Z', '2026-07-22T00:00:00.000Z');
     const drop = await createComparison(project.id, s1.id, s2.id, -2000);
     const recovery = await createComparison(project.id, s2.id, s3.id, 2000);
-    const service = new VisibilityAlertsService();
+    const sink = vi.fn();
+    const service = new VisibilityAlertsService(new VisibilityHistoryObservability(sink));
     const rule = await service.createRule(project.id, {
       ruleType: 'OWNED_MENTION_RATE_DROP',
       name: 'Owned mention drop',
@@ -104,6 +106,18 @@ describe('P6-D visibility alerts persistence', () => {
     expect(await service.evaluateComparison(project.id, drop.id)).toEqual({ triggered: 0, resolved: 0 });
 
     const event = await prisma.visibilityAlertEvent.findFirstOrThrow({ where: { projectId: project.id, alertRuleId: rule.id } });
+    expect(sink).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'visibility.alert.triggered',
+      projectId: project.id,
+      comparisonId: drop.id,
+      ruleId: rule.id,
+      alertId: event.id,
+      actorKey: 'OWNED_ROLLUP',
+      status: 'OPEN',
+      reasonCode: 'OWNED_MENTION_RATE_DROP',
+      deltaBasisPoints: -2000
+    }));
+
     const evidenceBefore = {
       comparisonId: event.comparisonId,
       reasonCode: event.reasonCode,
@@ -120,11 +134,27 @@ describe('P6-D visibility alerts persistence', () => {
       deltaBasisPoints: acknowledged.deltaBasisPoints,
       triggeredAt: acknowledged.triggeredAt
     }).toEqual(evidenceBefore);
+    expect(sink).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'visibility.alert.acknowledged',
+      projectId: project.id,
+      comparisonId: drop.id,
+      ruleId: rule.id,
+      alertId: event.id,
+      status: 'ACKNOWLEDGED'
+    }));
 
     expect(await service.evaluateComparison(project.id, recovery.id)).toEqual({ triggered: 0, resolved: 1 });
     const resolved = await prisma.visibilityAlertEvent.findUniqueOrThrow({ where: { id: event.id } });
     expect(resolved.status).toBe('RESOLVED');
     expect(resolved.resolvedAt).not.toBeNull();
+    expect(sink).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'visibility.alert.resolved',
+      projectId: project.id,
+      comparisonId: event.comparisonId,
+      ruleId: rule.id,
+      alertId: event.id,
+      status: 'RESOLVED'
+    }));
   });
 
   it('fails closed on foreign project rule/event identifiers', async () => {
