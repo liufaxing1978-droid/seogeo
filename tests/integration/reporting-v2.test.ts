@@ -8,7 +8,6 @@ import {
 } from '../../src/modules/reporting/report-builder.js';
 
 const projectIds: string[] = [];
-const alertRuleIds: string[] = [];
 
 async function createProject(planLevel: 'STANDARD' | 'ADVANCED', label: string) {
   const suffix = `${label}-${Date.now()}-${Math.random()}`;
@@ -28,8 +27,6 @@ async function createMetricSnapshot(projectId: string, input: {
   windowStart: string;
   windowEnd: string;
   completedAt: string;
-  subjectSetHash?: string;
-  scopeHash?: string;
   privateLabel: string;
 }) {
   return prisma.visibilityMetricSnapshot.create({
@@ -38,13 +35,13 @@ async function createMetricSnapshot(projectId: string, input: {
       status: 'COMPLETED',
       formulaVersion: 'VISIBILITY_METRICS_V1',
       extractorVersion: 'P6B_EXTRACTION_V1',
-      subjectSetHash: input.subjectSetHash ?? 'a'.repeat(64),
+      subjectSetHash: 'a'.repeat(64),
       subjectSnapshotJson: { private: `PRIVATE SUBJECT ${input.privateLabel}` },
       windowStart: new Date(input.windowStart),
       windowEnd: new Date(input.windowEnd),
       inputCutoffAt: new Date(input.windowEnd),
       scopeJson: { providers: [], promptSetIds: [], private: `PRIVATE SCOPE ${input.privateLabel}` },
-      scopeHash: input.scopeHash ?? 'b'.repeat(64),
+      scopeHash: 'b'.repeat(64),
       inputFingerprint: `${input.privateLabel.charCodeAt(0).toString(16)}`.repeat(64).slice(0, 64),
       candidateObservationCount: 10,
       completedExtractionCount: 8,
@@ -68,6 +65,7 @@ async function seedOwnedRows(projectId: string, snapshotId: string) {
     actorType: 'OWNED_ROLLUP' as const,
     actorKey: 'OWNED_ROLLUP'
   };
+
   await prisma.visibilityMetricRow.createMany({
     data: [
       { ...shared, metricType: 'MENTION_RATE', metricStatus: 'CALCULATED', numerator: 3, denominator: 10 },
@@ -100,10 +98,11 @@ async function seedCompetitorRows(projectId: string, snapshotId: string, count: 
 
 afterAll(async () => {
   for (const projectId of projectIds) {
-    await prisma.project.delete({ where: { id: projectId } }).catch(() => undefined);
-  }
-  for (const ruleId of alertRuleIds) {
-    await prisma.visibilityAlertRule.delete({ where: { id: ruleId } }).catch(() => undefined);
+    // Alert events RESTRICT comparison deletion; remove them before project cascades.
+    await prisma.visibilityAlertEvent.deleteMany({ where: { projectId } });
+    await prisma.visibilityAlertRule.deleteMany({ where: { projectId } });
+    await prisma.visibilityMetricComparison.deleteMany({ where: { projectId } });
+    await prisma.project.delete({ where: { id: projectId } });
   }
 });
 
@@ -229,7 +228,6 @@ describe('PROJECT_REPORT_V2', () => {
         thresholdBasisPoints: 100
       }
     });
-    alertRuleIds.push(infoRule.id, criticalRule.id);
     await prisma.visibilityAlertEvent.createMany({
       data: [
         {
