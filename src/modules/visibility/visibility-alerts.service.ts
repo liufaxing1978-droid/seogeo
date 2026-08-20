@@ -10,6 +10,10 @@ import type {
   VisibilityMetricType
 } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
+import {
+  VisibilityHistoryObservability,
+  visibilityHistoryObservability
+} from './visibility-history.observability.js';
 
 export class VisibilityAlertsError extends Error {
   constructor(public readonly code: string, message: string) {
@@ -113,6 +117,10 @@ async function assertCompetitorSubject(projectId: string, actorSubjectId: string
 }
 
 export class VisibilityAlertsService {
+  constructor(
+    private readonly observability: VisibilityHistoryObservability = visibilityHistoryObservability
+  ) {}
+
   async createRule(projectId: string, input: CreateVisibilityAlertRuleInput): Promise<VisibilityAlertRule> {
     const thresholdBasisPoints = validateThreshold(input.ruleType, input.thresholdBasisPoints);
     await assertCompetitorSubject(projectId, input.actorSubjectId);
@@ -200,7 +208,7 @@ export class VisibilityAlertsService {
         const fingerprint = visibilityAlertFingerprint(rule.id, comparison.id, match.actorKey);
         const existing = await prisma.visibilityAlertEvent.findUnique({ where: { eventFingerprint: fingerprint }, select: { id: true } });
         if (!existing) {
-          await prisma.visibilityAlertEvent.create({
+          const created = await prisma.visibilityAlertEvent.create({
             data: {
               projectId,
               alertRuleId: rule.id,
@@ -216,17 +224,41 @@ export class VisibilityAlertsService {
               triggeredAt
             }
           });
+          this.observability.emit({
+            event: 'visibility.alert.triggered',
+            projectId,
+            comparisonId: comparison.id,
+            ruleId: rule.id,
+            alertId: created.id,
+            actorKey: match.actorKey ?? undefined,
+            status: created.status,
+            reasonCode: rule.ruleType,
+            deltaBasisPoints: match.deltaBasisPoints ?? undefined,
+            alertCount: 1
+          });
           triggered += 1;
         }
       }
 
       const unresolved = await prisma.visibilityAlertEvent.findMany({
         where: { projectId, alertRuleId: rule.id, status: { in: ['OPEN', 'ACKNOWLEDGED'] }, comparisonId: { not: comparison.id } },
-        select: { id: true, actorKey: true }
+        select: { id: true, actorKey: true, comparisonId: true, reasonCode: true, deltaBasisPoints: true }
       });
       for (const event of unresolved) {
         if (activeKeys.has(event.actorKey ?? 'NONE')) continue;
-        await prisma.visibilityAlertEvent.update({ where: { id: event.id }, data: { status: 'RESOLVED', resolvedAt: triggeredAt } });
+        const updated = await prisma.visibilityAlertEvent.update({ where: { id: event.id }, data: { status: 'RESOLVED', resolvedAt: triggeredAt } });
+        this.observability.emit({
+          event: 'visibility.alert.resolved',
+          projectId,
+          comparisonId: event.comparisonId,
+          ruleId: rule.id,
+          alertId: updated.id,
+          actorKey: event.actorKey ?? undefined,
+          status: updated.status,
+          reasonCode: event.reasonCode,
+          deltaBasisPoints: event.deltaBasisPoints ?? undefined,
+          alertCount: 1
+        });
         resolved += 1;
       }
     }
@@ -238,9 +270,22 @@ export class VisibilityAlertsService {
     if (!alert) throw new VisibilityAlertsError('VISIBILITY_ALERT_NOT_FOUND', 'Visibility alert was not found');
     if (alert.status === 'RESOLVED') return alert;
     if (alert.status === 'ACKNOWLEDGED') return alert;
-    return prisma.visibilityAlertEvent.update({
+    const updated = await prisma.visibilityAlertEvent.update({
       where: { id: alert.id },
       data: { status: 'ACKNOWLEDGED', acknowledgedAt: new Date() }
     });
+    this.observability.emit({
+      event: 'visibility.alert.acknowledged',
+      projectId,
+      comparisonId: updated.comparisonId,
+      ruleId: updated.alertRuleId,
+      alertId: updated.id,
+      actorKey: updated.actorKey ?? undefined,
+      status: updated.status,
+      reasonCode: updated.reasonCode,
+      deltaBasisPoints: updated.deltaBasisPoints ?? undefined,
+      alertCount: 1
+    });
+    return updated;
   }
 }
