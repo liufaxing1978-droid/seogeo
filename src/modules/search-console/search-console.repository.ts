@@ -1,8 +1,9 @@
-import type {
-  GscDailySnapshot,
-  OAuthStateNonce,
-  SearchConsoleConnection,
-  SearchConsoleProperty
+import {
+  Prisma,
+  type GscDailySnapshot,
+  type OAuthStateNonce,
+  type SearchConsoleConnection,
+  type SearchConsoleProperty
 } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import type {
@@ -54,6 +55,12 @@ function assertMutableSnapshot(snapshot: Pick<GscDailySnapshot, 'status'>): void
   if (snapshot.status === 'FAILED') {
     throw new Error('FAILED GSC daily snapshot cannot be mutated');
   }
+}
+
+async function lockDailySnapshot(tx: Prisma.TransactionClient, snapshotId: string): Promise<void> {
+  await tx.$queryRaw(
+    Prisma.sql`SELECT "id" FROM "GscDailySnapshot" WHERE "id" = ${snapshotId}::uuid FOR UPDATE`
+  );
 }
 
 export type CreateOAuthStateNonceInput = {
@@ -190,6 +197,7 @@ export class SearchConsoleRepository implements OAuthCredentialStore {
 
   async replaceDailyFacts(snapshotId: string, facts: readonly GscDailyFactInput[]): Promise<void> {
     await prisma.$transaction(async (tx) => {
+      await lockDailySnapshot(tx, snapshotId);
       const snapshot = await tx.gscDailySnapshot.findUnique({ where: { id: snapshotId } });
       if (!snapshot) throw new Error('GSC daily snapshot not found');
       assertMutableSnapshot(snapshot);
@@ -217,6 +225,7 @@ export class SearchConsoleRepository implements OAuthCredentialStore {
     input: CompleteGscDailySnapshotInput
   ): Promise<GscDailySnapshot> {
     return prisma.$transaction(async (tx) => {
+      await lockDailySnapshot(tx, snapshotId);
       const snapshot = await tx.gscDailySnapshot.findUnique({ where: { id: snapshotId } });
       if (!snapshot) throw new Error('GSC daily snapshot not found');
       assertMutableSnapshot(snapshot);
@@ -241,6 +250,7 @@ export class SearchConsoleRepository implements OAuthCredentialStore {
 
   async failDailySnapshot(snapshotId: string, errorCode: string): Promise<GscDailySnapshot> {
     return prisma.$transaction(async (tx) => {
+      await lockDailySnapshot(tx, snapshotId);
       const snapshot = await tx.gscDailySnapshot.findUnique({ where: { id: snapshotId } });
       if (!snapshot) throw new Error('GSC daily snapshot not found');
       assertMutableSnapshot(snapshot);
