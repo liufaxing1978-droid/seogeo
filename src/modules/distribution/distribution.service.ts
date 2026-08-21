@@ -6,7 +6,8 @@ import {
   publishWithDistributionAdapter,
   type ApprovedDistributionArtifact,
   type DistributionAdapter,
-  type DistributionPublishResult
+  type DistributionPublishResult,
+  type DistributionVerifyResult
 } from './distribution-adapter.js';
 import { createDistributionAdaptationTask } from './distribution-ai.js';
 import {
@@ -82,6 +83,33 @@ function approvedArtifact(
   };
 }
 
+function requireHttpUrl(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new DistributionServiceError('DISTRIBUTION_PUBLIC_URL_INVALID', 'Distribution public URL is invalid');
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new DistributionServiceError('DISTRIBUTION_PUBLIC_URL_INVALID', 'Distribution public URL must use HTTP or HTTPS');
+  }
+  return url.toString();
+}
+
+function publishResultFromMetadata(value: Prisma.JsonValue | null): DistributionPublishResult {
+  const metadata = objectMetadata(value);
+  const providerId = typeof metadata.providerId === 'string' ? metadata.providerId : null;
+  const publicUrl = typeof metadata.publicUrl === 'string' ? metadata.publicUrl : null;
+  const status = typeof metadata.status === 'string' ? metadata.status : null;
+  if (!status) {
+    throw new DistributionServiceError(
+      'DISTRIBUTION_PUBLISH_RESULT_MISSING',
+      'Published distribution result is missing its frozen provider status'
+    );
+  }
+  return { providerId, publicUrl, status };
+}
+
 export class DistributionService {
   private readonly repository: DistributionRepository;
   private readonly queue?: DistributionPreparationQueuePort;
@@ -155,6 +183,23 @@ export class DistributionService {
         'Distribution preparation must bind the exact verified primary source version'
       );
     }
+  }
+
+  private async currentArtifact(context: DistributionContext, artifactId: string): Promise<DistributionArtifact> {
+    const artifact = await prisma.distributionArtifact.findFirst({
+      where: { id: artifactId, targetId: context.target.id, projectId: context.project.id }
+    });
+    if (!artifact) {
+      throw new DistributionServiceError('DISTRIBUTION_ARTIFACT_NOT_FOUND', 'Distribution artifact not found');
+    }
+    if (
+      artifact.sourceContentVersion !== context.publication.plan.draftVersion
+      || (context.target.sourceContentVersion !== null
+        && artifact.sourceContentVersion < context.target.sourceContentVersion)
+    ) {
+      throw new DistributionServiceError('DISTRIBUTION_ARTIFACT_OUTDATED', 'Distribution artifact source is outdated');
+    }
+    return artifact;
   }
 
   async requestPreparation(input: {
@@ -237,15 +282,7 @@ export class DistributionService {
         'Distribution artifact must be DRAFT_READY before approval'
       );
     }
-    const artifact = await prisma.distributionArtifact.findFirst({
-      where: { id: input.artifactId, targetId: input.targetId, projectId: input.projectId }
-    });
-    if (!artifact) {
-      throw new DistributionServiceError('DISTRIBUTION_ARTIFACT_NOT_FOUND', 'Distribution artifact not found');
-    }
-    if (artifact.sourceContentVersion !== context.publication.plan.draftVersion) {
-      throw new DistributionServiceError('DISTRIBUTION_ARTIFACT_OUTDATED', 'Distribution artifact source is outdated');
-    }
+    const artifact = await this.currentArtifact(context, input.artifactId);
     return this.repository.appendTargetEvent(context.target.id, {
       artifactId: artifact.id,
       fromStatus: context.target.status,
@@ -275,20 +312,7 @@ export class DistributionService {
       );
     }
 
-    const artifact = await prisma.distributionArtifact.findFirst({
-      where: { id: input.artifactId, targetId: input.targetId, projectId: input.projectId }
-    });
-    if (!artifact) {
-      throw new DistributionServiceError('DISTRIBUTION_ARTIFACT_NOT_FOUND', 'Distribution artifact not found');
-    }
-    if (
-      artifact.sourceContentVersion !== context.publication.plan.draftVersion
-      || (context.target.sourceContentVersion !== null
-        && artifact.sourceContentVersion < context.target.sourceContentVersion)
-    ) {
-      throw new DistributionServiceError('DISTRIBUTION_ARTIFACT_OUTDATED', 'Outdated distribution artifact cannot be published');
-    }
-
+    const artifact = await this.currentArtifact(context, input.artifactId);
     const startedAt = Date.now();
     try {
       const result = await publishWithDistributionAdapter(input.adapter, approvedArtifact(context.target, artifact));
@@ -299,6 +323,7 @@ export class DistributionService {
         reasonCode: 'DISTRIBUTION_PUBLISH_COMPLETED',
         sourceContentVersion: artifact.sourceContentVersion,
         metadata: {
+          capability: input.adapter.capability,
           providerId: result.providerId ?? null,
           publicUrl: result.publicUrl ?? null,
           status: result.status
@@ -322,7 +347,8 @@ export class DistributionService {
           fromStatus: context.target.status,
           toStatus: 'MANUAL_ACTION_REQUIRED',
           reasonCode: error.code,
-          sourceContentVersion: artifact.sourceContentVersion
+          sourceContentVersion: artifact.sourceContentVersion,
+          metadata: { capability: input.adapter.capability } as Prisma.InputJsonValue
         });
       }
       this.observability.emit('distribution.publish.failed', {
@@ -344,6 +370,94 @@ export class DistributionService {
       });
       throw error;
     }
+  }
+
+  async recordManualPublicationResult(input: {
+    projectId: string;
+    targetId: string;
+    artifactId: string;
+    publicUrl: string;
+  }): Promise<{ status: 'PUBLISHED'; publicUrl: string }> {
+    const context = await this.context(input.targetId, input.projectId);
+    this.assertFeature(context);
+    this.assertVerified(context);
+    if (context.target.status !== 'MANUAL_ACTION_REQUIRED') {
+      throw new DistributionServiceError(
+        'DISTRIBUTION_MANUAL_ACTION_NOT_REQUIRED',
+        'Manual publication result can only be recorded after a manual handoff'
+      );
+    }
+    const artifact = await this.currentArtifact(context, input.artifactId);
+    const publicUrl = requireHttpUrl(input.publicUrl);
+    await this.repository.appendTargetEvent(context.target.id, {
+      artifactId: artifact.id,
+      fromStatus: context.target.status,
+      toStatus: 'PUBLISHED',
+      reasonCode: 'MANUAL_PUBLISH_RECORDED',
+      sourceContentVersion: artifact.sourceContentVersion,
+      metadata: {
+        capability: 'MANUAL_HANDOFF',
+        publicUrl,
+        status: 'manual-published'
+      } as Prisma.InputJsonValue
+    });
+    return { status: 'PUBLISHED', publicUrl };
+  }
+
+  async verifyPublishedArtifact(input: {
+    projectId: string;
+    targetId: string;
+    artifactId: string;
+    adapter: DistributionAdapter;
+  }): Promise<DistributionVerifyResult> {
+    const context = await this.context(input.targetId, input.projectId);
+    this.assertFeature(context);
+    this.assertVerified(context);
+    if (context.target.status !== 'PUBLISHED') {
+      throw new DistributionServiceError(
+        'DISTRIBUTION_NOT_PUBLISHED',
+        'Distribution artifact must be PUBLISHED before verification'
+      );
+    }
+    if (
+      input.adapter.capability !== 'PUBLISH_API'
+      || input.adapter.platform !== context.target.platform
+      || !input.adapter.verify
+    ) {
+      throw new DistributionServiceError(
+        'DISTRIBUTION_VERIFY_NOT_SUPPORTED',
+        'Distribution adapter does not support trusted verification'
+      );
+    }
+    const artifact = await this.currentArtifact(context, input.artifactId);
+    const publishEvent = await prisma.distributionTargetEvent.findFirst({
+      where: {
+        targetId: context.target.id,
+        artifactId: artifact.id,
+        toStatus: 'PUBLISHED'
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
+    });
+    if (!publishEvent) {
+      throw new DistributionServiceError(
+        'DISTRIBUTION_PUBLISH_RESULT_MISSING',
+        'Published distribution result is missing'
+      );
+    }
+    const frozenPublishResult = publishResultFromMetadata(publishEvent.metadata);
+    const result = await input.adapter.verify(frozenPublishResult);
+    await this.repository.appendTargetEvent(context.target.id, {
+      artifactId: artifact.id,
+      fromStatus: context.target.status,
+      toStatus: result.verified ? 'VERIFIED' : 'FAILED',
+      reasonCode: result.verified ? 'DISTRIBUTION_VERIFY_COMPLETED' : 'DISTRIBUTION_VERIFY_FAILED',
+      sourceContentVersion: artifact.sourceContentVersion,
+      metadata: {
+        capability: input.adapter.capability,
+        publicUrl: result.publicUrl ?? frozenPublishResult.publicUrl ?? null
+      } as Prisma.InputJsonValue
+    });
+    return result;
   }
 }
 
