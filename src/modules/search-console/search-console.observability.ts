@@ -1,4 +1,7 @@
 export const SEARCH_CONSOLE_OBSERVABILITY_EVENTS = [
+  'gsc.connection.connected',
+  'gsc.connection.revoked',
+  'gsc.property.bound',
   'gsc.sync.started',
   'gsc.sync.completed',
   'gsc.sync.failed'
