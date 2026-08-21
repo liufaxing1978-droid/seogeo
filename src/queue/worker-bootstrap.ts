@@ -20,6 +20,14 @@ import {
   processPublicationExecutionJob
 } from '../modules/publication/publication-execution.worker.js';
 import {
+  PUBLICATION_VERIFICATION_QUEUE_NAME,
+  PUBLICATION_VERIFICATION_WORKER_CONCURRENCY
+} from '../modules/publication/publication-verification.queue.js';
+import {
+  processPublicationVerificationJob,
+  type PublicationVerificationJobData
+} from '../modules/publication/publication-verification.worker.js';
+import {
   processSearchConsoleSyncJob,
   SEARCH_CONSOLE_SYNC_QUEUE_NAME,
   SEARCH_CONSOLE_SYNC_WORKER_CONCURRENCY,
@@ -72,6 +80,7 @@ export function workerDefinitionForQueue(
     | 'visibility-metrics'
     | 'visibility-monitoring'
     | 'site-mutation-execution'
+    | 'site-mutation-verification'
 ) {
   if (name === SEARCH_CONSOLE_SYNC_QUEUE_NAME) {
     return {
@@ -113,6 +122,12 @@ export function workerDefinitionForQueue(
     return {
       processor: processPublicationExecutionJob,
       concurrency: PUBLICATION_EXECUTION_WORKER_CONCURRENCY
+    } as const;
+  }
+  if (name === PUBLICATION_VERIFICATION_QUEUE_NAME) {
+    return {
+      processor: processPublicationVerificationJob,
+      concurrency: PUBLICATION_VERIFICATION_WORKER_CONCURRENCY
     } as const;
   }
   throw new Error(`Unsupported worker definition: ${name}`);
@@ -201,6 +216,13 @@ export async function startWorkers() {
           }
         },
         { connection, concurrency: PUBLICATION_EXECUTION_WORKER_CONCURRENCY }
+      );
+    }
+    if (name === PUBLICATION_VERIFICATION_QUEUE_NAME) {
+      return new Worker<PublicationVerificationJobData>(
+        name,
+        async (job) => processPublicationVerificationJob({ name: job.name, data: job.data }),
+        { connection, concurrency: PUBLICATION_VERIFICATION_WORKER_CONCURRENCY }
       );
     }
     if (name === 'ai') return new Worker<AiJobData>(name, processAiJob, { connection });
