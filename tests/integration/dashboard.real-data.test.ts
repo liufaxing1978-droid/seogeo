@@ -4,11 +4,12 @@ import {
   DashboardRepository,
   type DashboardVisibilityReader
 } from '../../src/web/dashboard.repository.js';
+import { seedGrowthDashboardFacts } from '../helpers/growth-dashboard-fixture.js';
 
 const projectIds: string[] = [];
 const ruleIds: string[] = [];
 
-async function createProject(planLevel: 'STANDARD' | 'ADVANCED', label: string) {
+async function createProject(planLevel: 'STANDARD' | 'ADVANCED' | 'ENTERPRISE', label: string) {
   const suffix = `${label}-${Date.now()}-${Math.random()}`;
   const project = await prisma.project.create({
     data: {
@@ -198,5 +199,98 @@ describe('real dashboard repository', () => {
     expect(portfolio.projects.length).toBeLessThanOrEqual(50);
     expect(portfolio).not.toHaveProperty('visibilityAverage');
     expect(portfolio).not.toHaveProperty('averageVisibility');
+  });
+
+  it('derives an Advanced project Growth summary only from persisted P7-A and GSC facts', async () => {
+    const project = await createProject('ADVANCED', 'growth-advanced');
+    await seedGrowthDashboardFacts(project.id, { includeEligible: true, includeAdvancedTypes: true, resolvedCount: 1 });
+
+    const model = await new DashboardRepository().getProjectFacts(project);
+
+    expect(model).toMatchObject({
+      growth: {
+        state: 'AVAILABLE',
+        surface: 'FULL',
+        topEligibleScore: 91,
+        criticalCount: 1,
+        highCount: 2,
+        resolvedCount: 1,
+        topDeclining: { normalizedQuery: 'declining opportunity', score: 91 },
+        topRankingUpside: { normalizedQuery: 'ranking opportunity', score: 84 },
+        topCannibalizationRisk: { normalizedQuery: 'cannibal opportunity', score: 88 },
+        searchTrend: {
+          current: { impressions: 200, clicks: 20 },
+          previous: { impressions: 100, clicks: 10 },
+          impressionChangePct: 100,
+          clickChangePct: 100
+        },
+        gsc: {
+          connectionStatus: 'CONNECTED',
+          propertyUri: 'sc-domain:example.com',
+          latestCompletedDate: '2026-08-01',
+          sourceCompletenessState: 'TOP_ROWS_ONLY'
+        }
+      }
+    });
+    expect(JSON.stringify((model as any).growth)).not.toContain('SHOULD_NOT_RENDER');
+    expect(JSON.stringify((model as any).growth)).not.toContain('fixture-ciphertext');
+  });
+
+  it('keeps Standard Growth summary on the bounded basic opportunity surface', async () => {
+    const project = await createProject('STANDARD', 'growth-standard');
+    await seedGrowthDashboardFacts(project.id, { includeEligible: true, includeAdvancedTypes: true, resolvedCount: 1 });
+
+    const model = await new DashboardRepository().getProjectFacts(project);
+
+    expect(model).toMatchObject({
+      growth: {
+        state: 'AVAILABLE',
+        surface: 'BASIC',
+        topEligibleScore: 84,
+        criticalCount: 0,
+        highCount: 1,
+        topRankingUpside: { normalizedQuery: 'ranking opportunity', score: 84 },
+        topDeclining: null,
+        topCannibalizationRisk: null
+      }
+    });
+  });
+
+  it('renders explicit Growth NO_DATA semantics when the latest window has no ranking-eligible snapshot', async () => {
+    const project = await createProject('ADVANCED', 'growth-no-data');
+    await seedGrowthDashboardFacts(project.id, { includeEligible: false, includeAdvancedTypes: false, resolvedCount: 0 });
+
+    const model = await new DashboardRepository().getProjectFacts(project);
+
+    expect(model).toMatchObject({
+      growth: {
+        state: 'NO_DATA',
+        topEligibleScore: null,
+        criticalCount: 0,
+        highCount: 0
+      }
+    });
+  });
+
+  it('builds an Enterprise-only bounded Growth portfolio ordered by critical risk then top eligible score', async () => {
+    const enterpriseA = await createProject('ENTERPRISE', 'enterprise-growth-a');
+    const enterpriseB = await createProject('ENTERPRISE', 'enterprise-growth-b');
+    const advanced = await createProject('ADVANCED', 'advanced-not-portfolio-growth');
+    await seedGrowthDashboardFacts(enterpriseA.id, { includeEligible: true, includeAdvancedTypes: true, resolvedCount: 2 });
+    await seedGrowthDashboardFacts(enterpriseB.id, { includeEligible: true, includeAdvancedTypes: false, resolvedCount: 1 });
+    await seedGrowthDashboardFacts(advanced.id, { includeEligible: true, includeAdvancedTypes: true, resolvedCount: 3 });
+
+    const portfolio = await new DashboardRepository().getPortfolio({ limit: 50 });
+    const enterpriseGrowth = (portfolio as any).enterpriseGrowthProjects;
+
+    expect(enterpriseGrowth).toHaveLength(2);
+    expect(enterpriseGrowth.map((row: any) => row.projectId)).toEqual([enterpriseA.id, enterpriseB.id]);
+    expect(enterpriseGrowth[0]).toMatchObject({
+      topEligibleScore: 91,
+      criticalCount: 1,
+      resolvedCount: 2,
+      connectionStatus: 'CONNECTED'
+    });
+    expect(enterpriseGrowth.some((row: any) => row.projectId === advanced.id)).toBe(false);
   });
 });
