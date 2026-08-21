@@ -23,6 +23,7 @@ import { createGrowthExplanationRoutes } from './modules/growth/growth-explanati
 import { createGrowthRoutes, type GrowthRestRepository } from './modules/growth/growth.routes.js';
 import { createGrowthWebRoutes } from './modules/growth/growth.web.routes.js';
 import { healthRoutes } from './modules/health/health.routes.js';
+import { createMarketRoutes, type MarketApiPort } from './modules/market/market.routes.js';
 import { projectRoutes } from './modules/projects/project.routes.js';
 import {
   createPublicationRoutes,
@@ -62,6 +63,7 @@ export interface AppOptions {
   growthApiRepository?: Partial<GrowthRestRepository>;
   publicationApi?: PublicationApiPort;
   distributionApi?: DistributionApiPort;
+  marketService?: MarketApiPort;
   visibilityRunService?: VisibilityRunService;
   visibilityExtractionQueue?: VisibilityExtractionQueue;
   visibilityMetricsQueue?: VisibilityMetricsQueue;
@@ -77,6 +79,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/assets', express.static(path.join(here, 'public')));
   app.use('/health', healthRoutes);
   app.use('/api/projects', projectRoutes);
+  app.use('/api', createMarketRoutes(options.marketService));
   app.use('/api', createCrawlRoutes(options.crawlService));
   app.use('/api', createSeoRoutes(options.seoService));
   app.use('/api', createGeoRoutes(options.geoService));
