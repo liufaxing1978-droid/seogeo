@@ -16,7 +16,7 @@
     <td><%= proposal.metadata.opportunityType ?? 'MANUAL' %></td>
     <td><%= proposal.metadata.normalizedQuery ?? '—' %></td>
     <td><%= proposal.metadata.priority ?? '—' %><% if (proposal.metadata.score !== null) { %> · <%= proposal.metadata.score %><% } %></td>
-    <td><%= proposal.reason %></td>
+    <td><%= proposal.metadata.opportunityType ? proposal.reason.replace(proposal.metadata.opportunityType, '内容机会') : proposal.reason %></td>
     <td>
       <% if (proposal.drafts.length) { %>
         <% for (const draft of proposal.drafts) { %><a href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>"><%= draft.title %></a><br><% } %>
