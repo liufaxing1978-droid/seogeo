@@ -6,6 +6,7 @@ import {
   parseDistributionAdaptationTaskOutput,
   promptIdForDistributionTask
 } from '../distribution/distribution-ai.js';
+import { emitPreparedDistributionEvent } from '../distribution/distribution-prepared-observability.js';
 import {
   materializeArticleGenerationOutput,
   parseArticleGenerationOutput as parsePublicationArticleGenerationOutput,
@@ -174,6 +175,13 @@ export async function executeAiTask(taskId: string, dependencies: ExecuteAiTaskD
           )
           : undefined;
     await repository.completeRun(task, run.id, response, output as Prisma.InputJsonValue, resultSummary(task, output), materialize);
+    if (task.taskType === 'PUBLICATION_CONTENT_ADAPTATION') {
+      try {
+        await emitPreparedDistributionEvent(task);
+      } catch {
+        // Distribution observability is best-effort after the durable completion transaction.
+      }
+    }
     observability.emit({ event: 'ai.task.completed', taskId: task.id, projectId: task.projectId, runId: run.id, provider: 'DEEPSEEK', model: response.model, promptVersion: task.promptVersion });
   } catch (error) {
     const code = errorCode(error);
