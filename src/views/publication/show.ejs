@@ -1,0 +1,46 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Publication Execution</p>
+    <h1>发布执行</h1>
+    <p class="muted"><%= execution.plan.draft.title %> · <%= execution.plan.targetPublicUrl %></p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/publication/plans/<%= execution.plan.id %>">查看发布预览</a></div>
+</section>
+
+<section class="panel">
+  <h2>执行状态</h2>
+  <p><span class="badge"><%= execution.status %></span></p>
+  <% if (staleReviewRequired) { %><p><strong>审批已失效，需要重新审核</strong></p><% } %>
+  <% if (execution.errorCode) { %><p>Reason：<code><%= execution.errorCode %></code></p><% } %>
+  <div class="table-wrap"><table><tbody>
+    <tr><th>Execution Key</th><td><code><%= execution.executionKey %></code></td></tr>
+    <tr><th>Branch</th><td><%= execution.branchName ?? '—' %></td></tr>
+    <tr><th>Commit</th><td><%= execution.commitSha ?? '—' %></td></tr>
+    <tr><th>Pull Request</th><td><% if (execution.pullRequestNo) { %>Draft PR #<%= execution.pullRequestNo %><% } else { %>—<% } %></td></tr>
+  </tbody></table></div>
+</section>
+
+<section class="panel">
+  <h2>生命周期</h2>
+  <div class="table-wrap"><table><thead><tr><th>时间</th><th>事件</th><th>状态</th><th>原因</th></tr></thead><tbody>
+  <% for (const event of execution.events) { %><tr>
+    <td><%= new Date(event.createdAt).toLocaleString('zh-CN') %></td>
+    <td>事件：<%= event.eventType %></td>
+    <td><%= event.fromStatus ?? '—' %> → <%= event.toStatus %></td>
+    <td><%= event.reasonCode %></td>
+  </tr><% } %>
+  <% if (!execution.events.length) { %><tr><td colspan="4" class="muted">尚无执行事件。</td></tr><% } %>
+  </tbody></table></div>
+</section>
+
+<section class="panel">
+  <h2>技术验证记录</h2>
+  <% for (const verification of execution.verifications) { %><p><a href="/projects/<%= project.id %>/publication/verifications/<%= verification.id %>">验证记录 · <%= verification.status %></a></p><% } %>
+  <% if (!execution.verifications.length) { %><p class="muted">尚无真实站点验证记录。PR_CREATED / DEPLOYED 不会自动被当成已验证。</p><% } %>
+</section>
+
+<section class="panel">
+  <h2>回滚</h2>
+  <p class="muted">P8-A 回滚必须创建可审核的 revert/change 计划；不会 force reset 主分支。</p>
+  <% for (const rollback of execution.rollbackProposals) { %><p><span class="badge"><%= rollback.status %></span> · <%= rollback.strategy %> · <%= rollback.reasonCode %></p><% } %>
+</section>

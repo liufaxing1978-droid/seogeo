@@ -1,0 +1,50 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Immutable Plan · V<%= plan.version %></p>
+    <h1>发布预览</h1>
+    <p class="muted"><%= plan.draft.title %> · <%= plan.site.displayName %><% if (plan.channel) { %> · <%= plan.channel.displayName %><% } %></p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/publication">返回发布中心</a></div>
+</section>
+
+<section class="panel">
+  <h2>审批绑定事实</h2>
+  <div class="table-wrap"><table><tbody>
+    <tr><th>Final URL</th><td><%= plan.targetPublicUrl %></td></tr>
+    <tr><th>Repository</th><td><%= plan.targetRepository %> · <%= plan.targetBranch %></td></tr>
+    <tr><th>Base SHA</th><td><code><%= plan.baseSha %></code></td></tr>
+    <tr><th>Plan Hash</th><td><code><%= plan.planHash %></code></td></tr>
+    <tr><th>Risk</th><td><span class="badge"><%= plan.riskClass %></span></td></tr>
+    <tr><th>Diff</th><td><%= plan.preview?.diffSummary ?? '尚无预览' %></td></tr>
+  </tbody></table></div>
+</section>
+
+<section class="panel">
+  <h2>确定性验证</h2>
+  <% if (!plan.preview) { %><p><strong>审批不可用：</strong>尚无不可变 Preview。</p><% } %>
+  <% if (plan.preview) { %>
+    <% if (!approvalAvailable) { %><p><strong>审批不可用</strong></p><% } else { %><p><strong>确定性验证已允许进入人工审批。</strong></p><% } %>
+    <% for (const code of validation.blockingCodes) { %><p><span class="badge"><%= code %></span> BLOCKING</p><% } %>
+    <% for (const code of validation.warningCodes) { %><p><span class="badge"><%= code %></span> WARNING</p><% } %>
+    <% if (!validation.blockingCodes.length && !validation.warningCodes.length) { %><p class="muted">无 blocking/warning code。</p><% } %>
+  <% } %>
+</section>
+
+<section class="panel">
+  <h2>变更文件</h2>
+  <% for (const file of preview.files) { %><p><code><%= file %></code></p><% } %>
+  <% if (!preview.files.length) { %><p class="muted">Preview 未记录文件清单。</p><% } %>
+</section>
+
+<section class="panel">
+  <h2>Exact Diff</h2>
+  <pre><code><%= preview.unifiedDiff || 'Preview 未记录 unified diff。' %></code></pre>
+</section>
+
+<section class="panel">
+  <h2>审批与执行边界</h2>
+  <p class="muted">审批只对当前 plan/content/preview/base SHA 生效。任一事实变化都必须重新审核。</p>
+  <% if (!gitCapable) { %><p>当前项目不提供 Git Draft PR 写入；可使用导出补丁流程。</p><% } %>
+  <% if (gitCapable && plan.approvals.length && approvalAvailable) { %><p><strong>Git Draft PR：可由显式 POST 执行端点触发。</strong></p><% } %>
+  <% if (latestExecution) { %><p>最近执行：<a href="/projects/<%= project.id %>/publication/executions/<%= latestExecution.id %>"><%= latestExecution.status %></a></p><% } %>
+</section>
