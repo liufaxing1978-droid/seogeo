@@ -1,0 +1,27 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">P7-A · Content Expansion</p>
+    <h1>New Content Opportunities</h1>
+    <p class="muted"><%= project.name %> · 只有满足高需求、无 Top20 现有页、无 ≥70% 主导页、存在 P3/P5 coverage gap 且无 cannibalization 时才进入此视图。</p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/growth">Growth Center</a></div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>候选主题</h2><p class="muted">系统建议评估新建专门内容页；这不是自动建页指令，最终内容规划仍由人工确认。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Query</th><th>Score</th><th>Priority</th><th>Evidence Quality</th><th>触发证据</th></tr></thead>
+    <tbody>
+      <% for (const row of opportunities) { %>
+        <tr>
+          <td><strong><%= row.normalizedQuery || '—' %></strong></td>
+          <td><%= row.score ?? '—' %></td>
+          <td><span class="badge"><%= row.priority ?? 'UNKNOWN' %></span></td>
+          <td><%= row.evidenceQuality ?? 'UNKNOWN' %></td>
+          <td><%= (row.reasonCodes || []).join(' · ') || '—' %></td>
+        </tr>
+      <% } %>
+      <% if (!opportunities.length) { %><tr><td colspan="5" class="muted">当前稳定窗口没有 New Content opportunity。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
