@@ -1,0 +1,94 @@
+enum DistributionPlatform {
+  MEDIUM
+  LINKEDIN
+  SUBSTACK
+  WORDPRESS
+  BLOGGER
+  REDDIT
+  QUORA
+  ZHIHU
+  WIKIPEDIA
+  WIKIDATA
+  BAIDU_BAIKE
+}
+
+enum DistributionMode {
+  CANONICAL_REPOST
+  ADAPTED_ARTICLE
+  SUMMARY
+  SECONDARY_SITE
+  COMMUNITY_DRAFT
+  ENTITY_SUGGESTION
+}
+
+enum DistributionStatus {
+  NOT_PREPARED
+  DRAFT_READY
+  APPROVED
+  PUBLISHED
+  VERIFIED
+  OUTDATED
+  FAILED
+  MANUAL_ACTION_REQUIRED
+}
+
+model DistributionTarget {
+  id                   String               @id @default(uuid()) @db.Uuid
+  projectId            String               @db.Uuid
+  publicationId        String               @db.Uuid
+  platform             DistributionPlatform
+  mode                 DistributionMode
+  targetKey            String
+  status               DistributionStatus   @default(NOT_PREPARED)
+  sourceContentVersion Int?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  artifacts DistributionArtifact[]
+  events    DistributionTargetEvent[]
+
+  @@unique([publicationId, platform, mode, targetKey], map: "DistributionTarget_identity_key")
+  @@index([projectId, createdAt], map: "DistributionTarget_project_created_idx")
+  @@index([publicationId, status], map: "DistributionTarget_publication_status_idx")
+}
+
+model DistributionArtifact {
+  id                   String   @id @default(uuid()) @db.Uuid
+  targetId             String   @db.Uuid
+  projectId            String   @db.Uuid
+  sourceContentVersion Int
+  adaptationVersion    String
+  artifactVersion      Int
+  artifactHash         String
+  title                String?
+  body                 String
+  originalUrl          String
+  canonicalUrl         String?
+  sourceRefs           Json
+  createdAt            DateTime @default(now())
+
+  target DistributionTarget        @relation(fields: [targetId], references: [id], onDelete: Restrict)
+  events DistributionTargetEvent[]
+
+  @@unique([targetId, artifactVersion], map: "DistributionArtifact_target_version_key")
+  @@index([targetId, sourceContentVersion], map: "DistributionArtifact_target_source_version_idx")
+  @@index([projectId, createdAt], map: "DistributionArtifact_project_created_idx")
+}
+
+model DistributionTargetEvent {
+  id                   String             @id @default(uuid()) @db.Uuid
+  targetId             String             @db.Uuid
+  artifactId           String?            @db.Uuid
+  fromStatus           DistributionStatus?
+  toStatus             DistributionStatus
+  reasonCode           String
+  sourceContentVersion Int?
+  metadata             Json?
+  createdAt            DateTime           @default(now())
+
+  target   DistributionTarget   @relation(fields: [targetId], references: [id], onDelete: Restrict)
+  artifact DistributionArtifact? @relation(fields: [artifactId], references: [id], onDelete: Restrict)
+
+  @@index([targetId, createdAt], map: "DistributionTargetEvent_target_created_idx")
+  @@index([artifactId, createdAt], map: "DistributionTargetEvent_artifact_created_idx")
+}
