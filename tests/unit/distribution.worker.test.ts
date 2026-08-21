@@ -15,7 +15,7 @@ async function load(path: string, label: string) {
 describe('P8-B distribution queue, worker, gates and observability', () => {
   it('uses a deterministic distribution-preparation job identity bound to target and exact source version', async () => {
     const queueModule = await load(queueModulePath, 'distribution queue module');
-    const add = vi.fn(async () => ({ id: 'job-1' }));
+    const add = vi.fn(async (_name: string, _data: unknown, _opts: { jobId: string }) => ({ id: 'job-1' }));
     const queue = new queueModule.DistributionPreparationQueue({ add });
 
     const first = await queue.enqueue('target-123', 7);
