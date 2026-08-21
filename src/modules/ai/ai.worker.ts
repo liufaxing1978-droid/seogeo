@@ -2,6 +2,11 @@ import { createHash } from 'node:crypto';
 import type { AiTask, Prisma } from '@prisma/client';
 import type { Job } from 'bullmq';
 import {
+  materializeDistributionAdaptationOutput,
+  parseDistributionAdaptationTaskOutput,
+  promptIdForDistributionTask
+} from '../distribution/distribution-ai.js';
+import {
   materializeArticleGenerationOutput,
   parseArticleGenerationOutput as parsePublicationArticleGenerationOutput,
   parseContentBriefOutput as parsePublicationContentBriefOutput
@@ -55,6 +60,7 @@ function expectedPromptId(task: AiTask): string {
     case 'GROWTH_OPPORTUNITY_EXPLANATION': return 'growth-opportunity-explanation-v1';
     case 'PUBLICATION_CONTENT_BRIEF': return 'publication-content-brief-v1';
     case 'PUBLICATION_ARTICLE_GENERATION': return 'publication-article-generation-v1';
+    case 'PUBLICATION_CONTENT_ADAPTATION': return promptIdForDistributionTask(task);
   }
 }
 
@@ -99,6 +105,7 @@ function resultSummary(task: AiTask, output: unknown): string {
     case 'GROWTH_OPPORTUNITY_EXPLANATION': return 'Growth opportunity explanation completed.';
     case 'PUBLICATION_CONTENT_BRIEF': return 'Advisory publication content brief generated.';
     case 'PUBLICATION_ARTICLE_GENERATION': return 'Advisory publication article draft generated.';
+    case 'PUBLICATION_CONTENT_ADAPTATION': return 'Advisory distribution adaptation draft generated.';
   }
 }
 
@@ -115,6 +122,7 @@ function parseTaskOutput(task: AiTask, content: string): unknown {
     case 'GROWTH_OPPORTUNITY_EXPLANATION': return parseGrowthOpportunityExplanationOutput(content, task.sourceReferences);
     case 'PUBLICATION_CONTENT_BRIEF': return parsePublicationContentBriefOutput(content, task.sourceReferences);
     case 'PUBLICATION_ARTICLE_GENERATION': return parsePublicationArticleGenerationOutput(content, task.sourceReferences);
+    case 'PUBLICATION_CONTENT_ADAPTATION': return parseDistributionAdaptationTaskOutput(task, content);
   }
 }
 
@@ -158,7 +166,13 @@ export async function executeAiTask(taskId: string, dependencies: ExecuteAiTaskD
           output as ReturnType<typeof parsePublicationArticleGenerationOutput>,
           tx
         )
-        : undefined;
+        : task.taskType === 'PUBLICATION_CONTENT_ADAPTATION'
+          ? (tx: Prisma.TransactionClient) => materializeDistributionAdaptationOutput(
+            task,
+            output as ReturnType<typeof parseDistributionAdaptationTaskOutput>,
+            tx
+          )
+          : undefined;
     await repository.completeRun(task, run.id, response, output as Prisma.InputJsonValue, resultSummary(task, output), materialize);
     observability.emit({ event: 'ai.task.completed', taskId: task.id, projectId: task.projectId, runId: run.id, provider: 'DEEPSEEK', model: response.model, promptVersion: task.promptVersion });
   } catch (error) {
