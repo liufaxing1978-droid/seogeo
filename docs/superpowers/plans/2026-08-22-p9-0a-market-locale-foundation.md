@@ -213,16 +213,32 @@ git commit -m "feat: add project market persistence"
 export const MARKET_CODES = ['CN', 'GLOBAL', 'HK', 'TW', 'SG', 'MY'] as const;
 export type MarketCode = typeof MARKET_CODES[number];
 
-export interface MarketSelection {
+export type MarketErrorCode =
+  | 'INVALID_LOCALE'
+  | 'INVALID_MARKET'
+  | 'DUPLICATE_MARKET'
+  | 'MARKET_LIMIT_EXCEEDED'
+  | 'PROJECT_NOT_FOUND';
+
+export interface MarketWriteInput {
   marketCode: MarketCode;
   locale: string;
   enabled: boolean;
+}
+
+export interface MarketSelection extends MarketWriteInput {
   source: 'EXPLICIT' | 'LEGACY_FALLBACK';
 }
 
 export interface LegacyProjectMarketInput {
   targetCountry: string;
   defaultLanguage: string;
+}
+
+export class MarketValidationError extends Error {
+  constructor(message: string, public readonly code: MarketErrorCode) {
+    super(message);
+  }
 }
 
 export function normalizeLocale(value: string): string;
@@ -316,8 +332,6 @@ const LEGACY_COUNTRY_MARKET: Readonly<Record<string, MarketCode>> = {
 
 Unknown country codes return `GLOBAL`.
 
-Add a small exported `MarketValidationError` carrying code `INVALID_LOCALE` or `INVALID_MARKET` so routes/services can map errors consistently later.
-
 - [ ] **Step 4: Run GREEN**
 
 Run:
@@ -355,16 +369,8 @@ export interface MarketRepository {
     targetCountry: string;
     defaultLanguage: string;
   } | null>;
-  listExplicitMarkets(projectId: string): Promise<Array<{
-    marketCode: MarketCode;
-    locale: string;
-    enabled: boolean;
-  }>>;
-  replaceExplicitMarkets(projectId: string, markets: Array<{
-    marketCode: MarketCode;
-    locale: string;
-    enabled: boolean;
-  }>): Promise<void>;
+  listExplicitMarkets(projectId: string): Promise<MarketWriteInput[]>;
+  replaceExplicitMarkets(projectId: string, markets: MarketWriteInput[]): Promise<void>;
 }
 
 export class MarketService {
@@ -407,14 +413,12 @@ it('rejects duplicate normalized identities before repository write', async () =
 it('rejects more than 20 markets', async () => {
   const rows = Array.from({ length: 21 }, (_, index) => ({
     marketCode: 'GLOBAL' as const,
-    locale: `x-p9-${index}`,
+    locale: `en-x-p9-${index}`,
     enabled: true
   }));
   await expect(service.replaceMarkets('p1', rows)).rejects.toMatchObject({ code: 'MARKET_LIMIT_EXCEEDED' });
 });
 ```
-
-For the 21-row limit test, use valid private-use BCP-47 tags such as `en-x-p9-0`, `en-x-p9-1`, etc.; do not use invalid tags.
 
 - [ ] **Step 2: Run RED**
 
@@ -448,8 +452,9 @@ This is configuration replacement, not an immutable fact table; delete-and-recre
 
 Requirements:
 
-- verify the project exists before resolving or replacing markets;
+- call `findProjectIdentity` first and throw `MarketValidationError(..., 'PROJECT_NOT_FOUND')` if the project does not exist;
 - normalize every locale before duplicate detection;
+- reject more than 20 rows before repository mutation;
 - deterministic output sort: `marketCode ASC`, then `locale ASC`;
 - explicit rows carry `source: 'EXPLICIT'`;
 - zero explicit rows resolve to exactly one legacy fallback;
@@ -458,7 +463,10 @@ Requirements:
 
 - [ ] **Step 5: Add integration coverage for atomic replace**
 
-Extend persistence tests to prove replacing two rows with three rows leaves exactly the new three rows, and a transaction failure leaves the old set intact.
+Extend `tests/integration/market.persistence.test.ts` with two concrete cases:
+
+1. Seed two rows, call repository replacement with three different rows, and assert the database contains exactly the three new rows.
+2. Seed one old row, call `replaceExplicitMarkets` directly with two identical `{ marketCode: 'CN', locale: 'zh-CN', enabled: true }` rows so the unique constraint fails inside the transaction, assert the promise rejects, then assert the original old row still exists. This proves the delete and create operations rollback together.
 
 - [ ] **Step 6: Run GREEN**
 
@@ -500,16 +508,22 @@ Response shape:
 
 ```ts
 interface MarketApiResponse {
-  data: Array<{
-    marketCode: MarketCode;
-    locale: string;
-    enabled: boolean;
-    source: 'EXPLICIT' | 'LEGACY_FALLBACK';
-  }>;
+  data: MarketSelection[];
 }
 ```
 
-`createMarketRoutes(injectedService?: MarketService)` follows the existing route dependency-injection pattern.
+Explicit route port:
+
+```ts
+export interface MarketApiPort {
+  listResolvedMarkets(projectId: string): Promise<MarketSelection[]>;
+  replaceMarkets(projectId: string, input: MarketWriteInput[]): Promise<MarketSelection[]>;
+}
+
+export function createMarketRoutes(injectedService?: MarketApiPort): Router;
+```
+
+The default route service is `new MarketService(marketRepository)`; tests inject `MarketApiPort` directly.
 
 - [ ] **Step 1: Write failing API tests**
 
@@ -517,14 +531,14 @@ Create `tests/integration/market.api.test.ts` using Supertest and an injected fa
 
 ```ts
 it('GET returns resolved markets without invoking a write method', async () => {
-  const service = {
+  const service: MarketApiPort = {
     listResolvedMarkets: vi.fn().mockResolvedValue([
       { marketCode: 'CN', locale: 'zh-CN', enabled: true, source: 'LEGACY_FALLBACK' }
     ]),
     replaceMarkets: vi.fn()
   };
 
-  const response = await request(createApp({ marketService: service as never }))
+  const response = await request(createApp({ marketService: service }))
     .get('/api/projects/p1/markets');
 
   expect(response.status).toBe(200);
@@ -532,20 +546,28 @@ it('GET returns resolved markets without invoking a write method', async () => {
   expect(service.replaceMarkets).not.toHaveBeenCalled();
 });
 
-it('PUT canonicalizes locales and returns the complete explicit set', async () => {
-  const response = await request(app)
+it('PUT passes bounded market input to the service and returns its canonical result', async () => {
+  const service: MarketApiPort = {
+    listResolvedMarkets: vi.fn(),
+    replaceMarkets: vi.fn().mockResolvedValue([
+      { marketCode: 'CN', locale: 'zh-CN', enabled: true, source: 'EXPLICIT' },
+      { marketCode: 'GLOBAL', locale: 'zh-Hant', enabled: true, source: 'EXPLICIT' }
+    ])
+  };
+
+  const response = await request(createApp({ marketService: service }))
     .put('/api/projects/p1/markets')
     .send({ markets: [
       { marketCode: 'GLOBAL', locale: 'zh-hant', enabled: true },
       { marketCode: 'CN', locale: 'zh-cn', enabled: true }
     ] });
-  expect(response.status).toBe(200);
-});
 
-it('PUT rejects unknown market codes and more than 20 rows', async () => {
-  // assert HTTP 400 before service mutation
+  expect(response.status).toBe(200);
+  expect(service.replaceMarkets).toHaveBeenCalledOnce();
 });
 ```
+
+Also add explicit tests that unknown `marketCode`, a 65-character locale string, an extra body property, and 21 rows return HTTP 400 before `replaceMarkets` is called.
 
 - [ ] **Step 2: Run RED**
 
@@ -555,7 +577,7 @@ Run:
 npm test -- tests/integration/market.api.test.ts
 ```
 
-Expected: FAIL because routes and `AppOptions.marketService` do not exist.
+Expected: FAIL because routes, `MarketApiPort`, and `AppOptions.marketService` do not exist.
 
 - [ ] **Step 3: Implement exact Zod request schema**
 
@@ -573,22 +595,21 @@ const marketWriteSchema = z.object({
 
 Do not put locale canonicalization in the route; the service remains authoritative for normalization and duplicate detection.
 
-Map `MarketValidationError` to `AppError` with:
+Map `MarketValidationError` to `AppError` exactly as:
 
-- validation/duplicate/limit → HTTP 400;
-- missing project → HTTP 404.
+- `PROJECT_NOT_FOUND` → HTTP 404;
+- `INVALID_LOCALE`, `INVALID_MARKET`, `DUPLICATE_MARKET`, `MARKET_LIMIT_EXCEEDED` → HTTP 400.
 
 - [ ] **Step 4: Wire dependency injection into `src/app.ts`**
 
 Add:
 
 ```ts
-import { createMarketRoutes } from './modules/market/market.routes.js';
-import type { MarketService } from './modules/market/market.service.js';
+import { createMarketRoutes, type MarketApiPort } from './modules/market/market.routes.js';
 
 export interface AppOptions {
-  // existing options unchanged
-  marketService?: MarketService;
+  // keep all existing options unchanged
+  marketService?: MarketApiPort;
 }
 ```
 
@@ -598,7 +619,7 @@ Mount before generic error handling:
 app.use('/api', createMarketRoutes(options.marketService));
 ```
 
-Do not alter existing route mount paths.
+Do not alter existing route mount paths or existing `AppOptions` member types.
 
 - [ ] **Step 5: Run GREEN**
 
@@ -628,7 +649,7 @@ git commit -m "feat: expose project market configuration API"
 - Create: `docs/development/p9-0a-market-locale-foundation.md`
 
 **Interfaces:**
-- Establishes `MarketService.listResolvedMarkets(projectId)` as the only supported market-resolution interface for later P9-0B through P9-0H plans.
+- Establishes `MarketService.listResolvedMarkets(projectId)` / `MarketApiPort.listResolvedMarkets(projectId)` as the supported market-resolution contract for later P9-0B through P9-0H plans.
 - Later search/visibility/provider code must not read `Project.targetCountry` or `Project.defaultLanguage` directly when deciding active markets.
 
 - [ ] **Step 1: Add focused backward-compatibility regression tests**
@@ -678,7 +699,7 @@ Create `docs/development/p9-0a-market-locale-foundation.md` with these concrete 
 2. **Supported market codes** — `CN`, `GLOBAL`, `HK`, `TW`, `SG`, `MY`.
 3. **Fallback contract** — zero explicit rows resolve from `targetCountry/defaultLanguage`; unknown country becomes `GLOBAL`; GET never persists fallback.
 4. **REST contract** — exact GET/PUT routes and replacement semantics.
-5. **Downstream rule** — future P9 provider code consumes `MarketService.listResolvedMarkets`, not legacy fields directly.
+5. **Downstream rule** — future P9 provider code consumes the market service/port, not legacy fields directly.
 6. **Non-goals** — no provider APIs, rankings, AI sampling, queues, P7 scoring changes, or P8 mutation changes in P9-0A.
 7. **Rollback** — application rollback may stop using the new module while the additive table remains harmless; database rollback may drop only `ProjectMarket`/`MarketCode` after verifying no later P9 migration depends on them.
 
