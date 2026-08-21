@@ -37,11 +37,18 @@ enum PublicationRiskClass {
 enum PublicationExecutionStatus {
   PENDING
   READY
+  PLANNED
+  PREVIEW_READY
+  APPROVED
+  QUEUED
   EXECUTING
   PR_CREATED
   DEPLOYED
   VERIFYING
   VERIFIED
+  APPROVAL_STALE
+  TARGET_REVISION_CHANGED
+  VERIFICATION_FAILED
   STALE_REVIEW_REQUIRED
   FAILED
   ROLLBACK_PROPOSED
@@ -51,11 +58,18 @@ enum PublicationExecutionStatus {
 enum PublicationExecutionEventType {
   CREATED
   READY
+  PLANNED
+  PREVIEW_READY
+  APPROVED
+  QUEUED
   STARTED
   PR_CREATED
   DEPLOYED
   VERIFICATION_STARTED
   VERIFIED
+  APPROVAL_STALE
+  TARGET_REVISION_CHANGED
+  VERIFICATION_FAILED
   STALE_REVIEW_REQUIRED
   FAILED
   ROLLBACK_PROPOSED
@@ -261,18 +275,23 @@ model PublicationPreview {
 }
 
 model PublicationApproval {
-  id                 String               @id @default(uuid()) @db.Uuid
-  projectId          String               @db.Uuid
-  planId             String               @db.Uuid
-  planVersion        Int
-  planHash           String
-  contentHash        String
-  previewHash        String
-  baseSha            String
-  approverActorId    String
-  approvedRiskClass  PublicationRiskClass
-  expiresAt          DateTime?
-  createdAt          DateTime             @default(now())
+  id                    String               @id @default(uuid()) @db.Uuid
+  projectId             String               @db.Uuid
+  planId                String               @db.Uuid
+  planVersion           Int
+  planHash              String
+  contentVersion        Int
+  contentHash           String
+  previewHash           String
+  baseSha               String
+  targetRepository      String
+  targetBranch          String
+  targetBlobHashes      Json
+  approverActorId       String
+  approvedRiskClass     PublicationRiskClass
+  confirmedWarningCodes Json?
+  expiresAt             DateTime?
+  createdAt             DateTime             @default(now())
 
   plan       PublicationPlan        @relation(fields: [planId], references: [id], onDelete: Restrict)
   executions PublicationExecution[]
@@ -282,21 +301,21 @@ model PublicationApproval {
 }
 
 model PublicationExecution {
-  id            String                     @id @default(uuid()) @db.Uuid
-  projectId     String                     @db.Uuid
-  planId        String                     @db.Uuid
-  approvalId    String                     @db.Uuid
-  executionKey  String                     @unique
-  status        PublicationExecutionStatus @default(PENDING)
-  branchName    String?
-  commitSha     String?
-  pullRequestNo Int?
+  id             String                     @id @default(uuid()) @db.Uuid
+  projectId      String                     @db.Uuid
+  planId         String                     @db.Uuid
+  approvalId     String                     @db.Uuid
+  executionKey   String                     @unique
+  status         PublicationExecutionStatus @default(PENDING)
+  branchName     String?
+  commitSha      String?
+  pullRequestNo  Int?
   pullRequestUrl String?
-  errorCode     String?
-  startedAt     DateTime?
-  completedAt   DateTime?
-  createdAt     DateTime                   @default(now())
-  updatedAt     DateTime                   @updatedAt
+  errorCode      String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
 
   plan              PublicationPlan               @relation(fields: [planId], references: [id], onDelete: Restrict)
   approval          PublicationApproval           @relation(fields: [approvalId], references: [id], onDelete: Restrict)
@@ -309,15 +328,15 @@ model PublicationExecution {
 }
 
 model PublicationExecutionEvent {
-  id           String                        @id @default(uuid()) @db.Uuid
-  executionId  String                        @db.Uuid
-  eventType    PublicationExecutionEventType
-  fromStatus   PublicationExecutionStatus?
-  toStatus     PublicationExecutionStatus
-  reasonCode   String
-  actorId      String?
-  metadata     Json?
-  createdAt    DateTime                      @default(now())
+  id          String                        @id @default(uuid()) @db.Uuid
+  executionId String                        @db.Uuid
+  eventType   PublicationExecutionEventType
+  fromStatus  PublicationExecutionStatus?
+  toStatus    PublicationExecutionStatus
+  reasonCode  String
+  actorId     String?
+  metadata    Json?
+  createdAt   DateTime                      @default(now())
 
   execution PublicationExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
@@ -325,23 +344,23 @@ model PublicationExecutionEvent {
 }
 
 model PublicationVerification {
-  id                    String                        @id @default(uuid()) @db.Uuid
-  projectId             String                        @db.Uuid
-  executionId           String                        @db.Uuid
-  status                PublicationVerificationStatus @default(PENDING)
-  observedUrl           String?
-  observedAt            DateTime?
-  httpStatus            Int?
-  titleMatches          Boolean?
-  descriptionMatches    Boolean?
-  canonicalMatches      Boolean?
-  h1Matches             Boolean?
-  indexable             Boolean?
-  schemaValid           Boolean?
-  contentFingerprintOk  Boolean?
-  regressionFindings    Json?
-  reasonCode            String?
-  createdAt             DateTime                      @default(now())
+  id                   String                        @id @default(uuid()) @db.Uuid
+  projectId            String                        @db.Uuid
+  executionId          String                        @db.Uuid
+  status               PublicationVerificationStatus @default(PENDING)
+  observedUrl          String?
+  observedAt           DateTime?
+  httpStatus           Int?
+  titleMatches         Boolean?
+  descriptionMatches   Boolean?
+  canonicalMatches     Boolean?
+  h1Matches            Boolean?
+  indexable            Boolean?
+  schemaValid          Boolean?
+  contentFingerprintOk Boolean?
+  regressionFindings   Json?
+  reasonCode           String?
+  createdAt            DateTime                      @default(now())
 
   execution PublicationExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
@@ -350,16 +369,16 @@ model PublicationVerification {
 }
 
 model PublicationRollbackProposal {
-  id           String                    @id @default(uuid()) @db.Uuid
-  projectId    String                    @db.Uuid
-  executionId  String                    @db.Uuid
-  strategy     String
-  status       PublicationRollbackStatus @default(PROPOSED)
-  reasonCode   String
-  proposedBy   String?
-  payload      Json?
-  createdAt    DateTime                  @default(now())
-  updatedAt    DateTime                  @updatedAt
+  id          String                    @id @default(uuid()) @db.Uuid
+  projectId   String                    @db.Uuid
+  executionId String                    @db.Uuid
+  strategy    String
+  status      PublicationRollbackStatus @default(PROPOSED)
+  reasonCode  String
+  proposedBy  String?
+  payload     Json?
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
 
   execution PublicationExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
