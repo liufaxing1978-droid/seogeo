@@ -63,6 +63,12 @@ export type GrowthMaterializationResult = {
   missingDates: string[];
 };
 
+type P3TopicBinding = {
+  entityId: string;
+  canonicalName: string;
+  normalizedName: string;
+};
+
 function atUtcStart(date: string): Date {
   return new Date(`${date}T00:00:00.000Z`);
 }
@@ -105,6 +111,61 @@ function demandPercentiles(rows: readonly QueryPageAggregate[]): Map<string, num
 
 function pageEvidence(allEvidence: readonly GrowthEvidence[], canonicalPage: string): GrowthEvidence[] {
   return allEvidence.filter((row) => row.canonicalPage === null || row.canonicalPage === canonicalPage);
+}
+
+function p3BindingRank(entityType: string, role: string): number {
+  if (entityType === 'TOPIC' && role === 'PRIMARY') return 0;
+  if (entityType === 'TOPIC') return 1;
+  if (role === 'PRIMARY') return 2;
+  return 3;
+}
+
+async function loadP3TopicBindings(
+  projectId: string,
+  canonicalPages: readonly string[]
+): Promise<Map<string, P3TopicBinding>> {
+  const pages = [...new Set(canonicalPages.map((value) => value.trim()).filter(Boolean))].sort();
+  if (pages.length === 0) return new Map();
+  const rows = await prisma.pageEntity.findMany({
+    where: {
+      page: { projectId, normalizedUrl: { in: pages } },
+      entity: { projectId, status: 'ACTIVE' }
+    },
+    select: {
+      role: true,
+      confidence: true,
+      page: { select: { normalizedUrl: true } },
+      entity: {
+        select: {
+          id: true,
+          entityType: true,
+          canonicalName: true,
+          normalizedName: true
+        }
+      }
+    },
+    take: GROWTH_MAX_CANDIDATES * 10
+  });
+
+  rows.sort((a, b) =>
+    a.page.normalizedUrl.localeCompare(b.page.normalizedUrl) ||
+    p3BindingRank(a.entity.entityType, a.role) - p3BindingRank(b.entity.entityType, b.role) ||
+    b.confidence - a.confidence ||
+    a.entity.normalizedName.localeCompare(b.entity.normalizedName) ||
+    a.entity.id.localeCompare(b.entity.id)
+  );
+
+  const bindings = new Map<string, P3TopicBinding>();
+  for (const row of rows) {
+    if (p3BindingRank(row.entity.entityType, row.role) >= 3) continue;
+    if (bindings.has(row.page.normalizedUrl)) continue;
+    bindings.set(row.page.normalizedUrl, {
+      entityId: row.entity.id,
+      canonicalName: row.entity.canonicalName,
+      normalizedName: row.entity.normalizedName
+    });
+  }
+  return bindings;
 }
 
 function scoreSiteEvidence(evidence: readonly GrowthEvidence[]): GrowthComponent {
@@ -343,10 +404,12 @@ export async function materializeGrowthWindow(
   const previousByKey = new Map(previousAggregates.map((row) => [aggregateKey(row), row]));
   const percentiles = demandPercentiles(currentAggregates);
   const ctrCurve = buildProjectCtrCurve(currentAggregates);
-  const allEvidence = await loadGrowthEvidence(projectId, currentAggregates.map((row) => row.canonicalPage), {
+  const canonicalPages = currentAggregates.map((row) => row.canonicalPage);
+  const allEvidence = await loadGrowthEvidence(projectId, canonicalPages, {
     start: currentStart,
     end: currentEnd
   });
+  const p3TopicBindings = await loadP3TopicBindings(projectId, canonicalPages);
 
   const provenance = {
     materializationVersion: GROWTH_MATERIALIZATION_VERSION,
@@ -377,9 +440,15 @@ export async function materializeGrowthWindow(
     });
     if (signals.length === 0) continue;
     const types = selectPrimaryType(signals);
+    const p3Topic = p3TopicBindings.get(aggregate.canonicalPage);
 
     const assignment = resolveTopicAssignment({
       normalizedQuery: aggregate.normalizedQuery,
+      p3Topic: p3Topic ? {
+        entityId: p3Topic.entityId,
+        topicKey: p3Topic.normalizedName,
+        primaryQuery: p3Topic.canonicalName
+      } : null,
       primaryQuery: aggregate.normalizedQuery
     });
     const topic = await growthRepository.getOrCreateTopicCluster({
