@@ -1,0 +1,65 @@
+<main class="page-shell">
+  <div class="page-header">
+    <div>
+      <p class="eyebrow">P8-B · Distribution</p>
+      <h1>多渠道分发</h1>
+      <p class="muted">主站内容保持唯一原创来源；外部渠道只消费已经验证的冻结版本。</p>
+    </div>
+  </div>
+
+  <% if (primaryPublication) { %>
+    <section class="card">
+      <div class="card-header">
+        <div>
+          <span class="badge">ORIGINAL</span>
+          <h2><%= primaryPublication.plan.draft.title %></h2>
+        </div>
+        <span class="badge success">主站已验证</span>
+      </div>
+      <dl class="detail-grid">
+        <div><dt>原创地址</dt><dd><%= primaryPublication.plan.targetPublicUrl %></dd></div>
+        <div><dt>内容版本</dt><dd>V<%= primaryPublication.plan.draftVersion %></dd></div>
+      </dl>
+    </section>
+  <% } else { %>
+    <section class="card"><p class="muted">当前没有可用于分发的已验证主站发布。</p></section>
+  <% } %>
+
+  <section class="card">
+    <div class="card-header">
+      <div><p class="eyebrow">Targets</p><h2>渠道目标</h2></div>
+      <span class="muted"><%= targets.length %> 个</span>
+    </div>
+    <% if (targets.length === 0) { %>
+      <p class="muted">尚未建立分发目标。</p>
+    <% } else { %>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>平台</th><th>模式</th><th>能力</th><th>源版本</th><th>状态</th><th></th></tr></thead>
+          <tbody>
+            <% for (const target of targets) { %>
+              <tr>
+                <td><strong><%= target.platform %></strong></td>
+                <td><%= target.mode %></td>
+                <td><span class="badge"><%= target.capability %></span></td>
+                <td><%= target.sourceContentVersion ? `V${target.sourceContentVersion}` : '—' %></td>
+                <td><span class="badge <%= target.status === 'VERIFIED' ? 'success' : target.status === 'OUTDATED' ? 'danger' : '' %>"><%= target.status %></span></td>
+                <td><a href="/projects/<%= project.id %>/distribution/targets/<%= target.id %>">查看</a></td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+
+  <section class="card">
+    <h2>安全边界</h2>
+    <ul>
+      <li>只有主站 VERIFIED 内容可以进入正常分发。</li>
+      <li>任何旧源版本产物都会标记为 OUTDATED，不能静默重发。</li>
+      <li>MANUAL_HANDOFF 只生成交接，不会伪装成自动发布。</li>
+      <li>PUBLISH_API 只有在服务端存在可信配置时才会启用。</li>
+    </ul>
+  </section>
+</main>

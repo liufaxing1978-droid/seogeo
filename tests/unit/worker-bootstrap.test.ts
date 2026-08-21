@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { processDistributionPreparationJob } from '../../src/modules/distribution/distribution.worker.js';
 import { processGrowthMaterializationJob } from '../../src/modules/growth/growth.worker.js';
 import { processVisibilityJob } from '../../src/modules/visibility/visibility.worker.js';
 import { processVisibilityMetricsJob } from '../../src/modules/visibility/visibility-metrics.worker.js';
@@ -29,6 +30,15 @@ describe('worker bootstrap', () => {
     expect(definition).toMatchObject({
       processor: processGrowthMaterializationJob,
       concurrency: 1
+    });
+  });
+
+  it('activates the P8-B distribution-preparation queue with the bounded processor at concurrency 2', () => {
+    const definition = workerDefinitionForQueue('distribution-preparation');
+
+    expect(definition).toMatchObject({
+      processor: processDistributionPreparationJob,
+      concurrency: 2
     });
   });
 });

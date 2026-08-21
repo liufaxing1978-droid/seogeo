@@ -2,7 +2,7 @@
 
 Independent SEO / GEO platform for `seo.xingshantang.org`.
 
-Current milestone: **P0 - P8-A complete**. P8-A adds the controlled Safe Site Mutation + Primary Site Publication workspace; release completion still requires exact-head CI to pass before merge.
+Current milestone: **P0 - P8-B complete**. P8-B adds bounded multi-channel distribution from an already VERIFIED primary publication while preserving primary-site authority, explicit approval and adapter capability boundaries.
 
 ## Architecture
 
@@ -27,6 +27,8 @@ P6 external visibility observations are authoritative only when the system actua
 P7-A Search Console ingestion is read-only. Growth materialization consumes persisted GSC + P2/P3/P5/P6 facts and makes zero Google, P6-provider or DeepSeek calls.
 
 P8-A consumes persisted proposal/draft/plan/preview/approval/execution/verification facts and keeps DeepSeek advisory-only. Git mutation never writes the default branch directly; Standard stays export-only, and Advanced/Enterprise Git execution is constrained to reviewed Draft PR flows.
+
+P8-B consumes only an already VERIFIED primary publication for normal distribution. Distribution artifacts are immutable and source-version bound; preparation stops at `DRAFT_READY`, approval is explicit, manual-only channels stop at `MANUAL_ACTION_REQUIRED`, and trusted provider publishing/verification is available only through an explicitly configured `PUBLISH_API` adapter. Distribution `VERIFIED` never replaces or mutates primary publication authority.
 
 Provider reasoning is never persisted, logged or rendered.
 
@@ -223,6 +225,31 @@ P8-A GET rendering reads persisted facts only. It does not enqueue publication w
 Design: `docs/superpowers/specs/2026-08-21-p8-safe-site-mutation-design.md`.
 Implementation plan: `docs/superpowers/plans/2026-08-21-p8-safe-site-mutation.md`.
 
+## P8-B Multi-channel Distribution
+
+P8-B distributes an already VERIFIED primary publication to bounded secondary channels without turning distribution into a second source of truth.
+
+Delivered capabilities:
+
+- project-scoped distribution targets keyed by primary publication + platform + mode + target key;
+- immutable versioned distribution artifacts bound to the exact primary source content version;
+- automatic OUTDATED state when a newer primary source version supersedes an older frozen artifact;
+- explicit adapter capabilities: `PREPARE_ONLY`, `MANUAL_HANDOFF`, `PUBLISH_API`;
+- Medium, LinkedIn and Substack remain manual handoff; reserved community/entity targets remain prepare-only;
+- WordPress/Blogger-style trusted HTTP publishing is possible only through server-configured trusted adapters and bounded provider responses;
+- platform-native canonical repost, adapted article and summary generation through the existing P4 AI task pipeline, never direct provider calls from the distribution module;
+- deterministic `distribution-preparation` BullMQ jobs and preparation that stops at `DRAFT_READY`;
+- explicit artifact approval separated from prepare and publish;
+- manual publishing transitions to `MANUAL_ACTION_REQUIRED`, with bounded HTTP(S) result URL recording only after user action;
+- trusted publish verification binds to the frozen provider identity/public URL and never mutates primary publication `VERIFIED` authority;
+- project-scoped REST API and persisted-read `多渠道分发` web workspace showing ORIGINAL URL, platform, mode, source version, lifecycle state and capability;
+- safe distribution observability that excludes bodies, prompts, tokens, credentials and raw provider payloads.
+
+P8-B GET rendering is persisted-read only and does not enqueue preparation, invoke DeepSeek or perform provider writes. CI uses fake/injected provider transports and requires no real external publishing credentials.
+
+Design: `docs/superpowers/specs/2026-08-21-p8-safe-site-mutation-design.md`.
+Implementation plan: `docs/superpowers/plans/2026-08-21-p8b-multichannel-distribution.md`.
+
 ## Feature gates
 
 Base project features available to Standard / Advanced / Enterprise include:
@@ -246,6 +273,8 @@ P6-A activates AI Visibility and Prompt Monitor. P6-B activates Citation Monitor
 P7-A adds Search Console and Growth surfaces according to its explicit Standard / Advanced / Enterprise matrix. Restricted advanced Growth reads and side effects fail before repository access. Enterprise portfolio Growth rows remain bounded and deterministic.
 
 P8-A exposes controlled publication review to all plans, but Standard remains `EXPORT_ONLY`. Git-backed Draft PR execution is available only where the configured site and plan explicitly permit it; no P8-A path auto-merges or directly writes the default branch.
+
+P8-B `PUBLICATION_DISTRIBUTION` is Advanced/Enterprise only. Restricted distribution routes fail before project-scoped mutation/provider work. Adapter capability is an independent hard boundary: plan level never turns `PREPARE_ONLY` or `MANUAL_HANDOFF` into automatic provider publishing.
 
 `ADVANCED_REPORTS` remains reserved for future advanced scheduling/bundling/distribution rather than the base project report snapshot feature.
 
@@ -287,6 +316,8 @@ P7-A release evidence requires proof that OAuth state replay is rejected before 
 
 P8-A release evidence requires proof that immutable plans/previews/approvals remain hash-bound; stale approval or changed base/target state blocks execution; Standard stays export-only; Git execution never writes the default branch directly or auto-merges; duplicate delivery cannot create duplicate valid executions/PRs; deterministic validation blockers cannot be overridden by DeepSeek output; GET publication workspace rendering makes zero AI/Git/queue side effects; real-site verification is required for `VERIFIED`; rollback stays reviewable; and exact-head CI passes `verify`, Chromium `e2e` and `production-audit`.
 
+P8-B release evidence requires proof that only primary `VERIFIED` publications enter normal distribution; artifacts remain immutable and exact-source-version bound; stale artifacts become `OUTDATED`; manual-only channels cannot reach provider publish; trusted publishing is server-configured and fail-closed; manual result URLs are bounded HTTP(S); distribution verification binds the frozen provider result without changing primary authority; GET distribution rendering is persisted-read only; CI uses fake provider transports with no real external credentials/writes; and exact-head CI passes `verify`, Chromium `e2e` and `production-audit`. Task 21 exact head `f9426a5196d9fad5a33e352545128a2688302265` passed CI #1465 / run `32501202839` for all three jobs before merge into the P8-B integration branch.
+
 ## Roadmap
 
 - P0 Platform foundation — complete
@@ -301,3 +332,4 @@ P8-A release evidence requires proof that immutable plans/previews/approvals rem
 - P6-D History, Dashboard, Alerts & Report Integration — complete
 - P7-A Search Console + Growth Opportunity Intelligence — complete
 - P8-A Safe Site Mutation + Primary Site Publication — complete
+- P8-B Multi-channel Distribution — complete

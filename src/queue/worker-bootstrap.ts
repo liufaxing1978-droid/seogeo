@@ -3,6 +3,12 @@ import { processAiJob, type AiJobData } from '../modules/ai/ai.worker.js';
 import { processCompetitorCrawlJob, type CompetitorCrawlJobData } from '../modules/competitor/competitor.worker.js';
 import { processContentRefreshJob, type ContentRefreshJobData } from '../modules/content/content.worker.js';
 import { processCrawlJob, type CrawlJobData } from '../modules/crawler/crawl.worker.js';
+import {
+  DISTRIBUTION_PREPARATION_QUEUE_NAME,
+  DISTRIBUTION_PREPARATION_WORKER_CONCURRENCY,
+  type DistributionPreparationJobData
+} from '../modules/distribution/distribution.queue.js';
+import { processDistributionPreparationJob } from '../modules/distribution/distribution.worker.js';
 import { processGeoAuditJob, type GeoAuditJobData } from '../modules/geo/geo.worker.js';
 import {
   GROWTH_MATERIALIZATION_QUEUE_NAME,
@@ -81,6 +87,7 @@ export function workerDefinitionForQueue(
     | 'visibility-monitoring'
     | 'site-mutation-execution'
     | 'site-mutation-verification'
+    | 'distribution-preparation'
 ) {
   if (name === SEARCH_CONSOLE_SYNC_QUEUE_NAME) {
     return {
@@ -128,6 +135,12 @@ export function workerDefinitionForQueue(
     return {
       processor: processPublicationVerificationJob,
       concurrency: PUBLICATION_VERIFICATION_WORKER_CONCURRENCY
+    } as const;
+  }
+  if (name === DISTRIBUTION_PREPARATION_QUEUE_NAME) {
+    return {
+      processor: processDistributionPreparationJob,
+      concurrency: DISTRIBUTION_PREPARATION_WORKER_CONCURRENCY
     } as const;
   }
   throw new Error(`Unsupported worker definition: ${name}`);
@@ -223,6 +236,13 @@ export async function startWorkers() {
         name,
         async (job) => processPublicationVerificationJob({ name: job.name, data: job.data }),
         { connection, concurrency: PUBLICATION_VERIFICATION_WORKER_CONCURRENCY }
+      );
+    }
+    if (name === DISTRIBUTION_PREPARATION_QUEUE_NAME) {
+      return new Worker<DistributionPreparationJobData>(
+        name,
+        async (job) => processDistributionPreparationJob({ name: job.name, data: job.data }),
+        { connection, concurrency: DISTRIBUTION_PREPARATION_WORKER_CONCURRENCY }
       );
     }
     if (name === 'ai') return new Worker<AiJobData>(name, processAiJob, { connection });

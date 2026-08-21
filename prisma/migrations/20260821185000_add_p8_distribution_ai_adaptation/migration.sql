@@ -1,0 +1,6 @@
+ALTER TYPE "AiTaskType" ADD VALUE 'PUBLICATION_CONTENT_ADAPTATION';
+
+ALTER TABLE "DistributionArtifact"
+  ADD COLUMN "summary" TEXT,
+  ADD COLUMN "tags" JSONB,
+  ADD COLUMN "platformMetadata" JSONB;
