@@ -15,7 +15,8 @@ export type PromptId =
   | 'distribution-canonical-repost-v1'
   | 'distribution-adapted-article-v1'
   | 'distribution-summary-v1'
-  | 'distribution-community-draft-v1';
+  | 'distribution-community-draft-v1'
+  | 'distribution-entity-suggestion-v1';
 
 export interface PromptDefinition {
   id: PromptId;
@@ -44,7 +45,7 @@ const SEO_PROMPT: PromptDefinition = Object.freeze({
 const GEO_PROMPT: PromptDefinition = Object.freeze({
   id: 'geo-readiness-analysis-v1', version: 'v1', mode: 'REASONING', responseFormat: 'JSON',
   system: `${FACT_GUARDRAILS}\nAnalyze deterministic GEO readiness facts. Treat null and UNKNOWN as unavailable evidence, never as zero. AI Visibility is unavailable unless explicitly supplied as a real sampled fact.`,
-  buildUserMessage: (facts: unknown) => buildUserMessage('Analyze the deterministic GEO readiness facts.', { summary: 'Short factual summary', opportunities: [{ priority: 'HIGH', dimension: 'CITABILITY', title: 'Opportunity title', recommendation: 'Concrete recommendation', sourceRefs: ['GEO_RULE_RESULT:<id>'] }], unavailableFacts: ['Example unavailable fact'] }, facts)
+  buildUserMessage: (facts: unknown) => buildUserMessage('Analyze the deterministic GEO audit facts.', { summary: 'Short factual summary', opportunities: [{ priority: 'HIGH', dimension: 'CITABILITY', title: 'Opportunity title', recommendation: 'Concrete recommendation', sourceRefs: ['GEO_RULE_RESULT:<id>'] }], unavailableFacts: ['Example unavailable fact'] }, facts)
 });
 
 const ENTITY_PROMPT: PromptDefinition = Object.freeze({
@@ -209,6 +210,36 @@ This is a human-reviewed draft only. It cannot publish, approve, or verify anyth
   )
 });
 
+const DISTRIBUTION_ENTITY_SUGGESTION_PROMPT: PromptDefinition = Object.freeze({
+  id: 'distribution-entity-suggestion-v1',
+  version: 'v1',
+  mode: 'REASONING',
+  responseFormat: 'JSON',
+  system: `${FACT_GUARDRAILS}
+Prepare an advisory entity and knowledge-graph suggestion for human review using only supplied facts and supplied reliable source references.
+Do not invent entity labels, descriptions, founding dates, affiliations, people, credentials, notability, SameAs links, third-party coverage, relationships, quotations, citations, or source support.
+Every factual attribute, SameAs candidate and relationship must cite supplied reliable source references. A SameAs candidate without supporting reliable source references is invalid.
+When evidence is missing, unknown or unavailable, report it in missingData instead of filling the gap.
+Preserve conflict-of-interest and promotional-policy reminders and provide a concrete human verification checklist.
+This is a prepare-only suggestion. It must not claim submission, publication, platform approval, acceptance, passed notability review, or any external Wikipedia, Wikidata, Baidu Baike, or knowledge-graph action.`,
+  buildUserMessage: (facts: unknown) => buildUserMessage(
+    'Create a source-bounded entity or knowledge-graph suggestion from the supplied facts and reliable source references.',
+    {
+      entityName: 'Entity name',
+      labels: [{ language: 'zh-CN', value: 'Entity label' }],
+      descriptions: [{ language: 'zh-CN', value: 'Source-bounded description' }],
+      attributes: [{ property: 'officialWebsite', value: 'https://example.com', sourceRefs: ['CONTENT_SOURCE_REFERENCE:<id>'] }],
+      sameAs: [{ url: 'https://example.org/entity', sourceRefs: ['CONTENT_SOURCE_REFERENCE:<id>'] }],
+      relationships: [{ relation: 'relatedTo', target: 'Entity', sourceRefs: ['CONTENT_SOURCE_REFERENCE:<id>'] }],
+      reliableSourceRefs: ['CONTENT_SOURCE_REFERENCE:<id>'],
+      missingData: ['foundingDate'],
+      policyReminders: ['Human review required; avoid promotional or conflict-of-interest editing.'],
+      humanChecklist: ['Verify every factual claim against the cited reliable source before editing.']
+    },
+    facts
+  )
+});
+
 export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = Object.freeze([
   SEO_PROMPT,
   GEO_PROMPT,
@@ -224,7 +255,8 @@ export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = Object.freeze([
   DISTRIBUTION_CANONICAL_REPOST_PROMPT,
   DISTRIBUTION_ADAPTED_ARTICLE_PROMPT,
   DISTRIBUTION_SUMMARY_PROMPT,
-  DISTRIBUTION_COMMUNITY_DRAFT_PROMPT
+  DISTRIBUTION_COMMUNITY_DRAFT_PROMPT,
+  DISTRIBUTION_ENTITY_SUGGESTION_PROMPT
 ]);
 
 const PROMPT_BY_ID = new Map<PromptId, PromptDefinition>(PROMPT_DEFINITIONS.map((prompt) => [prompt.id, prompt]));

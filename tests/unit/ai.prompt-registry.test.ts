@@ -21,7 +21,8 @@ describe('versioned AI prompt registry', () => {
       'distribution-canonical-repost-v1',
       'distribution-adapted-article-v1',
       'distribution-summary-v1',
-      'distribution-community-draft-v1'
+      'distribution-community-draft-v1',
+      'distribution-entity-suggestion-v1'
     ]);
     expect(new Set(PROMPT_DEFINITIONS.map((prompt) => prompt.id)).size).toBe(PROMPT_DEFINITIONS.length);
     expect(PROMPT_DEFINITIONS.every((prompt) => prompt.version === 'v1')).toBe(true);
@@ -68,7 +69,8 @@ describe('versioned AI prompt registry', () => {
       'project-report-summary-v1',
       'visibility-trend-analysis-v1',
       'growth-opportunity-explanation-v1',
-      'publication-content-brief-v1'
+      'publication-content-brief-v1',
+      'distribution-entity-suggestion-v1'
     ] as const) {
       expect(getPromptDefinition(promptId).mode).toBe('REASONING');
     }
