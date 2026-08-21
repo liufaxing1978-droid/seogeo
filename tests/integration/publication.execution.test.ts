@@ -4,6 +4,7 @@ import { PublicationRepository } from '../../src/modules/publication/publication
 import { processPublicationExecutionJob } from '../../src/modules/publication/publication-execution.worker.js';
 import type {
   MutationAdapter,
+  MutationPreview,
   TargetRef
 } from '../../src/modules/publication/mutation-adapter.js';
 
@@ -30,7 +31,7 @@ class IntegrationAdapter implements MutationAdapter {
     };
   }
 
-  async preview() {
+  async preview(): Promise<MutationPreview> {
     throw new Error('not used');
   }
 
