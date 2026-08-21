@@ -1,0 +1,54 @@
+<main class="page-shell">
+  <div class="page-header">
+    <div>
+      <p class="eyebrow">P8-B · Frozen Artifact</p>
+      <h1>分发产物</h1>
+      <p class="muted"><%= target.platform %> · <%= target.mode %> · V<%= artifact.artifactVersion %></p>
+    </div>
+    <a href="/projects/<%= project.id %>/distribution/targets/<%= target.id %>">返回分发目标</a>
+  </div>
+
+  <section class="card">
+    <div class="card-header">
+      <div><h2><%= artifact.title || '未命名产物' %></h2><span class="badge"><%= target.capability %></span></div>
+      <span class="badge <%= target.status === 'VERIFIED' ? 'success' : target.status === 'OUTDATED' ? 'danger' : '' %>"><%= target.status %></span>
+    </div>
+    <dl class="detail-grid">
+      <div><dt>源内容版本</dt><dd>V<%= artifact.sourceContentVersion %></dd></div>
+      <div><dt>适配版本</dt><dd><%= artifact.adaptationVersion %></dd></div>
+      <div><dt>产物哈希</dt><dd><code><%= artifact.artifactHash %></code></dd></div>
+      <div><dt>公开地址</dt><dd><%= artifact.publicUrl || '尚未发布' %></dd></div>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>ORIGINAL 来源</h2>
+    <p><%= artifact.originalUrl %></p>
+    <% if (artifact.canonicalUrl) { %>
+      <p class="muted">Canonical：<%= artifact.canonicalUrl %></p>
+    <% } %>
+  </section>
+
+  <% if (artifact.summary) { %>
+    <section class="card"><h2>摘要</h2><p><%= artifact.summary %></p></section>
+  <% } %>
+
+  <section class="card">
+    <h2>冻结正文</h2>
+    <pre style="white-space: pre-wrap"><%= artifact.body %></pre>
+  </section>
+
+  <section class="card">
+    <h2>产物事件</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>时间</th><th>状态</th><th>原因</th></tr></thead>
+        <tbody>
+          <% for (const event of artifact.events) { %>
+            <tr><td><%= event.createdAt.toISOString() %></td><td><%= event.toStatus %></td><td><%= event.reasonCode %></td></tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
