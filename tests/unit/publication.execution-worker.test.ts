@@ -16,6 +16,7 @@ import {
 import type {
   MutationAdapter,
   MutationApplyResult,
+  MutationPreview,
   TargetRef,
   TargetSnapshot
 } from '../../src/modules/publication/mutation-adapter.js';
@@ -147,7 +148,7 @@ class FakeAdapter implements MutationAdapter {
     return this.snapshot;
   }
 
-  async preview() {
+  async preview(): Promise<MutationPreview> {
     throw new Error('preview is not part of worker execution');
   }
 
