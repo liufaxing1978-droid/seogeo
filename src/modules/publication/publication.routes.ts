@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
+import { Queue, type JobsOptions } from 'bullmq';
 import { Router } from 'express';
-import { Queue } from 'bullmq';
 import { z } from 'zod';
 import { requireFeature } from '../../auth/require-feature.js';
 import { AppError, NotFoundError } from '../../core/errors.js';
@@ -11,13 +12,11 @@ import {
   buildPublicationExecutionJobOptions,
   PUBLICATION_EXECUTION_QUEUE_NAME
 } from './publication-execution.queue.js';
-import type { PublicationExecutionJobData } from './publication-execution.worker.js';
 import { publicationService } from './publication.service.js';
 import {
   buildPublicationVerificationJobOptions,
   PUBLICATION_VERIFICATION_QUEUE_NAME
 } from './publication-verification.queue.js';
-import type { PublicationVerificationJobData } from './publication-verification.worker.js';
 
 const paginationSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -38,9 +37,7 @@ const sourceReferenceSchema = z.object({
 
 const manualProposalSchema = z.object({
   sourceType: z.literal('MANUAL'),
-  reason: z.string().trim().min(1).max(1_000),
-  targetKeyword: z.string().trim().max(300).optional(),
-  recommendedChannel: z.string().trim().max(120).optional()
+  reason: z.string().trim().min(1).max(1_000)
 }).strict();
 
 const growthProposalSchema = z.object({
@@ -96,6 +93,7 @@ const approvalSchema = z.object({
   expectedPlanHash: z.string().regex(/^[a-f0-9]{64}$/i),
   expectedContentHash: z.string().regex(/^[a-f0-9]{64}$/i),
   expectedPreviewHash: z.string().regex(/^[a-f0-9]{64}$/i),
+  confirmedRisk: z.literal('MEDIUM').optional(),
   confirmedWarningCodes: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
   expiresAt: z.coerce.date().optional()
 }).strict();
@@ -124,29 +122,31 @@ export interface PublicationApiPort {
   getDraft?(projectId: string, draftId: string): Promise<unknown | null>;
 }
 
-interface JobQueue<T> {
-  add(name: string, data: T, options: Record<string, unknown>): Promise<unknown>;
+interface JobQueue {
+  add(name: string, data: unknown, options: JobsOptions): Promise<unknown>;
 }
 
-class LazyPublicationQueue<T> implements JobQueue<T> {
-  private queue: Queue<T> | null = null;
+class LazyPublicationQueue implements JobQueue {
+  private queue: Queue<any, any, string> | null = null;
 
   constructor(private readonly queueName: string) {}
 
-  add(name: string, data: T, options: Record<string, unknown>) {
+  add(name: string, data: unknown, options: JobsOptions) {
     if (!this.queue) {
-      this.queue = new Queue<T>(this.queueName, { connection: createRedisConnection() });
+      this.queue = new Queue<any, any, string>(this.queueName, {
+        connection: createRedisConnection()
+      });
     }
     return this.queue.add(name, data, options);
   }
 }
 
-const executionQueue = new LazyPublicationQueue<PublicationExecutionJobData>(
-  PUBLICATION_EXECUTION_QUEUE_NAME
-);
-const verificationQueue = new LazyPublicationQueue<PublicationVerificationJobData>(
-  PUBLICATION_VERIFICATION_QUEUE_NAME
-);
+const executionQueue = new LazyPublicationQueue(PUBLICATION_EXECUTION_QUEUE_NAME);
+const verificationQueue = new LazyPublicationQueue(PUBLICATION_VERIFICATION_QUEUE_NAME);
+
+function routeParam(value: string | string[]): string {
+  return Array.isArray(value) ? value[0]! : value;
+}
 
 function actorId(projectId: string): string {
   return `project-api:${projectId}`;
@@ -164,12 +164,11 @@ function executionKey(planId: string, approvalId: string, planHash: string): str
 }
 
 async function attachSourceReferences(
-  projectId: string,
   draftId: string,
   references: DraftBody['sourceReferences'] | DraftVersionBody['sourceReferences']
 ) {
   for (const source of references ?? []) {
-    await publicationService.createSourceReference(projectId, draftId, source);
+    await publicationService.addSourceReference(draftId, source);
   }
 }
 
@@ -191,15 +190,7 @@ const defaultPublicationApi: PublicationApiPort = {
         requestActorId
       );
     }
-    return publicationService.createManualProposal(
-      projectId,
-      {
-        reason: body.reason,
-        targetKeyword: body.targetKeyword,
-        recommendedChannel: body.recommendedChannel
-      },
-      requestActorId
-    );
+    return publicationService.createManualProposal(projectId, { reason: body.reason }, requestActorId);
   },
 
   listDrafts(projectId, limit, offset) {
@@ -219,9 +210,13 @@ const defaultPublicationApi: PublicationApiPort = {
     if (!proposal) {
       throw new NotFoundError('Publication proposal not found', 'PUBLICATION_PROPOSAL_NOT_FOUND');
     }
-    const { proposalId, sourceReferences, ...draftInput } = body;
-    const draft = await publicationService.createDraftFromProposal(proposalId, draftInput);
-    await attachSourceReferences(projectId, draft.id, sourceReferences);
+    const { proposalId, sourceReferences, schemaJson, ...draftInput } = body;
+    const draft = await publicationService.createDraftFromProposal(proposalId, {
+      ...draftInput,
+      schemaJson: schemaJson as Prisma.InputJsonValue | null | undefined,
+      generatedBy: 'HUMAN'
+    });
+    await attachSourceReferences(draft.id, sourceReferences);
     return draft;
   },
 
@@ -231,14 +226,17 @@ const defaultPublicationApi: PublicationApiPort = {
       select: { id: true }
     });
     if (!draft) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
-    const { expectedVersion, sourceReferences, ...changes } = body;
+    const { expectedVersion, sourceReferences, schemaJson, ...changes } = body;
     const version = await publicationService.saveDraftVersion(
       draftId,
       expectedVersion,
-      changes,
+      {
+        ...changes,
+        schemaJson: schemaJson as Prisma.InputJsonValue | null | undefined
+      },
       'HUMAN'
     );
-    await attachSourceReferences(projectId, draftId, sourceReferences);
+    await attachSourceReferences(draftId, sourceReferences);
     return version;
   },
 
@@ -294,16 +292,19 @@ const defaultPublicationApi: PublicationApiPort = {
   },
 
   approvePlan(projectId, planId, body, requestActorId) {
-    return approvePublicationPlan({
-      projectId,
-      planId,
-      expectedPlanHash: body.expectedPlanHash,
-      expectedContentHash: body.expectedContentHash,
-      expectedPreviewHash: body.expectedPreviewHash,
-      approverActorId: requestActorId,
-      confirmedWarningCodes: body.confirmedWarningCodes,
-      expiresAt: body.expiresAt
-    });
+    return approvePublicationPlan(
+      {
+        projectId,
+        planId,
+        expectedPlanHash: body.expectedPlanHash,
+        expectedContentHash: body.expectedContentHash,
+        expectedPreviewHash: body.expectedPreviewHash,
+        confirmedRisk: body.confirmedRisk,
+        confirmedWarningCodes: body.confirmedWarningCodes,
+        expiresAt: body.expiresAt
+      },
+      { actorId: requestActorId }
+    );
   },
 
   async executePlan(projectId, planId) {
@@ -339,7 +340,7 @@ const defaultPublicationApi: PublicationApiPort = {
       await executionQueue.add(
         'execute',
         { executionId: execution.id },
-        buildPublicationExecutionJobOptions(execution.id, plan.planHash)
+        buildPublicationExecutionJobOptions(key)
       );
     }
     return execution;
@@ -395,8 +396,9 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
 
   router.get('/projects/:projectId/publication/proposals', workspaceGate(), async (req, res, next) => {
     try {
+      const projectId = routeParam(req.params.projectId);
       const pagination = paginationSchema.parse(req.query);
-      const data = await api.listProposals(req.params.projectId, pagination.limit, pagination.offset);
+      const data = await api.listProposals(projectId, pagination.limit, pagination.offset);
       res.json({ data, meta: pagination });
     } catch (error) {
       next(error);
@@ -405,8 +407,9 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
 
   router.post('/projects/:projectId/publication/proposals', workspaceGate(), async (req, res, next) => {
     try {
+      const projectId = routeParam(req.params.projectId);
       const body = createProposalSchema.parse(req.body);
-      const data = await api.createProposal(req.params.projectId, body, actorId(req.params.projectId));
+      const data = await api.createProposal(projectId, body, actorId(projectId));
       res.status(201).json({ data });
     } catch (error) {
       next(error);
@@ -415,8 +418,9 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
 
   router.get('/projects/:projectId/publication/drafts', workspaceGate(), async (req, res, next) => {
     try {
+      const projectId = routeParam(req.params.projectId);
       const pagination = paginationSchema.parse(req.query);
-      const data = await api.listDrafts(req.params.projectId, pagination.limit, pagination.offset);
+      const data = await api.listDrafts(projectId, pagination.limit, pagination.offset);
       res.json({ data, meta: pagination });
     } catch (error) {
       next(error);
@@ -425,8 +429,9 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
 
   router.post('/projects/:projectId/publication/drafts', workspaceGate(), async (req, res, next) => {
     try {
+      const projectId = routeParam(req.params.projectId);
       const body = createDraftSchema.parse(req.body);
-      const data = await api.createDraft(req.params.projectId, body);
+      const data = await api.createDraft(projectId, body);
       res.status(201).json({ data });
     } catch (error) {
       next(error);
@@ -435,9 +440,9 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
 
   router.get('/projects/:projectId/publication/drafts/:draftId', workspaceGate(), async (req, res, next) => {
     try {
-      const data = api.getDraft
-        ? await api.getDraft(req.params.projectId, req.params.draftId)
-        : null;
+      const projectId = routeParam(req.params.projectId);
+      const draftId = routeParam(req.params.draftId);
+      const data = api.getDraft ? await api.getDraft(projectId, draftId) : null;
       if (!data) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
       res.json({ data });
     } catch (error) {
@@ -447,8 +452,10 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
 
   router.post('/projects/:projectId/publication/drafts/:draftId/versions', workspaceGate(), async (req, res, next) => {
     try {
+      const projectId = routeParam(req.params.projectId);
+      const draftId = routeParam(req.params.draftId);
       const body = createDraftVersionSchema.parse(req.body);
-      const data = await api.createDraftVersion(req.params.projectId, req.params.draftId, body);
+      const data = await api.createDraftVersion(projectId, draftId, body);
       res.status(201).json({ data });
     } catch (error) {
       next(error);
@@ -457,8 +464,9 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
 
   router.get('/projects/:projectId/publication/plans', workspaceGate(), async (req, res, next) => {
     try {
+      const projectId = routeParam(req.params.projectId);
       const pagination = paginationSchema.parse(req.query);
-      const data = await api.listPlans(req.params.projectId, pagination.limit, pagination.offset);
+      const data = await api.listPlans(projectId, pagination.limit, pagination.offset);
       res.json({ data, meta: pagination });
     } catch (error) {
       next(error);
@@ -467,8 +475,9 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
 
   router.post('/projects/:projectId/publication/plans', workspaceGate(), async (req, res, next) => {
     try {
+      const projectId = routeParam(req.params.projectId);
       const body = createPlanSchema.parse(req.body);
-      const data = await api.createPlan(req.params.projectId, body);
+      const data = await api.createPlan(projectId, body);
       res.status(201).json({ data });
     } catch (error) {
       next(error);
@@ -477,7 +486,9 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
 
   router.get('/projects/:projectId/publication/plans/:planId', workspaceGate(), async (req, res, next) => {
     try {
-      const data = await api.getPlan(req.params.projectId, req.params.planId);
+      const projectId = routeParam(req.params.projectId);
+      const planId = routeParam(req.params.planId);
+      const data = await api.getPlan(projectId, planId);
       if (!data) throw new NotFoundError('Publication plan not found', 'PUBLICATION_PLAN_NOT_FOUND');
       res.json({ data });
     } catch (error) {
@@ -487,15 +498,12 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
 
   router.post('/projects/:projectId/publication/plans/:planId/approve', workspaceGate(), async (req, res, next) => {
     try {
+      const projectId = routeParam(req.params.projectId);
+      const planId = routeParam(req.params.planId);
       const body = approvalSchema.parse(req.body);
-      const plan = await api.getPlan(req.params.projectId, req.params.planId);
+      const plan = await api.getPlan(projectId, planId);
       if (!plan) throw new NotFoundError('Publication plan not found', 'PUBLICATION_PLAN_NOT_FOUND');
-      const data = await api.approvePlan(
-        req.params.projectId,
-        req.params.planId,
-        body,
-        actorId(req.params.projectId)
-      );
+      const data = await api.approvePlan(projectId, planId, body, actorId(projectId));
       res.status(201).json({ data });
     } catch (error) {
       next(error);
@@ -504,14 +512,12 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
 
   router.post('/projects/:projectId/publication/plans/:planId/execute', executionGate(), async (req, res, next) => {
     try {
+      const projectId = routeParam(req.params.projectId);
+      const planId = routeParam(req.params.planId);
       emptyMutationSchema.parse(req.body);
-      const plan = await api.getPlan(req.params.projectId, req.params.planId);
+      const plan = await api.getPlan(projectId, planId);
       if (!plan) throw new NotFoundError('Publication plan not found', 'PUBLICATION_PLAN_NOT_FOUND');
-      const data = await api.executePlan(
-        req.params.projectId,
-        req.params.planId,
-        actorId(req.params.projectId)
-      );
+      const data = await api.executePlan(projectId, planId, actorId(projectId));
       res.status(202).json({ data });
     } catch (error) {
       next(error);
@@ -520,7 +526,9 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
 
   router.get('/projects/:projectId/publication/executions/:executionId', workspaceGate(), async (req, res, next) => {
     try {
-      const data = await api.getExecution(req.params.projectId, req.params.executionId);
+      const projectId = routeParam(req.params.projectId);
+      const executionId = routeParam(req.params.executionId);
+      const data = await api.getExecution(projectId, executionId);
       if (!data) {
         throw new NotFoundError('Publication execution not found', 'PUBLICATION_EXECUTION_NOT_FOUND');
       }
@@ -532,16 +540,14 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
 
   router.post('/projects/:projectId/publication/executions/:executionId/verify', executionGate(), async (req, res, next) => {
     try {
+      const projectId = routeParam(req.params.projectId);
+      const executionId = routeParam(req.params.executionId);
       emptyMutationSchema.parse(req.body);
-      const execution = await api.getExecution(req.params.projectId, req.params.executionId);
+      const execution = await api.getExecution(projectId, executionId);
       if (!execution) {
         throw new NotFoundError('Publication execution not found', 'PUBLICATION_EXECUTION_NOT_FOUND');
       }
-      const data = await api.verifyExecution(
-        req.params.projectId,
-        req.params.executionId,
-        actorId(req.params.projectId)
-      );
+      const data = await api.verifyExecution(projectId, executionId, actorId(projectId));
       res.status(202).json({ data });
     } catch (error) {
       next(error);
