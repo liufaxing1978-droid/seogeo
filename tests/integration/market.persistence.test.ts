@@ -38,9 +38,13 @@ describe('P9-0A market persistence foundation', () => {
       ]
     });
 
-    const reloaded = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+    const reloaded = await prisma.project.findUniqueOrThrow({
+      where: { id: project.id },
+      include: { markets: true }
+    });
     expect(reloaded.targetCountry).toBe('CN');
     expect(reloaded.defaultLanguage).toBe('zh-CN');
+    expect(reloaded.markets).toHaveLength(3);
     expect(await prisma.projectMarket.count({ where: { projectId: project.id } })).toBe(3);
   });
 
