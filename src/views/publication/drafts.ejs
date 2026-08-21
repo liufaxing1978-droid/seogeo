@@ -1,0 +1,22 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Editorial Workspace · P8-A</p>
+    <h1>内容草稿</h1>
+    <p class="muted"><%= project.name %> · 草稿内容与不可变版本分离。</p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/publication">返回发布中心</a></div>
+</section>
+
+<section class="panel">
+  <div class="table-wrap"><table><thead><tr><th>标题</th><th>状态</th><th>版本</th><th>来源</th><th>引用</th><th>发布计划</th></tr></thead><tbody>
+  <% for (const draft of drafts) { %><tr>
+    <td><a href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>"><strong><%= draft.title %></strong></a><div class="muted"><%= draft.slugCandidate ?? '未设置 slug' %></div></td>
+    <td><span class="badge"><%= draft.status %></span></td>
+    <td>V<%= draft.currentVersion %> · <%= draft.generatedBy %></td>
+    <td><%= draft.sourceProposal?.sourceType ?? 'MANUAL' %></td>
+    <td><%= draft._count.sourceRefs %></td>
+    <td><%= draft._count.plans %></td>
+  </tr><% } %>
+  <% if (!drafts.length) { %><tr><td colspan="6" class="muted">尚无内容草稿。</td></tr><% } %>
+  </tbody></table></div>
+</section>
