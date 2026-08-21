@@ -11,6 +11,7 @@ export type EnsureDistributionTargetInput = {
   platform: DistributionPlatform;
   mode: DistributionMode;
   targetKey: string;
+  targetContext?: Prisma.InputJsonValue | null;
 };
 
 export type CreateDistributionArtifactInput = {

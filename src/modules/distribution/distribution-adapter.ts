@@ -70,10 +70,15 @@ export function resolveDistributionCapability(
     case 'MEDIUM':
     case 'LINKEDIN':
     case 'SUBSTACK':
-      return 'MANUAL_HANDOFF';
     case 'REDDIT':
     case 'QUORA':
     case 'ZHIHU':
+    case 'JIANSHU':
+    case 'TIEBA':
+    case 'PTT':
+    case 'DCARD':
+    case 'MOBILE01':
+      return 'MANUAL_HANDOFF';
     case 'WIKIPEDIA':
     case 'WIKIDATA':
     case 'BAIDU_BAIKE':

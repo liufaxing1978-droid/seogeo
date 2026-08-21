@@ -1,7 +1,7 @@
 <main class="page-shell">
   <div class="page-header">
     <div>
-      <p class="eyebrow">P8-B · Distribution Target</p>
+      <p class="eyebrow">P8-C · Distribution Target</p>
       <h1>分发目标</h1>
       <p class="muted"><%= target.platform %> · <%= target.mode %></p>
     </div>
@@ -20,6 +20,39 @@
       <div><dt>主站状态</dt><dd>已验证</dd></div>
     </dl>
   </section>
+
+  <% if (target.review && target.review.kind === 'COMMUNITY') { %>
+    <section class="card">
+      <h2><%= target.review.label %></h2>
+      <dl class="detail-grid">
+        <div><dt>讨论问题</dt><dd><%= target.review.question || '未提供' %></dd></div>
+        <div><dt>讨论地址</dt><dd><%= target.review.topicUrl || '未提供' %></dd></div>
+      </dl>
+      <p>品牌链接：<%= target.review.brandLinkIncluded ? '已包含' : target.review.includeBrandLink ? '已明确允许' : '未包含' %></p>
+      <p>推广性语言：<%= target.review.promotionalLanguageDetected ? '需人工复核' : '未检测' %></p>
+    </section>
+  <% } %>
+
+  <% if (target.review && target.review.kind === 'ENTITY') { %>
+    <section class="card">
+      <h2><%= target.review.label %></h2>
+      <% if (target.review.entityName) { %><p><strong><%= target.review.entityName %></strong></p><% } %>
+      <h3>可靠来源</h3>
+      <% if (target.review.reliableSourceRefs.length) { %>
+        <ul><% for (const ref of target.review.reliableSourceRefs) { %><li><code><%= ref %></code></li><% } %></ul>
+      <% } else { %><p class="muted">暂无可靠来源。</p><% } %>
+      <% if (target.review.attributes.length) { %>
+        <h3>来源支持字段</h3>
+        <ul><% for (const attribute of target.review.attributes) { %><li><strong><%= attribute.property %></strong>：<span><%= attribute.value %></span></li><% } %></ul>
+      <% } %>
+      <h3>缺失数据</h3>
+      <% if (target.review.missingData.length) { %><ul><% for (const item of target.review.missingData) { %><li><%= item %></li><% } %></ul><% } else { %><p class="muted">无已记录缺失项。</p><% } %>
+      <h3>平台/利益冲突提醒</h3>
+      <% if (target.review.policyReminders.length) { %><ul><% for (const item of target.review.policyReminders) { %><li><%= item %></li><% } %></ul><% } else { %><p class="muted">无额外提醒。</p><% } %>
+      <h3>人工编辑清单</h3>
+      <% if (target.review.humanChecklist.length) { %><ul><% for (const item of target.review.humanChecklist) { %><li><%= item %></li><% } %></ul><% } else { %><p class="muted">暂无清单项。</p><% } %>
+    </section>
+  <% } %>
 
   <% if (manualHandoff) { %>
     <section class="card">
