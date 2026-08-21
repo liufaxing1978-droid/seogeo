@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { requireFeature } from '../../auth/require-feature.js';
 import { AppError } from '../../core/errors.js';
 import { env } from '../../config/env.js';
 import {
@@ -74,8 +75,9 @@ function asAppError(error: unknown): never {
 export function createSearchConsoleRoutes(injectedService?: SearchConsoleService) {
   const router = Router();
   const service = () => injectedService ?? configuredService();
+  const searchConsoleGate = requireFeature('SEARCH_CONSOLE');
 
-  router.get('/projects/:projectId/search-console/status', async (req, res, next) => {
+  router.get('/projects/:projectId/search-console/status', searchConsoleGate, async (req, res, next) => {
     try {
       res.json({ data: await service().getStatus(req.params.projectId) });
     } catch (error) {
@@ -83,7 +85,7 @@ export function createSearchConsoleRoutes(injectedService?: SearchConsoleService
     }
   });
 
-  router.post('/projects/:projectId/search-console/oauth/start', async (req, res, next) => {
+  router.post('/projects/:projectId/search-console/oauth/start', searchConsoleGate, async (req, res, next) => {
     try {
       emptyBodySchema.parse(req.body ?? {});
       const actorId = `project-api:${req.params.projectId}`;
@@ -104,7 +106,7 @@ export function createSearchConsoleRoutes(injectedService?: SearchConsoleService
     }
   });
 
-  router.get('/projects/:projectId/search-console/properties', async (req, res, next) => {
+  router.get('/projects/:projectId/search-console/properties', searchConsoleGate, async (req, res, next) => {
     try {
       res.json({ data: await service().listReadableProperties(req.params.projectId) });
     } catch (error) {
@@ -112,7 +114,7 @@ export function createSearchConsoleRoutes(injectedService?: SearchConsoleService
     }
   });
 
-  router.post('/projects/:projectId/search-console/property', async (req, res, next) => {
+  router.post('/projects/:projectId/search-console/property', searchConsoleGate, async (req, res, next) => {
     try {
       const input = propertyBodySchema.parse(req.body);
       const data = await service().bindProperty(req.params.projectId, input.propertyUri);
@@ -122,7 +124,7 @@ export function createSearchConsoleRoutes(injectedService?: SearchConsoleService
     }
   });
 
-  router.delete('/projects/:projectId/search-console/connection', async (req, res, next) => {
+  router.delete('/projects/:projectId/search-console/connection', searchConsoleGate, async (req, res, next) => {
     try {
       await service().disconnect(req.params.projectId);
       res.status(204).end();
