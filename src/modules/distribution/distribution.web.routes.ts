@@ -12,7 +12,7 @@ function render(res: any, bodyTemplate: string, locals: Record<string, unknown>)
     currentProjectId: null,
     bodyTemplate,
     ...locals,
-    title: 'P8-B 多渠道分发'
+    title: 'P8-C 多渠道分发'
   });
 }
 
