@@ -60,6 +60,19 @@ describe('P9-0A project market REST API', () => {
     ]);
   });
 
+  it('defaults omitted enabled to true before passing input to the service', async () => {
+    const service = createService();
+
+    const response = await request(createApp({ marketService: service }))
+      .put('/api/projects/p1/markets')
+      .send({ markets: [{ marketCode: 'CN', locale: 'zh-CN' }] });
+
+    expect(response.status).toBe(200);
+    expect(service.replaceMarkets).toHaveBeenCalledWith('p1', [
+      { marketCode: 'CN', locale: 'zh-CN', enabled: true }
+    ]);
+  });
+
   it.each([
     ['unknown market code', { markets: [{ marketCode: 'US', locale: 'en-US', enabled: true }] }],
     ['65-character locale', { markets: [{ marketCode: 'GLOBAL', locale: 'a'.repeat(65), enabled: true }] }],
