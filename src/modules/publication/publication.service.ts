@@ -3,7 +3,6 @@ import {
   type ContentDraftStatus,
   type ContentGeneratedBy
 } from '@prisma/client';
-import { prisma } from '../../db/prisma.js';
 import { contentHashV1 } from './publication.hash.js';
 import {
   PublicationRepository,
@@ -122,10 +121,6 @@ function validateSourceUrl(value: string | null | undefined): string | null | un
   return parsed.toString();
 }
 
-function jsonForWrite(value: Prisma.JsonValue | Prisma.InputJsonValue | null) {
-  return value === null ? Prisma.JsonNull : (value as Prisma.InputJsonValue);
-}
-
 function nullableField<T>(incoming: T | null | undefined, current: T | null): T | null {
   return incoming === undefined ? current : incoming;
 }
@@ -168,38 +163,10 @@ export class PublicationService {
     const normalizedIdentityId = requiredText(opportunityIdentityId, 'opportunity identity id', 100);
     const normalizedActorId = validateActorId(actorId);
 
-    const source = await prisma.growthOpportunityIdentity.findFirst({
-      where: {
-        id: normalizedIdentityId,
-        projectId: normalizedProjectId
-      },
-      select: {
-        id: true,
-        projectId: true,
-        identityType: true,
-        normalizedQuery: true,
-        canonicalPage: true,
-        snapshots: {
-          orderBy: [
-            { currentWindowEnd: 'desc' },
-            { dataCutoffAt: 'desc' },
-            { createdAt: 'desc' },
-            { id: 'asc' }
-          ],
-          take: 1,
-          select: {
-            id: true,
-            snapshotVersion: true,
-            primaryType: true,
-            priority: true,
-            score: true,
-            evidenceQuality: true,
-            rankingEligible: true
-          }
-        }
-      }
-    });
-
+    const source = await this.repository.getGrowthOpportunityProposalSource(
+      normalizedProjectId,
+      normalizedIdentityId
+    );
     if (!source) {
       serviceError('GROWTH_OPPORTUNITY_NOT_FOUND', 'Growth opportunity identity not found for project');
     }
@@ -234,10 +201,7 @@ export class PublicationService {
     const normalizedActorId = validateActorId(actorId);
     const reason = requiredText(input.reason, 'reason', 1000);
 
-    const project = await prisma.project.findUnique({
-      where: { id: normalizedProjectId },
-      select: { id: true }
-    });
+    const project = await this.repository.getProject(normalizedProjectId);
     if (!project) serviceError('PROJECT_NOT_FOUND', 'Publication target project not found');
 
     return this.repository.createProposal({
@@ -250,10 +214,7 @@ export class PublicationService {
 
   async createDraftFromProposal(proposalId: string, input: CreateDraftFromProposalInput) {
     const normalizedProposalId = requiredText(proposalId, 'proposal id', 100);
-    const proposal = await prisma.publicationProposal.findUnique({
-      where: { id: normalizedProposalId },
-      select: { id: true, projectId: true }
-    });
+    const proposal = await this.repository.getProposal(normalizedProposalId);
     if (!proposal) serviceError('PUBLICATION_PROPOSAL_NOT_FOUND', 'Publication proposal not found');
 
     const title = requiredText(input.title, 'draft title', 300);
@@ -307,54 +268,68 @@ export class PublicationService {
       serviceError('PUBLICATION_VALIDATION_FAILED', 'expectedVersion must be a positive integer');
     }
 
-    return prisma.$transaction(async (tx) => {
-      const draft = await tx.contentDraft.findUnique({ where: { id: draftId } });
-      if (!draft) serviceError('CONTENT_DRAFT_NOT_FOUND', 'Content draft not found');
-      if (draft.currentVersion !== expectedVersion) {
-        serviceError('DRAFT_VERSION_CONFLICT', 'Content draft version changed; reload before saving');
-      }
+    const draft = await this.repository.getDraft(draftId);
+    if (!draft) serviceError('CONTENT_DRAFT_NOT_FOUND', 'Content draft not found');
+    if (draft.currentVersion !== expectedVersion) {
+      serviceError('DRAFT_VERSION_CONFLICT', 'Content draft version changed; reload before saving');
+    }
 
-      const nextVersion = expectedVersion + 1;
-      const title = input.title === undefined
-        ? draft.title
-        : requiredText(input.title, 'draft title', 300);
-      const slugCandidate = nullableField(
-        input.slugCandidate === undefined
-          ? undefined
-          : optionalText(input.slugCandidate, 'slug candidate', 200),
-        draft.slugCandidate
-      );
-      const body = input.body ?? draft.body;
-      const excerpt = nullableField(
-        input.excerpt === undefined ? undefined : optionalText(input.excerpt, 'excerpt', 1000),
-        draft.excerpt
-      );
-      const metaTitle = nullableField(
-        input.metaTitle === undefined ? undefined : optionalText(input.metaTitle, 'meta title', 300),
-        draft.metaTitle
-      );
-      const metaDescription = nullableField(
-        input.metaDescription === undefined
-          ? undefined
-          : optionalText(input.metaDescription, 'meta description', 1000),
-        draft.metaDescription
-      );
-      const canonicalCandidate = nullableField(
-        input.canonicalCandidate === undefined
-          ? undefined
-          : optionalText(input.canonicalCandidate, 'canonical candidate', 2048),
-        draft.canonicalCandidate
-      );
-      const schemaJson = input.schemaJson === undefined ? draft.schemaJson : input.schemaJson;
-      const author = nullableField(
-        input.author === undefined ? undefined : optionalText(input.author, 'author', 300),
-        draft.author
-      );
-      const language = input.language === undefined
-        ? draft.language
-        : requiredText(input.language, 'draft language', 32);
-      const status = input.status ?? draft.status;
-      const contentHash = contentHashV1(normalizedDraftForHash({
+    const title = input.title === undefined
+      ? draft.title
+      : requiredText(input.title, 'draft title', 300);
+    const slugCandidate = nullableField(
+      input.slugCandidate === undefined
+        ? undefined
+        : optionalText(input.slugCandidate, 'slug candidate', 200),
+      draft.slugCandidate
+    );
+    const body = input.body ?? draft.body;
+    const excerpt = nullableField(
+      input.excerpt === undefined ? undefined : optionalText(input.excerpt, 'excerpt', 1000),
+      draft.excerpt
+    );
+    const metaTitle = nullableField(
+      input.metaTitle === undefined ? undefined : optionalText(input.metaTitle, 'meta title', 300),
+      draft.metaTitle
+    );
+    const metaDescription = nullableField(
+      input.metaDescription === undefined
+        ? undefined
+        : optionalText(input.metaDescription, 'meta description', 1000),
+      draft.metaDescription
+    );
+    const canonicalCandidate = nullableField(
+      input.canonicalCandidate === undefined
+        ? undefined
+        : optionalText(input.canonicalCandidate, 'canonical candidate', 2048),
+      draft.canonicalCandidate
+    );
+    const schemaJson = input.schemaJson === undefined ? draft.schemaJson : input.schemaJson;
+    const author = nullableField(
+      input.author === undefined ? undefined : optionalText(input.author, 'author', 300),
+      draft.author
+    );
+    const language = input.language === undefined
+      ? draft.language
+      : requiredText(input.language, 'draft language', 32);
+    const status = input.status ?? draft.status;
+    const contentHash = contentHashV1(normalizedDraftForHash({
+      title,
+      slugCandidate,
+      body,
+      excerpt,
+      metaTitle,
+      metaDescription,
+      canonicalCandidate,
+      schemaJson,
+      author,
+      language
+    }));
+
+    const version = await this.repository.appendDraftVersionIfCurrent(
+      draft.id,
+      expectedVersion,
+      {
         title,
         slugCandidate,
         body,
@@ -364,61 +339,20 @@ export class PublicationService {
         canonicalCandidate,
         schemaJson,
         author,
-        language
-      }));
-
-      const updated = await tx.contentDraft.updateMany({
-        where: {
-          id: draft.id,
-          currentVersion: expectedVersion
-        },
-        data: {
-          title,
-          slugCandidate,
-          body,
-          excerpt,
-          metaTitle,
-          metaDescription,
-          canonicalCandidate,
-          schemaJson: jsonForWrite(schemaJson),
-          author,
-          language,
-          currentVersion: nextVersion,
-          currentContentHash: contentHash,
-          status,
-          generatedBy
-        }
-      });
-      if (updated.count !== 1) {
-        serviceError('DRAFT_VERSION_CONFLICT', 'Content draft version changed; reload before saving');
+        language,
+        contentHash,
+        status,
+        generatedBy
       }
-
-      return tx.contentDraftVersion.create({
-        data: {
-          draftId: draft.id,
-          version: nextVersion,
-          title,
-          slugCandidate,
-          body,
-          excerpt,
-          metaTitle,
-          metaDescription,
-          canonicalCandidate,
-          ...(schemaJson !== null ? { schemaJson: jsonForWrite(schemaJson) } : {}),
-          author,
-          language,
-          contentHash,
-          generatedBy
-        }
-      });
-    });
+    );
+    if (!version) {
+      serviceError('DRAFT_VERSION_CONFLICT', 'Content draft version changed; reload before saving');
+    }
+    return version;
   }
 
   async addSourceReference(draftId: string, input: SourceReferenceInput) {
-    const draft = await prisma.contentDraft.findUnique({
-      where: { id: draftId },
-      select: { id: true, projectId: true }
-    });
+    const draft = await this.repository.getDraft(draftId);
     if (!draft) serviceError('CONTENT_DRAFT_NOT_FOUND', 'Content draft not found');
 
     return this.repository.createSourceReference({
@@ -437,20 +371,13 @@ export class PublicationService {
   }
 
   async listSourceReferences(draftId: string) {
-    const draft = await prisma.contentDraft.findUnique({
-      where: { id: draftId },
-      select: { id: true }
-    });
+    const draft = await this.repository.getDraft(draftId);
     if (!draft) serviceError('CONTENT_DRAFT_NOT_FOUND', 'Content draft not found');
-
-    return prisma.contentSourceReference.findMany({
-      where: { draftId: draft.id },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
-    });
+    return this.repository.listSourceReferences(draft.id);
   }
 
   async updateSourceReference(referenceId: string, input: UpdateSourceReferenceInput) {
-    const current = await prisma.contentSourceReference.findUnique({ where: { id: referenceId } });
+    const current = await this.repository.getSourceReference(referenceId);
     if (!current) serviceError('CONTENT_SOURCE_REFERENCE_NOT_FOUND', 'Content source reference not found');
 
     const data: Prisma.ContentSourceReferenceUpdateInput = {};
@@ -464,19 +391,13 @@ export class PublicationService {
     if (input.userProvided !== undefined) data.userProvided = input.userProvided;
     if (input.internalRef !== undefined) data.internalRef = input.internalRef;
 
-    return prisma.contentSourceReference.update({
-      where: { id: current.id },
-      data
-    });
+    return this.repository.updateSourceReference(current.id, data);
   }
 
   async deleteSourceReference(referenceId: string) {
-    const current = await prisma.contentSourceReference.findUnique({
-      where: { id: referenceId },
-      select: { id: true }
-    });
+    const current = await this.repository.getSourceReference(referenceId);
     if (!current) serviceError('CONTENT_SOURCE_REFERENCE_NOT_FOUND', 'Content source reference not found');
-    return prisma.contentSourceReference.delete({ where: { id: current.id } });
+    return this.repository.deleteSourceReference(current.id);
   }
 }
 
