@@ -14,6 +14,7 @@ import { createCrawlRoutes } from './modules/crawler/crawl.routes.js';
 import type { CrawlService } from './modules/crawler/crawl.service.js';
 import { createGeoRoutes } from './modules/geo/geo.routes.js';
 import type { GeoService } from './modules/geo/geo.service.js';
+import { createGrowthRoutes, type GrowthRestRepository } from './modules/growth/growth.routes.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import { projectRoutes } from './modules/projects/project.routes.js';
 import { createReportRoutes } from './modules/reporting/report.routes.js';
@@ -45,6 +46,7 @@ export interface AppOptions {
   contentService?: ContentService;
   competitorService?: CompetitorService;
   searchConsoleService?: SearchConsoleService;
+  growthApiRepository?: Partial<GrowthRestRepository>;
   visibilityRunService?: VisibilityRunService;
   visibilityExtractionQueue?: VisibilityExtractionQueue;
   visibilityMetricsQueue?: VisibilityMetricsQueue;
@@ -64,6 +66,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api', createSeoRoutes(options.seoService));
   app.use('/api', createGeoRoutes(options.geoService));
   app.use('/api', createSearchConsoleRoutes(options.searchConsoleService));
+  app.use('/api', createGrowthRoutes(options.growthApiRepository));
   app.use('/api/v1', createAiRoutes(options.aiTaskService));
   app.use('/api/v1', createContentRoutes(options.contentService, options.aiTaskService));
   app.use('/api/v1', createCompetitorRoutes(options.competitorService, options.aiTaskService));
