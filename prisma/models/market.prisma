@@ -16,6 +16,8 @@ model ProjectMarket {
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
   @@unique([projectId, marketCode, locale], map: "ProjectMarket_project_market_locale_key")
   @@index([projectId, enabled], map: "ProjectMarket_project_enabled_idx")
   @@index([marketCode, locale], map: "ProjectMarket_market_locale_idx")
