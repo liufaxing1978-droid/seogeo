@@ -16,6 +16,7 @@ describe('queue registry', () => {
       'visibility-metrics',
       'visibility-monitoring',
       'site-mutation-execution',
+      'site-mutation-verification',
       'ai',
       'report'
     ]);
