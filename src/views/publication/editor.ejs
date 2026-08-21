@@ -1,0 +1,61 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Content Draft · V<%= draft.currentVersion %></p>
+    <h1><%= draft.title %></h1>
+    <p class="muted"><%= project.name %> · <%= draft.status %> · <%= draft.generatedBy %></p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts">返回草稿</a></div>
+</section>
+
+<section class="panel">
+  <h2>内容</h2>
+  <div class="table-wrap"><table><tbody>
+    <tr><th>Slug</th><td><%= draft.slugCandidate ?? '—' %></td></tr>
+    <tr><th>Meta Title</th><td><%= draft.metaTitle ?? '—' %></td></tr>
+    <tr><th>Meta Description</th><td><%= draft.metaDescription ?? '—' %></td></tr>
+    <tr><th>Canonical Candidate</th><td><%= draft.canonicalCandidate ?? '—' %></td></tr>
+    <tr><th>Author / Language</th><td><%= draft.author ?? '—' %> · <%= draft.language %></td></tr>
+  </tbody></table></div>
+  <pre><code><%= draft.body %></code></pre>
+</section>
+
+<section class="metric-grid compact">
+  <article class="metric-card">
+    <div class="metric-title">确定性验证</div>
+    <div class="metric-value" style="font-size:1rem"><%= latestPlan ? (validation.canCreatePlan ? 'READY' : 'BLOCKED') : 'NOT_RUN' %></div>
+    <div class="metric-caption">只读取最新已保存发布预览</div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-title">DeepSeek 建议</div>
+    <div class="metric-value" style="font-size:1rem">ADVISORY</div>
+    <div class="metric-caption">AI 推荐，人来决定</div>
+  </article>
+</section>
+
+<section class="panel">
+  <h2>确定性验证</h2>
+  <% if (!latestPlan) { %><p class="muted">尚未生成发布计划，因此没有可用于审批的确定性 Preview。</p><% } %>
+  <% if (latestPlan) { %>
+    <p>计划：<a href="/projects/<%= project.id %>/publication/plans/<%= latestPlan.id %>">V<%= latestPlan.version %> · <%= latestPlan.targetPublicUrl %></a></p>
+    <% if (validation.blockingCodes.length) { %><p><strong>Blocking：</strong><%= validation.blockingCodes.join(', ') %></p><% } %>
+    <% if (validation.warningCodes.length) { %><p><strong>Warnings：</strong><%= validation.warningCodes.join(', ') %></p><% } %>
+    <% if (!validation.blockingCodes.length && !validation.warningCodes.length) { %><p class="muted">当前已保存 Preview 没有阻断项或警告。</p><% } %>
+  <% } %>
+</section>
+
+<section class="panel">
+  <h2>DeepSeek 建议</h2>
+  <p class="muted">DeepSeek 可协助标题、摘要、栏目、内链、Schema 与平台适配草稿，但建议本身不会改变验证、审批、执行或 VERIFIED 状态。</p>
+  <p><strong>AI 推荐，人来决定</strong></p>
+</section>
+
+<section class="panel">
+  <h2>引用来源</h2>
+  <% for (const source of draft.sourceRefs) { %><p><strong><%= source.title %></strong><% if (source.sourceUrl) { %> · <%= source.sourceUrl %><% } %> · <%= source.sourceType %></p><% } %>
+  <% if (!draft.sourceRefs.length) { %><p class="muted">尚无引用来源。</p><% } %>
+</section>
+
+<section class="panel">
+  <h2>Schema Candidate</h2>
+  <pre><code><%= schemaJson || '未设置' %></code></pre>
+</section>
