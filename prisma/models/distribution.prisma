@@ -7,6 +7,11 @@ enum DistributionPlatform {
   REDDIT
   QUORA
   ZHIHU
+  JIANSHU
+  TIEBA
+  PTT
+  DCARD
+  MOBILE01
   WIKIPEDIA
   WIKIDATA
   BAIDU_BAIKE
@@ -39,6 +44,7 @@ model DistributionTarget {
   platform             DistributionPlatform
   mode                 DistributionMode
   targetKey            String
+  targetContext        Json?
   status               DistributionStatus   @default(NOT_PREPARED)
   sourceContentVersion Int?
   createdAt            DateTime             @default(now())

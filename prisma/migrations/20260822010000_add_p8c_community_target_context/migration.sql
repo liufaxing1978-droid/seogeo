@@ -1,0 +1,7 @@
+ALTER TYPE "DistributionPlatform" ADD VALUE IF NOT EXISTS 'JIANSHU';
+ALTER TYPE "DistributionPlatform" ADD VALUE IF NOT EXISTS 'TIEBA';
+ALTER TYPE "DistributionPlatform" ADD VALUE IF NOT EXISTS 'PTT';
+ALTER TYPE "DistributionPlatform" ADD VALUE IF NOT EXISTS 'DCARD';
+ALTER TYPE "DistributionPlatform" ADD VALUE IF NOT EXISTS 'MOBILE01';
+
+ALTER TABLE "DistributionTarget" ADD COLUMN "targetContext" JSONB;
