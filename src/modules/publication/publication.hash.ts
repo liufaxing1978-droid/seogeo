@@ -59,6 +59,10 @@ function sha256Versioned(version: string, value: unknown): string {
     .digest('hex');
 }
 
+function compareStableText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 function stableOperationIdentity(operation: unknown): string {
   if (!isPlainObject(operation)) return canonicalPublicationJson(operation);
   const type = typeof operation.type === 'string' ? operation.type : '';
@@ -69,7 +73,9 @@ function stableOperationIdentity(operation: unknown): string {
 }
 
 function normalizeSetLikeArray(values: unknown[]): unknown[] {
-  return [...values].sort((left, right) => canonicalPublicationJson(left).localeCompare(canonicalPublicationJson(right)));
+  return [...values].sort((left, right) =>
+    compareStableText(canonicalPublicationJson(left), canonicalPublicationJson(right))
+  );
 }
 
 function normalizePlanPayload(value: unknown): unknown {
@@ -81,7 +87,7 @@ function normalizePlanPayload(value: unknown): unknown {
   }
   if (Array.isArray(value.operations)) {
     normalized.operations = [...value.operations].sort((left, right) =>
-      stableOperationIdentity(left).localeCompare(stableOperationIdentity(right))
+      compareStableText(stableOperationIdentity(left), stableOperationIdentity(right))
     );
   }
 
