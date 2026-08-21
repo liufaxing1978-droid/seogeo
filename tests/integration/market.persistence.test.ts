@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../src/db/prisma.js';
+import { marketRepository } from '../../src/modules/market/market.repository.js';
 
 const projectIds: string[] = [];
 
@@ -55,5 +56,48 @@ describe('P9-0A market persistence foundation', () => {
         data: { projectId: project.id, marketCode: 'HK', locale: 'zh-Hant' }
       })
     ).rejects.toBeTruthy();
+  });
+
+  it('replaces the complete explicit market set atomically', async () => {
+    const project = await createProject('P9-0A atomic replace');
+    await prisma.projectMarket.createMany({
+      data: [
+        { projectId: project.id, marketCode: 'CN', locale: 'zh-CN' },
+        { projectId: project.id, marketCode: 'HK', locale: 'zh-Hant' }
+      ]
+    });
+
+    await marketRepository.replaceExplicitMarkets(project.id, [
+      { marketCode: 'GLOBAL', locale: 'en', enabled: true },
+      { marketCode: 'SG', locale: 'en-SG', enabled: true },
+      { marketCode: 'TW', locale: 'zh-Hant', enabled: false }
+    ]);
+
+    const rows = await prisma.projectMarket.findMany({
+      where: { projectId: project.id },
+      orderBy: [{ marketCode: 'asc' }, { locale: 'asc' }]
+    });
+    expect(rows.map(({ marketCode, locale, enabled }) => ({ marketCode, locale, enabled }))).toEqual([
+      { marketCode: 'GLOBAL', locale: 'en', enabled: true },
+      { marketCode: 'SG', locale: 'en-SG', enabled: true },
+      { marketCode: 'TW', locale: 'zh-Hant', enabled: false }
+    ]);
+  });
+
+  it('rolls back deletion when replacement creation fails', async () => {
+    const project = await createProject('P9-0A rollback');
+    await prisma.projectMarket.create({
+      data: { projectId: project.id, marketCode: 'MY', locale: 'en-MY', enabled: true }
+    });
+
+    await expect(marketRepository.replaceExplicitMarkets(project.id, [
+      { marketCode: 'CN', locale: 'zh-CN', enabled: true },
+      { marketCode: 'CN', locale: 'zh-CN', enabled: true }
+    ])).rejects.toBeTruthy();
+
+    const rows = await prisma.projectMarket.findMany({ where: { projectId: project.id } });
+    expect(rows.map(({ marketCode, locale, enabled }) => ({ marketCode, locale, enabled }))).toEqual([
+      { marketCode: 'MY', locale: 'en-MY', enabled: true }
+    ]);
   });
 });
