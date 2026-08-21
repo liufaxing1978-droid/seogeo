@@ -72,7 +72,7 @@ async function createFixture(platform: 'MEDIUM' | 'WORDPRESS', mode: 'CANONICAL_
     planId: plan.id,
     planVersion: 1,
     planHash: plan.planHash,
-    contentHash: draft.currentContentHash,
+    contentHash: draft.currentContentHash!,
     previewHash: preview.previewHash,
     baseSha: plan.baseSha,
     approverActorId: 'test-user',
