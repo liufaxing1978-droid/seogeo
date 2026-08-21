@@ -23,6 +23,7 @@ import {
   createPublicationRoutes,
   type PublicationApiPort
 } from './modules/publication/publication.routes.js';
+import { publicationWebRoutes } from './modules/publication/publication.web.routes.js';
 import { createReportRoutes } from './modules/reporting/report.routes.js';
 import { reportWebRoutes } from './modules/reporting/report.web.routes.js';
 import { createSearchConsoleRoutes } from './modules/search-console/search-console.routes.js';
@@ -86,6 +87,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/v1', createVisibilityMetricsRoutes(options.visibilityMetricsQueue));
   app.use('/api/v1', createVisibilityHistoryRoutes());
   app.use('/', contentWebRoutes);
+  app.use('/', publicationWebRoutes);
   app.use('/', competitorWebRoutes);
   app.use('/', reportWebRoutes);
   app.use('/', visibilityWebRoutes);
