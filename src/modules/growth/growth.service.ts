@@ -71,6 +71,11 @@ type P3TopicBinding = {
   normalizedName: string;
 };
 
+type NewContentCoverageEvidence = Pick<
+  GrowthEvidence,
+  'sourceModule' | 'ruleKey' | 'evidenceState'
+>;
+
 function atUtcStart(date: string): Date {
   return new Date(`${date}T00:00:00.000Z`);
 }
@@ -113,6 +118,33 @@ function demandPercentiles(rows: readonly QueryPageAggregate[]): Map<string, num
 
 function pageEvidence(allEvidence: readonly GrowthEvidence[], canonicalPage: string): GrowthEvidence[] {
   return allEvidence.filter((row) => row.canonicalPage === null || row.canonicalPage === canonicalPage);
+}
+
+function isNewContentCoverageEvidence(row: NewContentCoverageEvidence): boolean {
+  return row.sourceModule === 'P3_ENTITY' ||
+    row.sourceModule === 'P3_CITABILITY' ||
+    row.sourceModule === 'P5_CONTENT' ||
+    (row.sourceModule === 'P3_GEO' && row.ruleKey.startsWith('CONTENT_GEO_'));
+}
+
+export function summarizeNewContentCoverageEvidence(
+  evidence: readonly NewContentCoverageEvidence[]
+): {
+  evidenceKnown: boolean;
+  hasCoverageGap: boolean | null;
+  eligibleEvidenceCount: number;
+} {
+  const known = evidence.filter((row) =>
+    isNewContentCoverageEvidence(row) &&
+    (row.evidenceState === 'PASS' || row.evidenceState === 'FAIL')
+  );
+  return {
+    evidenceKnown: known.length > 0,
+    hasCoverageGap: known.length > 0
+      ? known.some((row) => row.evidenceState === 'FAIL')
+      : null,
+    eligibleEvidenceCount: known.length
+  };
 }
 
 function normalizeTopicText(value: string): string {
@@ -695,19 +727,11 @@ export async function materializeGrowthWindow(
     const combinedEvidence = dedupeGrowthEvidence(
       queryContexts.flatMap((row) => row.evidence)
     ).provenance;
-    const coverageEvidence = combinedEvidence.filter((row) =>
-      row.sourceModule === 'P3_GEO' ||
-      row.sourceModule === 'P3_ENTITY' ||
-      row.sourceModule === 'P3_CITABILITY' ||
-      row.sourceModule === 'P5_CONTENT'
+    const coverageSummary = summarizeNewContentCoverageEvidence(combinedEvidence);
+    const knownCoverageEvidence = combinedEvidence.filter((row) =>
+      isNewContentCoverageEvidence(row) &&
+      (row.evidenceState === 'PASS' || row.evidenceState === 'FAIL')
     );
-    const knownCoverageEvidence = coverageEvidence.filter((row) =>
-      row.evidenceState === 'PASS' || row.evidenceState === 'FAIL'
-    );
-    const evidenceKnown = knownCoverageEvidence.length > 0;
-    const hasCoverageGap = evidenceKnown
-      ? knownCoverageEvidence.some((row) => row.evidenceState === 'FAIL')
-      : null;
 
     const normalizedQueryTopic = normalizeTopicText(queryRow.normalizedQuery);
     const hasDeterministicDuplicateLandingPage = queryRow.rows.some((row) => {
@@ -731,9 +755,9 @@ export async function materializeGrowthWindow(
         position: row.position
       }))
     }, {
-      hasCoverageGap,
+      hasCoverageGap: coverageSummary.hasCoverageGap,
       hasDeterministicDuplicateLandingPage,
-      evidenceKnown,
+      evidenceKnown: coverageSummary.evidenceKnown,
       cannibalizationActive: cannibalizationQueries.has(queryRow.normalizedQuery)
     });
     if (detector.state !== 'DETECTED') continue;
