@@ -1,0 +1,69 @@
+<% const fmt = (value) => value ? new Date(value).toLocaleString('zh-CN') : '—'; %>
+<section class="page-header">
+  <div>
+    <p class="eyebrow">P7-A · Search Console</p>
+    <h1>Google Search Console</h1>
+    <p class="muted"><%= project.name %> · 只读连接。搜索数据用于确定性的 Growth Opportunity 计算，不修改 Google Search Console 配置。</p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/projects/<%= project.id %>/growth">Growth Center</a>
+  </div>
+</section>
+
+<section class="metric-grid compact">
+  <article class="metric-card">
+    <div class="metric-title">连接状态</div>
+    <div class="metric-value"><%= uiState %></div>
+    <div class="metric-caption">只读</div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-title">数据覆盖</div>
+    <div class="metric-value"><%= coverage ? `${coverage.selectedCompletedDateCount} / ${coverage.expectedDateCount}` : '0 / 56' %></div>
+    <div class="metric-caption"><%= coverage?.state ?? 'NO_DATA' %></div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-title">新鲜度</div>
+    <div class="metric-value"><%= latestSnapshot?.sourceCompletenessState ?? 'UNKNOWN' %></div>
+    <div class="metric-caption"><%= fmt(latestSnapshot?.sourceFreshness ?? latestSnapshot?.completedAt) %></div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-title">最近同步</div>
+    <div class="metric-value"><%= latestSnapshot?.status ?? 'NO_SYNC' %></div>
+    <div class="metric-caption"><%= fmt(property?.lastSyncAt ?? latestSnapshot?.completedAt) %></div>
+  </article>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>连接与属性</h2>
+      <p class="muted">凭据保存在安全 credential boundary；此页面不会读取或展示 access token、refresh token 或密文。</p>
+    </div>
+  </div>
+  <% if (!connection) { %>
+    <div class="empty-state">
+      <h3>NOT_CONNECTED</h3>
+      <p>连接 Google Search Console 后，可选择项目对应的 Search Console Property 并同步只读搜索表现数据。</p>
+      <span class="button secondary" aria-disabled="true">连接 Google Search Console</span>
+    </div>
+  <% } else { %>
+    <div class="table-wrap"><table>
+      <tbody>
+        <tr><th>连接</th><td><span class="badge"><%= connection.status %></span></td><th>最后验证</th><td><%= fmt(connection.lastVerifiedAt) %></td></tr>
+        <tr><th>Property</th><td><code><%= property?.propertyUri ?? '尚未选择' %></code></td><th>类型</th><td><%= property?.propertyType ?? '—' %></td></tr>
+        <tr><th>权限</th><td><%= property?.permissionState ?? '—' %></td><th>当前状态</th><td><strong><%= uiState %></strong></td></tr>
+      </tbody>
+    </table></div>
+  <% } %>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>同步健康</h2><p class="muted">Growth V1 使用两个连续 28 天稳定窗口；缺失日期不会被当作 0。</p></div></div>
+  <div class="table-wrap"><table>
+    <tbody>
+      <tr><th>覆盖状态</th><td><%= coverage?.state ?? 'NO_DATA' %></td><th>缺失天数</th><td><%= coverage?.missingDates?.length ?? 56 %></td></tr>
+      <tr><th>最新 Snapshot</th><td><%= latestSnapshot?.status ?? 'NO_SYNC' %></td><th>Rows</th><td><%= latestSnapshot?.rowCount ?? 0 %></td></tr>
+      <tr><th>Completeness</th><td><%= latestSnapshot?.sourceCompletenessState ?? 'UNKNOWN' %></td><th>Error</th><td><%= latestSnapshot?.errorCode ?? '—' %></td></tr>
+    </tbody>
+  </table></div>
+</section>
