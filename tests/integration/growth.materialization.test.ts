@@ -16,6 +16,7 @@ describe('P7-A database-only growth materialization', () => {
   const canonicalPage = `https://growth-materialize-${suffix}.example.com/guide`;
   let projectId = '';
   let propertyId = '';
+  let topicEntityId = '';
   const selectedIds: string[] = [];
 
   beforeAll(async () => {
@@ -51,6 +52,36 @@ describe('P7-A database-only growth materialization', () => {
       }
     });
     propertyId = property.id;
+
+    const page = await prisma.page.create({
+      data: {
+        projectId,
+        url: canonicalPage,
+        normalizedUrl: canonicalPage,
+        host: project.primaryDomain,
+        path: '/guide'
+      }
+    });
+    const topicEntity = await prisma.entity.create({
+      data: {
+        projectId,
+        entityType: 'TOPIC',
+        canonicalName: '六壬文化',
+        normalizedName: '六壬文化',
+        status: 'ACTIVE',
+        confidence: 1
+      }
+    });
+    topicEntityId = topicEntity.id;
+    await prisma.pageEntity.create({
+      data: {
+        pageId: page.id,
+        entityId: topicEntity.id,
+        role: 'PRIMARY',
+        confidence: 1,
+        sourceType: 'P3_ENTITY'
+      }
+    });
 
     const firstDate = new Date('2026-06-23T00:00:00.000Z');
     for (let index = 0; index < 56; index += 1) {
@@ -134,6 +165,13 @@ describe('P7-A database-only growth materialization', () => {
     expect(snapshot.sourceProvenance).toMatchObject({
       gscSnapshotIds: expect.arrayContaining(selectedIds)
     });
+
+    const topic = await prisma.growthTopicCluster.findUniqueOrThrow({
+      where: { id: snapshot.topicClusterId! }
+    });
+    expect(topic.topicKey).toBe(`entity:${topicEntityId}`);
+    expect(topic.primaryEntityId).toBe(topicEntityId);
+    expect(topic.primaryQuery).toBe('六壬文化');
 
     const lifecycle = await prisma.growthOpportunityLifecycle.findUniqueOrThrow({
       where: { opportunityIdentityId: snapshot.opportunityIdentityId }
