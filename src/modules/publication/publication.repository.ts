@@ -417,6 +417,40 @@ export class PublicationRepository {
     });
   }
 
+  getPlanForApproval(planId: string) {
+    return prisma.publicationPlan.findUnique({
+      where: { id: planId },
+      select: {
+        id: true,
+        projectId: true,
+        proposalId: true,
+        draftId: true,
+        draftVersion: true,
+        version: true,
+        planHash: true,
+        baseSha: true,
+        targetRepository: true,
+        targetBranch: true,
+        targetBlobHashes: true,
+        operations: true,
+        riskClass: true
+      }
+    });
+  }
+
+  getPreviewForPlan(planId: string) {
+    return prisma.publicationPreview.findUnique({
+      where: { planId },
+      select: {
+        id: true,
+        planId: true,
+        projectId: true,
+        previewHash: true,
+        validationResult: true
+      }
+    });
+  }
+
   async createApproval(input: CreatePublicationApprovalInput) {
     const plan = await prisma.publicationPlan.findUnique({
       where: { id: input.planId },
