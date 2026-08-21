@@ -1,6 +1,6 @@
 <section class="page-heading project-heading">
   <div><p class="eyebrow">项目详情</p><h2><%= project.name %></h2><p class="muted"><%= project.primaryDomain %></p></div>
-  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/seo">SEO 审计</a><a class="button secondary" href="/projects/<%= project.id %>/geo">GEO 审计</a></div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/seo">SEO 审计</a><a class="button secondary" href="/projects/<%= project.id %>/geo">GEO 审计</a><a class="button secondary" href="/projects/<%= project.id %>/search-console">Search Console</a><a class="button secondary" href="/projects/<%= project.id %>/growth">Growth Center</a></div>
 </section>
 <div class="project-meta">
   <span class="badge success"><%= project.status %></span>
@@ -19,6 +19,68 @@
   <article class="metric-card"><div class="metric-title">GEO Score</div><div class="metric-value"><%= dashboard.geoScore === null ? '--' : dashboard.geoScore.toFixed(1) %></div><div class="metric-caption">GEO_READINESS_V1</div></article>
   <article class="metric-card"><div class="metric-title">Citability</div><div class="metric-value"><%= !dashboard.citability || dashboard.citability.value === null ? (dashboard.citability?.status || '--') : dashboard.citability.value.toFixed(1) %></div><div class="metric-caption">最新 GEO Score 的 CITABILITY 组件</div></article>
   <article class="metric-card"><div class="metric-title">Critical Issues</div><div class="metric-value"><%= dashboard.criticalIssueCount %></div><div class="metric-caption">当前未解决 CRITICAL SEO 问题</div></article>
+</section>
+
+<%
+  const growth = dashboard.growth;
+  const formatGrowthPct = (value) => value === null ? 'UNKNOWN' : `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+%>
+<section class="panel" aria-label="Growth Intelligence">
+  <div class="panel-header">
+    <div>
+      <h3>Growth Intelligence · 持久化事实</h3>
+      <p>只读取已物化的 P7-A Growth 与 Search Console 事实；页面渲染不会调用 Google、P6 provider 或 DeepSeek。</p>
+    </div>
+    <a class="button secondary" href="/projects/<%= project.id %>/growth">打开 Growth Center</a>
+  </div>
+
+  <% if (growth.state === 'NO_DATA') { %>
+    <div class="empty-state">
+      <h4>暂无可排名机会</h4>
+      <p>最新 Growth 窗口没有可用于权威排序的机会；UNKNOWN / PARTIAL 不会被转换为 0。</p>
+    </div>
+  <% } else { %>
+    <section class="metric-grid compact">
+      <article class="metric-card"><div class="metric-title">Top Growth Score</div><div class="metric-value"><%= growth.topEligibleScore %></div><div class="metric-caption"><%= growth.surface %> surface</div></article>
+      <article class="metric-card"><div class="metric-title">CRITICAL Opportunities</div><div class="metric-value"><%= growth.criticalCount %></div><div class="metric-caption">最新稳定窗口</div></article>
+      <article class="metric-card"><div class="metric-title">HIGH Opportunities</div><div class="metric-value"><%= growth.highCount %></div><div class="metric-caption">最新稳定窗口</div></article>
+      <article class="metric-card"><div class="metric-title">Resolved</div><div class="metric-value"><%= growth.resolvedCount %></div><div class="metric-caption">当前可见 Growth surface</div></article>
+    </section>
+  <% } %>
+
+  <div class="dashboard-grid">
+    <article class="panel panel-wide">
+      <h4>Search Console 趋势</h4>
+      <% if (growth.searchTrend) { %>
+        <dl class="detail-list">
+          <div><dt>Impressions <%= formatGrowthPct(growth.searchTrend.impressionChangePct) %></dt><dd><%= growth.searchTrend.current.impressions %> / 前期 <%= growth.searchTrend.previous.impressions %></dd></div>
+          <div><dt>Clicks <%= formatGrowthPct(growth.searchTrend.clickChangePct) %></dt><dd><%= growth.searchTrend.current.clicks %> / 前期 <%= growth.searchTrend.previous.clicks %></dd></div>
+        </dl>
+      <% } else { %>
+        <div class="empty-state">稳定窗口内暂无足够 Search Console 持久化事实。</div>
+      <% } %>
+    </article>
+    <article class="panel">
+      <h4>GSC 数据健康</h4>
+      <dl class="detail-list">
+        <div><dt>连接</dt><dd><%= growth.gsc.connectionStatus %></dd></div>
+        <div><dt>Property</dt><dd><%= growth.gsc.propertyUri || '—' %></dd></div>
+        <div><dt>最新完成日期</dt><dd><%= growth.gsc.latestCompletedDate || 'NO_DATA' %></dd></div>
+        <div><dt>Completeness</dt><dd><%= growth.gsc.sourceCompletenessState || 'UNKNOWN' %></dd></div>
+      </dl>
+    </article>
+  </div>
+
+  <% if (growth.state === 'AVAILABLE') { %>
+    <div class="table-wrap"><table>
+      <thead><tr><th>信号</th><th>Query</th><th>Score</th><th>Priority</th></tr></thead>
+      <tbody>
+        <% if (growth.topRankingUpside) { %><tr><td>Ranking Upside</td><td><%= growth.topRankingUpside.normalizedQuery %></td><td><%= growth.topRankingUpside.score %></td><td><%= growth.topRankingUpside.priority %></td></tr><% } %>
+        <% if (growth.topDeclining) { %><tr><td>Declining</td><td><%= growth.topDeclining.normalizedQuery %></td><td><%= growth.topDeclining.score %></td><td><%= growth.topDeclining.priority %></td></tr><% } %>
+        <% if (growth.topCannibalizationRisk) { %><tr><td>Cannibalization</td><td><%= growth.topCannibalizationRisk.normalizedQuery %></td><td><%= growth.topCannibalizationRisk.score %></td><td><%= growth.topCannibalizationRisk.priority %></td></tr><% } %>
+      </tbody>
+    </table></div>
+  <% } %>
 </section>
 
 <% if (dashboard.visibility) { %>

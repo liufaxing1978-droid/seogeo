@@ -1,0 +1,25 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">P7-A · Query Competition</p>
+    <h1>Keyword Cannibalization</h1>
+    <p class="muted"><%= project.name %> · 只展示确定性 detector 已识别的同 Query 多页面竞争，不自动改动 URL、重定向或 canonical。</p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/growth">Growth Center</a></div>
+</section>
+
+<% for (const row of opportunities) { %>
+<section class="panel">
+  <div class="panel-header">
+    <div><h2><%= row.normalizedQuery || '—' %></h2><p class="muted">Score <%= row.score ?? '—' %> · <%= row.priority ?? 'UNKNOWN' %> · Evidence Quality <%= row.evidenceQuality ?? 'UNKNOWN' %></p></div>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>竞争页面</th><th>判定角色</th></tr></thead>
+    <tbody>
+      <% for (const page of row.competingPages || []) { %><tr><td><code><%= page %></code></td><td><%= page === row.primaryPageCandidate ? 'Primary page candidate' : 'Competing page' %></td></tr><% } %>
+      <% if (!(row.competingPages || []).length) { %><tr><td colspan="2" class="muted">没有可展示的 competing-page evidence。</td></tr><% } %>
+    </tbody>
+  </table></div>
+  <p class="muted">P7-A 仅提供诊断与候选主页面。任何合并、跳转或 canonical 变更属于 P8 执行层。</p>
+</section>
+<% } %>
+<% if (!opportunities.length) { %><section class="panel"><p class="muted">当前稳定窗口没有 Keyword Cannibalization opportunity。</p></section><% } %>

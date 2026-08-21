@@ -2,7 +2,7 @@
 
 Independent SEO / GEO platform for `seo.xingshantang.org`.
 
-Current milestone: **P0 - P6 complete**. P6-D History, Dashboard, Alerts & Report Integration has passed its pre-release verification gate.
+Current milestone: **P0 - P7-A complete**. P7-A Growth Opportunity Intelligence has passed its pre-release exact-head gate; the README completion commit is subject to the final exact-head CI gate before merge.
 
 ## Architecture
 
@@ -16,12 +16,15 @@ Current milestone: **P0 - P6 complete**. P6-D History, Dashboard, Alerts & Repor
 - Vitest / Supertest / Playwright
 - DeepSeek through a provider-neutral advisory AI Gateway
 - Official-provider adapters through the separate P6 visibility sampling pipeline
+- Google Search Console through read-only OAuth and immutable daily source snapshots
 
 ## Core boundary
 
-Deterministic crawler, SEO, GEO, content, competitor and reporting facts remain authoritative. AI may explain, summarize, prioritize and recommend, but it does not determine crawl/HTTP facts, SEO/GEO issue state, readiness scores, competitor metrics or verified-fix state.
+Deterministic crawler, SEO, GEO, content, competitor, reporting and Growth facts remain authoritative. AI may explain, summarize, prioritize and recommend, but it does not determine crawl/HTTP facts, SEO/GEO issue state, readiness scores, competitor metrics, verified-fix state or deterministic Growth scores/opportunity state.
 
 P6 external visibility observations are authoritative only when the system actually performs a supported official-provider API sample and persists the normalized result. API sampling is never labeled as a consumer-product web/app ranking.
+
+P7-A Search Console ingestion is read-only. Growth materialization consumes persisted GSC + P2/P3/P5/P6 facts and makes zero Google, P6-provider or DeepSeek calls.
 
 Provider reasoning is never persisted, logged or rendered.
 
@@ -168,6 +171,32 @@ P6-D V1 alerts are **in-app only**; it does not claim email, Slack, SMS, WeChat 
 
 Operational details: `docs/development/p6d-history-dashboard-alerts-report.md`.
 
+## P7-A Growth Opportunity Intelligence
+
+P7-A connects read-only Google Search Console data to a deterministic, auditable Growth Opportunity layer while preserving the platform rule that AI is advisory rather than authoritative.
+
+Delivered capabilities:
+
+- AES-256-GCM encrypted Search Console OAuth credential records with hashed, expiring, single-use state;
+- exact read-only Search Console scope and authorized property binding;
+- immutable/versioned daily Query+Page snapshots through the `search-console-sync` BullMQ queue;
+- stable 28-day current + 28-day previous windows excluding the most recent 3 calendar days;
+- Query+Page aggregation and project-relative CTR curve;
+- immutable Growth identities, opportunity snapshots, score breakdowns, evidence and Topic snapshots;
+- persisted P2/P3/P5/P6 evidence adapters with deterministic provenance and root-cause dedupe;
+- `GROWTH_SCORE_V1` with explicit evidence coverage, COMPLETE/PARTIAL/UNKNOWN quality and `UNKNOWN != 0` semantics;
+- deterministic Ranking Upside, CTR Underperformance, SEO/GEO/Content/AI Visibility Gap, Declining Performance, Keyword Cannibalization and New Content detectors;
+- database-only `growth-materialization` queue/worker with stable job identity;
+- mutable audited lifecycle separated from immutable snapshots, including deterministic resolve/reopen behavior;
+- bounded project APIs, Growth Opportunity Center UI, project dashboards and Enterprise portfolio rows;
+- optional user-triggered `GROWTH_AI_EXPLANATION` through the existing P4 DeepSeek pipeline, unable to mutate deterministic Growth facts;
+- strict Search Console/Growth observability event catalogs and safe scalar metadata allowlists;
+- operator guidance for OAuth, key rotation, source coverage, stable windows, queues, bounds, lifecycle, incident triage and rollback.
+
+Search Console source incompleteness or failure is never represented as zero traffic. Growth ranking requires sufficient known evidence; low-coverage opportunities remain diagnostic/UNKNOWN rather than receiving fabricated authoritative scores.
+
+Operational details: `docs/development/p7a-growth-opportunity-intelligence.md`.
+
 ## Feature gates
 
 Base project features available to Standard / Advanced / Enterprise include:
@@ -187,6 +216,8 @@ P6 Advanced / Enterprise monitoring gates remain separate:
 - Competitor Share of Voice
 
 P6-A activates AI Visibility and Prompt Monitor. P6-B activates Citation Monitor. P6-C activates Competitor Share of Voice / Visibility Metrics. P6-D extends those gated P6 capabilities with history, comparisons, in-app alerts, Report V2 visibility facts and explicit user-triggered trend analysis. Standard projects are rejected before restricted P6 reads, writes or queue side effects.
+
+P7-A adds Search Console and Growth surfaces according to its explicit Standard / Advanced / Enterprise matrix. Restricted advanced Growth reads and side effects fail before repository access. Enterprise portfolio Growth rows remain bounded and deterministic.
 
 `ADVANCED_REPORTS` remains reserved for future advanced scheduling/bundling/distribution rather than the base project report snapshot feature.
 
@@ -224,6 +255,8 @@ P6-C release evidence requires proof that authoritative metric materialization m
 
 P6-D release evidence requires proof that comparisons only use compatible immutable P6-C snapshots; no-comparison/UNKNOWN states are never fabricated as numeric zero; trigger evidence remains immutable through acknowledge/resolve; reconciliation is bounded and zero-network; dashboards and `PROJECT_REPORT_V2` read persisted facts only; optional DeepSeek trend analysis is explicit user-triggered advisory work and cannot mutate deterministic P6 facts; P6-D lifecycle observability excludes prompt/answer/provider bodies, secrets, private aliases, citation URLs, reasoning and full report payloads; full Vitest, build, Chromium smoke tests and runtime dependency audit all pass.
 
+P7-A release evidence requires proof that OAuth state replay is rejected before token exchange; Search Console daily synchronization is immutable/versioned/idempotent; missing/FAILED GSC days never become zero; 56-day stable-window coverage is enforced; deterministic score, evidence dedupe, detector identities and lifecycle transitions remain stable; Standard/Advanced/Enterprise gates fail before restricted reads/side effects; Growth materialization and GET rendering make zero Google/P6-provider/DeepSeek calls; observability drops Query/evidence/credential/AI/provider payloads; and exact-head CI passes `verify`, Chromium `e2e` and `production-audit` without live Google credentials.
+
 ## Roadmap
 
 - P0 Platform foundation — complete
@@ -236,3 +269,4 @@ P6-D release evidence requires proof that comparisons only use compatible immuta
 - P6-B Citation & Mention Intelligence — complete
 - P6-C Visibility Metrics & Competitor Share of Voice — complete
 - P6-D History, Dashboard, Alerts & Report Integration — complete
+- P7-A Search Console + Growth Opportunity Intelligence — complete

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { prisma } from '../../src/db/prisma.js';
+import { seedGrowthDashboardFacts } from '../helpers/growth-dashboard-fixture.js';
 
 async function seedVisibility(projectId: string, numerator: number) {
   const snapshot = await prisma.visibilityMetricSnapshot.create({
@@ -98,5 +99,53 @@ test('Standard project dashboard never exposes restricted P6 facts even when str
     await expect(main).not.toContainText('E2E DASHBOARD PRIVATE SCOPE');
   } finally {
     await prisma.project.delete({ where: { id: project.id } }).catch(() => undefined);
+  }
+});
+
+test('renders persisted Growth intelligence on project dashboard and Enterprise portfolio without private facts', async ({ page }) => {
+  const suffix = `${Date.now()}-${Math.random()}`;
+  const advanced = await prisma.project.create({
+    data: {
+      name: 'Advanced Growth Browser',
+      slug: `advanced-growth-browser-${suffix}`,
+      primaryDomain: `advanced-growth-browser-${suffix}.example.com`,
+      planLevel: 'ADVANCED'
+    }
+  });
+  const enterprise = await prisma.project.create({
+    data: {
+      name: 'Enterprise Growth Browser',
+      slug: `enterprise-growth-browser-${suffix}`,
+      primaryDomain: `enterprise-growth-browser-${suffix}.example.com`,
+      planLevel: 'ENTERPRISE'
+    }
+  });
+  try {
+    await seedGrowthDashboardFacts(advanced.id, { includeEligible: true, includeAdvancedTypes: true, resolvedCount: 1 });
+    await seedGrowthDashboardFacts(enterprise.id, { includeEligible: true, includeAdvancedTypes: true, resolvedCount: 2 });
+
+    await page.goto(`/projects/${advanced.id}`);
+    const main = page.getByRole('main');
+    await expect(main.getByRole('heading', { name: 'Growth Intelligence · 持久化事实', exact: true })).toBeVisible();
+    await expect(main.getByText('Top Growth Score', { exact: true })).toBeVisible();
+    await expect(main.getByText('91', { exact: true }).first()).toBeVisible();
+    await expect(main.getByText('declining opportunity', { exact: true })).toBeVisible();
+    await expect(main.getByText('ranking opportunity', { exact: true })).toBeVisible();
+    await expect(main.getByText('cannibal opportunity', { exact: true })).toBeVisible();
+    await expect(main.getByText('Impressions +100.0%', { exact: true })).toBeVisible();
+    await expect(main.getByText('Clicks +100.0%', { exact: true })).toBeVisible();
+    await expect(main).not.toContainText('SHOULD_NOT_RENDER');
+    await expect(main).not.toContainText('fixture-ciphertext');
+
+    await page.goto('/');
+    const enterpriseSection = page.getByRole('region', { name: 'Enterprise Growth Portfolio', exact: true });
+    await expect(enterpriseSection).toBeVisible();
+    await expect(enterpriseSection.getByText('Enterprise Growth Browser', { exact: true })).toBeVisible();
+    await expect(enterpriseSection).not.toContainText('Advanced Growth Browser');
+    await expect(enterpriseSection).not.toContainText('SHOULD_NOT_RENDER');
+    await expect(enterpriseSection).not.toContainText('fixture-ciphertext');
+  } finally {
+    await prisma.project.delete({ where: { id: advanced.id } }).catch(() => undefined);
+    await prisma.project.delete({ where: { id: enterprise.id } }).catch(() => undefined);
   }
 });

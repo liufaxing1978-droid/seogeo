@@ -7,6 +7,8 @@ export const QUEUE_NAMES = [
   'geo-audit',
   'content',
   'competitor',
+  'search-console-sync',
+  'growth-materialization',
   'visibility',
   'visibility-extraction',
   'visibility-metrics',

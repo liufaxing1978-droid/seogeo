@@ -1,0 +1,92 @@
+<%
+  const identity = detail.identity || {};
+  const snapshot = detail.snapshot || {};
+  const breakdown = detail.breakdown || {};
+  const evidence = detail.evidence || [];
+  const history = detail.history || [];
+  const lifecycle = detail.lifecycle || {};
+  const lifecycleEvents = detail.lifecycleEvents || [];
+  const fmtDate = (value) => value ? new Date(value).toLocaleDateString('zh-CN') : '—';
+  const scoreRows = [
+    ['Demand', breakdown.demandState, breakdown.demandScore, '30%'],
+    ['Position Potential', breakdown.positionPotentialState, breakdown.positionPotentialScore, '25%'],
+    ['CTR Gap', breakdown.ctrGapState, breakdown.ctrGapScore, '20%'],
+    ['Site Gap', breakdown.siteGapState, breakdown.siteGapScore, '15%'],
+    ['GSC Trend', breakdown.gscTrendState, breakdown.gscTrendScore, 'Trend 60%'],
+    ['AI Visibility', breakdown.p6VisibilityState, breakdown.p6VisibilityScore, 'Trend 40%']
+  ];
+%>
+<section class="page-header">
+  <div>
+    <p class="eyebrow">P7-A · Deterministic Opportunity</p>
+    <h1>Growth Opportunity</h1>
+    <p class="muted"><strong><%= identity.normalizedQuery || '—' %></strong> · <%= identity.canonicalPage || 'Query-level opportunity' %></p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/growth">Growth Center</a></div>
+</section>
+
+<section class="metric-grid compact">
+  <article class="metric-card"><div class="metric-title">Opportunity Score</div><div class="metric-value"><%= snapshot.score ?? '—' %></div><div class="metric-caption"><%= snapshot.priority ?? 'UNKNOWN' %></div></article>
+  <article class="metric-card"><div class="metric-title">Evidence Quality</div><div class="metric-value"><%= snapshot.evidenceQuality ?? 'UNKNOWN' %></div><div class="metric-caption"><%= snapshot.evidenceCoverage == null ? '—' : `${Math.round(Number(snapshot.evidenceCoverage) * 100)}% coverage` %></div></article>
+  <article class="metric-card"><div class="metric-title">Type</div><div class="metric-value"><%= snapshot.primaryType ?? '—' %></div><div class="metric-caption"><%= (snapshot.secondaryTypes || []).join(', ') || 'No secondary type' %></div></article>
+  <article class="metric-card"><div class="metric-title">Lifecycle</div><div class="metric-value"><%= lifecycle.status ?? 'NEW' %></div><div class="metric-caption">人工流程与不可变事实快照分离</div></article>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>为什么现在值得处理</h2><p class="muted">以下结论只根据当前持久化 Opportunity、Score 与 Evidence 展示。</p></div></div>
+  <p>当前机会类型为 <strong><%= snapshot.primaryType ?? 'UNKNOWN' %></strong>，Opportunity Score 为 <strong><%= snapshot.score ?? 'UNKNOWN' %></strong>，优先级为 <strong><%= snapshot.priority ?? 'UNKNOWN' %></strong>。证据质量单独标记为 <strong><%= snapshot.evidenceQuality ?? 'UNKNOWN' %></strong>。</p>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>Score Breakdown</h2><p class="muted">UNKNOWN 不按 0 分处理；每一维都保留自己的证据状态。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>维度</th><th>状态</th><th>Score</th><th>合同权重</th></tr></thead>
+    <tbody>
+      <% for (const row of scoreRows) { %><tr><td><%= row[0] %></td><td><%= row[1] ?? 'UNKNOWN' %></td><td><%= row[2] ?? '—' %></td><td><%= row[3] %></td></tr><% } %>
+      <tr><th>Available Weight</th><td colspan="3"><%= breakdown.availableWeight ?? '—' %></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>窗口比较</h2><p class="muted">当前窗口与前一窗口边界保存在不可变 Growth snapshot。</p></div></div>
+  <div class="table-wrap"><table><tbody>
+    <tr><th>当前窗口</th><td><%= fmtDate(snapshot.currentWindowStart) %> → <%= fmtDate(snapshot.currentWindowEnd) %></td></tr>
+    <tr><th>前一窗口</th><td><%= fmtDate(snapshot.previousWindowStart) %> → <%= fmtDate(snapshot.previousWindowEnd) %></td></tr>
+    <tr><th>Data Cutoff</th><td><%= fmtDate(snapshot.dataCutoffAt) %></td></tr>
+  </tbody></table></div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>Evidence</h2><p class="muted">只展示允许的持久化证据字段，不输出内部 sourceProvenance。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>来源</th><th>规则</th><th>状态</th><th>严重度</th><th>摘要</th></tr></thead>
+    <tbody>
+      <% for (const row of evidence) { %><tr><td><%= row.sourceModule %></td><td><code><%= row.ruleKey || row.sourceType %></code></td><td><%= row.evidenceState %></td><td><%= row.severity %></td><td><%= row.textSummary || '—' %></td></tr><% } %>
+      <% if (!evidence.length) { %><tr><td colspan="5" class="muted">当前快照没有可展示 Evidence。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>Lifecycle</h2><p class="muted">Lifecycle 是人工工作流状态，不修改历史 Opportunity Snapshot。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>时间</th><th>事件</th><th>From</th><th>To</th><th>Reason</th></tr></thead>
+    <tbody>
+      <% for (const row of lifecycleEvents) { %><tr><td><%= row.createdAt ? new Date(row.createdAt).toLocaleString('zh-CN') : '—' %></td><td><%= row.eventType %></td><td><%= row.fromStatus || '—' %></td><td><%= row.toStatus || '—' %></td><td><%= row.reasonCode || '—' %></td></tr><% } %>
+      <% if (!lifecycleEvents.length) { %><tr><td colspan="5" class="muted">尚无 Lifecycle event。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>历史快照</h2><p class="muted">历史分数不会被覆盖，可用于观察机会是否持续改善。</p></div></div>
+  <div class="table-wrap"><table><thead><tr><th>窗口</th><th>Score</th><th>Priority</th><th>Evidence Quality</th></tr></thead><tbody>
+    <% for (const row of history) { %><tr><td><%= fmtDate(row.currentWindowStart) %> → <%= fmtDate(row.currentWindowEnd) %></td><td><%= row.score ?? '—' %></td><td><%= row.priority ?? 'UNKNOWN' %></td><td><%= row.evidenceQuality ?? 'UNKNOWN' %></td></tr><% } %>
+  </tbody></table></div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>AI 解读（辅助）</h2><p class="muted">DeepSeek 只能解释已持久化事实、Score Breakdown 与 Evidence；不会改变 Opportunity Score、Priority、类型或 Lifecycle。</p></div></div>
+  <% if (basicSurface) { %><p class="muted">当前套餐不包含 Growth AI Explanation。</p><% } else { %><p>按需解释入口将在 P7-A Task 14 接入。本页当前不触发任何模型调用。</p><% } %>
+</section>

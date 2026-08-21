@@ -10,6 +10,7 @@ import { parseContentBriefOutput, parseContentOptimizationOutput, persistContent
 import { DeepSeekProvider } from './deepseek.provider.js';
 import { parseEntityEnrichmentOutput } from './entity-intelligence.js';
 import { parseGeoAnalysisOutput } from './geo-intelligence.js';
+import { parseGrowthOpportunityExplanationOutput } from './growth-opportunity-explanation.js';
 import { getPromptDefinition } from './prompts/prompt-registry.js';
 import { AiProviderError } from './provider.js';
 import { AiProviderRegistry } from './provider-registry.js';
@@ -45,6 +46,7 @@ function expectedPromptId(task: AiTask): string {
     case 'COMPETITOR_GAP_ANALYSIS': return 'competitor-gap-v1';
     case 'REPORT_EXECUTIVE_SUMMARY': return 'project-report-summary-v1';
     case 'VISIBILITY_TREND_ANALYSIS': return 'visibility-trend-analysis-v1';
+    case 'GROWTH_OPPORTUNITY_EXPLANATION': return 'growth-opportunity-explanation-v1';
   }
 }
 
@@ -82,6 +84,7 @@ function resultSummary(task: AiTask, output: unknown): string {
     case 'COMPETITOR_GAP_ANALYSIS': return 'Competitor gap analysis completed.';
     case 'REPORT_EXECUTIVE_SUMMARY': return 'Project report executive summary completed.';
     case 'VISIBILITY_TREND_ANALYSIS': return 'Visibility trend analysis completed.';
+    case 'GROWTH_OPPORTUNITY_EXPLANATION': return 'Growth opportunity explanation completed.';
   }
 }
 
@@ -95,6 +98,7 @@ function parseTaskOutput(task: AiTask, content: string): unknown {
     case 'COMPETITOR_GAP_ANALYSIS': return parseCompetitorGapOutput(content, task.sourceReferences);
     case 'REPORT_EXECUTIVE_SUMMARY': return parseReportExecutiveOutput(content, task.sourceReferences);
     case 'VISIBILITY_TREND_ANALYSIS': return parseVisibilityTrendAnalysisOutput(content, task.sourceReferences);
+    case 'GROWTH_OPPORTUNITY_EXPLANATION': return parseGrowthOpportunityExplanationOutput(content, task.sourceReferences);
   }
 }
 

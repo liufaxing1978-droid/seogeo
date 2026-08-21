@@ -9,6 +9,8 @@ describe('queue registry', () => {
       'geo-audit',
       'content',
       'competitor',
+      'search-console-sync',
+      'growth-materialization',
       'visibility',
       'visibility-extraction',
       'visibility-metrics',

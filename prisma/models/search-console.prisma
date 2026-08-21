@@ -1,0 +1,139 @@
+enum OAuthCredentialProvider {
+  GOOGLE_SEARCH_CONSOLE
+}
+
+enum SearchConsoleConnectionStatus {
+  CONNECTED
+  TOKEN_REVOKED
+  PERMISSION_DENIED
+  DISCONNECTED
+}
+
+enum GscDailySnapshotStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum GscSourceCompletenessState {
+  UNKNOWN
+  TOP_ROWS_ONLY
+}
+
+model OAuthStateNonce {
+  id        String                  @id @default(uuid()) @db.Uuid
+  projectId String                  @db.Uuid
+  actorId   String
+  provider  OAuthCredentialProvider
+  stateHash String                  @unique
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime                @default(now())
+
+  @@index([projectId, expiresAt], map: "OAuthState_project_expiry_idx")
+  @@index([provider, expiresAt], map: "OAuthState_provider_expiry_idx")
+}
+
+model OAuthCredentialRecord {
+  id         String                  @id @default(uuid()) @db.Uuid
+  projectId  String                  @db.Uuid
+  provider   OAuthCredentialProvider
+  ciphertext Bytes
+  iv         Bytes
+  authTag    Bytes
+  keyVersion String
+  revokedAt  DateTime?
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+
+  connection SearchConsoleConnection?
+
+  @@index([projectId, provider, revokedAt], map: "OAuthCredential_project_provider_idx")
+}
+
+model SearchConsoleConnection {
+  id               String                        @id @default(uuid()) @db.Uuid
+  projectId        String                        @db.Uuid
+  googleAccountRef String?
+  credentialRef    String                        @unique @db.Uuid
+  status           SearchConsoleConnectionStatus @default(CONNECTED)
+  connectedAt      DateTime                      @default(now())
+  revokedAt        DateTime?
+  lastVerifiedAt   DateTime?
+  createdAt        DateTime                      @default(now())
+  updatedAt        DateTime                      @updatedAt
+
+  credential OAuthCredentialRecord  @relation(fields: [credentialRef], references: [id], onDelete: Restrict)
+  properties SearchConsoleProperty[]
+
+  @@index([projectId, status], map: "SearchConsoleConnection_project_status_idx")
+}
+
+model SearchConsoleProperty {
+  id              String   @id @default(uuid()) @db.Uuid
+  connectionId    String   @db.Uuid
+  projectId       String   @db.Uuid
+  propertyUri     String
+  propertyType    String
+  permissionState String
+  isActive        Boolean  @default(false)
+  lastSyncAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  connection SearchConsoleConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  snapshots  GscDailySnapshot[]
+
+  @@unique([connectionId, propertyUri], map: "SearchConsoleProperty_connection_uri_key")
+  @@index([projectId, isActive], map: "SearchConsoleProperty_project_active_idx")
+}
+
+model GscDailySnapshot {
+  id                      String                     @id @default(uuid()) @db.Uuid
+  projectId               String                     @db.Uuid
+  propertyId              String                     @db.Uuid
+  date                    DateTime                   @db.Date
+  status                  GscDailySnapshotStatus     @default(PENDING)
+  syncVersion             Int
+  inputHash               String?
+  rowCount                Int                        @default(0)
+  sourceFreshness         DateTime?
+  sourceCompletenessState GscSourceCompletenessState @default(UNKNOWN)
+  errorCode               String?
+  startedAt               DateTime?
+  completedAt             DateTime?
+  createdAt               DateTime                   @default(now())
+  updatedAt               DateTime                   @updatedAt
+
+  property SearchConsoleProperty @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  facts    GscQueryPageFact[]
+
+  @@unique([projectId, propertyId, date, syncVersion], map: "GscDailySnapshot_identity_key")
+  @@index([projectId, date, status], map: "GscDailySnapshot_project_date_status_idx")
+  @@index([propertyId, date, status], map: "GscDailySnapshot_property_date_status_idx")
+}
+
+model GscQueryPageFact {
+  id                   String   @id @default(uuid()) @db.Uuid
+  snapshotId           String   @db.Uuid
+  projectId            String   @db.Uuid
+  date                 DateTime @db.Date
+  factKey              String
+  query                String
+  normalizedQuery      String
+  normalizationVersion String
+  page                 String
+  canonicalPage        String
+  clicks               Int
+  impressions          Int
+  ctr                  Float
+  position             Float
+  createdAt            DateTime @default(now())
+
+  snapshot GscDailySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, factKey], map: "GscQueryPageFact_snapshot_fact_key")
+  @@index([projectId, date], map: "GscQueryPageFact_project_date_idx")
+  @@index([snapshotId], map: "GscQueryPageFact_snapshot_idx")
+}
