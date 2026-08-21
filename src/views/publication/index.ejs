@@ -1,0 +1,60 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Safe Site Mutation · P8-A</p>
+    <h1>内容与发布</h1>
+    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
+  </div>
+  <div class="actions">
+    <a class="button" href="/projects/<%= project.id %>/publication/opportunities">查看内容机会</a>
+    <a class="button secondary" href="/projects/<%= project.id %>/publication/drafts">内容草稿</a>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>安全发布边界</h2>
+  <p class="muted">P8-A 只展示已持久化的提案、草稿、计划、审批、执行与真实站点验证事实。DeepSeek 可以建议内容，但不能批准、执行、合并或把 PR 状态当成已发布。</p>
+  <% if (standardExportOnly) { %>
+    <p><strong>Standard 套餐仅提供导出补丁，不执行 Git 写入。</strong></p>
+  <% } %>
+</section>
+
+<section class="metric-grid compact">
+  <article class="metric-card"><div class="metric-title">内容提案</div><div class="metric-value"><%= proposals.length %></div><div class="metric-caption">P7 / 人工来源</div></article>
+  <article class="metric-card"><div class="metric-title">草稿</div><div class="metric-value"><%= drafts.length %></div><div class="metric-caption">版本化内容</div></article>
+  <article class="metric-card"><div class="metric-title">发布计划</div><div class="metric-value"><%= plans.length %></div><div class="metric-caption">不可变计划与预览</div></article>
+  <article class="metric-card"><div class="metric-title">写入能力</div><div class="metric-value" style="font-size:1rem"><%= writeCapability %></div><div class="metric-caption"><%= primarySite?.displayName ?? '未配置站点' %></div></article>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>当前发布状态</h2><p class="muted">DEPLOYED 不等于 VERIFIED，只有真实站点确定性验证通过才显示 VERIFIED。</p></div></div>
+  <% if (latestExecution) { %>
+    <p><span class="badge"><%= latestExecution.status %></span> · <a href="/projects/<%= project.id %>/publication/executions/<%= latestExecution.id %>"><%= latestExecution.plan.draft.title %></a></p>
+  <% } else { %>
+    <p class="muted">尚无发布执行记录。</p>
+  <% } %>
+</section>
+
+<section class="panel">
+  <h2>最新内容机会</h2>
+  <div class="table-wrap"><table><thead><tr><th>来源</th><th>原因</th><th>时间</th></tr></thead><tbody>
+  <% for (const proposal of proposals.slice(0, 10)) { %><tr>
+    <td><span class="badge"><%= proposal.sourceType %></span></td>
+    <td><%= proposal.reason %></td>
+    <td><%= new Date(proposal.createdAt).toLocaleString('zh-CN') %></td>
+  </tr><% } %>
+  <% if (!proposals.length) { %><tr><td colspan="3" class="muted">尚无内容提案。</td></tr><% } %>
+  </tbody></table></div>
+</section>
+
+<section class="panel">
+  <h2>最近发布计划</h2>
+  <div class="table-wrap"><table><thead><tr><th>内容</th><th>栏目 / URL</th><th>风险</th><th>预览</th></tr></thead><tbody>
+  <% for (const plan of plans.slice(0, 10)) { %><tr>
+    <td><a href="/projects/<%= project.id %>/publication/plans/<%= plan.id %>"><%= plan.draft.title %></a></td>
+    <td><%= plan.channel?.displayName ?? '未指定' %><div class="muted"><%= plan.targetPublicUrl %></div></td>
+    <td><span class="badge"><%= plan.riskClass %></span></td>
+    <td><%= plan.preview ? plan.preview.diffSummary : '尚无预览' %></td>
+  </tr><% } %>
+  <% if (!plans.length) { %><tr><td colspan="4" class="muted">尚无发布计划。</td></tr><% } %>
+  </tbody></table></div>
+</section>

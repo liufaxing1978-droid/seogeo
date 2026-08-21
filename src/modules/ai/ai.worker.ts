@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
 import type { AiTask, Prisma } from '@prisma/client';
 import type { Job } from 'bullmq';
+import {
+  materializeArticleGenerationOutput,
+  parseArticleGenerationOutput as parsePublicationArticleGenerationOutput,
+  parseContentBriefOutput as parsePublicationContentBriefOutput
+} from '../publication/publication-ai.js';
+import { PublicationServiceError } from '../publication/publication.service.js';
 import { aiGatewayConfig } from './ai.config.js';
 import { AiGateway } from './ai.gateway.js';
 import { aiObservability, type AiObservability } from './ai-observability.js';
@@ -47,6 +53,8 @@ function expectedPromptId(task: AiTask): string {
     case 'REPORT_EXECUTIVE_SUMMARY': return 'project-report-summary-v1';
     case 'VISIBILITY_TREND_ANALYSIS': return 'visibility-trend-analysis-v1';
     case 'GROWTH_OPPORTUNITY_EXPLANATION': return 'growth-opportunity-explanation-v1';
+    case 'PUBLICATION_CONTENT_BRIEF': return 'publication-content-brief-v1';
+    case 'PUBLICATION_ARTICLE_GENERATION': return 'publication-article-generation-v1';
   }
 }
 
@@ -63,11 +71,15 @@ function requestHash(task: AiTask, model: string, mode: string, responseFormat: 
 }
 
 function safeErrorMessage(error: unknown): string {
-  if (error instanceof AiProviderError || error instanceof AiOutputValidationError) return error.message.replace(/[\r\n\t]+/g, ' ').slice(0, 300);
+  if (error instanceof AiProviderError || error instanceof AiOutputValidationError || error instanceof PublicationServiceError) {
+    return error.message.replace(/[\r\n\t]+/g, ' ').slice(0, 300);
+  }
   return 'AI execution failed';
 }
 function errorCode(error: unknown): string {
-  if (error instanceof AiProviderError || error instanceof AiOutputValidationError) return error.code;
+  if (error instanceof AiProviderError || error instanceof AiOutputValidationError || error instanceof PublicationServiceError) {
+    return error.code;
+  }
   return 'AI_EXECUTION_FAILED';
 }
 
@@ -85,6 +97,8 @@ function resultSummary(task: AiTask, output: unknown): string {
     case 'REPORT_EXECUTIVE_SUMMARY': return 'Project report executive summary completed.';
     case 'VISIBILITY_TREND_ANALYSIS': return 'Visibility trend analysis completed.';
     case 'GROWTH_OPPORTUNITY_EXPLANATION': return 'Growth opportunity explanation completed.';
+    case 'PUBLICATION_CONTENT_BRIEF': return 'Advisory publication content brief generated.';
+    case 'PUBLICATION_ARTICLE_GENERATION': return 'Advisory publication article draft generated.';
   }
 }
 
@@ -99,6 +113,8 @@ function parseTaskOutput(task: AiTask, content: string): unknown {
     case 'REPORT_EXECUTIVE_SUMMARY': return parseReportExecutiveOutput(content, task.sourceReferences);
     case 'VISIBILITY_TREND_ANALYSIS': return parseVisibilityTrendAnalysisOutput(content, task.sourceReferences);
     case 'GROWTH_OPPORTUNITY_EXPLANATION': return parseGrowthOpportunityExplanationOutput(content, task.sourceReferences);
+    case 'PUBLICATION_CONTENT_BRIEF': return parsePublicationContentBriefOutput(content, task.sourceReferences);
+    case 'PUBLICATION_ARTICLE_GENERATION': return parsePublicationArticleGenerationOutput(content, task.sourceReferences);
   }
 }
 
@@ -136,7 +152,13 @@ export async function executeAiTask(taskId: string, dependencies: ExecuteAiTaskD
     observability.emit({ event: 'ai.output.validated', taskId: task.id, projectId: task.projectId, runId: run.id, provider: 'DEEPSEEK', model: response.model, promptVersion: task.promptVersion });
     const materialize = task.taskType === 'CONTENT_BRIEF'
       ? (tx: Prisma.TransactionClient) => persistContentBrief(task, output as ReturnType<typeof parseContentBriefOutput>, tx).then(() => undefined)
-      : undefined;
+      : task.taskType === 'PUBLICATION_ARTICLE_GENERATION'
+        ? (tx: Prisma.TransactionClient) => materializeArticleGenerationOutput(
+          task,
+          output as ReturnType<typeof parsePublicationArticleGenerationOutput>,
+          tx
+        )
+        : undefined;
     await repository.completeRun(task, run.id, response, output as Prisma.InputJsonValue, resultSummary(task, output), materialize);
     observability.emit({ event: 'ai.task.completed', taskId: task.id, projectId: task.projectId, runId: run.id, provider: 'DEEPSEEK', model: response.model, promptVersion: task.promptVersion });
   } catch (error) {

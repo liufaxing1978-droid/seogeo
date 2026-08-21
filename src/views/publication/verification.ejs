@@ -1,0 +1,35 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Real-Site Verification</p>
+    <h1>发布验证</h1>
+    <p class="muted"><%= verification.execution.plan.draft.title %> · <%= verification.observedUrl ?? verification.execution.plan.targetPublicUrl %></p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/publication/executions/<%= verification.execution.id %>">返回发布执行</a></div>
+</section>
+
+<section class="panel">
+  <h2>技术验证</h2>
+  <p><span class="badge"><%= verification.status %></span></p>
+  <% if (verification.reasonCode) { %><p>Reason：<code><%= verification.reasonCode %></code></p><% } %>
+  <p class="muted">只有对真实公开 URL 的确定性检查全部满足要求，执行才可以成为 VERIFIED。</p>
+</section>
+
+<section class="panel">
+  <h2>检查项</h2>
+  <div class="table-wrap"><table><thead><tr><th>检查</th><th>结果</th></tr></thead><tbody>
+    <tr><td>HTTP status</td><td><%= verification.httpStatus ?? 'UNKNOWN' %></td></tr>
+    <tr><td>title</td><td><%= verification.titleMatches === null ? 'UNKNOWN' : (verification.titleMatches ? 'PASS' : 'FAIL') %></td></tr>
+    <tr><td>meta description</td><td><%= verification.descriptionMatches === null ? 'UNKNOWN' : (verification.descriptionMatches ? 'PASS' : 'FAIL') %></td></tr>
+    <tr><td>canonical</td><td><%= verification.canonicalMatches === null ? 'UNKNOWN' : (verification.canonicalMatches ? 'PASS' : 'FAIL') %></td></tr>
+    <tr><td>H1</td><td><%= verification.h1Matches === null ? 'UNKNOWN' : (verification.h1Matches ? 'PASS' : 'FAIL') %></td></tr>
+    <tr><td>indexable</td><td><%= verification.indexable === null ? 'UNKNOWN' : (verification.indexable ? 'PASS' : 'FAIL') %></td></tr>
+    <tr><td>Schema</td><td><%= verification.schemaValid === null ? 'UNKNOWN' : (verification.schemaValid ? 'PASS' : 'FAIL') %></td></tr>
+    <tr><td>content fingerprint</td><td><%= verification.contentFingerprintOk === null ? 'UNKNOWN' : (verification.contentFingerprintOk ? 'PASS' : 'FAIL') %></td></tr>
+  </tbody></table></div>
+</section>
+
+<section class="panel">
+  <h2>回归发现</h2>
+  <% for (const finding of regressionFindings) { %><p><span class="badge"><%= finding %></span></p><% } %>
+  <% if (!regressionFindings.length) { %><p class="muted">未记录回归项。</p><% } %>
+</section>
