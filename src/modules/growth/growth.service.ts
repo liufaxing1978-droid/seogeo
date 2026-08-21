@@ -172,13 +172,23 @@ function lifecycleTimestampPatch(status: GrowthLifecycleStatus, now: Date) {
 export async function reconcileOpportunityLifecycle(
   identityId: string,
   currentSnapshot: GrowthLifecycleSnapshotState,
-  history: readonly GrowthLifecycleSnapshotState[]
+  history?: readonly GrowthLifecycleSnapshotState[]
 ) {
   const lifecycle = await prisma.growthOpportunityLifecycle.findUnique({
     where: { opportunityIdentityId: identityId },
     include: { identity: { select: { projectId: true } } }
   });
   if (!lifecycle) throw new Error('Growth opportunity lifecycle not found');
+
+  const effectiveHistory = history ?? (await prisma.growthOpportunitySnapshot.findMany({
+    where: { opportunityIdentityId: identityId },
+    orderBy: [{ currentWindowEnd: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }],
+    take: 2,
+    select: { id: true, score: true }
+  })).map((row) => ({
+    id: row.id,
+    actionable: isActionableScore(row.score)
+  }));
 
   const now = new Date();
   if (currentSnapshot.actionable) {
@@ -215,8 +225,8 @@ export async function reconcileOpportunityLifecycle(
     return lifecycle;
   }
 
-  const twoConsecutiveNonActionable = history.length >= 2 &&
-    history.slice(0, 2).every((row) => !row.actionable);
+  const twoConsecutiveNonActionable = effectiveHistory.length >= 2 &&
+    effectiveHistory.slice(0, 2).every((row) => !row.actionable);
   if (
     twoConsecutiveNonActionable &&
     lifecycle.status !== 'DISMISSED' &&
@@ -447,8 +457,7 @@ export async function materializeGrowthWindow(
     });
     await reconcileOpportunityLifecycle(
       identity.id,
-      { id: snapshot.id, actionable: isActionableScore(snapshot.score) },
-      [{ id: snapshot.id, actionable: isActionableScore(snapshot.score) }]
+      { id: snapshot.id, actionable: isActionableScore(snapshot.score) }
     );
 
     members.push({
