@@ -1,4 +1,8 @@
-import { Prisma } from '@prisma/client';
+import {
+  Prisma,
+  type ContentDraftStatus,
+  type ContentGeneratedBy
+} from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import type {
   AppendDraftVersionInput,
@@ -23,6 +27,22 @@ function inputJson(value: Prisma.JsonValue | Prisma.InputJsonValue | null) {
 function nullableField<T>(incoming: T | null | undefined, current: T | null): T | null {
   return incoming === undefined ? current : incoming;
 }
+
+type ResolvedDraftVersionInput = {
+  title: string;
+  slugCandidate: string | null;
+  body: string;
+  excerpt: string | null;
+  metaTitle: string | null;
+  metaDescription: string | null;
+  canonicalCandidate: string | null;
+  schemaJson: Prisma.JsonValue | Prisma.InputJsonValue | null;
+  author: string | null;
+  language: string;
+  contentHash: string;
+  status: ContentDraftStatus;
+  generatedBy: ContentGeneratedBy;
+};
 
 export class PublicationRepository {
   createSite(input: CreatePublicationSiteInput) {
@@ -66,6 +86,58 @@ export class PublicationRepository {
     return prisma.publicationChannel.findMany({
       where: { siteId },
       orderBy: [{ pathPrefix: 'asc' }, { id: 'asc' }]
+    });
+  }
+
+  getProject(projectId: string) {
+    return prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true }
+    });
+  }
+
+  getProposal(proposalId: string) {
+    return prisma.publicationProposal.findUnique({
+      where: { id: proposalId },
+      select: { id: true, projectId: true }
+    });
+  }
+
+  getDraft(draftId: string) {
+    return prisma.contentDraft.findUnique({ where: { id: draftId } });
+  }
+
+  getGrowthOpportunityProposalSource(projectId: string, opportunityIdentityId: string) {
+    return prisma.growthOpportunityIdentity.findFirst({
+      where: {
+        id: opportunityIdentityId,
+        projectId
+      },
+      select: {
+        id: true,
+        projectId: true,
+        identityType: true,
+        normalizedQuery: true,
+        canonicalPage: true,
+        snapshots: {
+          orderBy: [
+            { currentWindowEnd: 'desc' },
+            { dataCutoffAt: 'desc' },
+            { createdAt: 'desc' },
+            { id: 'asc' }
+          ],
+          take: 1,
+          select: {
+            id: true,
+            snapshotVersion: true,
+            primaryType: true,
+            priority: true,
+            score: true,
+            evidenceQuality: true,
+            rankingEligible: true
+          }
+        }
+      }
     });
   }
 
@@ -191,6 +263,58 @@ export class PublicationRepository {
     });
   }
 
+  appendDraftVersionIfCurrent(
+    draftId: string,
+    expectedVersion: number,
+    input: ResolvedDraftVersionInput
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const nextVersion = expectedVersion + 1;
+      const updated = await tx.contentDraft.updateMany({
+        where: {
+          id: draftId,
+          currentVersion: expectedVersion
+        },
+        data: {
+          title: input.title,
+          slugCandidate: input.slugCandidate,
+          body: input.body,
+          excerpt: input.excerpt,
+          metaTitle: input.metaTitle,
+          metaDescription: input.metaDescription,
+          canonicalCandidate: input.canonicalCandidate,
+          schemaJson: inputJson(input.schemaJson),
+          author: input.author,
+          language: input.language,
+          currentVersion: nextVersion,
+          currentContentHash: input.contentHash,
+          status: input.status,
+          generatedBy: input.generatedBy
+        }
+      });
+      if (updated.count !== 1) return null;
+
+      return tx.contentDraftVersion.create({
+        data: {
+          draftId,
+          version: nextVersion,
+          title: input.title,
+          slugCandidate: input.slugCandidate,
+          body: input.body,
+          excerpt: input.excerpt,
+          metaTitle: input.metaTitle,
+          metaDescription: input.metaDescription,
+          canonicalCandidate: input.canonicalCandidate,
+          ...(input.schemaJson !== null ? { schemaJson: inputJson(input.schemaJson) } : {}),
+          author: input.author,
+          language: input.language,
+          contentHash: input.contentHash,
+          generatedBy: input.generatedBy
+        }
+      });
+    });
+  }
+
   listDraftVersions(draftId: string) {
     return prisma.contentDraftVersion.findMany({
       where: { draftId },
@@ -214,6 +338,28 @@ export class PublicationRepository {
         internalRef: input.internalRef ?? false
       }
     });
+  }
+
+  getSourceReference(referenceId: string) {
+    return prisma.contentSourceReference.findUnique({ where: { id: referenceId } });
+  }
+
+  listSourceReferences(draftId: string) {
+    return prisma.contentSourceReference.findMany({
+      where: { draftId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+    });
+  }
+
+  updateSourceReference(referenceId: string, data: Prisma.ContentSourceReferenceUpdateInput) {
+    return prisma.contentSourceReference.update({
+      where: { id: referenceId },
+      data
+    });
+  }
+
+  deleteSourceReference(referenceId: string) {
+    return prisma.contentSourceReference.delete({ where: { id: referenceId } });
   }
 
   createPlan(input: CreatePublicationPlanInput) {
