@@ -1,0 +1,30 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">P7-A · Growth Rollup</p>
+    <h1>Topic Clusters</h1>
+    <p class="muted"><%= project.name %> · Topic 聚合只使用确定性的 P3 Topic/Entity 关系与已 materialize Growth 快照。</p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/growth">Growth Center</a></div>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>当前 Topic 机会</h2><p class="muted">Query+Page 机会保持独立；Topic Cluster 只是向上汇总。</p></div></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Topic</th><th>Score</th><th>Priority</th><th>Evidence Quality</th><th>Impressions</th><th>CTR</th><th>Position</th><th>Queries / Pages</th></tr></thead>
+    <tbody>
+      <% for (const row of topics) { %>
+        <tr>
+          <td><strong><%= row.topicCluster?.primaryQuery || row.topicCluster?.topicKey || 'UNCLUSTERED' %></strong><div class="muted"><code><%= row.topicCluster?.topicKey || '—' %></code></div></td>
+          <td><%= row.topicScore ?? '—' %></td>
+          <td><span class="badge"><%= row.priority ?? 'UNKNOWN' %></span></td>
+          <td><%= row.evidenceQuality ?? 'UNKNOWN' %></td>
+          <td><%= row.totalImpressions ?? 0 %></td>
+          <td><%= row.ctr == null ? '—' : `${(Number(row.ctr) * 100).toFixed(1)}%` %></td>
+          <td><%= row.position == null ? '—' : Number(row.position).toFixed(1) %></td>
+          <td><%= (row.memberQueries || []).length %> / <%= (row.memberPages || []).length %></td>
+        </tr>
+      <% } %>
+      <% if (!topics.length) { %><tr><td colspan="8" class="muted">当前稳定窗口尚无 Topic Cluster Snapshot。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
