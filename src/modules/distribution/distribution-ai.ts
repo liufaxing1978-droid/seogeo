@@ -13,11 +13,17 @@ import {
   normalizeDistributionTargetContext,
   type CommunityTargetContext
 } from './distribution-target-policy.js';
+import {
+  parseEntitySuggestionOutput,
+  renderEntitySuggestionBody,
+  type EntitySuggestionOutput
+} from './entity-suggestion.js';
 
 export const DISTRIBUTION_CANONICAL_REPOST_PROMPT_ID = 'distribution-canonical-repost-v1';
 export const DISTRIBUTION_ADAPTED_ARTICLE_PROMPT_ID = 'distribution-adapted-article-v1';
 export const DISTRIBUTION_SUMMARY_PROMPT_ID = 'distribution-summary-v1';
 export const DISTRIBUTION_COMMUNITY_DRAFT_PROMPT_ID = 'distribution-community-draft-v1';
+export const DISTRIBUTION_ENTITY_SUGGESTION_PROMPT_ID = 'distribution-entity-suggestion-v1';
 
 const sourceRefArray = z.array(z.string().min(1).max(300)).max(40);
 
@@ -46,7 +52,7 @@ export const CommunityDistributionOutputSchema = z.object({
 
 export type DistributionAdaptationOutput = z.infer<typeof DistributionAdaptationOutputSchema>;
 export type CommunityDistributionOutput = z.infer<typeof CommunityDistributionOutputSchema>;
-export type DistributionTaskOutput = DistributionAdaptationOutput | CommunityDistributionOutput;
+export type DistributionTaskOutput = DistributionAdaptationOutput | CommunityDistributionOutput | EntitySuggestionOutput;
 
 type SourceReference = { type: string; id: string };
 
@@ -115,6 +121,8 @@ export function promptIdForDistributionMode(mode: DistributionMode | string): st
       return DISTRIBUTION_SUMMARY_PROMPT_ID;
     case 'COMMUNITY_DRAFT':
       return DISTRIBUTION_COMMUNITY_DRAFT_PROMPT_ID;
+    case 'ENTITY_SUGGESTION':
+      return DISTRIBUTION_ENTITY_SUGGESTION_PROMPT_ID;
     default:
       throw new AiOutputValidationError(`Distribution mode ${mode} is not supported by the adaptation AI task`);
   }
@@ -232,7 +240,8 @@ export async function buildDistributionAdaptationTaskInput(
     throw new AiOutputValidationError('Distribution source draft version not found');
   }
 
-  const communitySources = communityContext
+  const includePersistedSources = communityContext !== null || target.mode === 'ENTITY_SUGGESTION';
+  const contextualSources = includePersistedSources
     ? await prisma.contentSourceReference.findMany({
       where: {
         projectId: target.projectId,
@@ -245,7 +254,7 @@ export async function buildDistributionAdaptationTaskInput(
   const sourceReferences: SourceReference[] = [
     { type: 'PUBLICATION_EXECUTION', id: publication.id },
     { type: 'CONTENT_DRAFT_VERSION', id: `${sourceVersion.draftId}:v${sourceVersion.version}` },
-    ...communitySources.map((source) => ({
+    ...contextualSources.map((source) => ({
       type: 'CONTENT_SOURCE_REFERENCE',
       id: source.id
     }))
@@ -267,8 +276,8 @@ export async function buildDistributionAdaptationTaskInput(
       body: sourceVersion.body,
       language: sourceVersion.language
     },
-    ...(communityContext ? {
-      sources: communitySources.map((source) => ({
+    ...(includePersistedSources ? {
+      sources: contextualSources.map((source) => ({
         id: source.id,
         title: source.title,
         author: source.author,
@@ -369,6 +378,9 @@ export function parseDistributionAdaptationTaskOutput(
       includeBrandLink: binding.communityContext.includeBrandLink
     });
   }
+  if (binding.mode === 'ENTITY_SUGGESTION') {
+    return parseEntitySuggestionOutput(content, task.sourceReferences);
+  }
 
   return parseDistributionAdaptationOutput(content, task.sourceReferences, {
     mode: binding.mode,
@@ -378,6 +390,82 @@ export function parseDistributionAdaptationTaskOutput(
 
 export function promptIdForDistributionTask(task: AiTask): string {
   return promptIdForDistributionMode(taskBinding(task).mode);
+}
+
+type MaterializedArtifactFields = {
+  title: string;
+  body: string;
+  summary: string | null;
+  tags: string[];
+  originalUrl: string;
+  canonicalUrl: string | null;
+  sourceRefs: string[];
+  platformMetadata: Record<string, unknown>;
+};
+
+function materializedFields(binding: TaskBinding, output: DistributionTaskOutput): MaterializedArtifactFields {
+  if (binding.mode === 'ENTITY_SUGGESTION') {
+    const entityOutput = output as EntitySuggestionOutput;
+    return {
+      title: entityOutput.entityName,
+      body: renderEntitySuggestionBody(entityOutput),
+      summary: entityOutput.descriptions[0]?.value ?? `Entity suggestion for ${entityOutput.entityName}.`,
+      tags: [],
+      originalUrl: binding.originalUrl,
+      canonicalUrl: null,
+      sourceRefs: entityOutput.reliableSourceRefs,
+      platformMetadata: {
+        kind: 'ENTITY_SUGGESTION',
+        entityName: entityOutput.entityName,
+        labels: entityOutput.labels,
+        descriptions: entityOutput.descriptions,
+        attributes: entityOutput.attributes,
+        sameAs: entityOutput.sameAs,
+        relationships: entityOutput.relationships,
+        reliableSourceRefs: entityOutput.reliableSourceRefs,
+        missingData: entityOutput.missingData,
+        policyReminders: entityOutput.policyReminders,
+        humanChecklist: entityOutput.humanChecklist
+      }
+    };
+  }
+
+  if (binding.mode === 'COMMUNITY_DRAFT') {
+    if (!binding.communityContext) {
+      throw new AiOutputValidationError('Community distribution task is missing target context');
+    }
+    const communityOutput = output as CommunityDistributionOutput;
+    return {
+      title: communityOutput.title,
+      body: communityOutput.body,
+      summary: communityOutput.summary,
+      tags: communityOutput.tags,
+      originalUrl: communityOutput.originalUrl,
+      canonicalUrl: communityOutput.canonicalUrl,
+      sourceRefs: communityOutput.sourceRefs,
+      platformMetadata: {
+        kind: 'COMMUNITY_DRAFT',
+        question: binding.communityContext.question,
+        topicUrl: binding.communityContext.topicUrl,
+        includeBrandLink: binding.communityContext.includeBrandLink,
+        promotionalLanguageDetected: communityOutput.promotionalLanguageDetected,
+        brandLinkIncluded: communityOutput.brandLinkIncluded,
+        contextHash: communityContextHash(binding.communityContext)
+      }
+    };
+  }
+
+  const adaptationOutput = output as DistributionAdaptationOutput;
+  return {
+    title: adaptationOutput.title,
+    body: adaptationOutput.body,
+    summary: adaptationOutput.summary,
+    tags: adaptationOutput.tags,
+    originalUrl: adaptationOutput.originalUrl,
+    canonicalUrl: adaptationOutput.canonicalUrl,
+    sourceRefs: adaptationOutput.sourceRefs,
+    platformMetadata: adaptationOutput.platformMetadata ?? {}
+  };
 }
 
 export async function materializeDistributionAdaptationOutput(
@@ -397,25 +485,7 @@ export async function materializeDistributionAdaptationOutput(
     throw new AiOutputValidationError('Distribution target not found during AI materialization');
   }
 
-  let platformMetadata: Record<string, unknown>;
-  if (binding.mode === 'COMMUNITY_DRAFT') {
-    if (!binding.communityContext) {
-      throw new AiOutputValidationError('Community distribution task is missing target context');
-    }
-    const communityOutput = output as CommunityDistributionOutput;
-    platformMetadata = {
-      kind: 'COMMUNITY_DRAFT',
-      question: binding.communityContext.question,
-      topicUrl: binding.communityContext.topicUrl,
-      includeBrandLink: binding.communityContext.includeBrandLink,
-      promotionalLanguageDetected: communityOutput.promotionalLanguageDetected,
-      brandLinkIncluded: communityOutput.brandLinkIncluded,
-      contextHash: communityContextHash(binding.communityContext)
-    };
-  } else {
-    platformMetadata = (output as DistributionAdaptationOutput).platformMetadata ?? {};
-  }
-
+  const fields = materializedFields(binding, output);
   const latestArtifact = await tx.distributionArtifact.findFirst({
     where: { targetId: target.id },
     orderBy: [{ artifactVersion: 'desc' }, { id: 'asc' }],
@@ -428,14 +498,7 @@ export async function materializeDistributionAdaptationOutput(
       sourceContentVersion: binding.sourceContentVersion,
       adaptationVersion: task.promptVersion,
       artifactVersion,
-      title: output.title,
-      body: output.body,
-      summary: output.summary,
-      tags: output.tags,
-      originalUrl: output.originalUrl,
-      canonicalUrl: output.canonicalUrl,
-      sourceRefs: output.sourceRefs,
-      platformMetadata
+      ...fields
     })))
     .digest('hex');
 
@@ -447,14 +510,14 @@ export async function materializeDistributionAdaptationOutput(
       adaptationVersion: task.promptVersion,
       artifactVersion,
       artifactHash,
-      title: output.title,
-      body: output.body,
-      summary: output.summary,
-      tags: output.tags as unknown as Prisma.InputJsonValue,
-      originalUrl: output.originalUrl,
-      canonicalUrl: output.canonicalUrl,
-      sourceRefs: output.sourceRefs as unknown as Prisma.InputJsonValue,
-      platformMetadata: platformMetadata as Prisma.InputJsonValue
+      title: fields.title,
+      body: fields.body,
+      summary: fields.summary,
+      tags: fields.tags as unknown as Prisma.InputJsonValue,
+      originalUrl: fields.originalUrl,
+      canonicalUrl: fields.canonicalUrl,
+      sourceRefs: fields.sourceRefs as unknown as Prisma.InputJsonValue,
+      platformMetadata: fields.platformMetadata as Prisma.InputJsonValue
     }
   });
 
