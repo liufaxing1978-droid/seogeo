@@ -19,6 +19,10 @@ import { createGrowthRoutes, type GrowthRestRepository } from './modules/growth/
 import { createGrowthWebRoutes } from './modules/growth/growth.web.routes.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import { projectRoutes } from './modules/projects/project.routes.js';
+import {
+  createPublicationRoutes,
+  type PublicationApiPort
+} from './modules/publication/publication.routes.js';
 import { createReportRoutes } from './modules/reporting/report.routes.js';
 import { reportWebRoutes } from './modules/reporting/report.web.routes.js';
 import { createSearchConsoleRoutes } from './modules/search-console/search-console.routes.js';
@@ -50,6 +54,7 @@ export interface AppOptions {
   competitorService?: CompetitorService;
   searchConsoleService?: SearchConsoleService;
   growthApiRepository?: Partial<GrowthRestRepository>;
+  publicationApi?: PublicationApiPort;
   visibilityRunService?: VisibilityRunService;
   visibilityExtractionQueue?: VisibilityExtractionQueue;
   visibilityMetricsQueue?: VisibilityMetricsQueue;
@@ -74,6 +79,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/v1', createAiRoutes(options.aiTaskService));
   app.use('/api/v1', createContentRoutes(options.contentService, options.aiTaskService));
   app.use('/api/v1', createCompetitorRoutes(options.competitorService, options.aiTaskService));
+  app.use('/api/v1', createPublicationRoutes(options.publicationApi));
   app.use('/api/v1', createReportRoutes(options.aiTaskService));
   app.use('/api/v1', createVisibilityRoutes(options.visibilityRunService));
   app.use('/api/v1', createVisibilityIntelligenceRoutes(options.visibilityExtractionQueue));
