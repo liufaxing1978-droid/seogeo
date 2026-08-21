@@ -28,10 +28,12 @@ const opportunityTypeSchema = z.enum([
 ]);
 const prioritySchema = z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'MONITOR', 'UNKNOWN']);
 const boundedListSchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(25)
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  offset: z.coerce.number().int().min(0).max(10_000).default(0)
 }).strict();
 const opportunityListSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25),
+  offset: z.coerce.number().int().min(0).max(10_000).default(0),
   primaryType: opportunityTypeSchema.optional(),
   priority: prioritySchema.optional(),
   rankingEligible: z.enum(['true', 'false']).transform((value) => value === 'true').optional()
@@ -42,6 +44,7 @@ const lifecycleBodySchema = z.object({
 
 type OpportunityListInput = {
   limit: number;
+  offset: number;
   basicOnly: boolean;
   primaryType?: GrowthOpportunityType;
   priority?: GrowthPriority;
@@ -111,9 +114,9 @@ async function latestTopicWindowEnd(projectId: string): Promise<Date | null> {
 export interface GrowthRestRepository {
   listOpportunities(projectId: string, input: OpportunityListInput): Promise<unknown[]>;
   getOpportunity(projectId: string, identityId: string, basicSurface: boolean): Promise<unknown | null>;
-  listTopics(projectId: string, limit: number): Promise<unknown[]>;
-  listCannibalization(projectId: string, limit: number): Promise<unknown[]>;
-  listNewContent(projectId: string, limit: number): Promise<unknown[]>;
+  listTopics(projectId: string, limit: number, offset: number): Promise<unknown[]>;
+  listCannibalization(projectId: string, limit: number, offset: number): Promise<unknown[]>;
+  listNewContent(projectId: string, limit: number, offset: number): Promise<unknown[]>;
   transitionLifecycle(
     projectId: string,
     identityId: string,
@@ -174,6 +177,7 @@ export const growthRestRepository: GrowthRestRepository = {
         }
       },
       orderBy: [{ score: 'desc' }, { id: 'asc' }],
+      skip: input.offset,
       take: input.limit
     });
 
@@ -304,7 +308,7 @@ export const growthRestRepository: GrowthRestRepository = {
     };
   },
 
-  async listTopics(projectId, limit) {
+  async listTopics(projectId, limit, offset) {
     const currentWindowEnd = await latestTopicWindowEnd(projectId);
     if (!currentWindowEnd) return [];
     return prisma.growthTopicClusterSnapshot.findMany({
@@ -321,11 +325,12 @@ export const growthRestRepository: GrowthRestRepository = {
         }
       },
       orderBy: [{ topicScore: 'desc' }, { id: 'asc' }],
+      skip: offset,
       take: limit
     });
   },
 
-  async listCannibalization(projectId, limit) {
+  async listCannibalization(projectId, limit, offset) {
     const currentWindowEnd = await latestOpportunityWindowEnd(projectId);
     if (!currentWindowEnd) return [];
     return prisma.growthOpportunitySnapshot.findMany({
@@ -336,11 +341,12 @@ export const growthRestRepository: GrowthRestRepository = {
       },
       include: { identity: true, breakdown: true },
       orderBy: [{ score: 'desc' }, { id: 'asc' }],
+      skip: offset,
       take: limit
     });
   },
 
-  async listNewContent(projectId, limit) {
+  async listNewContent(projectId, limit, offset) {
     const currentWindowEnd = await latestOpportunityWindowEnd(projectId);
     if (!currentWindowEnd) return [];
     return prisma.growthOpportunitySnapshot.findMany({
@@ -351,6 +357,7 @@ export const growthRestRepository: GrowthRestRepository = {
       },
       include: { identity: true, breakdown: true },
       orderBy: [{ score: 'desc' }, { id: 'asc' }],
+      skip: offset,
       take: limit
     });
   },
@@ -416,12 +423,13 @@ export function createGrowthRoutes(injectedRepository: Partial<GrowthRestReposit
         const projectId = routeParam(req.params.projectId);
         const data = await repository.listOpportunities(projectId, {
           limit: input.limit,
+          offset: input.offset,
           basicOnly: basicOnly(res.locals.project.planLevel),
           primaryType: input.primaryType,
           priority: input.priority,
           rankingEligible: input.rankingEligible
         });
-        res.json({ data, meta: { limit: input.limit } });
+        res.json({ data, meta: { limit: input.limit, offset: input.offset } });
       } catch (error) { next(error); }
     }
   );
@@ -476,9 +484,12 @@ export function createGrowthRoutes(injectedRepository: Partial<GrowthRestReposit
     requireFeature('GROWTH_TOPIC_CLUSTERS'),
     async (req, res, next) => {
       try {
-        const { limit } = boundedListSchema.parse(req.query);
+        const { limit, offset } = boundedListSchema.parse(req.query);
         const projectId = routeParam(req.params.projectId);
-        res.json({ data: await repository.listTopics(projectId, limit), meta: { limit } });
+        res.json({
+          data: await repository.listTopics(projectId, limit, offset),
+          meta: { limit, offset }
+        });
       } catch (error) { next(error); }
     }
   );
@@ -488,9 +499,12 @@ export function createGrowthRoutes(injectedRepository: Partial<GrowthRestReposit
     requireFeature('GROWTH_CANNIBALIZATION'),
     async (req, res, next) => {
       try {
-        const { limit } = boundedListSchema.parse(req.query);
+        const { limit, offset } = boundedListSchema.parse(req.query);
         const projectId = routeParam(req.params.projectId);
-        res.json({ data: await repository.listCannibalization(projectId, limit), meta: { limit } });
+        res.json({
+          data: await repository.listCannibalization(projectId, limit, offset),
+          meta: { limit, offset }
+        });
       } catch (error) { next(error); }
     }
   );
@@ -500,9 +514,12 @@ export function createGrowthRoutes(injectedRepository: Partial<GrowthRestReposit
     requireFeature('GROWTH_NEW_CONTENT'),
     async (req, res, next) => {
       try {
-        const { limit } = boundedListSchema.parse(req.query);
+        const { limit, offset } = boundedListSchema.parse(req.query);
         const projectId = routeParam(req.params.projectId);
-        res.json({ data: await repository.listNewContent(projectId, limit), meta: { limit } });
+        res.json({
+          data: await repository.listNewContent(projectId, limit, offset),
+          meta: { limit, offset }
+        });
       } catch (error) { next(error); }
     }
   );
