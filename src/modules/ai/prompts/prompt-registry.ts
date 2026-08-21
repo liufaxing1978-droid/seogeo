@@ -9,7 +9,9 @@ export type PromptId =
   | 'competitor-gap-v1'
   | 'project-report-summary-v1'
   | 'visibility-trend-analysis-v1'
-  | 'growth-opportunity-explanation-v1';
+  | 'growth-opportunity-explanation-v1'
+  | 'publication-content-brief-v1'
+  | 'publication-article-generation-v1';
 
 export interface PromptDefinition {
   id: PromptId;
@@ -83,6 +85,46 @@ const GROWTH_OPPORTUNITY_EXPLANATION_PROMPT: PromptDefinition = Object.freeze({
   buildUserMessage: (facts: unknown) => buildUserMessage('Explain the supplied persisted Growth opportunity and suggest bounded advisory actions.', { summary: 'Opportunity summary', whyNow: 'Why the supplied deterministic facts make this opportunity important now', actions: [{ priority: 'HIGH', action: 'Advisory follow-up action', rationale: 'Why supplied facts support the action', sourceRefs: ['GROWTH_OPPORTUNITY_SNAPSHOT:<id>'] }], caveats: ['UNKNOWN or PARTIAL evidence remains unavailable/incomplete, not zero.'], sourceReferences: ['GROWTH_OPPORTUNITY_SNAPSHOT:<id>'] }, facts)
 });
 
+const PUBLICATION_CONTENT_BRIEF_PROMPT: PromptDefinition = Object.freeze({
+  id: 'publication-content-brief-v1', version: 'v1', mode: 'REASONING', responseFormat: 'JSON',
+  system: `${FACT_GUARDRAILS}
+Create an advisory publication content brief only from the supplied facts and supplied source references.
+Do not invent historical or history claims, lineage or transmission claims, author or authorship claims, dates, ritual details, quotations, provenance, credentials, or source support.
+A listed source is not automatically verified merely because it was supplied; preserve uncertainty and explicitly mark uncertain claims or claims that still need a source.
+Never turn an advisory recommendation into an authoritative factual conclusion. Never claim publication, approval, verification, execution, or a site change occurred.
+Every factual outline claim that depends on evidence must cite a supplied source reference. Do not create or return any source reference that was not supplied.`,
+  buildUserMessage: (facts: unknown) => buildUserMessage('Create an advisory publication content brief from the supplied facts and supplied source references.', {
+    summary: 'Advisory brief summary grounded in the supplied facts.',
+    thesis: 'Conservative thesis bounded by supplied evidence.',
+    outline: [{ heading: 'Section heading', purpose: 'What this section should establish without exceeding the evidence.', evidenceRefs: ['CONTENT_SOURCE_REFERENCE:<id>'] }],
+    evidenceNeeds: [{ claim: 'Claim requiring support', status: 'NEEDS_SOURCE', sourceRefs: [] }],
+    seo: { primaryKeyword: 'Primary keyword', secondaryKeywords: ['Secondary keyword'], titleIdeas: ['Title idea'], metaDescriptionNotes: 'Factual description guidance.' },
+    geo: { answerTargets: ['Answer target'], entityNotes: ['Entity note'], citabilityNotes: ['Citability note'] },
+    caveats: ['Historical, lineage, authorship, date and ritual claims need supplied evidence.'],
+    sourceReferences: ['CONTENT_SOURCE_REFERENCE:<id>']
+  }, facts)
+});
+
+const PUBLICATION_ARTICLE_GENERATION_PROMPT: PromptDefinition = Object.freeze({
+  id: 'publication-article-generation-v1', version: 'v1', mode: 'FAST', responseFormat: 'JSON',
+  system: `${FACT_GUARDRAILS}
+Generate an advisory article draft only from the supplied facts, the supplied advisory brief, and supplied source references.
+Do not invent historical or history claims, lineage or transmission claims, author or authorship claims, dates, ritual details, quotations, provenance, credentials, or source support.
+If evidence is uncertain or incomplete, omit the unsupported claim or state the uncertainty conservatively; never fill gaps with plausible-sounding material.
+A supplied source is not automatically verified or authoritative. Do not describe AI-generated prose as verified, authoritative, approved, published, or executed.
+Every factual claim that requires evidence must remain traceable to a supplied source reference. Do not create or return any source reference that was not supplied.
+The output is a draft for human review. It cannot approve itself, alter a publication plan, publish content, or claim that a site change occurred.`,
+  buildUserMessage: (facts: unknown) => buildUserMessage('Generate an advisory publication article draft from the supplied facts, brief and supplied source references.', {
+    title: 'Article title',
+    body: 'Article draft body.',
+    excerpt: 'Short excerpt.',
+    metaDescription: 'Factual meta description.',
+    schemaJson: { '@context': 'https://schema.org', '@type': 'Article' },
+    sourceReferences: ['CONTENT_SOURCE_REFERENCE:<id>'],
+    caveats: ['Unsupported claims were omitted or explicitly qualified.']
+  }, facts)
+});
+
 export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = Object.freeze([
   SEO_PROMPT,
   GEO_PROMPT,
@@ -92,7 +134,9 @@ export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = Object.freeze([
   COMPETITOR_GAP_PROMPT,
   PROJECT_REPORT_SUMMARY_PROMPT,
   VISIBILITY_TREND_PROMPT,
-  GROWTH_OPPORTUNITY_EXPLANATION_PROMPT
+  GROWTH_OPPORTUNITY_EXPLANATION_PROMPT,
+  PUBLICATION_CONTENT_BRIEF_PROMPT,
+  PUBLICATION_ARTICLE_GENERATION_PROMPT
 ]);
 
 const PROMPT_BY_ID = new Map<PromptId, PromptDefinition>(PROMPT_DEFINITIONS.map((prompt) => [prompt.id, prompt]));
