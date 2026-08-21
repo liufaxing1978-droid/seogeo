@@ -21,14 +21,14 @@
 
 <section class="metric-grid compact">
   <article class="metric-card">
-    <div class="metric-title">确定性验证</div>
+    <div class="metric-title">验证状态</div>
     <div class="metric-value" style="font-size:1rem"><%= latestPlan ? (validation.canCreatePlan ? 'READY' : 'BLOCKED') : 'NOT_RUN' %></div>
     <div class="metric-caption">只读取最新已保存发布预览</div>
   </article>
   <article class="metric-card">
-    <div class="metric-title">DeepSeek 建议</div>
+    <div class="metric-title">AI 角色</div>
     <div class="metric-value" style="font-size:1rem">ADVISORY</div>
-    <div class="metric-caption">AI 推荐，人来决定</div>
+    <div class="metric-caption">建议不改变确定性事实</div>
   </article>
 </section>
 
