@@ -32,6 +32,7 @@ import {
   assessStableWindowCoverage,
   resolveStableWindows
 } from './gsc-window.js';
+import { detectNewContentOpportunity } from './new-content.js';
 import {
   GROWTH_TOPIC_IDENTITY_VERSION,
   GROWTH_TOPIC_SNAPSHOT_VERSION,
@@ -112,6 +113,10 @@ function demandPercentiles(rows: readonly QueryPageAggregate[]): Map<string, num
 
 function pageEvidence(allEvidence: readonly GrowthEvidence[], canonicalPage: string): GrowthEvidence[] {
   return allEvidence.filter((row) => row.canonicalPage === null || row.canonicalPage === canonicalPage);
+}
+
+function normalizeTopicText(value: string): string {
+  return value.trim().toLocaleLowerCase().replace(/\s+/g, ' ');
 }
 
 function p3BindingRank(entityType: string, role: string): number {
@@ -581,6 +586,7 @@ export async function materializeGrowthWindow(
     : null;
 
   let specialOpportunitySnapshotCount = 0;
+  const cannibalizationQueries = new Set<string>();
   for (const queryRow of queryDemandRows) {
     const queryDemand = scoreDemand(
       queryRow.impressions,
@@ -598,6 +604,7 @@ export async function materializeGrowthWindow(
       }))
     });
     if (detector.state !== 'DETECTED') continue;
+    cannibalizationQueries.add(queryRow.normalizedQuery);
 
     const competingPages = detector.competingPages.map((row) => row.canonicalPage).sort();
     const competingSet = new Set(competingPages);
@@ -671,6 +678,137 @@ export async function materializeGrowthWindow(
     await growthRepository.ensureLifecycle(identity.id, snapshot.id, {
       actorType: 'SYSTEM',
       reasonCode: 'GROWTH_CANNIBALIZATION_MATERIALIZED'
+    });
+    await reconcileOpportunityLifecycle(
+      identity.id,
+      { id: snapshot.id, actionable: isActionableScore(snapshot.score) }
+    );
+    specialOpportunitySnapshotCount += 1;
+  }
+
+  for (const queryRow of queryDemandRows) {
+    const queryContexts = queryRow.rows
+      .map((row) => scoreContextByKey.get(aggregateKey(row)))
+      .filter((row): row is NonNullable<typeof row> => Boolean(row));
+    if (queryContexts.length === 0) continue;
+
+    const combinedEvidence = dedupeGrowthEvidence(
+      queryContexts.flatMap((row) => row.evidence)
+    ).provenance;
+    const coverageEvidence = combinedEvidence.filter((row) =>
+      row.sourceModule === 'P3_GEO' ||
+      row.sourceModule === 'P3_ENTITY' ||
+      row.sourceModule === 'P3_CITABILITY' ||
+      row.sourceModule === 'P5_CONTENT'
+    );
+    const knownCoverageEvidence = coverageEvidence.filter((row) =>
+      row.evidenceState === 'PASS' || row.evidenceState === 'FAIL'
+    );
+    const evidenceKnown = knownCoverageEvidence.length > 0;
+    const hasCoverageGap = evidenceKnown
+      ? knownCoverageEvidence.some((row) => row.evidenceState === 'FAIL')
+      : null;
+
+    const normalizedQueryTopic = normalizeTopicText(queryRow.normalizedQuery);
+    const hasDeterministicDuplicateLandingPage = queryRow.rows.some((row) => {
+      const binding = p3TopicBindings.get(row.canonicalPage);
+      if (!binding) return false;
+      return normalizeTopicText(binding.normalizedName) === normalizedQueryTopic ||
+        normalizeTopicText(binding.canonicalName) === normalizedQueryTopic;
+    });
+    const queryDemand = scoreDemand(
+      queryRow.impressions,
+      queryDemandPercentile.get(queryRow.normalizedQuery) ?? null
+    );
+    const detector = detectNewContentOpportunity({
+      normalizedQuery: queryRow.normalizedQuery,
+      demandScore: componentScore(queryDemand),
+      queryImpressions: queryRow.impressions,
+      projectP50Impressions: projectQueryP50Impressions,
+      pages: queryRow.rows.map((row) => ({
+        canonicalPage: row.canonicalPage,
+        impressions: row.impressions,
+        position: row.position
+      }))
+    }, {
+      hasCoverageGap,
+      hasDeterministicDuplicateLandingPage,
+      evidenceKnown,
+      cannibalizationActive: cannibalizationQueries.has(queryRow.normalizedQuery)
+    });
+    if (detector.state !== 'DETECTED') continue;
+
+    const basisCandidates = [...queryContexts].sort((a, b) =>
+      (b.score.score ?? -1) - (a.score.score ?? -1) ||
+      a.aggregate.canonicalPage.localeCompare(b.aggregate.canonicalPage)
+    );
+    const basis = basisCandidates[0];
+    if (!basis) throw new Error('New Content score basis not found');
+
+    const identity = await growthRepository.getOrCreateOpportunityIdentity({
+      projectId,
+      identityType: 'NEW_CONTENT_OPPORTUNITY',
+      normalizedQuery: queryRow.normalizedQuery
+    });
+    let snapshot = await prisma.growthOpportunitySnapshot.findFirst({
+      where: {
+        opportunityIdentityId: identity.id,
+        snapshotVersion: GROWTH_OPPORTUNITY_SNAPSHOT_VERSION,
+        currentWindowStart: currentStart,
+        currentWindowEnd: currentEnd
+      }
+    });
+    if (!snapshot) {
+      snapshot = await growthRepository.createOpportunitySnapshot({
+        opportunityIdentityId: identity.id,
+        projectId,
+        snapshotVersion: GROWTH_OPPORTUNITY_SNAPSHOT_VERSION,
+        formulaVersion: basis.score.formulaVersion,
+        currentWindowStart: currentStart,
+        currentWindowEnd: currentEnd,
+        previousWindowStart: previousStart,
+        previousWindowEnd: previousEnd,
+        dataCutoffAt: currentEnd,
+        primaryType: 'NEW_CONTENT_OPPORTUNITY',
+        secondaryTypes: [],
+        score: basis.score.score,
+        priority: basis.score.priority,
+        scoreState: basis.score.scoreState,
+        evidenceQuality: basis.score.evidenceQuality,
+        evidenceCoverage: basis.score.evidenceCoverage,
+        rankingEligible: basis.score.rankingEligible,
+        sourceProvenance: {
+          ...provenance,
+          detector: {
+            type: 'NEW_CONTENT_OPPORTUNITY',
+            reasonCodes: detector.reasonCodes,
+            queryImpressions: queryRow.impressions,
+            projectP50Impressions: projectQueryP50Impressions,
+            pages: queryRow.rows
+              .map((row) => ({
+                canonicalPage: row.canonicalPage,
+                impressions: row.impressions,
+                position: row.position
+              }))
+              .sort((a, b) => a.canonicalPage.localeCompare(b.canonicalPage)),
+            coverageEvidenceFingerprints: knownCoverageEvidence
+              .map((row) => row.fingerprint)
+              .sort(),
+            duplicateLandingPage: hasDeterministicDuplicateLandingPage
+          },
+          scoreBasis: {
+            type: 'MAX_MEMBER_QUERY_PAGE_SCORE',
+            canonicalPage: basis.aggregate.canonicalPage
+          }
+        },
+        breakdown: breakdownFor(basis),
+        evidence: opportunityEvidenceRows(combinedEvidence)
+      });
+    }
+
+    await growthRepository.ensureLifecycle(identity.id, snapshot.id, {
+      actorType: 'SYSTEM',
+      reasonCode: 'GROWTH_NEW_CONTENT_MATERIALIZED'
     });
     await reconcileOpportunityLifecycle(
       identity.id,
