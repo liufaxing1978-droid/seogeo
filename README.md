@@ -2,7 +2,7 @@
 
 Independent SEO / GEO platform for `seo.xingshantang.org`.
 
-Current milestone: **P0 - P7-A complete**. P7-A Growth Opportunity Intelligence has passed its pre-release exact-head gate; the README completion commit is subject to the final exact-head CI gate before merge.
+Current milestone: **P0 - P8-A complete**. P8-A adds the controlled Safe Site Mutation + Primary Site Publication workspace; release completion still requires exact-head CI to pass before merge.
 
 ## Architecture
 
@@ -25,6 +25,8 @@ Deterministic crawler, SEO, GEO, content, competitor, reporting and Growth facts
 P6 external visibility observations are authoritative only when the system actually performs a supported official-provider API sample and persists the normalized result. API sampling is never labeled as a consumer-product web/app ranking.
 
 P7-A Search Console ingestion is read-only. Growth materialization consumes persisted GSC + P2/P3/P5/P6 facts and makes zero Google, P6-provider or DeepSeek calls.
+
+P8-A consumes persisted proposal/draft/plan/preview/approval/execution/verification facts and keeps DeepSeek advisory-only. Git mutation never writes the default branch directly; Standard stays export-only, and Advanced/Enterprise Git execution is constrained to reviewed Draft PR flows.
 
 Provider reasoning is never persisted, logged or rendered.
 
@@ -197,6 +199,30 @@ Search Console source incompleteness or failure is never represented as zero tra
 
 Operational details: `docs/development/p7a-growth-opportunity-intelligence.md`.
 
+## P8-A Safe Site Mutation & Primary Publication
+
+P8-A closes the deterministic Growth-to-publication execution loop without allowing AI or the browser GET layer to bypass review controls.
+
+Delivered capabilities:
+
+- persisted `PublicationSite` / `PublicationChannel` configuration with explicit `EXPORT_ONLY` vs `GIT_DRAFT_PR` capabilities;
+- traceable P7/manual publication proposals and versioned content drafts;
+- immutable/versioned publication plans, previews and hash-bound approvals;
+- deterministic preview validation with blocking/warning/info semantics;
+- stale review protection across plan/content/preview/base-SHA/target-blob contracts;
+- allowlisted Git mutation execution that creates branches/commits/Draft PRs instead of directly writing the default branch;
+- execution idempotency and append-only lifecycle evidence;
+- real-site verification where `PR_CREATED != DEPLOYED` and `DEPLOYED != VERIFIED`;
+- reviewable rollback proposals rather than force-reset behavior;
+- project-scoped REST APIs and the `内容与发布` workspace covering opportunities, drafts/editor, exact preview/diff, execution and verification;
+- Standard projects remain export-only and do not expose Git Draft PR execution controls;
+- DeepSeek drafting/adaptation remains advisory: **AI 推荐，人来决定**.
+
+P8-A GET rendering reads persisted facts only. It does not enqueue publication work, invoke DeepSeek, or perform Git/provider writes. Verification is deterministic and based on observed public-site facts rather than deployment claims.
+
+Design: `docs/superpowers/specs/2026-08-21-p8-safe-site-mutation-design.md`.
+Implementation plan: `docs/superpowers/plans/2026-08-21-p8-safe-site-mutation.md`.
+
 ## Feature gates
 
 Base project features available to Standard / Advanced / Enterprise include:
@@ -218,6 +244,8 @@ P6 Advanced / Enterprise monitoring gates remain separate:
 P6-A activates AI Visibility and Prompt Monitor. P6-B activates Citation Monitor. P6-C activates Competitor Share of Voice / Visibility Metrics. P6-D extends those gated P6 capabilities with history, comparisons, in-app alerts, Report V2 visibility facts and explicit user-triggered trend analysis. Standard projects are rejected before restricted P6 reads, writes or queue side effects.
 
 P7-A adds Search Console and Growth surfaces according to its explicit Standard / Advanced / Enterprise matrix. Restricted advanced Growth reads and side effects fail before repository access. Enterprise portfolio Growth rows remain bounded and deterministic.
+
+P8-A exposes controlled publication review to all plans, but Standard remains `EXPORT_ONLY`. Git-backed Draft PR execution is available only where the configured site and plan explicitly permit it; no P8-A path auto-merges or directly writes the default branch.
 
 `ADVANCED_REPORTS` remains reserved for future advanced scheduling/bundling/distribution rather than the base project report snapshot feature.
 
@@ -257,6 +285,8 @@ P6-D release evidence requires proof that comparisons only use compatible immuta
 
 P7-A release evidence requires proof that OAuth state replay is rejected before token exchange; Search Console daily synchronization is immutable/versioned/idempotent; missing/FAILED GSC days never become zero; 56-day stable-window coverage is enforced; deterministic score, evidence dedupe, detector identities and lifecycle transitions remain stable; Standard/Advanced/Enterprise gates fail before restricted reads/side effects; Growth materialization and GET rendering make zero Google/P6-provider/DeepSeek calls; observability drops Query/evidence/credential/AI/provider payloads; and exact-head CI passes `verify`, Chromium `e2e` and `production-audit` without live Google credentials.
 
+P8-A release evidence requires proof that immutable plans/previews/approvals remain hash-bound; stale approval or changed base/target state blocks execution; Standard stays export-only; Git execution never writes the default branch directly or auto-merges; duplicate delivery cannot create duplicate valid executions/PRs; deterministic validation blockers cannot be overridden by DeepSeek output; GET publication workspace rendering makes zero AI/Git/queue side effects; real-site verification is required for `VERIFIED`; rollback stays reviewable; and exact-head CI passes `verify`, Chromium `e2e` and `production-audit`.
+
 ## Roadmap
 
 - P0 Platform foundation — complete
@@ -270,3 +300,4 @@ P7-A release evidence requires proof that OAuth state replay is rejected before 
 - P6-C Visibility Metrics & Competitor Share of Voice — complete
 - P6-D History, Dashboard, Alerts & Report Integration — complete
 - P7-A Search Console + Growth Opportunity Intelligence — complete
+- P8-A Safe Site Mutation + Primary Site Publication — complete
