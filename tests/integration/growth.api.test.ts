@@ -31,6 +31,7 @@ async function seedOpportunity(input: {
   primaryType?: 'RANKING_UPSIDE' | 'CTR_UNDERPERFORMANCE' | 'SEO_GAP';
   score?: number;
   priority?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'MONITOR';
+  includeP6Evidence?: boolean;
 }) {
   const identity = await repository.getOrCreateOpportunityIdentity({
     projectId: input.projectId,
@@ -78,19 +79,34 @@ async function seedOpportunity(input: {
       weightedTotal: score,
       formulaVersion: 'GROWTH_SCORE_V1'
     },
-    evidence: [{
-      sourceModule: 'GSC',
-      sourceType: 'QUERY_PAGE_WINDOW',
-      sourceId: `${input.query}:${input.page}`,
-      sourceFactVersion: 'GSC_QUERY_PAGE_V1',
-      ruleKey: 'gsc-performance',
-      rootCauseKey: 'gsc-performance',
-      evidenceState: 'FAIL',
-      severity: 'MEDIUM',
-      numericValue: score,
-      textSummary: 'Persisted fixture evidence',
-      fingerprint: `gsc:${identity.id}:2026-08-17`
-    }]
+    evidence: [
+      {
+        sourceModule: 'GSC',
+        sourceType: 'QUERY_PAGE_WINDOW',
+        sourceId: `${input.query}:${input.page}`,
+        sourceFactVersion: 'GSC_QUERY_PAGE_V1',
+        ruleKey: 'gsc-performance',
+        rootCauseKey: 'gsc-performance',
+        evidenceState: 'FAIL',
+        severity: 'MEDIUM',
+        numericValue: score,
+        textSummary: 'Persisted fixture evidence',
+        fingerprint: `gsc:${identity.id}:2026-08-17`
+      },
+      ...(input.includeP6Evidence ? [{
+        sourceModule: 'P6_VISIBILITY' as const,
+        sourceType: 'VISIBILITY_METRIC_DELTA',
+        sourceId: `p6:${identity.id}`,
+        sourceFactVersion: 'VISIBILITY_COMPARISON_V1',
+        ruleKey: 'p6-visibility-drop',
+        rootCauseKey: 'p6-visibility-drop',
+        evidenceState: 'FAIL' as const,
+        severity: 'MEDIUM' as const,
+        numericValue: 500,
+        textSummary: 'Advanced-only P6 evidence',
+        fingerprint: `p6:${identity.id}:2026-08-17`
+      }] : [])
+    ]
   });
   await repository.ensureLifecycle(identity.id, snapshot.id, {
     actorType: 'SYSTEM',
@@ -152,15 +168,16 @@ describe('P7-A Growth REST API', () => {
     }
   });
 
-  it('bounds opportunity lists at 100 and limits STANDARD to ranking/CTR opportunities', async () => {
+  it('bounds and paginates opportunity lists while limiting STANDARD to ranking/CTR without P6 contribution', async () => {
     const project = await createProject('standard list', 'STANDARD');
-    await seedOpportunity({
+    const ranking = await seedOpportunity({
       projectId: project.id,
       query: 'ranking query',
       page: 'https://example.com/ranking',
       primaryType: 'RANKING_UPSIDE',
       score: 91,
-      priority: 'CRITICAL'
+      priority: 'CRITICAL',
+      includeP6Evidence: true
     });
     await seedOpportunity({
       projectId: project.id,
@@ -187,7 +204,7 @@ describe('P7-A Growth REST API', () => {
 
     const response = await request(app)
       .get(`/api/projects/${project.id}/growth/opportunities`)
-      .query({ limit: 100 })
+      .query({ limit: 100, offset: 0 })
       .expect(200);
 
     expect(response.body.data).toHaveLength(2);
@@ -195,10 +212,28 @@ describe('P7-A Growth REST API', () => {
       'RANKING_UPSIDE',
       'CTR_UNDERPERFORMANCE'
     ]);
-    expect(response.body.meta.limit).toBe(100);
+    expect(response.body.data.every((row: Record<string, unknown>) => !('p6VisibilityScore' in row))).toBe(true);
+    expect(response.body.meta).toMatchObject({ limit: 100, offset: 0 });
+
+    const secondPage = await request(app)
+      .get(`/api/projects/${project.id}/growth/opportunities`)
+      .query({ limit: 1, offset: 1 })
+      .expect(200);
+    expect(secondPage.body.data).toHaveLength(1);
+    expect(secondPage.body.data[0].primaryType).toBe('CTR_UNDERPERFORMANCE');
+    expect(secondPage.body.meta).toMatchObject({ limit: 1, offset: 1 });
+
+    const detail = await request(app)
+      .get(`/api/projects/${project.id}/growth/opportunities/${ranking.identity.id}`)
+      .expect(200);
+    expect(detail.body.data.breakdown).not.toHaveProperty('p6VisibilityScore');
+    expect(detail.body.data.breakdown).not.toHaveProperty('p6VisibilityState');
+    expect(detail.body.data.evidence.every(
+      (row: { sourceModule: string }) => row.sourceModule !== 'P6_VISIBILITY' && row.sourceModule !== 'P6_ALERT'
+    )).toBe(true);
   });
 
-  it('returns persisted latest detail with score breakdown, evidence and immutable snapshot history', async () => {
+  it('returns persisted latest ADVANCED detail with score breakdown, P6 contribution, evidence and immutable snapshot history', async () => {
     const project = await createProject('detail history', 'ADVANCED');
     const seeded = await seedOpportunity({
       projectId: project.id,
@@ -225,7 +260,11 @@ describe('P7-A Growth REST API', () => {
       canonicalPage: 'https://example.com/liuren'
     });
     expect(response.body.data.snapshot).toMatchObject({ id: seeded.snapshot.id, score: 84, priority: 'HIGH' });
-    expect(response.body.data.breakdown).toMatchObject({ formulaVersion: 'GROWTH_SCORE_V1', demandScore: 85 });
+    expect(response.body.data.breakdown).toMatchObject({
+      formulaVersion: 'GROWTH_SCORE_V1',
+      demandScore: 85,
+      p6VisibilityScore: 25
+    });
     expect(response.body.data.evidence).toHaveLength(1);
     expect(response.body.data.history).toHaveLength(2);
     expect(response.body.data.lifecycle).toMatchObject({ status: 'NEW', latestSnapshotId: seeded.snapshot.id });
@@ -240,9 +279,7 @@ describe('P7-A Growth REST API', () => {
       listCannibalization: async () => { restrictedReads += 1; throw new Error('restricted read occurred'); },
       listNewContent: async () => { restrictedReads += 1; throw new Error('restricted read occurred'); }
     };
-    const app = (createApp as unknown as (options: Record<string, unknown>) => ReturnType<typeof createApp>)({
-      growthApiRepository: restrictedRepository
-    });
+    const app = createApp({ growthApiRepository: restrictedRepository });
 
     for (const path of ['topics', 'cannibalization', 'new-content']) {
       await request(app)
