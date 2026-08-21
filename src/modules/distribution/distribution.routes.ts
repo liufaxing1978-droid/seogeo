@@ -1,4 +1,4 @@
-import type { DistributionMode, DistributionPlatform } from '@prisma/client';
+import { Prisma, type DistributionMode, type DistributionPlatform, type PlanLevel } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -10,6 +10,11 @@ import {
   resolveDistributionCapability,
   type DistributionCapability
 } from './distribution-adapter.js';
+import {
+  assertDistributionTargetPolicy,
+  DistributionTargetPolicyError,
+  normalizeDistributionTargetContext
+} from './distribution-target-policy.js';
 import { ManualHandoffDistributionAdapter } from './manual-handoff.adapter.js';
 import {
   DISTRIBUTION_PREPARATION_QUEUE_NAME,
@@ -32,6 +37,11 @@ const platformSchema = z.enum([
   'REDDIT',
   'QUORA',
   'ZHIHU',
+  'JIANSHU',
+  'TIEBA',
+  'PTT',
+  'DCARD',
+  'MOBILE01',
   'WIKIPEDIA',
   'WIKIDATA',
   'BAIDU_BAIKE'
@@ -50,7 +60,8 @@ const createTargetSchema = z.object({
   publicationId: z.string().uuid(),
   platform: platformSchema,
   mode: modeSchema,
-  targetKey: z.string().trim().min(1).max(120)
+  targetKey: z.string().trim().min(1).max(120),
+  targetContext: z.unknown().optional()
 }).strict();
 
 const prepareSchema = z.object({
@@ -137,6 +148,33 @@ function mapServiceError(error: unknown): never {
   throw error;
 }
 
+function normalizeCreateTargetBody(planLevel: PlanLevel, body: CreateTargetBody): CreateTargetBody {
+  try {
+    assertDistributionTargetPolicy({
+      planLevel,
+      platform: body.platform,
+      mode: body.mode
+    });
+    const targetContext = normalizeDistributionTargetContext({
+      platform: body.platform,
+      mode: body.mode,
+      context: body.targetContext
+    });
+    const { targetContext: _ignored, ...base } = body;
+    return targetContext === null ? base : { ...base, targetContext };
+  } catch (error) {
+    if (error instanceof DistributionTargetPolicyError) {
+      const planDenied = error.code.endsWith('_NOT_AVAILABLE');
+      throw new AppError(
+        error.message,
+        planDenied ? 403 : 400,
+        planDenied ? 'FEATURE_NOT_AVAILABLE' : error.code
+      );
+    }
+    throw error;
+  }
+}
+
 const defaultDistributionApi: DistributionApiPort = {
   async listCenter(projectId) {
     const [publications, targets] = await Promise.all([
@@ -188,7 +226,16 @@ const defaultDistributionApi: DistributionApiPort = {
     if (!publication) {
       throw new NotFoundError('Verified primary publication not found', 'DISTRIBUTION_PRIMARY_NOT_FOUND');
     }
-    return repository.ensureTarget({ projectId, ...body });
+    return repository.ensureTarget({
+      projectId,
+      publicationId: body.publicationId,
+      platform: body.platform,
+      mode: body.mode,
+      targetKey: body.targetKey,
+      ...(body.targetContext !== undefined
+        ? { targetContext: body.targetContext as Prisma.InputJsonValue }
+        : {})
+    });
   },
 
   async getTarget(projectId, targetId) {
@@ -230,7 +277,7 @@ const defaultDistributionApi: DistributionApiPort = {
         projectId,
         targetId,
         artifactId,
-        adapter: new ManualHandoffDistributionAdapter(target.platform as 'MEDIUM' | 'LINKEDIN' | 'SUBSTACK' | 'WORDPRESS' | 'BLOGGER')
+        adapter: new ManualHandoffDistributionAdapter(target.platform)
       });
     } catch (error) {
       if (error instanceof Error && 'code' in error && (error as { code?: unknown }).code === 'DISTRIBUTION_MANUAL_ONLY') {
@@ -295,7 +342,8 @@ export function createDistributionRoutes(api: DistributionApiPort = defaultDistr
     try {
       const projectId = routeParam(req.params.projectId);
       const body = createTargetSchema.parse(req.body);
-      const data = await api.createTarget(projectId, body);
+      const normalizedBody = normalizeCreateTargetBody(res.locals.project.planLevel as PlanLevel, body);
+      const data = await api.createTarget(projectId, normalizedBody);
       res.status(201).json({ data });
     } catch (error) { next(error); }
   });

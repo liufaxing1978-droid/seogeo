@@ -6,8 +6,22 @@ import {
   type DistributionPreparedArtifact,
   type DistributionPreview
 } from './distribution-adapter.js';
+import { isCommunityDistributionPlatform } from './distribution-target-policy.js';
 
-type ManualHandoffPlatform = 'MEDIUM' | 'LINKEDIN' | 'SUBSTACK' | 'WORDPRESS' | 'BLOGGER';
+type ManualHandoffPlatform =
+  | 'MEDIUM'
+  | 'LINKEDIN'
+  | 'SUBSTACK'
+  | 'WORDPRESS'
+  | 'BLOGGER'
+  | 'REDDIT'
+  | 'QUORA'
+  | 'ZHIHU'
+  | 'JIANSHU'
+  | 'TIEBA'
+  | 'PTT'
+  | 'DCARD'
+  | 'MOBILE01';
 
 function isManualHandoffPlatform(platform: DistributionPlatform): platform is ManualHandoffPlatform {
   return (
@@ -15,7 +29,8 @@ function isManualHandoffPlatform(platform: DistributionPlatform): platform is Ma
     platform === 'LINKEDIN' ||
     platform === 'SUBSTACK' ||
     platform === 'WORDPRESS' ||
-    platform === 'BLOGGER'
+    platform === 'BLOGGER' ||
+    isCommunityDistributionPlatform(platform)
   );
 }
 
@@ -27,7 +42,7 @@ export class ManualHandoffDistributionAdapter implements DistributionAdapter {
     if (!isManualHandoffPlatform(platform)) {
       throw new DistributionAdapterError(
         'DISTRIBUTION_NOT_SUPPORTED',
-        `${platform} is not an article-distribution manual handoff target`
+        `${platform} is not a manual handoff distribution target`
       );
     }
     this.platform = platform;

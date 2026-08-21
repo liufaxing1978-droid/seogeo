@@ -155,12 +155,39 @@ export class DistributionService {
   }
 
   private assertFeature(context: DistributionContext): void {
+    if (context.target.mode === 'ENTITY_SUGGESTION') {
+      if (!hasFeature(context.project.planLevel, 'PUBLICATION_ENTERPRISE_GOVERNANCE')) {
+        throw new DistributionServiceError(
+          'PUBLICATION_ENTERPRISE_GOVERNANCE_NOT_AVAILABLE',
+          'Entity and knowledge-graph suggestions require the Enterprise plan'
+        );
+      }
+      return;
+    }
+
     if (!hasFeature(context.project.planLevel, 'PUBLICATION_DISTRIBUTION')) {
       throw new DistributionServiceError(
         'PUBLICATION_DISTRIBUTION_NOT_AVAILABLE',
         'Content distribution requires the Advanced plan or higher'
       );
     }
+  }
+
+  private assertEntityActionSupported(
+    context: DistributionContext,
+    action: 'publish' | 'manual-result' | 'verify'
+  ): void {
+    if (context.target.mode !== 'ENTITY_SUGGESTION') return;
+    if (action === 'verify') {
+      throw new DistributionServiceError(
+        'DISTRIBUTION_VERIFY_NOT_SUPPORTED',
+        'Entity and knowledge-graph suggestions are PREPARE_ONLY and cannot be verified as external publications'
+      );
+    }
+    throw new DistributionServiceError(
+      'DISTRIBUTION_NOT_SUPPORTED',
+      'Entity and knowledge-graph suggestions are PREPARE_ONLY and cannot be published by this system'
+    );
   }
 
   private assertVerified(context: DistributionContext): void {
@@ -301,6 +328,7 @@ export class DistributionService {
     const context = await this.context(input.targetId, input.projectId);
     this.assertFeature(context);
     this.assertVerified(context);
+    this.assertEntityActionSupported(context, 'publish');
 
     if (context.target.status === 'OUTDATED') {
       throw new DistributionServiceError('DISTRIBUTION_ARTIFACT_OUTDATED', 'Outdated distribution artifact cannot be published');
@@ -381,6 +409,7 @@ export class DistributionService {
     const context = await this.context(input.targetId, input.projectId);
     this.assertFeature(context);
     this.assertVerified(context);
+    this.assertEntityActionSupported(context, 'manual-result');
     if (context.target.status !== 'MANUAL_ACTION_REQUIRED') {
       throw new DistributionServiceError(
         'DISTRIBUTION_MANUAL_ACTION_NOT_REQUIRED',
@@ -413,6 +442,7 @@ export class DistributionService {
     const context = await this.context(input.targetId, input.projectId);
     this.assertFeature(context);
     this.assertVerified(context);
+    this.assertEntityActionSupported(context, 'verify');
     if (context.target.status !== 'PUBLISHED') {
       throw new DistributionServiceError(
         'DISTRIBUTION_NOT_PUBLISHED',

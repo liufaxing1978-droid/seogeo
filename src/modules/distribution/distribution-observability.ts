@@ -4,7 +4,9 @@ export type DistributionEventName =
   | 'distribution.preparation.failed'
   | 'distribution.publish.completed'
   | 'distribution.publish.failed'
-  | 'distribution.artifact.outdated';
+  | 'distribution.artifact.outdated'
+  | 'community.draft.prepared'
+  | 'entity.suggestion.prepared';
 
 export type DistributionEventFields = Record<string, unknown>;
 
@@ -17,9 +19,17 @@ const STRING_FIELDS = [
   'mode',
   'status',
   'reasonCode',
-  'errorCode'
+  'errorCode',
+  'contextHash'
 ] as const;
-const NUMBER_FIELDS = ['sourceContentVersion', 'durationMs'] as const;
+const NUMBER_FIELDS = [
+  'sourceContentVersion',
+  'durationMs',
+  'sourceReferenceCount',
+  'sameAsCount',
+  'attributeCount',
+  'missingDataCount'
+] as const;
 
 function safeString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
