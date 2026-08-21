@@ -70,7 +70,7 @@ async function seedVerifiedPrimary() {
     planId: plan.id,
     planVersion: 1,
     planHash: plan.planHash,
-    contentHash: draft.currentContentHash!,
+    contentHash: `distribution-e2e-content-${project.id}`,
     previewHash: preview.previewHash,
     baseSha: plan.baseSha,
     approverActorId: 'test-user',
