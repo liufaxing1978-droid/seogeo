@@ -10,8 +10,8 @@ async function loadModule() {
 }
 
 const baseArtifact = {
-  platform: 'WORDPRESS',
-  mode: 'SECONDARY_SITE',
+  platform: 'WORDPRESS' as const,
+  mode: 'SECONDARY_SITE' as const,
   publicationId: 'publication-1',
   sourceContentVersion: 7,
   title: '兴善堂测试文章',
@@ -26,7 +26,7 @@ const baseArtifact = {
 describe('P8-B trusted HTTP publishing adapter boundary', () => {
   it('fails closed before transport invocation when endpoint or credential reference is missing', async () => {
     const { TrustedHttpDistributionAdapter } = await loadModule();
-    const transport = { publish: vi.fn(), verify: vi.fn() };
+    const transport = { publish: vi.fn(async (_request: any) => undefined), verify: vi.fn(async (_request: any) => undefined) };
 
     const missingEndpoint = new TrustedHttpDistributionAdapter({
       platform: 'WORDPRESS',
@@ -62,11 +62,11 @@ describe('P8-B trusted HTTP publishing adapter boundary', () => {
   it('uses only constructor-configured endpoint and credential reference, ignoring artifact metadata URLs or headers', async () => {
     const { TrustedHttpDistributionAdapter } = await loadModule();
     const transport = {
-      publish: vi.fn(async () => ({
+      publish: vi.fn(async (_request: any) => ({
         status: 201,
         body: { id: 'wp-1', url: 'https://secondary.example.test/post-1', status: 'published', secret: 'drop-me' }
       })),
-      verify: vi.fn()
+      verify: vi.fn(async (_request: any) => undefined)
     };
     const adapter = new TrustedHttpDistributionAdapter({
       platform: 'WORDPRESS',
@@ -102,7 +102,7 @@ describe('P8-B trusted HTTP publishing adapter boundary', () => {
 
   it('rejects canonical/secondary-site ownership drift before a provider write', async () => {
     const { TrustedHttpDistributionAdapter } = await loadModule();
-    const transport = { publish: vi.fn(), verify: vi.fn() };
+    const transport = { publish: vi.fn(async (_request: any) => undefined), verify: vi.fn(async (_request: any) => undefined) };
     const adapter = new TrustedHttpDistributionAdapter({
       platform: 'WORDPRESS',
       config: {
@@ -136,24 +136,24 @@ describe('P8-B trusted HTTP publishing adapter boundary', () => {
         primaryOriginalUrl: baseArtifact.originalUrl
       },
       transport: {
-        publish: vi.fn(async () => ({ status, body: { error: 'provider failure' } })),
-        verify: vi.fn()
+        publish: vi.fn(async (_request: any) => ({ status, body: { error: 'provider failure' } })),
+        verify: vi.fn(async (_request: any) => undefined)
       }
     });
 
-    await expect(makeAdapter(503).publish({ ...baseArtifact, platform: 'BLOGGER' })).rejects.toMatchObject({
+    await expect(makeAdapter(503).publish({ ...baseArtifact, platform: 'BLOGGER' as const })).rejects.toMatchObject({
       code: 'DISTRIBUTION_PROVIDER_TRANSIENT',
       retryable: true
     });
-    await expect(makeAdapter(429).publish({ ...baseArtifact, platform: 'BLOGGER' })).rejects.toMatchObject({
+    await expect(makeAdapter(429).publish({ ...baseArtifact, platform: 'BLOGGER' as const })).rejects.toMatchObject({
       code: 'DISTRIBUTION_PROVIDER_TRANSIENT',
       retryable: true
     });
-    await expect(makeAdapter(400).publish({ ...baseArtifact, platform: 'BLOGGER' })).rejects.toMatchObject({
+    await expect(makeAdapter(400).publish({ ...baseArtifact, platform: 'BLOGGER' as const })).rejects.toMatchObject({
       code: 'DISTRIBUTION_PROVIDER_REJECTED',
       retryable: false
     });
-    await expect(makeAdapter(403).publish({ ...baseArtifact, platform: 'BLOGGER' })).rejects.toMatchObject({
+    await expect(makeAdapter(403).publish({ ...baseArtifact, platform: 'BLOGGER' as const })).rejects.toMatchObject({
       code: 'DISTRIBUTION_PROVIDER_REJECTED',
       retryable: false
     });
