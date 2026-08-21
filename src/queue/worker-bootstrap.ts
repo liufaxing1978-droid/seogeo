@@ -11,6 +11,15 @@ import {
   type GrowthMaterializationJobData
 } from '../modules/growth/growth.worker.js';
 import {
+  PUBLICATION_EXECUTION_QUEUE_NAME,
+  type PublicationExecutionJobData
+} from '../modules/publication/publication-execution.queue.js';
+import {
+  PUBLICATION_EXECUTION_WORKER_CONCURRENCY,
+  classifyPublicationExecutionError,
+  processPublicationExecutionJob
+} from '../modules/publication/publication-execution.worker.js';
+import {
   processSearchConsoleSyncJob,
   SEARCH_CONSOLE_SYNC_QUEUE_NAME,
   SEARCH_CONSOLE_SYNC_WORKER_CONCURRENCY,
@@ -46,6 +55,14 @@ import { QUEUE_NAMES } from './queues.js';
 
 const VISIBILITY_MONITORING_RECONCILE_EVERY_MS = 60 * 60 * 1000;
 
+function publicationExecutionErrorCode(error: unknown): string {
+  if (error && typeof error === 'object' && 'code' in error) {
+    const code = (error as { code?: unknown }).code;
+    if (typeof code === 'string' && code.length > 0) return code;
+  }
+  return 'EXECUTION_FAILED';
+}
+
 export function workerDefinitionForQueue(
   name:
     | 'search-console-sync'
@@ -54,6 +71,7 @@ export function workerDefinitionForQueue(
     | 'visibility-extraction'
     | 'visibility-metrics'
     | 'visibility-monitoring'
+    | 'site-mutation-execution'
 ) {
   if (name === SEARCH_CONSOLE_SYNC_QUEUE_NAME) {
     return {
@@ -89,6 +107,12 @@ export function workerDefinitionForQueue(
     return {
       processor: processVisibilityMonitoringJob,
       concurrency: VISIBILITY_MONITORING_WORKER_CONCURRENCY
+    } as const;
+  }
+  if (name === PUBLICATION_EXECUTION_QUEUE_NAME) {
+    return {
+      processor: processPublicationExecutionJob,
+      concurrency: PUBLICATION_EXECUTION_WORKER_CONCURRENCY
     } as const;
   }
   throw new Error(`Unsupported worker definition: ${name}`);
@@ -162,6 +186,21 @@ export async function startWorkers() {
           { queue: monitoringQueue }
         ),
         { connection, concurrency: VISIBILITY_MONITORING_WORKER_CONCURRENCY }
+      );
+    }
+    if (name === PUBLICATION_EXECUTION_QUEUE_NAME) {
+      return new Worker<PublicationExecutionJobData>(
+        name,
+        async (job) => {
+          try {
+            await processPublicationExecutionJob({ name: job.name, data: job.data });
+          } catch (error) {
+            const code = publicationExecutionErrorCode(error);
+            if (classifyPublicationExecutionError(code) === 'NON_RETRYABLE') job.discard();
+            throw error;
+          }
+        },
+        { connection, concurrency: PUBLICATION_EXECUTION_WORKER_CONCURRENCY }
       );
     }
     if (name === 'ai') return new Worker<AiJobData>(name, processAiJob, { connection });
