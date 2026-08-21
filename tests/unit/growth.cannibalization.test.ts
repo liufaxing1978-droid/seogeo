@@ -46,14 +46,14 @@ describe('P7-A keyword cannibalization detector', () => {
 
     expect(detectKeywordCannibalization(candidate([
       page('https://e.com/a', 9, 8), page('https://e.com/b', 9, 9)
-    ], { projectP50Impressions: 10 })).toMatchObject({
+    ], { projectP50Impressions: 10 }))).toMatchObject({
       state: 'NOT_DETECTED',
       reasonCodes: ['QUERY_IMPRESSIONS_BELOW_ABSOLUTE_FLOOR']
     });
 
     expect(detectKeywordCannibalization(candidate([
       page('https://e.com/a', 15, 8), page('https://e.com/b', 15, 9)
-    ], { projectP50Impressions: 40 })).toMatchObject({
+    ], { projectP50Impressions: 40 }))).toMatchObject({
       state: 'NOT_DETECTED',
       reasonCodes: ['QUERY_IMPRESSIONS_BELOW_PROJECT_P50']
     });
@@ -130,7 +130,7 @@ describe('P7-A keyword cannibalization detector', () => {
 
     expect(detectKeywordCannibalization(candidate([
       page('https://e.com/a', 50, 8), page('https://e.com/b', 50, 9)
-    ], { projectP50Impressions: null })).toMatchObject({
+    ], { projectP50Impressions: null }))).toMatchObject({
       state: 'UNKNOWN',
       reasonCodes: ['PROJECT_P50_UNKNOWN']
     });
