@@ -14,7 +14,8 @@ export type PromptId =
   | 'publication-article-generation-v1'
   | 'distribution-canonical-repost-v1'
   | 'distribution-adapted-article-v1'
-  | 'distribution-summary-v1';
+  | 'distribution-summary-v1'
+  | 'distribution-community-draft-v1';
 
 export interface PromptDefinition {
   id: PromptId;
@@ -178,6 +179,36 @@ const DISTRIBUTION_SUMMARY_PROMPT = distributionPrompt(
   'Create a concise platform-native summary of the supplied primary article while preserving source ownership and the supplied original URL.'
 );
 
+const DISTRIBUTION_COMMUNITY_DRAFT_PROMPT: PromptDefinition = Object.freeze({
+  id: 'distribution-community-draft-v1',
+  version: 'v1',
+  mode: 'FAST',
+  responseFormat: 'JSON',
+  system: `${FACT_GUARDRAILS}
+Prepare a source-backed community-native answer to the supplied question or topic for human review.
+Use only the supplied facts and supplied source references. Returned sourceRefs must be a subset of the supplied source references.
+Do not invent endorsement, testimony, fake discussion, community consensus, personal experience, quotations, citations, attribution, or platform facts.
+A brand link may be included only when the supplied target context explicitly sets includeBrandLink=true. Otherwise omit the brand link and return brandLinkIncluded=false.
+Keep originalUrl exactly equal to the supplied original URL. canonicalUrl must be null because this is not a canonical mirror.
+Report whether promotional language was detected; do not turn the answer into undisclosed promotion.
+This is a human-reviewed draft only. It cannot publish, approve, or verify anything and must never claim that it was posted or that external posting occurred.`,
+  buildUserMessage: (facts: unknown) => buildUserMessage(
+    'Create a community-native draft answering the supplied question or topic from the supplied facts and source references.',
+    {
+      title: 'Community answer title',
+      body: 'Source-backed community answer draft.',
+      summary: 'Bounded summary.',
+      tags: ['tag'],
+      sourceRefs: ['CONTENT_SOURCE_REFERENCE:<id>'],
+      promotionalLanguageDetected: false,
+      brandLinkIncluded: false,
+      originalUrl: 'https://example.com/original',
+      canonicalUrl: null
+    },
+    facts
+  )
+});
+
 export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = Object.freeze([
   SEO_PROMPT,
   GEO_PROMPT,
@@ -192,7 +223,8 @@ export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = Object.freeze([
   PUBLICATION_ARTICLE_GENERATION_PROMPT,
   DISTRIBUTION_CANONICAL_REPOST_PROMPT,
   DISTRIBUTION_ADAPTED_ARTICLE_PROMPT,
-  DISTRIBUTION_SUMMARY_PROMPT
+  DISTRIBUTION_SUMMARY_PROMPT,
+  DISTRIBUTION_COMMUNITY_DRAFT_PROMPT
 ]);
 
 const PROMPT_BY_ID = new Map<PromptId, PromptDefinition>(PROMPT_DEFINITIONS.map((prompt) => [prompt.id, prompt]));
