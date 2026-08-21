@@ -133,6 +133,7 @@ export interface CreatePublicationApprovalInput {
   baseSha: string;
   approverActorId: string;
   approvedRiskClass: PublicationRiskClass;
+  confirmedWarningCodes?: Prisma.InputJsonValue;
   expiresAt?: Date | null;
 }
 
