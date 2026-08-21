@@ -45,6 +45,9 @@ export class DistributionRepository {
         platform: input.platform,
         mode: input.mode,
         targetKey: input.targetKey,
+        ...(input.targetContext !== undefined
+          ? { targetContext: inputJson(input.targetContext) }
+          : {}),
         status: 'NOT_PREPARED',
         sourceContentVersion: publication.plan.draftVersion
       },
