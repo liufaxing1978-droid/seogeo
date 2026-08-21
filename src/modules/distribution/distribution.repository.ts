@@ -83,9 +83,14 @@ export class DistributionRepository {
           artifactHash: input.artifactHash,
           title: input.title ?? null,
           body: input.body,
+          summary: input.summary ?? null,
+          ...(input.tags !== undefined ? { tags: inputJson(input.tags) } : {}),
           originalUrl: input.originalUrl,
           canonicalUrl: input.canonicalUrl ?? null,
-          sourceRefs: input.sourceRefs
+          sourceRefs: input.sourceRefs,
+          ...(input.platformMetadata !== undefined
+            ? { platformMetadata: inputJson(input.platformMetadata) }
+            : {})
         }
       });
 

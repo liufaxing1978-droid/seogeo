@@ -11,7 +11,10 @@ export type PromptId =
   | 'visibility-trend-analysis-v1'
   | 'growth-opportunity-explanation-v1'
   | 'publication-content-brief-v1'
-  | 'publication-article-generation-v1';
+  | 'publication-article-generation-v1'
+  | 'distribution-canonical-repost-v1'
+  | 'distribution-adapted-article-v1'
+  | 'distribution-summary-v1';
 
 export interface PromptDefinition {
   id: PromptId;
@@ -125,6 +128,56 @@ The output is a draft for human review. It cannot approve itself, alter a public
   }, facts)
 });
 
+function distributionPrompt(
+  id: Extract<PromptId,
+    | 'distribution-canonical-repost-v1'
+    | 'distribution-adapted-article-v1'
+    | 'distribution-summary-v1'>,
+  instruction: string
+): PromptDefinition {
+  return Object.freeze({
+    id,
+    version: 'v1',
+    mode: 'FAST',
+    responseFormat: 'JSON',
+    system: `${FACT_GUARDRAILS}
+${instruction}
+This output is an advisory distribution draft only. Use only the supplied facts and supplied source references.
+Keep originalUrl equal to the supplied original URL; never claim a different original source.
+Do not invent source references, claims, platform facts, or attribution. Returned sourceRefs must be a subset of the supplied source references.
+The draft cannot publish, approve, verify, or claim that external publication occurred.`,
+    buildUserMessage: (facts: unknown) => buildUserMessage(
+      'Create the requested platform-native distribution draft from the supplied facts and supplied source references.',
+      {
+        title: 'Platform draft title',
+        body: 'Platform-native draft body.',
+        summary: 'Bounded summary.',
+        tags: ['tag'],
+        originalUrl: 'https://example.com/original',
+        canonicalUrl: 'https://example.com/original',
+        sourceRefs: ['PUBLICATION_EXECUTION:<id>'],
+        platformMetadata: {}
+      },
+      facts
+    )
+  });
+}
+
+const DISTRIBUTION_CANONICAL_REPOST_PROMPT = distributionPrompt(
+  'distribution-canonical-repost-v1',
+  'Prepare a canonical repost. canonicalUrl must exactly equal the supplied original URL as well as originalUrl.'
+);
+
+const DISTRIBUTION_ADAPTED_ARTICLE_PROMPT = distributionPrompt(
+  'distribution-adapted-article-v1',
+  'Adapt the supplied primary article for the target platform while preserving factual meaning, source ownership, and the supplied original URL.'
+);
+
+const DISTRIBUTION_SUMMARY_PROMPT = distributionPrompt(
+  'distribution-summary-v1',
+  'Create a concise platform-native summary of the supplied primary article while preserving source ownership and the supplied original URL.'
+);
+
 export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = Object.freeze([
   SEO_PROMPT,
   GEO_PROMPT,
@@ -136,7 +189,10 @@ export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = Object.freeze([
   VISIBILITY_TREND_PROMPT,
   GROWTH_OPPORTUNITY_EXPLANATION_PROMPT,
   PUBLICATION_CONTENT_BRIEF_PROMPT,
-  PUBLICATION_ARTICLE_GENERATION_PROMPT
+  PUBLICATION_ARTICLE_GENERATION_PROMPT,
+  DISTRIBUTION_CANONICAL_REPOST_PROMPT,
+  DISTRIBUTION_ADAPTED_ARTICLE_PROMPT,
+  DISTRIBUTION_SUMMARY_PROMPT
 ]);
 
 const PROMPT_BY_ID = new Map<PromptId, PromptDefinition>(PROMPT_DEFINITIONS.map((prompt) => [prompt.id, prompt]));

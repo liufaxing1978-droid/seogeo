@@ -20,9 +20,12 @@ export type CreateDistributionArtifactInput = {
   artifactHash: string;
   title?: string | null;
   body: string;
+  summary?: string | null;
+  tags?: Prisma.InputJsonValue | null;
   originalUrl: string;
   canonicalUrl?: string | null;
   sourceRefs: Prisma.InputJsonValue;
+  platformMetadata?: Prisma.InputJsonValue | null;
 };
 
 export type AppendDistributionTargetEventInput = {

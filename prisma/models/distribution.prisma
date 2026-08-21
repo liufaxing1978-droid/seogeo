@@ -62,9 +62,12 @@ model DistributionArtifact {
   artifactHash         String
   title                String?
   body                 String
+  summary              String?
+  tags                 Json?
   originalUrl          String
   canonicalUrl         String?
   sourceRefs           Json
+  platformMetadata     Json?
   createdAt            DateTime @default(now())
 
   target DistributionTarget        @relation(fields: [targetId], references: [id], onDelete: Restrict)
