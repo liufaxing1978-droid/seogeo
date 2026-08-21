@@ -105,4 +105,40 @@ describe('P9-0A market service', () => {
     ]);
     expect(repository.replaceCalls).toBe(2);
   });
+
+  it('keeps an existing CN project behavior when there are no explicit rows', async () => {
+    const repository = new FakeMarketRepository();
+    repository.project = { id: 'p1', targetCountry: 'CN', defaultLanguage: 'zh-CN' };
+    repository.markets = [];
+    const service = new MarketService(repository);
+
+    expect(await service.listResolvedMarkets('p1')).toEqual([
+      { marketCode: 'CN', locale: 'zh-CN', enabled: true, source: 'LEGACY_FALLBACK' }
+    ]);
+  });
+
+  it('maps a legacy US project to GLOBAL rather than inventing a new market code', async () => {
+    const repository = new FakeMarketRepository();
+    repository.project = { id: 'p1', targetCountry: 'US', defaultLanguage: 'en-US' };
+    repository.markets = [];
+    const service = new MarketService(repository);
+
+    expect(await service.listResolvedMarkets('p1')).toEqual([
+      { marketCode: 'GLOBAL', locale: 'en-US', enabled: true, source: 'LEGACY_FALLBACK' }
+    ]);
+  });
+
+  it('restores legacy fallback after explicit markets are cleared', async () => {
+    const repository = new FakeMarketRepository();
+    repository.markets = [
+      { marketCode: 'GLOBAL', locale: 'en-US', enabled: true }
+    ];
+    const service = new MarketService(repository);
+
+    await service.replaceMarkets('p1', []);
+
+    expect(await service.listResolvedMarkets('p1')).toEqual([
+      { marketCode: 'CN', locale: 'zh-CN', enabled: true, source: 'LEGACY_FALLBACK' }
+    ]);
+  });
 });
