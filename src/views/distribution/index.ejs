@@ -1,7 +1,7 @@
 <main class="page-shell">
   <div class="page-header">
     <div>
-      <p class="eyebrow">P8-B · Distribution</p>
+      <p class="eyebrow">P8-C · Distribution</p>
       <h1>多渠道分发</h1>
       <p class="muted">主站内容保持唯一原创来源；外部渠道只消费已经验证的冻结版本。</p>
     </div>
@@ -40,7 +40,10 @@
             <% for (const target of targets) { %>
               <tr>
                 <td><strong><%= target.platform %></strong></td>
-                <td><%= target.mode %></td>
+                <td>
+                  <div><%= target.mode %></div>
+                  <% if (target.review) { %><div class="muted"><%= target.review.label %></div><% } %>
+                </td>
                 <td><span class="badge"><%= target.capability %></span></td>
                 <td><%= target.sourceContentVersion ? `V${target.sourceContentVersion}` : '—' %></td>
                 <td><span class="badge <%= target.status === 'VERIFIED' ? 'success' : target.status === 'OUTDATED' ? 'danger' : '' %>"><%= target.status %></span></td>
@@ -58,7 +61,8 @@
     <ul>
       <li>只有主站 VERIFIED 内容可以进入正常分发。</li>
       <li>任何旧源版本产物都会标记为 OUTDATED，不能静默重发。</li>
-      <li>MANUAL_HANDOFF 只生成交接，不会伪装成自动发布。</li>
+      <li>Community GEO 与其他 MANUAL_HANDOFF 只生成交接，不会伪装成自动发布。</li>
+      <li>Entity Suggestion 仅提供人工编辑建议，不执行平台提交。</li>
       <li>PUBLISH_API 只有在服务端存在可信配置时才会启用。</li>
     </ul>
   </section>
