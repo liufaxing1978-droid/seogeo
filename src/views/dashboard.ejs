@@ -13,6 +13,32 @@
   <article class="metric-card"><div class="metric-title">Critical Issues</div><div class="metric-value"><%= portfolio.criticalIssueCount %></div><div class="metric-caption">未解决 CRITICAL SEO 问题</div></article>
 </section>
 
+<% if (portfolio.enterpriseGrowthProjects.length > 0) { %>
+<section class="panel" aria-label="Enterprise Growth Portfolio">
+  <div class="panel-header">
+    <div><h3>Enterprise Growth Portfolio</h3><p>仅聚合 Enterprise 项目的安全 P7-A 摘要；按 CRITICAL 风险、Top Growth Score 和稳定项目键排序。</p></div>
+    <span class="badge premium">Enterprise</span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>项目</th><th>Top Growth Score</th><th>CRITICAL</th><th>Resolved</th><th>GSC</th><th>数据日期</th></tr></thead>
+      <tbody>
+        <% portfolio.enterpriseGrowthProjects.forEach((row) => { %>
+          <tr data-growth-project="<%= row.projectId %>">
+            <td><a href="/projects/<%= row.projectId %>"><strong><%= row.projectName %></strong></a><br><span class="muted"><%= row.primaryDomain %></span></td>
+            <td><%= row.topEligibleScore === null ? '暂无可排名机会' : row.topEligibleScore %></td>
+            <td><%= row.criticalCount %></td>
+            <td><%= row.resolvedCount %></td>
+            <td><span class="badge <%= row.connectionStatus === 'CONNECTED' ? 'success' : 'neutral' %>"><%= row.connectionStatus %></span></td>
+            <td><%= row.latestCompletedDate || 'NO_DATA' %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+<% } %>
+
 <section class="panel">
   <div class="panel-header"><div><h3>项目组合</h3><p>每个项目显示自己的最新持久化事实，不合并 Visibility 比率。</p></div><span class="badge neutral">最多 50 个项目</span></div>
   <% if (portfolio.projects.length === 0) { %>
@@ -20,7 +46,7 @@
   <% } else { %>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>项目</th><th>套餐</th><th>SEO</th><th>GEO</th><th>Critical</th><th>Owned Mention Rate</th></tr></thead>
+        <thead><tr><th>项目</th><th>套餐</th><th>SEO</th><th>GEO</th><th>Critical</th><th>Growth</th><th>Owned Mention Rate</th></tr></thead>
         <tbody>
           <% portfolio.projects.forEach(({ project, facts }) => { %>
             <tr>
@@ -29,6 +55,7 @@
               <td><%= facts.seoScore === null ? '--' : facts.seoScore.toFixed(1) %></td>
               <td><%= facts.geoScore === null ? '--' : facts.geoScore.toFixed(1) %></td>
               <td><%= facts.criticalIssueCount %></td>
+              <td><%= facts.growth.topEligibleScore === null ? '暂无可排名机会' : facts.growth.topEligibleScore %></td>
               <td>
                 <% if (project.planLevel === 'STANDARD') { %>
                   <span class="badge neutral">高级版</span>
