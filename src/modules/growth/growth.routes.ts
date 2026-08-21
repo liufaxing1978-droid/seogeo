@@ -215,7 +215,9 @@ export const growthRestRepository: GrowthRestRepository = {
       ctrGapScore: row.breakdown?.ctrGapScore ?? null,
       siteGapScore: row.breakdown?.siteGapScore ?? null,
       gscTrendScore: row.breakdown?.gscTrendScore ?? null,
-      p6VisibilityScore: row.breakdown?.p6VisibilityScore ?? null,
+      ...(input.basicOnly ? {} : {
+        p6VisibilityScore: row.breakdown?.p6VisibilityScore ?? null
+      }),
       lifecycleStatus: lifecycleByIdentity.get(row.opportunityIdentityId) ?? null
     }));
   },
@@ -266,7 +268,13 @@ export const growthRestRepository: GrowthRestRepository = {
 
     const [evidence, lifecycle, lifecycleEvents] = await Promise.all([
       prisma.growthOpportunityEvidence.findMany({
-        where: { projectId, snapshotId: latest.id },
+        where: {
+          projectId,
+          snapshotId: latest.id,
+          ...(basicSurface ? {
+            sourceModule: { notIn: ['P6_VISIBILITY', 'P6_ALERT'] }
+          } : {})
+        },
         orderBy: [{ sourceModule: 'asc' }, { ruleKey: 'asc' }, { fingerprint: 'asc' }],
         take: 200
       }),
@@ -277,6 +285,10 @@ export const growthRestRepository: GrowthRestRepository = {
         take: 100
       })
     ]);
+
+    const breakdown = basicSurface && latest.breakdown
+      ? (({ p6VisibilityState: _p6State, p6VisibilityScore: _p6Score, ...rest }) => rest)(latest.breakdown)
+      : latest.breakdown;
 
     return {
       identity,
@@ -300,7 +312,7 @@ export const growthRestRepository: GrowthRestRepository = {
         sourceProvenance: latest.sourceProvenance,
         createdAt: latest.createdAt
       },
-      breakdown: latest.breakdown,
+      breakdown,
       evidence,
       history: history.map(({ breakdown: _breakdown, ...row }) => row),
       lifecycle,
