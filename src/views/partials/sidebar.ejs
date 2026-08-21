@@ -27,6 +27,14 @@
       <a class="<%= activeNav === 'competitors' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/competitors` : '/projects' %>">竞争对手</a>
     </div>
     <div class="nav-group">
+      <div class="nav-label">增长</div>
+      <a class="<%= activeNav === 'search-console' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/search-console` : '/projects' %>">Search Console</a>
+      <a class="<%= activeNav === 'growth' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/growth` : '/projects' %>">Growth Center</a>
+      <a class="<%= activeNav === 'growth-topics' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/growth/topics` : '/projects' %>">Topic Clusters</a>
+      <a class="<%= activeNav === 'growth-cannibalization' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/growth/cannibalization` : '/projects' %>">Cannibalization</a>
+      <a class="<%= activeNav === 'growth-new-content' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/growth/new-content` : '/projects' %>">New Content</a>
+    </div>
+    <div class="nav-group">
       <div class="nav-label">高级功能</div>
       <a class="<%= activeNav === 'visibility' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility` : '/projects' %>">AI Visibility <span class="badge premium">高级版</span></a>
       <a class="<%= activeNav === 'visibility-history' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility/history` : '/projects' %>">Visibility 历史</a>
