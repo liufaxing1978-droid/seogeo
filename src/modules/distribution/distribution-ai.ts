@@ -9,10 +9,15 @@ import { z } from 'zod';
 import { prisma } from '../../db/prisma.js';
 import { aiTaskService, type AiTaskService, type CreateAiTaskInput } from '../ai/ai.service.js';
 import { AiOutputValidationError, parseStructuredOutput } from '../ai/structured-output.js';
+import {
+  normalizeDistributionTargetContext,
+  type CommunityTargetContext
+} from './distribution-target-policy.js';
 
 export const DISTRIBUTION_CANONICAL_REPOST_PROMPT_ID = 'distribution-canonical-repost-v1';
 export const DISTRIBUTION_ADAPTED_ARTICLE_PROMPT_ID = 'distribution-adapted-article-v1';
 export const DISTRIBUTION_SUMMARY_PROMPT_ID = 'distribution-summary-v1';
+export const DISTRIBUTION_COMMUNITY_DRAFT_PROMPT_ID = 'distribution-community-draft-v1';
 
 const sourceRefArray = z.array(z.string().min(1).max(300)).max(40);
 
@@ -27,7 +32,21 @@ export const DistributionAdaptationOutputSchema = z.object({
   platformMetadata: z.record(z.unknown()).default({})
 }).strict();
 
+export const CommunityDistributionOutputSchema = z.object({
+  title: z.string().min(1).max(300),
+  body: z.string().min(1).max(30_000),
+  summary: z.string().min(1).max(4000),
+  tags: z.array(z.string().min(1).max(120)).max(20),
+  sourceRefs: sourceRefArray,
+  promotionalLanguageDetected: z.boolean(),
+  brandLinkIncluded: z.boolean(),
+  originalUrl: z.string().url(),
+  canonicalUrl: z.string().url().nullable()
+}).strict();
+
 export type DistributionAdaptationOutput = z.infer<typeof DistributionAdaptationOutputSchema>;
+export type CommunityDistributionOutput = z.infer<typeof CommunityDistributionOutputSchema>;
+export type DistributionTaskOutput = DistributionAdaptationOutput | CommunityDistributionOutput;
 
 type SourceReference = { type: string; id: string };
 
@@ -37,6 +56,7 @@ export type DistributionAdaptationRequestIdentity = {
   platform: DistributionPlatform;
   mode: DistributionMode;
   promptVersion: string;
+  contextHash?: string;
 };
 
 function ref(type: string, id: string): string {
@@ -67,6 +87,24 @@ function validateReturnedRefs(returned: string[], supplied: unknown): void {
   }
 }
 
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, child]) => [key, canonicalize(child)])
+    );
+  }
+  return value;
+}
+
+function communityContextHash(context: CommunityTargetContext): string {
+  return createHash('sha256')
+    .update(JSON.stringify(canonicalize(context)))
+    .digest('hex');
+}
+
 export function promptIdForDistributionMode(mode: DistributionMode | string): string {
   switch (mode) {
     case 'CANONICAL_REPOST':
@@ -75,6 +113,8 @@ export function promptIdForDistributionMode(mode: DistributionMode | string): st
       return DISTRIBUTION_ADAPTED_ARTICLE_PROMPT_ID;
     case 'SUMMARY':
       return DISTRIBUTION_SUMMARY_PROMPT_ID;
+    case 'COMMUNITY_DRAFT':
+      return DISTRIBUTION_COMMUNITY_DRAFT_PROMPT_ID;
     default:
       throw new AiOutputValidationError(`Distribution mode ${mode} is not supported by the adaptation AI task`);
   }
@@ -102,6 +142,27 @@ export function parseDistributionAdaptationOutput(
   return output;
 }
 
+export function parseCommunityDistributionOutput(
+  content: string,
+  suppliedSourceReferences: unknown,
+  context: { originalUrl: string; includeBrandLink: boolean }
+): CommunityDistributionOutput {
+  const output = parseStructuredOutput(content, CommunityDistributionOutputSchema);
+  validateReturnedRefs(output.sourceRefs, suppliedSourceReferences);
+
+  if (output.originalUrl !== context.originalUrl) {
+    throw new AiOutputValidationError('Community draft original URL does not match the supplied original source');
+  }
+  if (output.canonicalUrl !== null) {
+    throw new AiOutputValidationError('Community draft canonical URL must be null');
+  }
+  if (output.brandLinkIncluded && !context.includeBrandLink) {
+    throw new AiOutputValidationError('Community draft included a brand link without target-context permission');
+  }
+
+  return output;
+}
+
 export function distributionAdaptationRequestKey(
   input: DistributionAdaptationRequestIdentity
 ): string {
@@ -111,7 +172,8 @@ export function distributionAdaptationRequestKey(
     input.sourceContentVersion,
     input.platform,
     input.mode,
-    input.promptVersion
+    input.promptVersion,
+    ...(input.contextHash ? [input.contextHash] : [])
   ].join(':');
 }
 
@@ -127,6 +189,15 @@ export async function buildDistributionAdaptationTaskInput(
   if (!target) throw new AiOutputValidationError('Distribution target not found');
 
   const promptVersion = promptIdForDistributionMode(target.mode);
+  const communityContext = target.mode === 'COMMUNITY_DRAFT'
+    ? normalizeDistributionTargetContext({
+      platform: target.platform,
+      mode: target.mode,
+      context: target.targetContext
+    })
+    : null;
+  const contextHash = communityContext ? communityContextHash(communityContext) : undefined;
+
   const publication = await prisma.publicationExecution.findFirst({
     where: {
       id: target.publicationId,
@@ -161,9 +232,23 @@ export async function buildDistributionAdaptationTaskInput(
     throw new AiOutputValidationError('Distribution source draft version not found');
   }
 
+  const communitySources = communityContext
+    ? await prisma.contentSourceReference.findMany({
+      where: {
+        projectId: target.projectId,
+        draftId: sourceVersion.draftId
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+    })
+    : [];
+
   const sourceReferences: SourceReference[] = [
     { type: 'PUBLICATION_EXECUTION', id: publication.id },
-    { type: 'CONTENT_DRAFT_VERSION', id: `${sourceVersion.draftId}:v${sourceVersion.version}` }
+    { type: 'CONTENT_DRAFT_VERSION', id: `${sourceVersion.draftId}:v${sourceVersion.version}` },
+    ...communitySources.map((source) => ({
+      type: 'CONTENT_SOURCE_REFERENCE',
+      id: source.id
+    }))
   ];
   const factSnapshot = {
     target: {
@@ -171,7 +256,8 @@ export async function buildDistributionAdaptationTaskInput(
       publicationId: target.publicationId,
       platform: target.platform,
       mode: target.mode,
-      targetKey: target.targetKey
+      targetKey: target.targetKey,
+      ...(communityContext ? { context: communityContext } : {})
     },
     primary: {
       sourceContentVersion,
@@ -180,7 +266,19 @@ export async function buildDistributionAdaptationTaskInput(
       title: sourceVersion.title,
       body: sourceVersion.body,
       language: sourceVersion.language
-    }
+    },
+    ...(communityContext ? {
+      sources: communitySources.map((source) => ({
+        id: source.id,
+        title: source.title,
+        author: source.author,
+        publisher: source.publisher,
+        sourceUrl: source.sourceUrl,
+        sourceType: source.sourceType,
+        userProvided: source.userProvided,
+        internalRef: source.internalRef
+      }))
+    } : {})
   };
 
   return {
@@ -191,7 +289,8 @@ export async function buildDistributionAdaptationTaskInput(
       sourceContentVersion,
       platform: target.platform,
       mode: target.mode,
-      promptVersion
+      promptVersion,
+      contextHash
     }),
     promptVersion,
     factSnapshot: factSnapshot as unknown as Prisma.InputJsonValue,
@@ -209,48 +308,68 @@ export async function createDistributionAdaptationTask(
   );
 }
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value !== null && typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, child]) => [key, canonicalize(child)])
-    );
-  }
-  return value;
-}
-
-function taskBinding(task: AiTask): {
+type TaskBinding = {
   targetId: string;
   publicationId: string;
   sourceContentVersion: number;
   mode: DistributionMode | string;
+  platform: DistributionPlatform | string;
   originalUrl: string;
-} {
+  communityContext: CommunityTargetContext | null;
+};
+
+function taskBinding(task: AiTask): TaskBinding {
   const facts = task.factSnapshot as Record<string, unknown>;
   const target = facts.target as Record<string, unknown> | undefined;
   const primary = facts.primary as Record<string, unknown> | undefined;
   const targetId = typeof target?.id === 'string' ? target.id : null;
   const publicationId = typeof target?.publicationId === 'string' ? target.publicationId : null;
   const mode = typeof target?.mode === 'string' ? target.mode : null;
+  const platform = typeof target?.platform === 'string' ? target.platform : null;
   const sourceContentVersion = typeof primary?.sourceContentVersion === 'number'
     ? primary.sourceContentVersion
     : null;
   const originalUrl = typeof primary?.originalUrl === 'string' ? primary.originalUrl : null;
 
-  if (!targetId || !publicationId || !mode || !sourceContentVersion || !originalUrl) {
+  if (!targetId || !publicationId || !mode || !platform || !sourceContentVersion || !originalUrl) {
     throw new AiOutputValidationError('Distribution adaptation task is missing its bound source facts');
   }
 
-  return { targetId, publicationId, sourceContentVersion, mode, originalUrl };
+  let communityContext: CommunityTargetContext | null = null;
+  if (mode === 'COMMUNITY_DRAFT') {
+    communityContext = normalizeDistributionTargetContext({
+      platform: platform as DistributionPlatform,
+      mode: mode as DistributionMode,
+      context: target?.context
+    });
+  }
+
+  return {
+    targetId,
+    publicationId,
+    sourceContentVersion,
+    mode,
+    platform,
+    originalUrl,
+    communityContext
+  };
 }
 
 export function parseDistributionAdaptationTaskOutput(
   task: AiTask,
   content: string
-): DistributionAdaptationOutput {
+): DistributionTaskOutput {
   const binding = taskBinding(task);
+  if (binding.mode === 'COMMUNITY_DRAFT') {
+    if (!binding.communityContext) {
+      throw new AiOutputValidationError('Community distribution task is missing target context');
+    }
+    return parseCommunityDistributionOutput(content, task.sourceReferences, {
+      originalUrl: binding.originalUrl,
+      includeBrandLink: binding.communityContext.includeBrandLink
+    });
+  }
+
   return parseDistributionAdaptationOutput(content, task.sourceReferences, {
     mode: binding.mode,
     originalUrl: binding.originalUrl
@@ -263,7 +382,7 @@ export function promptIdForDistributionTask(task: AiTask): string {
 
 export async function materializeDistributionAdaptationOutput(
   task: AiTask,
-  output: DistributionAdaptationOutput,
+  output: DistributionTaskOutput,
   tx: Prisma.TransactionClient
 ): Promise<void> {
   const binding = taskBinding(task);
@@ -276,6 +395,25 @@ export async function materializeDistributionAdaptationOutput(
   });
   if (!target) {
     throw new AiOutputValidationError('Distribution target not found during AI materialization');
+  }
+
+  let platformMetadata: Record<string, unknown>;
+  if (binding.mode === 'COMMUNITY_DRAFT') {
+    if (!binding.communityContext) {
+      throw new AiOutputValidationError('Community distribution task is missing target context');
+    }
+    const communityOutput = output as CommunityDistributionOutput;
+    platformMetadata = {
+      kind: 'COMMUNITY_DRAFT',
+      question: binding.communityContext.question,
+      topicUrl: binding.communityContext.topicUrl,
+      includeBrandLink: binding.communityContext.includeBrandLink,
+      promotionalLanguageDetected: communityOutput.promotionalLanguageDetected,
+      brandLinkIncluded: communityOutput.brandLinkIncluded,
+      contextHash: communityContextHash(binding.communityContext)
+    };
+  } else {
+    platformMetadata = (output as DistributionAdaptationOutput).platformMetadata ?? {};
   }
 
   const latestArtifact = await tx.distributionArtifact.findFirst({
@@ -297,7 +435,7 @@ export async function materializeDistributionAdaptationOutput(
       originalUrl: output.originalUrl,
       canonicalUrl: output.canonicalUrl,
       sourceRefs: output.sourceRefs,
-      platformMetadata: output.platformMetadata
+      platformMetadata
     })))
     .digest('hex');
 
@@ -316,7 +454,7 @@ export async function materializeDistributionAdaptationOutput(
       originalUrl: output.originalUrl,
       canonicalUrl: output.canonicalUrl,
       sourceRefs: output.sourceRefs as unknown as Prisma.InputJsonValue,
-      platformMetadata: output.platformMetadata as unknown as Prisma.InputJsonValue
+      platformMetadata: platformMetadata as Prisma.InputJsonValue
     }
   });
 
