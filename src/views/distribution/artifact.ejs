@@ -1,7 +1,7 @@
 <main class="page-shell">
   <div class="page-header">
     <div>
-      <p class="eyebrow">P8-B · Frozen Artifact</p>
+      <p class="eyebrow">P8-C · Frozen Artifact</p>
       <h1>分发产物</h1>
       <p class="muted"><%= target.platform %> · <%= target.mode %> · V<%= artifact.artifactVersion %></p>
     </div>
@@ -28,6 +28,41 @@
       <p class="muted">Canonical：<%= artifact.canonicalUrl %></p>
     <% } %>
   </section>
+
+  <% if (artifact.review && artifact.review.kind === 'COMMUNITY') { %>
+    <section class="card">
+      <h2><%= artifact.review.label %></h2>
+      <dl class="detail-grid">
+        <div><dt>讨论问题</dt><dd><%= artifact.review.question || '未提供' %></dd></div>
+        <div><dt>讨论地址</dt><dd><%= artifact.review.topicUrl || '未提供' %></dd></div>
+      </dl>
+      <p>品牌链接：<%= artifact.review.brandLinkIncluded ? '已包含' : artifact.review.includeBrandLink ? '已明确允许' : '未包含' %></p>
+      <p>推广性语言：<%= artifact.review.promotionalLanguageDetected ? '需人工复核' : '未检测' %></p>
+    </section>
+  <% } %>
+
+  <% if (artifact.review && artifact.review.kind === 'ENTITY') { %>
+    <section class="card">
+      <h2><%= artifact.review.label %></h2>
+      <% if (artifact.review.entityName) { %><p><strong><%= artifact.review.entityName %></strong></p><% } %>
+      <% if (artifact.review.attributes.length) { %>
+        <h3>来源支持字段</h3>
+        <ul><% for (const attribute of artifact.review.attributes) { %><li><strong><%= attribute.property %></strong>：<span><%= attribute.value %></span></li><% } %></ul>
+      <% } %>
+      <% if (artifact.review.sameAs.length) { %>
+        <h3>SameAs 建议</h3>
+        <ul><% for (const item of artifact.review.sameAs) { %><li><%= item.url %></li><% } %></ul>
+      <% } %>
+      <h3>可靠来源</h3>
+      <% if (artifact.review.reliableSourceRefs.length) { %><ul><% for (const ref of artifact.review.reliableSourceRefs) { %><li><code><%= ref %></code></li><% } %></ul><% } else { %><p class="muted">暂无可靠来源。</p><% } %>
+      <h3>缺失数据</h3>
+      <% if (artifact.review.missingData.length) { %><ul><% for (const item of artifact.review.missingData) { %><li><%= item %></li><% } %></ul><% } else { %><p class="muted">无已记录缺失项。</p><% } %>
+      <h3>平台/利益冲突提醒</h3>
+      <% if (artifact.review.policyReminders.length) { %><ul><% for (const item of artifact.review.policyReminders) { %><li><%= item %></li><% } %></ul><% } else { %><p class="muted">无额外提醒。</p><% } %>
+      <h3>人工编辑清单</h3>
+      <% if (artifact.review.humanChecklist.length) { %><ul><% for (const item of artifact.review.humanChecklist) { %><li><%= item %></li><% } %></ul><% } else { %><p class="muted">暂无清单项。</p><% } %>
+    </section>
+  <% } %>
 
   <% if (artifact.summary) { %>
     <section class="card"><h2>摘要</h2><p><%= artifact.summary %></p></section>
