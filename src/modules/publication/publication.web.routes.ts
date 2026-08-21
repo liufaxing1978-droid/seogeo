@@ -66,11 +66,11 @@ function proposalMetadata(value: unknown) {
 
 function render(res: any, bodyTemplate: string, locals: Record<string, unknown>) {
   return res.render('layout', {
-    title: '内容与发布',
     activeNav: 'publication',
     currentProjectId: null,
     bodyTemplate,
-    ...locals
+    ...locals,
+    title: 'P8-A 发布工作区'
   });
 }
 
@@ -85,7 +85,6 @@ publicationWebRoutes.get('/projects/:id/publication', async (req, res, next) => 
     const latestVerification = model.verifications[0] ?? null;
     const primarySite = model.sites[0] ?? null;
     render(res, 'publication/index', {
-      title: '内容与发布',
       currentProjectId: model.project.id,
       ...model,
       latestExecution,
@@ -103,7 +102,6 @@ publicationWebRoutes.get('/projects/:id/publication/opportunities', async (req, 
     const model = await publicationWebRepository.listOpportunities(projectId);
     if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
     render(res, 'publication/opportunities', {
-      title: '内容机会',
       currentProjectId: model.project.id,
       project: model.project,
       proposals: model.proposals.map((proposal) => ({ ...proposal, metadata: proposalMetadata(proposal.sourceMetadata) }))
@@ -117,7 +115,6 @@ publicationWebRoutes.get('/projects/:id/publication/drafts', async (req, res, ne
     const model = await publicationWebRepository.listDrafts(projectId);
     if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
     render(res, 'publication/drafts', {
-      title: '内容草稿',
       currentProjectId: model.project.id,
       ...model
     });
@@ -133,7 +130,6 @@ publicationWebRoutes.get('/projects/:id/publication/drafts/:draftId', async (req
     const latestPlan = model.draft.plans[0] ?? null;
     const validation = validationModel(latestPlan?.preview?.validationResult);
     render(res, 'publication/editor', {
-      title: model.draft.title,
       currentProjectId: model.project.id,
       ...model,
       latestPlan,
@@ -152,7 +148,6 @@ publicationWebRoutes.get('/projects/:id/publication/plans/:planId', async (req, 
     const validation = validationModel(model.plan.preview?.validationResult);
     const preview = previewModel(model.plan.preview?.diffPayload);
     render(res, 'publication/preview', {
-      title: '发布预览',
       currentProjectId: model.project.id,
       ...model,
       validation,
@@ -171,7 +166,6 @@ publicationWebRoutes.get('/projects/:id/publication/executions/:executionId', as
     const model = await publicationWebRepository.getExecution(projectId, executionId);
     if (!model) throw new NotFoundError('Publication execution not found', 'PUBLICATION_EXECUTION_NOT_FOUND');
     render(res, 'publication/show', {
-      title: '发布执行',
       currentProjectId: model.project.id,
       ...model,
       staleReviewRequired: model.execution.status === 'STALE_REVIEW_REQUIRED'
@@ -188,7 +182,6 @@ publicationWebRoutes.get('/projects/:id/publication/verifications/:verificationI
     const model = await publicationWebRepository.getVerification(projectId, verificationId);
     if (!model) throw new NotFoundError('Publication verification not found', 'PUBLICATION_VERIFICATION_NOT_FOUND');
     render(res, 'publication/verification', {
-      title: '发布验证',
       currentProjectId: model.project.id,
       ...model,
       regressionFindings: stringArray(model.verification.regressionFindings)
