@@ -107,6 +107,21 @@ export class PublicationRepository {
     return prisma.contentDraft.findUnique({ where: { id: draftId } });
   }
 
+  getDraftVersion(draftId: string, version: number) {
+    return prisma.contentDraftVersion.findFirst({
+      where: { draftId, version }
+    });
+  }
+
+  async getNextPlanVersion(proposalId: string): Promise<number> {
+    const latest = await prisma.publicationPlan.findFirst({
+      where: { proposalId },
+      orderBy: [{ version: 'desc' }, { id: 'asc' }],
+      select: { version: true }
+    });
+    return (latest?.version ?? 0) + 1;
+  }
+
   getGrowthOpportunityProposalSource(projectId: string, opportunityIdentityId: string) {
     return prisma.growthOpportunityIdentity.findFirst({
       where: {
