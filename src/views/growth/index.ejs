@@ -1,0 +1,51 @@
+<% const pct = (value) => value == null ? '—' : `${Math.round(Number(value) * 100)}%`; %>
+<section class="page-header">
+  <div>
+    <p class="eyebrow">P7-A · Growth Intelligence</p>
+    <h1>Growth Opportunity Center</h1>
+    <p class="muted"><%= project.name %> · 默认仅展示可排序、ranking-eligible 的最新持久化机会，按 Opportunity Score 从高到低排列。</p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/projects/<%= project.id %>/search-console">Search Console</a>
+    <% if (!basicSurface) { %><a class="button secondary" href="/projects/<%= project.id %>/growth/topics">Topic Clusters</a><% } %>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div><h2>当前机会</h2><p class="muted">Priority 表示处理优先级；Evidence Quality 独立表示证据完整度，不会混为一个字段。</p></div>
+  </div>
+  <div class="table-wrap"><table>
+    <thead>
+      <tr><th>Score</th><th>Priority</th><th>Evidence Quality</th><th>Query</th><th>Page</th><th>Type</th><th>Demand</th><th>Position</th><th>CTR Gap</th><th>Lifecycle</th></tr>
+    </thead>
+    <tbody>
+      <% for (const row of opportunities) { %>
+        <tr>
+          <td><strong><%= row.score ?? '—' %></strong></td>
+          <td><span class="badge"><%= row.priority ?? 'UNKNOWN' %></span></td>
+          <td><span class="badge"><%= row.evidenceQuality ?? 'UNKNOWN' %></span> <span class="muted"><%= pct(row.evidenceCoverage) %></span></td>
+          <td><a href="/projects/<%= project.id %>/growth/opportunities/<%= row.id %>"><%= row.normalizedQuery || '—' %></a></td>
+          <td><code><%= row.canonicalPage || '—' %></code></td>
+          <td><%= row.primaryType ?? '—' %></td>
+          <td><%= row.demandScore ?? '—' %></td>
+          <td><%= row.positionPotentialScore ?? '—' %></td>
+          <td><%= row.ctrGapScore ?? '—' %></td>
+          <td><%= row.lifecycleStatus ?? 'NEW' %></td>
+        </tr>
+      <% } %>
+      <% if (!opportunities.length) { %><tr><td colspan="10" class="muted">当前稳定窗口没有 ranking-eligible Growth Opportunity。</td></tr><% } %>
+    </tbody>
+  </table></div>
+</section>
+
+<% if (!basicSurface) { %>
+<section class="panel">
+  <div class="panel-header"><div><h2>高级视图</h2><p class="muted">聚合视图只读取已经 materialize 的确定性快照。</p></div></div>
+  <div class="actions">
+    <a class="button secondary" href="/projects/<%= project.id %>/growth/topics">Topic Clusters</a>
+    <a class="button secondary" href="/projects/<%= project.id %>/growth/cannibalization">Cannibalization</a>
+    <a class="button secondary" href="/projects/<%= project.id %>/growth/new-content">New Content</a>
+  </div>
+</section>
+<% } %>
