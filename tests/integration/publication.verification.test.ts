@@ -57,7 +57,7 @@ async function createProject() {
   return project;
 }
 
-async function seedExecution(initialStatus: 'DEPLOYED' = 'DEPLOYED') {
+async function seedExecution(initialStatus: 'PR_CREATED' | 'DEPLOYED' = 'DEPLOYED') {
   const repository = new PublicationRepository();
   const project = await createProject();
   const proposal = await repository.createProposal({
@@ -261,6 +261,58 @@ describe('P8-A real-site verification lifecycle', () => {
     expect(await prisma.publicationVerification.count({ where: { executionId: execution.id } })).toBe(2);
     expect(await prisma.publicationExecutionEvent.count({ where: { executionId: execution.id } }))
       .toBe(eventsBeforeDuplicate);
+  });
+
+  it('uses the real public target, not PR state, to observe deployment from PR_CREATED', async () => {
+    const { execution } = await seedExecution('PR_CREATED');
+    let fetchCalls = 0;
+    let response = publicHtml({ mainText: '公开网站仍未部署批准版本。' });
+    const deps: PublicationVerificationWorkerDeps = {
+      fetchTarget: async () => {
+        fetchCalls += 1;
+        return response;
+      },
+      emit: () => undefined
+    };
+    const job = { name: 'verify', data: { executionId: execution.id } };
+
+    await processPublicationVerificationJob(job, deps);
+
+    const beforeDeployment = await prisma.publicationExecution.findUniqueOrThrow({
+      where: { id: execution.id }
+    });
+    expect(beforeDeployment.status).toBe('PR_CREATED');
+    const firstVerification = await prisma.publicationVerification.findFirstOrThrow({
+      where: { executionId: execution.id },
+      orderBy: { createdAt: 'desc' }
+    });
+    expect(firstVerification).toMatchObject({
+      status: 'UNKNOWN',
+      reasonCode: 'DEPLOYMENT_NOT_OBSERVED',
+      contentFingerprintOk: false
+    });
+    expect(await prisma.publicationExecutionEvent.count({ where: { executionId: execution.id } }))
+      .toBe(0);
+    expect(fetchCalls).toBe(1);
+
+    response = publicHtml({ mainText: EXPECTED_TEXT });
+    await processPublicationVerificationJob(job, deps);
+
+    const verified = await prisma.publicationExecution.findUniqueOrThrow({
+      where: { id: execution.id }
+    });
+    expect(verified.status).toBe('VERIFIED');
+    expect(fetchCalls).toBe(2);
+
+    const events = await prisma.publicationExecutionEvent.findMany({
+      where: { executionId: execution.id },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+    });
+    expect(events.map((event) => [event.fromStatus, event.toStatus, event.eventType, event.reasonCode])).toEqual([
+      ['PR_CREATED', 'DEPLOYED', 'DEPLOYED', 'DEPLOYMENT_OBSERVED'],
+      ['DEPLOYED', 'VERIFYING', 'VERIFICATION_STARTED', 'VERIFICATION_STARTED'],
+      ['VERIFYING', 'VERIFIED', 'VERIFIED', 'VERIFICATION_PASSED']
+    ]);
   });
 
   it('persists a deterministic regression and blocks VERIFIED after deployment was observed', async () => {
