@@ -2,7 +2,7 @@
 
 Independent SEO / GEO platform for `seo.xingshantang.org`.
 
-Current milestone: **P0 - P8-B complete**. P8-B adds bounded multi-channel distribution from an already VERIFIED primary publication while preserving primary-site authority, explicit approval and adapter capability boundaries.
+Current milestone: **P0 - P8-C complete**. P8-C extends the bounded P8 distribution control plane with source-backed Community GEO drafts and Enterprise entity/knowledge-graph suggestions while keeping final community actions human-operated and entity platforms prepare-only.
 
 ## Architecture
 
@@ -29,6 +29,8 @@ P7-A Search Console ingestion is read-only. Growth materialization consumes pers
 P8-A consumes persisted proposal/draft/plan/preview/approval/execution/verification facts and keeps DeepSeek advisory-only. Git mutation never writes the default branch directly; Standard stays export-only, and Advanced/Enterprise Git execution is constrained to reviewed Draft PR flows.
 
 P8-B consumes only an already VERIFIED primary publication for normal distribution. Distribution artifacts are immutable and source-version bound; preparation stops at `DRAFT_READY`, approval is explicit, manual-only channels stop at `MANUAL_ACTION_REQUIRED`, and trusted provider publishing/verification is available only through an explicitly configured `PUBLISH_API` adapter. Distribution `VERIFIED` never replaces or mutates primary publication authority.
+
+P8-C keeps that authority model unchanged. Community targets are bounded `COMMUNITY_DRAFT` / `MANUAL_HANDOFF` workflows for human review and final human publishing, with optional brand/source links and normalized target context included in deterministic request identity. Entity targets are Enterprise-only `ENTITY_SUGGESTION` / `PREPARE_ONLY`; no P8-C path auto-submits Wikipedia, Wikidata or Baidu Baike edits.
 
 Provider reasoning is never persisted, logged or rendered.
 
@@ -235,7 +237,7 @@ Delivered capabilities:
 - immutable versioned distribution artifacts bound to the exact primary source content version;
 - automatic OUTDATED state when a newer primary source version supersedes an older frozen artifact;
 - explicit adapter capabilities: `PREPARE_ONLY`, `MANUAL_HANDOFF`, `PUBLISH_API`;
-- Medium, LinkedIn and Substack remain manual handoff; reserved community/entity targets remain prepare-only;
+- Medium, LinkedIn and Substack remain manual handoff; P8-C defines the separate community/entity capability rules below;
 - WordPress/Blogger-style trusted HTTP publishing is possible only through server-configured trusted adapters and bounded provider responses;
 - platform-native canonical repost, adapted article and summary generation through the existing P4 AI task pipeline, never direct provider calls from the distribution module;
 - deterministic `distribution-preparation` BullMQ jobs and preparation that stops at `DRAFT_READY`;
@@ -249,6 +251,30 @@ P8-B GET rendering is persisted-read only and does not enqueue preparation, invo
 
 Design: `docs/superpowers/specs/2026-08-21-p8-safe-site-mutation-design.md`.
 Implementation plan: `docs/superpowers/plans/2026-08-21-p8b-multichannel-distribution.md`.
+
+## P8-C Community GEO & Entity Suggestions
+
+P8-C extends P8-B with bounded community-native drafting and structured entity/knowledge-graph suggestions without adding autonomous community or knowledge-platform posting.
+
+Delivered capabilities:
+
+- community platforms `REDDIT`, `QUORA`, `ZHIHU`, `JIANSHU`, `TIEBA`, `PTT`, `DCARD` and `MOBILE01` use `COMMUNITY_DRAFT` and always resolve to `MANUAL_HANDOFF`;
+- Community GEO preparation requires Advanced/Enterprise, a bound primary `PublicationExecution` already `VERIFIED`, and the exact current source content version;
+- normalized community target context freezes `sourceType`, question/topic, optional topic URL and `includeBrandLink`; its deterministic SHA-256 context hash participates in AI request identity so changed context cannot reuse stale work;
+- source-backed community AI output must answer the supplied question/topic rather than mirror the article, may include a brand/source link only when explicitly allowed, and records promotional-language/brand-link review flags for a human reviewer;
+- final community publishing remains human-operated; automatic provider publishing is not exposed and a public result URL can be recorded only after the manual handoff;
+- `WIKIDATA`, `WIKIPEDIA` and `BAIDU_BAIKE` require Enterprise governance, `ENTITY_SUGGESTION` mode and `PREPARE_ONLY` capability;
+- entity artifacts provide bounded labels/descriptions, source-backed attributes, SameAs candidates, relationships, reliable source refs, missing-data notes, policy reminders and a human checklist;
+- entity publish, manual-result and verification paths fail closed before provider work; no P8-C path auto-submits knowledge-platform edits;
+- Community/Entity artifacts remain immutable and exact-source-version bound, and returned AI source refs must be a subset of supplied persisted refs;
+- `community.draft.prepared` / `entity.suggestion.prepared` observability is emitted only after artifact materialization commits and carries bounded identifiers/counts/context hashes rather than article bodies, questions, prompts, tokens, source URLs, credentials or raw provider payloads;
+- the existing `多渠道分发` workspace remains the single review surface; GET rendering is database-only and decodes only bounded known persisted metadata;
+- Entity review pages deliberately render no automatic-publish or manual-result controls.
+
+CI contains no real community or knowledge-platform posting credentials and performs no live community/entity provider writes.
+
+Implementation plan: `docs/superpowers/plans/2026-08-22-p8c-community-entity-support.md`.
+Release evidence: `docs/development/p8c-release-verification.md`.
 
 ## Feature gates
 
@@ -276,6 +302,8 @@ P8-A exposes controlled publication review to all plans, but Standard remains `E
 
 P8-B `PUBLICATION_DISTRIBUTION` is Advanced/Enterprise only. Restricted distribution routes fail before project-scoped mutation/provider work. Adapter capability is an independent hard boundary: plan level never turns `PREPARE_ONLY` or `MANUAL_HANDOFF` into automatic provider publishing.
 
+P8-C Community GEO reuses `PUBLICATION_DISTRIBUTION` and is therefore Advanced/Enterprise only; its capability is always `MANUAL_HANDOFF`. P8-C Entity Suggestion additionally requires existing `PUBLICATION_ENTERPRISE_GOVERNANCE` and remains `PREPARE_ONLY`. Plan level cannot upgrade either boundary into automatic posting.
+
 `ADVANCED_REPORTS` remains reserved for future advanced scheduling/bundling/distribution rather than the base project report snapshot feature.
 
 ## Development
@@ -301,7 +329,7 @@ npm run typecheck
 npm test
 npm run build
 npm run test:e2e
-npm audit --omit=dev --audit-level=high
+npm audit --omit=dev --audit-level=high --legacy-peer-deps
 ```
 
 P6-A additionally requires proof that duplicate delivery cannot duplicate a paid adapter call, budget-skipped observations make zero provider calls, Standard projects cannot enqueue visibility sampling, DeepSeek unsupported grounding makes zero network calls, provider secrets are not persisted, API sampling is not mislabeled as consumer-product ranking, and CI uses fixture transports instead of live provider APIs.
@@ -318,6 +346,8 @@ P8-A release evidence requires proof that immutable plans/previews/approvals rem
 
 P8-B release evidence requires proof that only primary `VERIFIED` publications enter normal distribution; artifacts remain immutable and exact-source-version bound; stale artifacts become `OUTDATED`; manual-only channels cannot reach provider publish; trusted publishing is server-configured and fail-closed; manual result URLs are bounded HTTP(S); distribution verification binds the frozen provider result without changing primary authority; GET distribution rendering is persisted-read only; CI uses fake provider transports with no real external credentials/writes; and exact-head CI passes `verify`, Chromium `e2e` and `production-audit`. Task 21 exact head `f9426a5196d9fad5a33e352545128a2688302265` passed CI #1465 / run `32501202839` for all three jobs before merge into the P8-B integration branch.
 
+P8-C release evidence requires proof that Community GEO remains human-operated `MANUAL_HANDOFF` with optional brand links; Entity Suggestion is Enterprise `PREPARE_ONLY` with no auto-submit; target-context changes produce a distinct deterministic request identity; normal preparation requires a primary `VERIFIED` publication and exact source version; Community/Entity source refs stay bounded and source-backed; safe observability excludes content/prompts/tokens/credentials/source URLs/raw provider data; GET review surfaces are persisted-read only; and CI uses no real community or knowledge-platform credentials/writes. The pre-release exact head `80a01ced053b6b8caad3ec91928b9a92ae02f23d` passed CI #1499 / run `32515721621`: Prisma validate/generate/migrate, Typecheck, 219 test files / 845 tests, Build, full Chromium E2E and production runtime audit all succeeded before this README milestone was advanced.
+
 ## Roadmap
 
 - P0 Platform foundation — complete
@@ -333,3 +363,4 @@ P8-B release evidence requires proof that only primary `VERIFIED` publications e
 - P7-A Search Console + Growth Opportunity Intelligence — complete
 - P8-A Safe Site Mutation + Primary Site Publication — complete
 - P8-B Multi-channel Distribution — complete
+- P8-C Community GEO & Entity/Knowledge Graph Support — complete
