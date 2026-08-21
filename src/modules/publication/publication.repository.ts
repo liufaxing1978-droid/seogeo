@@ -545,6 +545,36 @@ export class PublicationRepository {
     });
   }
 
+  getExecutionRollbackContext(executionId: string) {
+    return prisma.publicationExecution.findUnique({
+      where: { id: executionId },
+      include: {
+        plan: {
+          include: {
+            preview: true
+          }
+        }
+      }
+    });
+  }
+
+  getVerificationRepairContext(verificationId: string) {
+    return prisma.publicationVerification.findUnique({
+      where: { id: verificationId },
+      include: {
+        execution: {
+          include: {
+            plan: {
+              include: {
+                preview: true
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
   createRollbackProposal(input: CreatePublicationRollbackProposalInput) {
     return prisma.publicationRollbackProposal.create({
       data: {
