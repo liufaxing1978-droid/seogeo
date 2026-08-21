@@ -45,6 +45,38 @@ describe('P7-A Growth lifecycle reconciliation', () => {
     return row;
   }
 
+  async function persistedSnapshot(
+    opportunityIdentityId: string,
+    currentWindowStart: string,
+    currentWindowEnd: string,
+    previousWindowStart: string,
+    previousWindowEnd: string,
+    score: number
+  ) {
+    return prisma.growthOpportunitySnapshot.create({
+      data: {
+        opportunityIdentityId,
+        projectId,
+        snapshotVersion: 'GROWTH_OPPORTUNITY_V1',
+        formulaVersion: 'GROWTH_SCORE_V1',
+        currentWindowStart: new Date(`${currentWindowStart}T00:00:00.000Z`),
+        currentWindowEnd: new Date(`${currentWindowEnd}T00:00:00.000Z`),
+        previousWindowStart: new Date(`${previousWindowStart}T00:00:00.000Z`),
+        previousWindowEnd: new Date(`${previousWindowEnd}T00:00:00.000Z`),
+        dataCutoffAt: new Date(`${currentWindowEnd}T00:00:00.000Z`),
+        primaryType: 'RANKING_UPSIDE',
+        secondaryTypes: [],
+        score,
+        priority: score < 25 ? 'MONITOR' : 'LOW',
+        scoreState: 'KNOWN',
+        evidenceQuality: 'PARTIAL',
+        evidenceCoverage: 0.8,
+        rankingEligible: false,
+        sourceProvenance: { test: true }
+      }
+    });
+  }
+
   it('advances latestSnapshotId without rewriting the stable identity', async () => {
     const row = await identity('NEW');
     const snapshotId = randomUUID();
@@ -60,6 +92,36 @@ describe('P7-A Growth lifecycle reconciliation', () => {
       { actionable: false }, { actionable: false }
     ]);
     const lifecycle = await prisma.growthOpportunityLifecycle.findUniqueOrThrow({ where: { opportunityIdentityId: row.id } });
+    expect(lifecycle.status).toBe('RESOLVED');
+    expect(await prisma.growthOpportunityLifecycleEvent.findFirst({
+      where: { opportunityIdentityId: row.id, eventType: 'AUTO_RESOLVED' }
+    })).not.toBeNull();
+  });
+
+  it('loads persisted snapshot history when the caller does not provide lifecycle history', async () => {
+    const row = await identity('REVIEWED');
+    await persistedSnapshot(
+      row.id,
+      '2026-06-23',
+      '2026-07-20',
+      '2026-05-26',
+      '2026-06-22',
+      20
+    );
+    const current = await persistedSnapshot(
+      row.id,
+      '2026-07-21',
+      '2026-08-17',
+      '2026-06-23',
+      '2026-07-20',
+      10
+    );
+
+    await reconcileOpportunityLifecycle(row.id, { id: current.id, actionable: false });
+
+    const lifecycle = await prisma.growthOpportunityLifecycle.findUniqueOrThrow({
+      where: { opportunityIdentityId: row.id }
+    });
     expect(lifecycle.status).toBe('RESOLVED');
     expect(await prisma.growthOpportunityLifecycleEvent.findFirst({
       where: { opportunityIdentityId: row.id, eventType: 'AUTO_RESOLVED' }
