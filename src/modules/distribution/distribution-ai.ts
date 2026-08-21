@@ -41,7 +41,7 @@ export const CommunityDistributionOutputSchema = z.object({
   promotionalLanguageDetected: z.boolean(),
   brandLinkIncluded: z.boolean(),
   originalUrl: z.string().url(),
-  canonicalUrl: z.null()
+  canonicalUrl: z.string().url().nullable()
 }).strict();
 
 export type DistributionAdaptationOutput = z.infer<typeof DistributionAdaptationOutputSchema>;
