@@ -58,6 +58,17 @@ export class PublicationRepository {
     });
   }
 
+  getSite(siteId: string) {
+    return prisma.publicationSite.findUnique({ where: { id: siteId } });
+  }
+
+  listChannels(siteId: string) {
+    return prisma.publicationChannel.findMany({
+      where: { siteId },
+      orderBy: [{ pathPrefix: 'asc' }, { id: 'asc' }]
+    });
+  }
+
   createProposal(input: CreatePublicationProposalInput) {
     return prisma.publicationProposal.create({
       data: {

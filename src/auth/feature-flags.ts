@@ -20,7 +20,11 @@ export type Feature =
   | 'GROWTH_CANNIBALIZATION'
   | 'GROWTH_NEW_CONTENT'
   | 'GROWTH_AI_EXPLANATION'
-  | 'PORTFOLIO_GROWTH';
+  | 'PORTFOLIO_GROWTH'
+  | 'PUBLICATION_WORKSPACE'
+  | 'PUBLICATION_GIT_EXECUTION'
+  | 'PUBLICATION_DISTRIBUTION'
+  | 'PUBLICATION_ENTERPRISE_GOVERNANCE';
 
 const standardFeatures = new Set<Feature>([
   'SEO_AUDIT',
@@ -31,7 +35,8 @@ const standardFeatures = new Set<Feature>([
   'REPORTING',
   'AI_ANALYSIS',
   'SEARCH_CONSOLE',
-  'GROWTH_OPPORTUNITIES'
+  'GROWTH_OPPORTUNITIES',
+  'PUBLICATION_WORKSPACE'
 ]);
 
 const advancedFeatures = new Set<Feature>([
@@ -44,13 +49,16 @@ const advancedFeatures = new Set<Feature>([
   'GROWTH_TOPIC_CLUSTERS',
   'GROWTH_CANNIBALIZATION',
   'GROWTH_NEW_CONTENT',
-  'GROWTH_AI_EXPLANATION'
+  'GROWTH_AI_EXPLANATION',
+  'PUBLICATION_GIT_EXECUTION',
+  'PUBLICATION_DISTRIBUTION'
 ]);
 
 const enterpriseFeatures = new Set<Feature>([
   ...advancedFeatures,
   'API_ACCESS',
-  'PORTFOLIO_GROWTH'
+  'PORTFOLIO_GROWTH',
+  'PUBLICATION_ENTERPRISE_GOVERNANCE'
 ]);
 
 const featureMatrix: Record<PlanLevel, Set<Feature>> = {
