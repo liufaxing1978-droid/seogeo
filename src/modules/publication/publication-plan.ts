@@ -83,10 +83,13 @@ export interface PublicationContentOperation {
   language: string;
 }
 
-export interface PublicationPlanPayload extends Omit<CreatePublicationPlanInput, 'operations' | 'targetBlobHashes'> {
+export type PublicationPlanPayload = Omit<
+  CreatePublicationPlanInput,
+  'operations' | 'targetBlobHashes'
+> & {
   targetBlobHashes: Record<string, string>;
-  operations: PublicationContentOperation[];
-}
+  operations: PublicationContentOperation[] & Prisma.InputJsonValue;
+};
 
 export interface AdapterPreviewFile {
   path: string;
@@ -116,10 +119,13 @@ export interface PublicationPreviewDiffPayload {
   planHash: string;
 }
 
-export interface PublicationPreviewPayload extends Omit<CreatePublicationPreviewInput, 'diffPayload' | 'validationResult'> {
-  diffPayload: PublicationPreviewDiffPayload;
-  validationResult: PublicationValidationResult;
-}
+export type PublicationPreviewPayload = Omit<
+  CreatePublicationPreviewInput,
+  'diffPayload' | 'validationResult'
+> & {
+  diffPayload: PublicationPreviewDiffPayload & Prisma.InputJsonValue;
+  validationResult: PublicationValidationResult & Prisma.InputJsonValue;
+};
 
 function planError(code: string, message: string): never {
   throw new PublicationPlanError(code, message);
@@ -232,6 +238,7 @@ export function buildPublicationPlan(
     ? {}
     : { [repositoryPath]: existingBlobSha };
   const operations = [operationFor(input, repositoryPath, publicUrl)];
+  const jsonOperations = operations as PublicationContentOperation[] & Prisma.InputJsonValue;
 
   const hashBinding = {
     projectId: input.projectId,
@@ -256,7 +263,7 @@ export function buildPublicationPlan(
   return {
     ...hashBinding,
     targetBlobHashes,
-    operations,
+    operations: jsonOperations,
     planHash: planHashV1(hashBinding)
   };
 }
@@ -310,7 +317,7 @@ export function createPublicationPreview(
     planId: plan.id,
     previewHash: previewHashV1(hashBinding),
     diffSummary: `${filesCreated.length} created, ${filesModified.length} modified, ${filesDeleted.length} deleted`,
-    diffPayload,
-    validationResult: adapterPreview.validationResult
+    diffPayload: diffPayload as PublicationPreviewDiffPayload & Prisma.InputJsonValue,
+    validationResult: adapterPreview.validationResult as PublicationValidationResult & Prisma.InputJsonValue
   };
 }
