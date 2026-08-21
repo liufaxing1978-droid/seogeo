@@ -46,10 +46,23 @@ export interface RepairVerificationContext {
   execution: RollbackExecutionContext;
 }
 
+export interface PublicationRollbackProposalRecord {
+  id: string;
+  projectId: string;
+  executionId: string;
+  strategy: string;
+  status: string;
+  reasonCode: string;
+  proposedBy: string | null;
+  payload: Prisma.JsonValue | null;
+}
+
 export interface PublicationRollbackRepositoryPort {
   getExecutionRollbackContext(executionId: string): Promise<RollbackExecutionContext | null>;
   getVerificationRepairContext(verificationId: string): Promise<RepairVerificationContext | null>;
-  createRollbackProposal(input: CreatePublicationRollbackProposalInput): Promise<unknown>;
+  createRollbackProposal(
+    input: CreatePublicationRollbackProposalInput
+  ): Promise<PublicationRollbackProposalRecord>;
 }
 
 export interface PublicationRollbackPlannerDeps {
