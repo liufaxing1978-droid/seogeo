@@ -26,7 +26,6 @@ const opportunityTypeSchema = z.enum([
   'DECLINING_PERFORMANCE',
   'NEW_CONTENT_OPPORTUNITY'
 ]);
-
 const prioritySchema = z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'MONITOR', 'UNKNOWN']);
 const boundedListSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(25)
@@ -48,7 +47,6 @@ type OpportunityListInput = {
   priority?: GrowthPriority;
   rankingEligible?: boolean;
 };
-
 type UserLifecycleTarget = 'REVIEWED' | 'PLANNED' | 'IN_PROGRESS' | 'DONE' | 'DISMISSED';
 
 const allowedUserTransitions: Record<GrowthLifecycleStatus, readonly UserLifecycleTarget[]> = {
@@ -69,6 +67,10 @@ const lifecycleEventType: Record<UserLifecycleTarget, GrowthLifecycleEventType> 
   DONE: 'DONE',
   DISMISSED: 'DISMISSED'
 };
+
+function routeParam(value: string | string[]): string {
+  return Array.isArray(value) ? value[0]! : value;
+}
 
 function userLifecycleTimestamp(target: UserLifecycleTarget, now: Date) {
   switch (target) {
@@ -108,7 +110,7 @@ async function latestTopicWindowEnd(projectId: string): Promise<Date | null> {
 
 export interface GrowthRestRepository {
   listOpportunities(projectId: string, input: OpportunityListInput): Promise<unknown[]>;
-  getOpportunity(projectId: string, identityId: string, basicOnly: boolean): Promise<unknown | null>;
+  getOpportunity(projectId: string, identityId: string, basicSurface: boolean): Promise<unknown | null>;
   listTopics(projectId: string, limit: number): Promise<unknown[]>;
   listCannibalization(projectId: string, limit: number): Promise<unknown[]>;
   listNewContent(projectId: string, limit: number): Promise<unknown[]>;
@@ -125,17 +127,16 @@ export const growthRestRepository: GrowthRestRepository = {
     const currentWindowEnd = await latestOpportunityWindowEnd(projectId);
     if (!currentWindowEnd) return [];
 
-    const primaryTypes = input.basicOnly
-      ? (input.primaryType && isBasicType(input.primaryType) ? [input.primaryType] : BASIC_TYPES)
-      : (input.primaryType ? [input.primaryType] : undefined);
-
     if (input.basicOnly && input.primaryType && !isBasicType(input.primaryType)) return [];
+    const primaryTypes = input.basicOnly
+      ? (input.primaryType ? [input.primaryType] : [...BASIC_TYPES])
+      : (input.primaryType ? [input.primaryType] : undefined);
 
     const snapshots = await prisma.growthOpportunitySnapshot.findMany({
       where: {
         projectId,
         currentWindowEnd,
-        ...(primaryTypes ? { primaryType: { in: [...primaryTypes] } } : {}),
+        ...(primaryTypes ? { primaryType: { in: primaryTypes } } : {}),
         ...(input.priority ? { priority: input.priority } : {}),
         ...(input.rankingEligible === undefined ? {} : { rankingEligible: input.rankingEligible })
       },
@@ -183,7 +184,9 @@ export const growthRestRepository: GrowthRestRepository = {
           select: { opportunityIdentityId: true, status: true }
         })
       : [];
-    const lifecycleByIdentity = new Map(lifecycles.map((row) => [row.opportunityIdentityId, row.status]));
+    const lifecycleByIdentity = new Map(
+      lifecycles.map((row) => [row.opportunityIdentityId, row.status])
+    );
 
     return snapshots.map((row) => ({
       id: row.opportunityIdentityId,
@@ -359,12 +362,16 @@ export const growthRestRepository: GrowthRestRepository = {
         where: { id: identityId, projectId },
         select: { id: true }
       });
-      if (!identity) throw new NotFoundError('Growth opportunity not found', 'GROWTH_OPPORTUNITY_NOT_FOUND');
+      if (!identity) {
+        throw new NotFoundError('Growth opportunity not found', 'GROWTH_OPPORTUNITY_NOT_FOUND');
+      }
 
       const lifecycle = await tx.growthOpportunityLifecycle.findUnique({
         where: { opportunityIdentityId: identityId }
       });
-      if (!lifecycle) throw new NotFoundError('Growth lifecycle not found', 'GROWTH_LIFECYCLE_NOT_FOUND');
+      if (!lifecycle) {
+        throw new NotFoundError('Growth lifecycle not found', 'GROWTH_LIFECYCLE_NOT_FOUND');
+      }
       if (!allowedUserTransitions[lifecycle.status].includes(target)) {
         throw new AppError(
           `Cannot transition Growth lifecycle from ${lifecycle.status} to ${target}`,
@@ -406,10 +413,10 @@ export function createGrowthRoutes(injectedRepository: Partial<GrowthRestReposit
     async (req, res, next) => {
       try {
         const input = opportunityListSchema.parse(req.query);
-        const basicSurface = basicOnly(res.locals.project.planLevel);
-        const data = await repository.listOpportunities(req.params.projectId, {
+        const projectId = routeParam(req.params.projectId);
+        const data = await repository.listOpportunities(projectId, {
           limit: input.limit,
-          basicOnly: basicSurface,
+          basicOnly: basicOnly(res.locals.project.planLevel),
           primaryType: input.primaryType,
           priority: input.priority,
           rankingEligible: input.rankingEligible
@@ -424,12 +431,16 @@ export function createGrowthRoutes(injectedRepository: Partial<GrowthRestReposit
     requireFeature('GROWTH_OPPORTUNITIES'),
     async (req, res, next) => {
       try {
+        const projectId = routeParam(req.params.projectId);
+        const opportunityId = routeParam(req.params.opportunityId);
         const data = await repository.getOpportunity(
-          req.params.projectId,
-          req.params.opportunityId,
+          projectId,
+          opportunityId,
           basicOnly(res.locals.project.planLevel)
         );
-        if (!data) throw new NotFoundError('Growth opportunity not found', 'GROWTH_OPPORTUNITY_NOT_FOUND');
+        if (!data) {
+          throw new NotFoundError('Growth opportunity not found', 'GROWTH_OPPORTUNITY_NOT_FOUND');
+        }
         res.json({ data });
       } catch (error) { next(error); }
     }
@@ -441,15 +452,19 @@ export function createGrowthRoutes(injectedRepository: Partial<GrowthRestReposit
     async (req, res, next) => {
       try {
         const input = lifecycleBodySchema.parse(req.body);
+        const projectId = routeParam(req.params.projectId);
+        const opportunityId = routeParam(req.params.opportunityId);
         if (basicOnly(res.locals.project.planLevel)) {
-          const visible = await repository.getOpportunity(req.params.projectId, req.params.opportunityId, true);
-          if (!visible) throw new NotFoundError('Growth opportunity not found', 'GROWTH_OPPORTUNITY_NOT_FOUND');
+          const visible = await repository.getOpportunity(projectId, opportunityId, true);
+          if (!visible) {
+            throw new NotFoundError('Growth opportunity not found', 'GROWTH_OPPORTUNITY_NOT_FOUND');
+          }
         }
         const data = await repository.transitionLifecycle(
-          req.params.projectId,
-          req.params.opportunityId,
+          projectId,
+          opportunityId,
           input.status,
-          `project-api:${req.params.projectId}`
+          `project-api:${projectId}`
         );
         res.json({ data });
       } catch (error) { next(error); }
@@ -462,7 +477,8 @@ export function createGrowthRoutes(injectedRepository: Partial<GrowthRestReposit
     async (req, res, next) => {
       try {
         const { limit } = boundedListSchema.parse(req.query);
-        res.json({ data: await repository.listTopics(req.params.projectId, limit), meta: { limit } });
+        const projectId = routeParam(req.params.projectId);
+        res.json({ data: await repository.listTopics(projectId, limit), meta: { limit } });
       } catch (error) { next(error); }
     }
   );
@@ -473,7 +489,8 @@ export function createGrowthRoutes(injectedRepository: Partial<GrowthRestReposit
     async (req, res, next) => {
       try {
         const { limit } = boundedListSchema.parse(req.query);
-        res.json({ data: await repository.listCannibalization(req.params.projectId, limit), meta: { limit } });
+        const projectId = routeParam(req.params.projectId);
+        res.json({ data: await repository.listCannibalization(projectId, limit), meta: { limit } });
       } catch (error) { next(error); }
     }
   );
@@ -484,7 +501,8 @@ export function createGrowthRoutes(injectedRepository: Partial<GrowthRestReposit
     async (req, res, next) => {
       try {
         const { limit } = boundedListSchema.parse(req.query);
-        res.json({ data: await repository.listNewContent(req.params.projectId, limit), meta: { limit } });
+        const projectId = routeParam(req.params.projectId);
+        res.json({ data: await repository.listNewContent(projectId, limit), meta: { limit } });
       } catch (error) { next(error); }
     }
   );
