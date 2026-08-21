@@ -41,14 +41,17 @@ class FixtureGoogleTransport implements GoogleSearchConsoleTransport {
   async querySearchAnalytics() { return { rows: [] }; }
 }
 
-async function createProject(label: string) {
+async function createProject(
+  label: string,
+  planLevel: 'STANDARD' | 'ADVANCED' | 'ENTERPRISE' = 'ADVANCED'
+) {
   const suffix = `${Date.now()}-${Math.random()}`;
   const project = await prisma.project.create({
     data: {
       name: `P7-A ${label}`,
       slug: `p7a-oauth-${suffix}`,
       primaryDomain: `p7a-oauth-${suffix}.example.com`,
-      planLevel: 'ADVANCED'
+      planLevel
     }
   });
   projectIds.push(project.id);
@@ -87,6 +90,35 @@ describe('P7-A Search Console REST API', () => {
       await prisma.oAuthCredentialRecord.deleteMany({ where: { projectId } }).catch(() => undefined);
       await prisma.project.delete({ where: { id: projectId } }).catch(() => undefined);
     }
+  });
+
+  it('gates project routes before touching the injected Search Console service', async () => {
+    const missingProject = '00000000-0000-0000-0000-000000000098';
+    let serviceCalls = 0;
+    const service = {
+      getStatus: async () => {
+        serviceCalls += 1;
+        return { status: 'NOT_CONNECTED', property: null };
+      }
+    } as unknown as SearchConsoleService;
+    const app = createApp({ searchConsoleService: service });
+
+    await request(app)
+      .get(`/api/projects/${missingProject}/search-console/status`)
+      .expect(404)
+      .expect(({ body }) => expect(body.error.code).toBe('PROJECT_NOT_FOUND'));
+
+    expect(serviceCalls).toBe(0);
+  });
+
+  it('allows STANDARD projects to use the read-only Search Console surface', async () => {
+    const project = await createProject('standard feature gate', 'STANDARD');
+    const { app } = createFixtureApp();
+
+    await request(app)
+      .get(`/api/projects/${project.id}/search-console/status`)
+      .expect(200)
+      .expect(({ body }) => expect(body.data.status).toBe('NOT_CONNECTED'));
   });
 
   it('connects with hashed single-use state and never returns or stores plaintext tokens', async () => {

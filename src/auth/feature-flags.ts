@@ -13,18 +13,45 @@ export type Feature =
   | 'CITATION_MONITOR'
   | 'COMPETITOR_SOV'
   | 'ADVANCED_REPORTS'
-  | 'API_ACCESS';
+  | 'API_ACCESS'
+  | 'SEARCH_CONSOLE'
+  | 'GROWTH_OPPORTUNITIES'
+  | 'GROWTH_TOPIC_CLUSTERS'
+  | 'GROWTH_CANNIBALIZATION'
+  | 'GROWTH_NEW_CONTENT'
+  | 'GROWTH_AI_EXPLANATION'
+  | 'PORTFOLIO_GROWTH';
 
-const standardFeatures = new Set<Feature>(['SEO_AUDIT', 'GEO_AUDIT', 'CONTENT_AI', 'CONTENT_INTELLIGENCE', 'COMPETITOR_INTELLIGENCE', 'REPORTING', 'AI_ANALYSIS']);
+const standardFeatures = new Set<Feature>([
+  'SEO_AUDIT',
+  'GEO_AUDIT',
+  'CONTENT_AI',
+  'CONTENT_INTELLIGENCE',
+  'COMPETITOR_INTELLIGENCE',
+  'REPORTING',
+  'AI_ANALYSIS',
+  'SEARCH_CONSOLE',
+  'GROWTH_OPPORTUNITIES'
+]);
+
 const advancedFeatures = new Set<Feature>([
   ...standardFeatures,
   'AI_VISIBILITY',
   'PROMPT_MONITOR',
   'CITATION_MONITOR',
   'COMPETITOR_SOV',
-  'ADVANCED_REPORTS'
+  'ADVANCED_REPORTS',
+  'GROWTH_TOPIC_CLUSTERS',
+  'GROWTH_CANNIBALIZATION',
+  'GROWTH_NEW_CONTENT',
+  'GROWTH_AI_EXPLANATION'
 ]);
-const enterpriseFeatures = new Set<Feature>([...advancedFeatures, 'API_ACCESS']);
+
+const enterpriseFeatures = new Set<Feature>([
+  ...advancedFeatures,
+  'API_ACCESS',
+  'PORTFOLIO_GROWTH'
+]);
 
 const featureMatrix: Record<PlanLevel, Set<Feature>> = {
   STANDARD: standardFeatures,

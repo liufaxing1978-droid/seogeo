@@ -4,6 +4,7 @@ import type {
   GrowthOpportunityType
 } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
+import { detectKeywordCannibalization } from './cannibalization.js';
 import { buildProjectCtrCurve } from './ctr-curve.js';
 import {
   dedupeGrowthEvidence,
@@ -31,6 +32,7 @@ import {
   assessStableWindowCoverage,
   resolveStableWindows
 } from './gsc-window.js';
+import { detectNewContentOpportunity } from './new-content.js';
 import {
   GROWTH_TOPIC_IDENTITY_VERSION,
   GROWTH_TOPIC_SNAPSHOT_VERSION,
@@ -68,6 +70,11 @@ type P3TopicBinding = {
   canonicalName: string;
   normalizedName: string;
 };
+
+type NewContentCoverageEvidence = Pick<
+  GrowthEvidence,
+  'sourceModule' | 'ruleKey' | 'evidenceState'
+>;
 
 function atUtcStart(date: string): Date {
   return new Date(`${date}T00:00:00.000Z`);
@@ -111,6 +118,37 @@ function demandPercentiles(rows: readonly QueryPageAggregate[]): Map<string, num
 
 function pageEvidence(allEvidence: readonly GrowthEvidence[], canonicalPage: string): GrowthEvidence[] {
   return allEvidence.filter((row) => row.canonicalPage === null || row.canonicalPage === canonicalPage);
+}
+
+function isNewContentCoverageEvidence(row: NewContentCoverageEvidence): boolean {
+  return row.sourceModule === 'P3_ENTITY' ||
+    row.sourceModule === 'P3_CITABILITY' ||
+    row.sourceModule === 'P5_CONTENT' ||
+    (row.sourceModule === 'P3_GEO' && row.ruleKey.startsWith('CONTENT_GEO_'));
+}
+
+export function summarizeNewContentCoverageEvidence(
+  evidence: readonly NewContentCoverageEvidence[]
+): {
+  evidenceKnown: boolean;
+  hasCoverageGap: boolean | null;
+  eligibleEvidenceCount: number;
+} {
+  const known = evidence.filter((row) =>
+    isNewContentCoverageEvidence(row) &&
+    (row.evidenceState === 'PASS' || row.evidenceState === 'FAIL')
+  );
+  return {
+    evidenceKnown: known.length > 0,
+    hasCoverageGap: known.length > 0
+      ? known.some((row) => row.evidenceState === 'FAIL')
+      : null,
+    eligibleEvidenceCount: known.length
+  };
+}
+
+function normalizeTopicText(value: string): string {
+  return value.trim().toLocaleLowerCase().replace(/\s+/g, ' ');
 }
 
 function p3BindingRank(entityType: string, role: string): number {
@@ -416,20 +454,56 @@ export async function materializeGrowthWindow(
     evidenceVersion: GROWTH_EVIDENCE_VERSION,
     gscSnapshotIds: selectedGscSnapshotIds
   };
-  const members: MaterializedMember[] = [];
-
-  for (const aggregate of currentAggregates) {
+  const scoreContextFor = (aggregate: QueryPageAggregate) => {
     const previous = previousByKey.get(aggregateKey(aggregate));
     const evidence = pageEvidence(allEvidence, aggregate.canonicalPage);
     const demand = scoreDemand(aggregate.impressions, percentiles.get(aggregateKey(aggregate)) ?? null);
     const positionPotential = scorePositionPotential(aggregate.position);
     const ctrGap = scoreCtrGap(aggregate.ctr, expectedCtr(ctrCurve, aggregate.position));
     const siteGap = scoreSiteEvidence(evidence);
-    const gscTrend = previous
-      ? scoreGscTrend(aggregate, previous)
-      : unknown();
+    const gscTrend = previous ? scoreGscTrend(aggregate, previous) : unknown();
     const p6Visibility = scorePersistedVisibility(evidence);
     const score = calculateGrowthScore({ demand, positionPotential, ctrGap, siteGap, gscTrend, p6Visibility });
+    return {
+      aggregate,
+      evidence,
+      demand,
+      positionPotential,
+      ctrGap,
+      siteGap,
+      gscTrend,
+      p6Visibility,
+      score
+    };
+  };
+  const scoreContexts = currentAggregates.map(scoreContextFor);
+  const scoreContextByKey = new Map(scoreContexts.map((row) => [aggregateKey(row.aggregate), row]));
+  const breakdownFor = (context: (typeof scoreContexts)[number]) => ({
+    demandState: componentState(context.demand),
+    demandScore: componentScore(context.demand),
+    positionPotentialState: componentState(context.positionPotential),
+    positionPotentialScore: componentScore(context.positionPotential),
+    ctrGapState: componentState(context.ctrGap),
+    ctrGapScore: componentScore(context.ctrGap),
+    siteGapState: componentState(context.siteGap),
+    siteGapScore: componentScore(context.siteGap),
+    gscTrendState: componentState(context.gscTrend),
+    gscTrendScore: componentScore(context.gscTrend),
+    p6VisibilityState: componentState(context.p6Visibility),
+    p6VisibilityScore: componentScore(context.p6Visibility),
+    trendVisibilityDisplayState: context.score.trendVisibilityDisplayScore === null ? 'UNKNOWN' as const : 'KNOWN' as const,
+    trendVisibilityDisplayScore: context.score.trendVisibilityDisplayScore === null
+      ? null
+      : Math.round(context.score.trendVisibilityDisplayScore),
+    availableWeight: context.score.availableWeight,
+    evidenceCoverage: context.score.evidenceCoverage,
+    weightedTotal: context.score.weightedTotal,
+    formulaVersion: context.score.formulaVersion
+  });
+  const members: MaterializedMember[] = [];
+
+  for (const context of scoreContexts) {
+    const { aggregate, evidence, demand, positionPotential, ctrGap, gscTrend, p6Visibility, score } = context;
     const signals = detectNormalOpportunityTypes({
       position: aggregate.position,
       positionPotential,
@@ -494,28 +568,7 @@ export async function materializeGrowthWindow(
         evidenceCoverage: score.evidenceCoverage,
         rankingEligible: score.rankingEligible,
         sourceProvenance: provenance,
-        breakdown: {
-          demandState: componentState(demand),
-          demandScore: componentScore(demand),
-          positionPotentialState: componentState(positionPotential),
-          positionPotentialScore: componentScore(positionPotential),
-          ctrGapState: componentState(ctrGap),
-          ctrGapScore: componentScore(ctrGap),
-          siteGapState: componentState(siteGap),
-          siteGapScore: componentScore(siteGap),
-          gscTrendState: componentState(gscTrend),
-          gscTrendScore: componentScore(gscTrend),
-          p6VisibilityState: componentState(p6Visibility),
-          p6VisibilityScore: componentScore(p6Visibility),
-          trendVisibilityDisplayState: score.trendVisibilityDisplayScore === null ? 'UNKNOWN' : 'KNOWN',
-          trendVisibilityDisplayScore: score.trendVisibilityDisplayScore === null
-            ? null
-            : Math.round(score.trendVisibilityDisplayScore),
-          availableWeight: score.availableWeight,
-          evidenceCoverage: score.evidenceCoverage,
-          weightedTotal: score.weightedTotal,
-          formulaVersion: score.formulaVersion
-        },
+        breakdown: breakdownFor(context),
         evidence: opportunityEvidenceRows(evidence)
       });
     }
@@ -539,6 +592,253 @@ export async function materializeGrowthWindow(
       score: snapshot.score,
       trendVisibilityScore: score.trendVisibilityDisplayScore
     });
+  }
+
+  const queryGroups = new Map<string, QueryPageAggregate[]>();
+  for (const aggregate of currentAggregates) {
+    const rows = queryGroups.get(aggregate.normalizedQuery) ?? [];
+    rows.push(aggregate);
+    queryGroups.set(aggregate.normalizedQuery, rows);
+  }
+  const queryDemandRows = [...queryGroups.entries()]
+    .map(([normalizedQuery, rows]) => ({
+      normalizedQuery,
+      rows,
+      impressions: rows.reduce((sum, row) => sum + row.impressions, 0)
+    }))
+    .sort((a, b) => b.impressions - a.impressions || a.normalizedQuery.localeCompare(b.normalizedQuery));
+  const queryDemandPercentile = new Map<string, number>();
+  const queryDemandDenominator = Math.max(1, queryDemandRows.length);
+  queryDemandRows.forEach((row, index) => {
+    queryDemandPercentile.set(row.normalizedQuery, index / queryDemandDenominator);
+  });
+  const orderedQueryImpressions = queryDemandRows.map((row) => row.impressions).sort((a, b) => a - b);
+  const projectQueryP50Impressions = orderedQueryImpressions.length > 0
+    ? orderedQueryImpressions[Math.floor((orderedQueryImpressions.length - 1) * 0.5)]!
+    : null;
+
+  let specialOpportunitySnapshotCount = 0;
+  const cannibalizationQueries = new Set<string>();
+  for (const queryRow of queryDemandRows) {
+    const queryDemand = scoreDemand(
+      queryRow.impressions,
+      queryDemandPercentile.get(queryRow.normalizedQuery) ?? null
+    );
+    const detector = detectKeywordCannibalization({
+      normalizedQuery: queryRow.normalizedQuery,
+      demandScore: componentScore(queryDemand),
+      projectP50Impressions: projectQueryP50Impressions,
+      pages: queryRow.rows.map((row) => ({
+        canonicalPage: row.canonicalPage,
+        impressions: row.impressions,
+        position: row.position,
+        ctr: row.ctr
+      }))
+    });
+    if (detector.state !== 'DETECTED') continue;
+    cannibalizationQueries.add(queryRow.normalizedQuery);
+
+    const competingPages = detector.competingPages.map((row) => row.canonicalPage).sort();
+    const competingSet = new Set(competingPages);
+    const basisCandidates = queryRow.rows
+      .map((row) => scoreContextByKey.get(aggregateKey(row)))
+      .filter((row): row is NonNullable<typeof row> => Boolean(row))
+      .filter((row) => competingSet.has(row.aggregate.canonicalPage))
+      .sort((a, b) =>
+        (b.score.score ?? -1) - (a.score.score ?? -1) ||
+        a.aggregate.canonicalPage.localeCompare(b.aggregate.canonicalPage)
+      );
+    const basis = basisCandidates[0];
+    if (!basis) throw new Error('Cannibalization score basis not found');
+
+    const identity = await growthRepository.getOrCreateOpportunityIdentity({
+      projectId,
+      identityType: 'KEYWORD_CANNIBALIZATION',
+      normalizedQuery: queryRow.normalizedQuery,
+      canonicalPages: competingPages
+    });
+    let snapshot = await prisma.growthOpportunitySnapshot.findFirst({
+      where: {
+        opportunityIdentityId: identity.id,
+        snapshotVersion: GROWTH_OPPORTUNITY_SNAPSHOT_VERSION,
+        currentWindowStart: currentStart,
+        currentWindowEnd: currentEnd
+      }
+    });
+    if (!snapshot) {
+      const combinedEvidence = dedupeGrowthEvidence(
+        basisCandidates.flatMap((row) => row.evidence)
+      ).provenance;
+      snapshot = await growthRepository.createOpportunitySnapshot({
+        opportunityIdentityId: identity.id,
+        projectId,
+        snapshotVersion: GROWTH_OPPORTUNITY_SNAPSHOT_VERSION,
+        formulaVersion: basis.score.formulaVersion,
+        currentWindowStart: currentStart,
+        currentWindowEnd: currentEnd,
+        previousWindowStart: previousStart,
+        previousWindowEnd: previousEnd,
+        dataCutoffAt: currentEnd,
+        primaryType: 'KEYWORD_CANNIBALIZATION',
+        secondaryTypes: [],
+        score: basis.score.score,
+        priority: basis.score.priority,
+        scoreState: basis.score.scoreState,
+        evidenceQuality: basis.score.evidenceQuality,
+        evidenceCoverage: basis.score.evidenceCoverage,
+        rankingEligible: basis.score.rankingEligible,
+        sourceProvenance: {
+          ...provenance,
+          detector: {
+            type: 'KEYWORD_CANNIBALIZATION',
+            reasonCodes: detector.reasonCodes,
+            competingPages,
+            primaryPageCandidate: detector.primaryPageCandidate,
+            queryImpressions: queryRow.impressions,
+            projectP50Impressions: projectQueryP50Impressions
+          },
+          scoreBasis: {
+            type: 'MAX_MEMBER_QUERY_PAGE_SCORE',
+            canonicalPage: basis.aggregate.canonicalPage
+          }
+        },
+        breakdown: breakdownFor(basis),
+        evidence: opportunityEvidenceRows(combinedEvidence)
+      });
+    }
+
+    await growthRepository.ensureLifecycle(identity.id, snapshot.id, {
+      actorType: 'SYSTEM',
+      reasonCode: 'GROWTH_CANNIBALIZATION_MATERIALIZED'
+    });
+    await reconcileOpportunityLifecycle(
+      identity.id,
+      { id: snapshot.id, actionable: isActionableScore(snapshot.score) }
+    );
+    specialOpportunitySnapshotCount += 1;
+  }
+
+  for (const queryRow of queryDemandRows) {
+    const queryContexts = queryRow.rows
+      .map((row) => scoreContextByKey.get(aggregateKey(row)))
+      .filter((row): row is NonNullable<typeof row> => Boolean(row));
+    if (queryContexts.length === 0) continue;
+
+    const combinedEvidence = dedupeGrowthEvidence(
+      queryContexts.flatMap((row) => row.evidence)
+    ).provenance;
+    const coverageSummary = summarizeNewContentCoverageEvidence(combinedEvidence);
+    const knownCoverageEvidence = combinedEvidence.filter((row) =>
+      isNewContentCoverageEvidence(row) &&
+      (row.evidenceState === 'PASS' || row.evidenceState === 'FAIL')
+    );
+
+    const normalizedQueryTopic = normalizeTopicText(queryRow.normalizedQuery);
+    const hasDeterministicDuplicateLandingPage = queryRow.rows.some((row) => {
+      const binding = p3TopicBindings.get(row.canonicalPage);
+      if (!binding) return false;
+      return normalizeTopicText(binding.normalizedName) === normalizedQueryTopic ||
+        normalizeTopicText(binding.canonicalName) === normalizedQueryTopic;
+    });
+    const queryDemand = scoreDemand(
+      queryRow.impressions,
+      queryDemandPercentile.get(queryRow.normalizedQuery) ?? null
+    );
+    const detector = detectNewContentOpportunity({
+      normalizedQuery: queryRow.normalizedQuery,
+      demandScore: componentScore(queryDemand),
+      queryImpressions: queryRow.impressions,
+      projectP50Impressions: projectQueryP50Impressions,
+      pages: queryRow.rows.map((row) => ({
+        canonicalPage: row.canonicalPage,
+        impressions: row.impressions,
+        position: row.position
+      }))
+    }, {
+      hasCoverageGap: coverageSummary.hasCoverageGap,
+      hasDeterministicDuplicateLandingPage,
+      evidenceKnown: coverageSummary.evidenceKnown,
+      cannibalizationActive: cannibalizationQueries.has(queryRow.normalizedQuery)
+    });
+    if (detector.state !== 'DETECTED') continue;
+
+    const basisCandidates = [...queryContexts].sort((a, b) =>
+      (b.score.score ?? -1) - (a.score.score ?? -1) ||
+      a.aggregate.canonicalPage.localeCompare(b.aggregate.canonicalPage)
+    );
+    const basis = basisCandidates[0];
+    if (!basis) throw new Error('New Content score basis not found');
+
+    const identity = await growthRepository.getOrCreateOpportunityIdentity({
+      projectId,
+      identityType: 'NEW_CONTENT_OPPORTUNITY',
+      normalizedQuery: queryRow.normalizedQuery
+    });
+    let snapshot = await prisma.growthOpportunitySnapshot.findFirst({
+      where: {
+        opportunityIdentityId: identity.id,
+        snapshotVersion: GROWTH_OPPORTUNITY_SNAPSHOT_VERSION,
+        currentWindowStart: currentStart,
+        currentWindowEnd: currentEnd
+      }
+    });
+    if (!snapshot) {
+      snapshot = await growthRepository.createOpportunitySnapshot({
+        opportunityIdentityId: identity.id,
+        projectId,
+        snapshotVersion: GROWTH_OPPORTUNITY_SNAPSHOT_VERSION,
+        formulaVersion: basis.score.formulaVersion,
+        currentWindowStart: currentStart,
+        currentWindowEnd: currentEnd,
+        previousWindowStart: previousStart,
+        previousWindowEnd: previousEnd,
+        dataCutoffAt: currentEnd,
+        primaryType: 'NEW_CONTENT_OPPORTUNITY',
+        secondaryTypes: [],
+        score: basis.score.score,
+        priority: basis.score.priority,
+        scoreState: basis.score.scoreState,
+        evidenceQuality: basis.score.evidenceQuality,
+        evidenceCoverage: basis.score.evidenceCoverage,
+        rankingEligible: basis.score.rankingEligible,
+        sourceProvenance: {
+          ...provenance,
+          detector: {
+            type: 'NEW_CONTENT_OPPORTUNITY',
+            reasonCodes: detector.reasonCodes,
+            queryImpressions: queryRow.impressions,
+            projectP50Impressions: projectQueryP50Impressions,
+            pages: queryRow.rows
+              .map((row) => ({
+                canonicalPage: row.canonicalPage,
+                impressions: row.impressions,
+                position: row.position
+              }))
+              .sort((a, b) => a.canonicalPage.localeCompare(b.canonicalPage)),
+            coverageEvidenceFingerprints: knownCoverageEvidence
+              .map((row) => row.fingerprint)
+              .sort(),
+            duplicateLandingPage: hasDeterministicDuplicateLandingPage
+          },
+          scoreBasis: {
+            type: 'MAX_MEMBER_QUERY_PAGE_SCORE',
+            canonicalPage: basis.aggregate.canonicalPage
+          }
+        },
+        breakdown: breakdownFor(basis),
+        evidence: opportunityEvidenceRows(combinedEvidence)
+      });
+    }
+
+    await growthRepository.ensureLifecycle(identity.id, snapshot.id, {
+      actorType: 'SYSTEM',
+      reasonCode: 'GROWTH_NEW_CONTENT_MATERIALIZED'
+    });
+    await reconcileOpportunityLifecycle(
+      identity.id,
+      { id: snapshot.id, actionable: isActionableScore(snapshot.score) }
+    );
+    specialOpportunitySnapshotCount += 1;
   }
 
   let topicSnapshotCount = 0;
@@ -610,7 +910,7 @@ export async function materializeGrowthWindow(
   return {
     state: 'COMPLETED',
     selectedGscSnapshotIds,
-    opportunitySnapshotCount: members.length,
+    opportunitySnapshotCount: members.length + specialOpportunitySnapshotCount,
     topicSnapshotCount,
     missingDates: []
   };
