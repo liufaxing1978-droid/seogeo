@@ -13,6 +13,7 @@ export const QUEUE_NAMES = [
   'visibility-extraction',
   'visibility-metrics',
   'visibility-monitoring',
+  'site-mutation-execution',
   'ai',
   'report'
 ] as const;
