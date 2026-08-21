@@ -26,7 +26,7 @@ const AttributeSchema = z.object({
 
 const SameAsSchema = z.object({
   url: z.string().trim().url().max(2048).refine(isHttpUrl, 'SameAs URL must use HTTP or HTTPS'),
-  sourceRefs: nonEmptySourceRefs
+  sourceRefs
 }).strict();
 
 const RelationshipSchema = z.object({
@@ -83,6 +83,13 @@ export function parseEntitySuggestionOutput(
 
   assertSuppliedRefs(output.reliableSourceRefs, supplied);
   const reliable = new Set(output.reliableSourceRefs);
+
+  for (const sameAs of output.sameAs) {
+    if (sameAs.sourceRefs.length === 0) {
+      throw new AiOutputValidationError('Entity suggestion SameAs candidate requires at least one reliable source reference');
+    }
+  }
+
   const factualRefGroups = [
     ...output.attributes.map((item) => item.sourceRefs),
     ...output.sameAs.map((item) => item.sourceRefs),
