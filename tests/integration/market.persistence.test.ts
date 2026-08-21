@@ -74,10 +74,16 @@ describe('P9-0A market persistence foundation', () => {
     ]);
 
     const rows = await prisma.projectMarket.findMany({
-      where: { projectId: project.id },
-      orderBy: [{ marketCode: 'asc' }, { locale: 'asc' }]
+      where: { projectId: project.id }
     });
-    expect(rows.map(({ marketCode, locale, enabled }) => ({ marketCode, locale, enabled }))).toEqual([
+    const comparableRows = rows
+      .map(({ marketCode, locale, enabled }) => ({ marketCode, locale, enabled }))
+      .sort((left, right) => {
+        const marketOrder = left.marketCode.localeCompare(right.marketCode);
+        return marketOrder !== 0 ? marketOrder : left.locale.localeCompare(right.locale);
+      });
+
+    expect(comparableRows).toEqual([
       { marketCode: 'GLOBAL', locale: 'en', enabled: true },
       { marketCode: 'SG', locale: 'en-SG', enabled: true },
       { marketCode: 'TW', locale: 'zh-Hant', enabled: false }
