@@ -1,0 +1,28 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">P7 → P8-A</p>
+    <h1>内容机会</h1>
+    <p class="muted"><%= project.name %> · 机会只产生提案，不产生审批。</p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/publication">返回发布中心</a></div>
+</section>
+
+<section class="panel">
+  <h2>机会来源</h2>
+  <p class="muted">P7 Growth 可以推荐内容方向；最终栏目、正文、审批和执行仍由 P8-A 独立控制。</p>
+  <div class="table-wrap"><table><thead><tr><th>来源</th><th>机会类型</th><th>查询 / 主题</th><th>优先级</th><th>原因</th><th>草稿</th></tr></thead><tbody>
+  <% for (const proposal of proposals) { %><tr>
+    <td><span class="badge"><%= proposal.sourceType %></span></td>
+    <td><%= proposal.metadata.opportunityType ?? 'MANUAL' %></td>
+    <td><%= proposal.metadata.normalizedQuery ?? '—' %></td>
+    <td><%= proposal.metadata.priority ?? '—' %><% if (proposal.metadata.score !== null) { %> · <%= proposal.metadata.score %><% } %></td>
+    <td><%= proposal.reason %></td>
+    <td>
+      <% if (proposal.drafts.length) { %>
+        <% for (const draft of proposal.drafts) { %><a href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>"><%= draft.title %></a><br><% } %>
+      <% } else { %><span class="muted">尚未创建</span><% } %>
+    </td>
+  </tr><% } %>
+  <% if (!proposals.length) { %><tr><td colspan="6" class="muted">当前没有内容机会。</td></tr><% } %>
+  </tbody></table></div>
+</section>
