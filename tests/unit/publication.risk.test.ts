@@ -29,8 +29,13 @@ describe('P8-A publication risk policy', () => {
     }
   });
 
-  it('classifies bounded existing-page semantic/indexing changes as MEDIUM', () => {
-    for (const type of ['REPLACE_BODY', 'SET_CANONICAL', 'SET_META_ROBOTS']) {
+  it('classifies the design-approved bounded existing-page changes as MEDIUM', () => {
+    for (const type of [
+      'REPLACE_BOUNDED_CONTENT_BLOCK',
+      'SET_CANONICAL',
+      'SET_META_ROBOTS',
+      'ROBOTS_RULE_CHANGE'
+    ]) {
       expect(classifyPublicationRisk([{ type, path: 'content/news/a.md' }])).toBe('MEDIUM');
     }
   });
@@ -109,7 +114,8 @@ describe('P8-A publication risk policy', () => {
       files: ['content/news/a.md'],
       operations: [
         { type: 'SET_TITLE', path: 'content/news/a.md' },
-        { type: 'SET_CANONICAL', path: 'content/news/a.md' }
+        { type: 'SET_CANONICAL', path: 'content/news/a.md' },
+        { type: 'REPLACE_BOUNDED_CONTENT_BLOCK', path: 'content/news/a.md' }
       ],
       primaryUrl: 'https://xingshantang.org/news/a',
       allowedPaths: ['content/news/']
