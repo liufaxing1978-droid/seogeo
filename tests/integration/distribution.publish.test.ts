@@ -11,8 +11,8 @@ async function loadModule() {
 }
 
 const artifact = {
-  platform: 'WORDPRESS',
-  mode: 'CANONICAL_REPOST',
+  platform: 'WORDPRESS' as const,
+  mode: 'CANONICAL_REPOST' as const,
   publicationId: 'publication-verified-1',
   sourceContentVersion: 7,
   title: '兴善堂 canonical repost',
@@ -79,7 +79,7 @@ describe('P8-B trusted HTTP publish/verify idempotency', () => {
   it('verifies only bounded provider identity/public URL fields and fails closed on malformed provider payloads', async () => {
     const { TrustedHttpDistributionAdapter } = await loadModule();
     const transport = {
-      publish: vi.fn(async () => ({
+      publish: vi.fn(async (_request: any) => ({
         status: 201,
         body: {
           id: 'wp-verified',
@@ -88,7 +88,7 @@ describe('P8-B trusted HTTP publish/verify idempotency', () => {
           rawToken: 'must-not-leak'
         }
       })),
-      verify: vi.fn(async () => ({
+      verify: vi.fn(async (_request: any) => ({
         status: 200,
         body: {
           id: 'wp-verified',
@@ -131,8 +131,8 @@ describe('P8-B trusted HTTP publish/verify idempotency', () => {
         primaryOriginalUrl: artifact.originalUrl
       },
       transport: {
-        publish: vi.fn(async () => ({ status: 201, body: { id: 42, url: 'not-a-url' } })),
-        verify: vi.fn()
+        publish: vi.fn(async (_request: any) => ({ status: 201, body: { id: 42, url: 'not-a-url' } })),
+        verify: vi.fn(async (_request: any) => undefined)
       }
     });
     await expect(malformed.publish(artifact)).rejects.toMatchObject({
