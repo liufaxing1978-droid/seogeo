@@ -171,35 +171,37 @@ describe('P8-B bounded distribution REST API', () => {
     expect(manualFake.calls.some((call) => call.name === 'publishArtifact')).toBe(false);
   });
 
-  it('allows only PUBLISH_API publish/verify and records a bounded manual result URL', async () => {
+  it('allows PUBLISH_API publish/verify and separately records a bounded manual handoff URL', async () => {
     const project = await createProject('publish', 'ADVANCED');
     const targetId = '77777777-7777-4777-8777-777777777777';
     const artifactId = '88888888-8888-4888-8888-888888888888';
-    const fake = createFakeDistributionApi({ ownerProjectId: project.id, capability: 'PUBLISH_API' });
-    const app = appWithDistributionApi(fake.api);
+    const publishFake = createFakeDistributionApi({ ownerProjectId: project.id, capability: 'PUBLISH_API' });
+    const publishApp = appWithDistributionApi(publishFake.api);
 
-    await request(app)
+    await request(publishApp)
       .post(`/api/v1/projects/${project.id}/distribution/targets/${targetId}/artifacts/${artifactId}/publish`)
       .send({})
       .expect(202);
-    await request(app)
+    await request(publishApp)
       .post(`/api/v1/projects/${project.id}/distribution/targets/${targetId}/artifacts/${artifactId}/verify`)
       .send({})
       .expect(202);
 
-    await request(app)
+    const manualFake = createFakeDistributionApi({ ownerProjectId: project.id, capability: 'MANUAL_HANDOFF' });
+    const manualApp = appWithDistributionApi(manualFake.api);
+    await request(manualApp)
       .post(`/api/v1/projects/${project.id}/distribution/targets/${targetId}/artifacts/${artifactId}/manual-result`)
       .send({ publicUrl: 'javascript:alert(1)' })
       .expect(400);
 
-    await request(app)
+    await request(manualApp)
       .post(`/api/v1/projects/${project.id}/distribution/targets/${targetId}/artifacts/${artifactId}/manual-result`)
       .send({ publicUrl: 'https://medium.com/example/manual-post' })
       .expect(201);
 
-    expect(fake.calls.filter((call) => call.name === 'publishArtifact')).toHaveLength(1);
-    expect(fake.calls.filter((call) => call.name === 'verifyArtifact')).toHaveLength(1);
-    expect(fake.calls.filter((call) => call.name === 'recordManualResult')).toEqual([
+    expect(publishFake.calls.filter((call) => call.name === 'publishArtifact')).toHaveLength(1);
+    expect(publishFake.calls.filter((call) => call.name === 'verifyArtifact')).toHaveLength(1);
+    expect(manualFake.calls.filter((call) => call.name === 'recordManualResult')).toEqual([
       {
         name: 'recordManualResult',
         args: [project.id, targetId, artifactId, 'https://medium.com/example/manual-post']
