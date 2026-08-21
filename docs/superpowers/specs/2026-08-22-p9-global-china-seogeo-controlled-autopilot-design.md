@@ -194,18 +194,11 @@ The upgrade must:
 
 Prefer mature existing GitHub skills for SEO/GEO methods rather than reimplementing generic marketing knowledge.
 
-Initial candidates include mature skills covering:
+Initial upstream candidates to review and pin include:
 
-- SEO audit;
-- AI SEO / GEO;
-- schema;
-- programmatic SEO;
-- site architecture;
-- content strategy;
-- marketing loops;
-- analytics;
-- A/B testing;
-- GEO content and quality evaluation.
+- `coreyhaines31/marketingskills` for SEO audit, AI SEO, schema, programmatic SEO, site architecture, content strategy, marketing loops, analytics, and A/B testing;
+- `aaron-he-zhu/aaron-marketing-skills` for GEO/content-quality/technical/on-page/site-structure methods;
+- provider-specific or narrower SEO/GEO skill repositories only when they add non-duplicative value and pass the same review gate.
 
 Third-party skills MUST be treated as advisory method libraries, not authority or execution engines.
 
