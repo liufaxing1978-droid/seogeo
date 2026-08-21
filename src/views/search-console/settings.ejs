@@ -6,7 +6,7 @@
     <p class="muted"><%= project.name %> · 只读连接。搜索数据用于确定性的 Growth Opportunity 计算，不修改 Google Search Console 配置。</p>
   </div>
   <div class="actions">
-    <a class="button secondary" href="/projects/<%= project.id %>/growth">Growth Center</a>
+    <a class="button secondary" href="/projects/<%= project.id %>/growth">打开 Growth Center</a>
   </div>
 </section>
 
@@ -42,7 +42,7 @@
   </div>
   <% if (!connection) { %>
     <div class="empty-state">
-      <h3>NOT_CONNECTED</h3>
+      <h3>尚未连接 Search Console</h3>
       <p>连接 Google Search Console 后，可选择项目对应的 Search Console Property 并同步只读搜索表现数据。</p>
       <span class="button secondary" aria-disabled="true">连接 Google Search Console</span>
     </div>
