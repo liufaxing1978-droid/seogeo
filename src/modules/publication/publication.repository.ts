@@ -245,18 +245,40 @@ export class PublicationRepository {
     });
   }
 
-  createApproval(input: CreatePublicationApprovalInput) {
+  async createApproval(input: CreatePublicationApprovalInput) {
+    const plan = await prisma.publicationPlan.findUnique({
+      where: { id: input.planId },
+      select: {
+        projectId: true,
+        draftVersion: true,
+        targetRepository: true,
+        targetBranch: true,
+        targetBlobHashes: true
+      }
+    });
+    if (!plan) throw new Error('Publication plan not found');
+    if (plan.projectId !== input.projectId) throw new Error('Publication plan project mismatch');
+
     return prisma.publicationApproval.create({
       data: {
         projectId: input.projectId,
         planId: input.planId,
         planVersion: input.planVersion,
         planHash: input.planHash,
+        contentVersion: plan.draftVersion,
         contentHash: input.contentHash,
         previewHash: input.previewHash,
         baseSha: input.baseSha,
+        targetRepository: plan.targetRepository,
+        targetBranch: plan.targetBranch,
+        targetBlobHashes: plan.targetBlobHashes === null
+          ? ({} as Prisma.InputJsonObject)
+          : inputJson(plan.targetBlobHashes),
         approverActorId: input.approverActorId,
         approvedRiskClass: input.approvedRiskClass,
+        ...(input.confirmedWarningCodes !== undefined
+          ? { confirmedWarningCodes: input.confirmedWarningCodes }
+          : {}),
         expiresAt: input.expiresAt ?? null
       }
     });
