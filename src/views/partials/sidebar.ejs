@@ -24,6 +24,7 @@
     <div class="nav-group">
       <div class="nav-label">内容</div>
       <a class="<%= activeNav === 'content' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/content` : '/projects' %>">内容中心</a>
+      <a class="<%= activeNav === 'publication' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/publication` : '/projects' %>">内容与发布</a>
       <a class="<%= activeNav === 'competitors' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/competitors` : '/projects' %>">竞争对手</a>
     </div>
     <div class="nav-group">
