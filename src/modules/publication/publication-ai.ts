@@ -1,4 +1,4 @@
-import type { AiTask, Prisma } from '@prisma/client';
+import { Prisma, type AiTask } from '@prisma/client';
 import { z } from 'zod';
 import { AppError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
@@ -229,10 +229,6 @@ export async function createContentBriefTask(
   service: Pick<AiTaskService, 'createAndEnqueue'> = aiTaskService
 ): Promise<AiTask> {
   return service.createAndEnqueue(await buildContentBriefTaskInput(draftId));
-}
-
-function resultFromBriefTask(task: Awaited<ReturnType<typeof prisma.aiTask.findUnique>>) {
-  return task;
 }
 
 export async function buildArticleGenerationTaskInput(
