@@ -85,7 +85,11 @@ export function parseDistributionAdaptationOutput(
   suppliedSourceReferences: unknown,
   context: { mode: DistributionMode | string; originalUrl: string }
 ): DistributionAdaptationOutput {
-  const output = parseStructuredOutput(content, DistributionAdaptationOutputSchema);
+  const parsed = parseStructuredOutput(content, DistributionAdaptationOutputSchema);
+  const output: DistributionAdaptationOutput = {
+    ...parsed,
+    platformMetadata: parsed.platformMetadata ?? {}
+  };
   validateReturnedRefs(output.sourceRefs, suppliedSourceReferences);
 
   if (output.originalUrl !== context.originalUrl) {
