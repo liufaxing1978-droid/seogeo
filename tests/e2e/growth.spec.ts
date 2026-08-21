@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
 import { expect, test } from '@playwright/test';
 
 const prisma = new PrismaClient();
@@ -10,7 +10,7 @@ async function createOpportunity(input: {
   identityType: 'QUERY_PAGE_GROWTH' | 'KEYWORD_CANNIBALIZATION' | 'NEW_CONTENT_OPPORTUNITY';
   primaryType: 'RANKING_UPSIDE' | 'KEYWORD_CANNIBALIZATION' | 'NEW_CONTENT_OPPORTUNITY';
   score: number;
-  sourceProvenance?: Record<string, unknown>;
+  sourceProvenance?: Prisma.InputJsonObject;
 }) {
   const identity = await prisma.growthOpportunityIdentity.create({
     data: {
