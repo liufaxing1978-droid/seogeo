@@ -122,14 +122,14 @@ describe('P8-A publication site/channel configuration', () => {
       'https://xingshantang.org?preview=1',
       'https://xingshantang.org#fragment'
     ]) {
-      await expect(service.configureSite({
+      expect(() => service.configureSite({
         projectId: project.id,
         displayName: 'Invalid',
         publicBaseUrl,
         adapterType: 'EXPORT_ONLY',
         writeCapability: 'EXPORT_ONLY',
         allowedPaths: ['content/news/']
-      })).rejects.toThrow(/https|base url/i);
+      })).toThrow(/https|base url/i);
     }
   });
 
@@ -137,7 +137,7 @@ describe('P8-A publication site/channel configuration', () => {
     const project = await createProject('P8 Git config');
     const service = new PublicationSiteService();
 
-    await expect(service.configureSite({
+    expect(() => service.configureSite({
       projectId: project.id,
       displayName: 'Missing repo',
       publicBaseUrl: 'https://missing-repo.example.com',
@@ -145,9 +145,9 @@ describe('P8-A publication site/channel configuration', () => {
       writeCapability: 'GIT_DRAFT_PR',
       baseBranch: 'main',
       allowedPaths: ['content/news/']
-    })).rejects.toThrow(/repository identity/i);
+    })).toThrow(/repository identity/i);
 
-    await expect(service.configureSite({
+    expect(() => service.configureSite({
       projectId: project.id,
       displayName: 'Missing branch',
       publicBaseUrl: 'https://missing-branch.example.com',
@@ -155,7 +155,7 @@ describe('P8-A publication site/channel configuration', () => {
       writeCapability: 'GIT_DRAFT_PR',
       repositoryIdentity: 'owner/site',
       allowedPaths: ['content/news/']
-    })).rejects.toThrow(/base branch/i);
+    })).toThrow(/base branch/i);
   });
 
   it('allows export-only sites without remote repository credentials but still requires path bounds', async () => {
@@ -174,14 +174,14 @@ describe('P8-A publication site/channel configuration', () => {
     expect(site.repositoryIdentity).toBeNull();
     expect(site.baseBranch).toBeNull();
 
-    await expect(service.configureSite({
+    expect(() => service.configureSite({
       projectId: project.id,
       displayName: 'Unbounded export',
       publicBaseUrl: 'https://unbounded.example.com',
       adapterType: 'EXPORT_ONLY',
       writeCapability: 'EXPORT_ONLY',
       allowedPaths: []
-    })).rejects.toThrow(/allowed path/i);
+    })).toThrow(/allowed path/i);
   });
 
   it('rejects channel repository templates outside the site allowlist or with traversal', async () => {
