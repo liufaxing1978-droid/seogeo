@@ -12,6 +12,11 @@ import type { ContentService } from './modules/content/content.service.js';
 import { contentWebRoutes } from './modules/content/content.web.routes.js';
 import { createCrawlRoutes } from './modules/crawler/crawl.routes.js';
 import type { CrawlService } from './modules/crawler/crawl.service.js';
+import {
+  createDistributionRoutes,
+  type DistributionApiPort
+} from './modules/distribution/distribution.routes.js';
+import { distributionWebRoutes } from './modules/distribution/distribution.web.routes.js';
 import { createGeoRoutes } from './modules/geo/geo.routes.js';
 import type { GeoService } from './modules/geo/geo.service.js';
 import { createGrowthExplanationRoutes } from './modules/growth/growth-explanation.routes.js';
@@ -56,6 +61,7 @@ export interface AppOptions {
   searchConsoleService?: SearchConsoleService;
   growthApiRepository?: Partial<GrowthRestRepository>;
   publicationApi?: PublicationApiPort;
+  distributionApi?: DistributionApiPort;
   visibilityRunService?: VisibilityRunService;
   visibilityExtractionQueue?: VisibilityExtractionQueue;
   visibilityMetricsQueue?: VisibilityMetricsQueue;
@@ -68,7 +74,7 @@ export function createApp(options: AppOptions = {}) {
   app.set('views', path.join(here, 'views'));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
-  app.use('/assets', express.static(path.join(here, 'public')));
+  app.use('/assets', express.static(path.join(here, 'public'));
   app.use('/health', healthRoutes);
   app.use('/api/projects', projectRoutes);
   app.use('/api', createCrawlRoutes(options.crawlService));
@@ -81,6 +87,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/v1', createContentRoutes(options.contentService, options.aiTaskService));
   app.use('/api/v1', createCompetitorRoutes(options.competitorService, options.aiTaskService));
   app.use('/api/v1', createPublicationRoutes(options.publicationApi));
+  app.use('/api/v1', createDistributionRoutes(options.distributionApi));
   app.use('/api/v1', createReportRoutes(options.aiTaskService));
   app.use('/api/v1', createVisibilityRoutes(options.visibilityRunService));
   app.use('/api/v1', createVisibilityIntelligenceRoutes(options.visibilityExtractionQueue));
@@ -88,6 +95,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/v1', createVisibilityHistoryRoutes());
   app.use('/', contentWebRoutes);
   app.use('/', publicationWebRoutes);
+  app.use('/', distributionWebRoutes);
   app.use('/', competitorWebRoutes);
   app.use('/', reportWebRoutes);
   app.use('/', visibilityWebRoutes);
