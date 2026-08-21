@@ -1,0 +1,82 @@
+<main class="page-shell">
+  <div class="page-header">
+    <div>
+      <p class="eyebrow">P8-B · Distribution Target</p>
+      <h1>分发目标</h1>
+      <p class="muted"><%= target.platform %> · <%= target.mode %></p>
+    </div>
+    <a href="/projects/<%= project.id %>/distribution">返回多渠道分发</a>
+  </div>
+
+  <section class="card">
+    <div class="card-header">
+      <div><h2><%= target.platform %></h2><span class="badge"><%= target.capability %></span></div>
+      <span class="badge <%= target.status === 'VERIFIED' ? 'success' : target.status === 'OUTDATED' ? 'danger' : '' %>"><%= target.status %></span>
+    </div>
+    <dl class="detail-grid">
+      <div><dt>模式</dt><dd><%= target.mode %></dd></div>
+      <div><dt>目标键</dt><dd><%= target.targetKey %></dd></div>
+      <div><dt>源内容版本</dt><dd><%= target.sourceContentVersion ? `V${target.sourceContentVersion}` : '—' %></dd></div>
+      <div><dt>主站状态</dt><dd>已验证</dd></div>
+    </dl>
+  </section>
+
+  <% if (manualHandoff) { %>
+    <section class="card">
+      <h2>人工发布 / 回填结果</h2>
+      <p class="muted">该渠道不提供受信任的自动写入能力。请人工完成发布后，通过 API 回填最终公开 URL。</p>
+      <code>POST /api/v1/projects/<%= project.id %>/distribution/targets/<%= target.id %>/artifacts/:artifactId/manual-result</code>
+    </section>
+  <% } %>
+
+  <% if (publishApi) { %>
+    <section class="card">
+      <h2>可信发布能力</h2>
+      <p class="muted">仅服务端可信配置存在时允许调用自动发布与验证；凭证不会从页面输入。</p>
+      <button type="button">自动发布</button>
+    </section>
+  <% } %>
+
+  <section class="card">
+    <div class="card-header"><h2>冻结产物</h2><span class="muted"><%= target.artifacts.length %> 个</span></div>
+    <% if (target.artifacts.length === 0) { %>
+      <p class="muted">尚无分发产物。</p>
+    <% } else { %>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>版本</th><th>标题</th><th>源版本</th><th>生成时间</th><th></th></tr></thead>
+          <tbody>
+            <% for (const artifact of target.artifacts) { %>
+              <tr>
+                <td>V<%= artifact.artifactVersion %></td>
+                <td><%= artifact.title || '未命名产物' %></td>
+                <td>V<%= artifact.sourceContentVersion %></td>
+                <td><%= artifact.createdAt.toISOString() %></td>
+                <td><a href="/projects/<%= project.id %>/distribution/targets/<%= target.id %>/artifacts/<%= artifact.id %>">查看</a></td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+
+  <section class="card">
+    <h2>状态历史</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>时间</th><th>从</th><th>到</th><th>原因</th></tr></thead>
+        <tbody>
+          <% for (const event of target.events) { %>
+            <tr>
+              <td><%= event.createdAt.toISOString() %></td>
+              <td><%= event.fromStatus || '—' %></td>
+              <td><%= event.toStatus %></td>
+              <td><%= event.reasonCode %></td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
