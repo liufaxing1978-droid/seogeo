@@ -1,8 +1,8 @@
 # P8-C Release Verification
 
-Status: **pre-release gate pending**.
+Status: **pre-release gate passed; README-marked exact-head gate pending**.
 
-This record tracks the verified implementation evidence for P8-C Community GEO and Entity/Knowledge Graph Support before the README milestone is advanced and before the final integration PR targets `main`.
+This record tracks the verified implementation evidence for P8-C Community GEO and Entity/Knowledge Graph Support before the final integration PR targets `main`.
 
 ## Completed implementation tasks
 
@@ -43,15 +43,21 @@ This record tracks the verified implementation evidence for P8-C Community GEO a
 
 ## Task 27 release gate
 
-The README milestone remains `P0 - P8-B complete` until this branch independently passes the pre-release CI gate.
+### Pre-release gate — passed
 
-Required CI coverage:
+Exact head `80a01ced053b6b8caad3ec91928b9a92ae02f23d` passed CI #1499 / run `32515721621` before the README milestone was advanced.
 
-1. Prisma validate / generate / migrate deploy.
-2. Typecheck.
-3. Full Vitest regression, including P8-C unit/integration contracts.
-4. Build.
-5. Full Chromium E2E, including `distribution-p8c.spec.ts` and existing `distribution.spec.ts`.
-6. Deployable-runtime production audit with `npm audit --omit=dev --audit-level=high --legacy-peer-deps`.
+Evidence:
 
-After the pre-release exact head is green, README may advance to `P0 - P8-C complete`; that README-marked head must then independently pass the same three GitHub CI jobs before final integration to `main`.
+1. Prisma validate / generate / migrate deploy — passed.
+2. Typecheck — passed.
+3. Full Vitest regression — 219 test files / 845 tests passed.
+4. Build — passed.
+5. Full Chromium E2E — passed, including P8-C and existing Distribution coverage.
+6. Deployable-runtime `production-audit` — passed, including `npm audit --omit=dev --audit-level=high --legacy-peer-deps`.
+
+### README-marked exact-head gate — pending
+
+The README now declares `P0 - P8-C complete` and records the frozen release boundary. The current README-marked head must independently pass `verify`, Chromium `e2e`, and `production-audit` before this Task 27 PR can merge into the P8-C integration branch.
+
+After that merge, the integration branch must be compared against `main` with `ahead > 0` and `behind = 0`, and the final P8-C integration PR must independently pass the same three CI jobs on its real merge ref before merge.
