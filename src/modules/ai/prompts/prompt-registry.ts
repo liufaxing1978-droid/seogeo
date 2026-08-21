@@ -8,7 +8,8 @@ export type PromptId =
   | 'content-optimization-v1'
   | 'competitor-gap-v1'
   | 'project-report-summary-v1'
-  | 'visibility-trend-analysis-v1';
+  | 'visibility-trend-analysis-v1'
+  | 'growth-opportunity-explanation-v1';
 
 export interface PromptDefinition {
   id: PromptId;
@@ -76,6 +77,12 @@ const VISIBILITY_TREND_PROMPT: PromptDefinition = Object.freeze({
   buildUserMessage: (facts: unknown) => buildUserMessage('Explain the supplied persisted AI Visibility trend and suggest bounded follow-up actions.', { summary: 'Trend summary', trends: [{ metricType: 'MENTION_RATE', direction: 'IMPROVED', explanation: 'Explanation grounded in supplied delta/status facts', sourceRefs: ['VISIBILITY_METRIC_COMPARISON:<id>'] }], priorities: [{ priority: 'HIGH', action: 'Follow-up action', rationale: 'Why the supplied facts support it', sourceRefs: ['VISIBILITY_METRIC_COMPARISON:<id>'] }], caveats: ['UNKNOWN is unavailable evidence, not zero.'], sourceReferences: ['VISIBILITY_METRIC_COMPARISON:<id>'] }, facts)
 });
 
+const GROWTH_OPPORTUNITY_EXPLANATION_PROMPT: PromptDefinition = Object.freeze({
+  id: 'growth-opportunity-explanation-v1', version: 'v1', mode: 'REASONING', responseFormat: 'JSON',
+  system: `${FACT_GUARDRAILS}\nExplain only the supplied persisted Growth opportunity facts. The deterministic score, priority, opportunity type, evidence states and lifecycle are authoritative and must never be changed by this output. Treat UNKNOWN, PARTIAL and null as unavailable or incomplete evidence, never as zero. The output is advisory only: recommend bounded follow-up actions, but do not claim any lifecycle transition, SEO/GEO fix, content change, redirect, canonical change or execution occurred. Do not invent rankings, traffic, citations, AI visibility or provider facts. Every action must cite supplied source references.`,
+  buildUserMessage: (facts: unknown) => buildUserMessage('Explain the supplied persisted Growth opportunity and suggest bounded advisory actions.', { summary: 'Opportunity summary', whyNow: 'Why the supplied deterministic facts make this opportunity important now', actions: [{ priority: 'HIGH', action: 'Advisory follow-up action', rationale: 'Why supplied facts support the action', sourceRefs: ['GROWTH_OPPORTUNITY_SNAPSHOT:<id>'] }], caveats: ['UNKNOWN or PARTIAL evidence remains unavailable/incomplete, not zero.'], sourceReferences: ['GROWTH_OPPORTUNITY_SNAPSHOT:<id>'] }, facts)
+});
+
 export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = Object.freeze([
   SEO_PROMPT,
   GEO_PROMPT,
@@ -84,7 +91,8 @@ export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = Object.freeze([
   CONTENT_OPTIMIZATION_PROMPT,
   COMPETITOR_GAP_PROMPT,
   PROJECT_REPORT_SUMMARY_PROMPT,
-  VISIBILITY_TREND_PROMPT
+  VISIBILITY_TREND_PROMPT,
+  GROWTH_OPPORTUNITY_EXPLANATION_PROMPT
 ]);
 
 const PROMPT_BY_ID = new Map<PromptId, PromptDefinition>(PROMPT_DEFINITIONS.map((prompt) => [prompt.id, prompt]));
