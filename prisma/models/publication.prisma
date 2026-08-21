@@ -1,0 +1,368 @@
+enum PublicationProposalSourceType {
+  P7_GROWTH_OPPORTUNITY
+  MANUAL
+  SEO_ISSUE
+  GEO_GAP
+  CONTENT_REFRESH
+}
+
+enum PublicationAdapterType {
+  EXPORT_ONLY
+  GITHUB_GIT
+}
+
+enum PublicationWriteCapability {
+  EXPORT_ONLY
+  GIT_DRAFT_PR
+}
+
+enum ContentGeneratedBy {
+  HUMAN
+  DEEPSEEK
+  DETERMINISTIC_GENERATOR
+}
+
+enum ContentDraftStatus {
+  DRAFT
+  READY_FOR_REVIEW
+  ARCHIVED
+}
+
+enum PublicationRiskClass {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum PublicationExecutionStatus {
+  PENDING
+  READY
+  EXECUTING
+  PR_CREATED
+  DEPLOYED
+  VERIFYING
+  VERIFIED
+  STALE_REVIEW_REQUIRED
+  FAILED
+  ROLLBACK_PROPOSED
+  ROLLED_BACK
+}
+
+enum PublicationExecutionEventType {
+  CREATED
+  READY
+  STARTED
+  PR_CREATED
+  DEPLOYED
+  VERIFICATION_STARTED
+  VERIFIED
+  STALE_REVIEW_REQUIRED
+  FAILED
+  ROLLBACK_PROPOSED
+  ROLLED_BACK
+}
+
+enum PublicationVerificationStatus {
+  PENDING
+  VERIFIED
+  FAILED
+  UNKNOWN
+}
+
+enum PublicationRollbackStatus {
+  PROPOSED
+  APPROVED
+  EXECUTED
+  DISMISSED
+}
+
+model PublicationSite {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  projectId          String                     @db.Uuid
+  displayName        String
+  domain             String
+  repositoryIdentity String?
+  baseBranch         String?
+  adapterType        PublicationAdapterType
+  writeCapability    PublicationWriteCapability
+  allowedPaths       Json?
+  enabled            Boolean                    @default(true)
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+
+  channels PublicationChannel[]
+  plans    PublicationPlan[]
+
+  @@unique([projectId, domain], map: "PublicationSite_project_domain_key")
+  @@index([projectId, enabled], map: "PublicationSite_project_enabled_idx")
+}
+
+model PublicationChannel {
+  id                      String   @id @default(uuid()) @db.Uuid
+  siteId                  String   @db.Uuid
+  pathPrefix              String
+  displayName             String
+  repositoryPathTemplate  String?
+  contentType             String?
+  defaultSchemaTypes      Json?
+  allowedOperationClasses Json?
+  enabled                 Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  site  PublicationSite   @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  plans PublicationPlan[]
+
+  @@unique([siteId, pathPrefix], map: "PublicationChannel_site_path_key")
+  @@index([siteId, enabled], map: "PublicationChannel_site_enabled_idx")
+}
+
+model PublicationProposal {
+  id                String                        @id @default(uuid()) @db.Uuid
+  projectId         String                        @db.Uuid
+  sourceType        PublicationProposalSourceType
+  reason            String
+  createdBy         String
+  sourceReferenceId String?
+  sourceSnapshotId  String?
+  sourceMetadata    Json?
+  createdAt         DateTime                      @default(now())
+
+  drafts ContentDraft[]
+  plans  PublicationPlan[]
+
+  @@index([projectId, createdAt], map: "PublicationProposal_project_created_idx")
+  @@index([projectId, sourceType], map: "PublicationProposal_project_source_idx")
+}
+
+model ContentDraft {
+  id                 String             @id @default(uuid()) @db.Uuid
+  projectId          String             @db.Uuid
+  sourceProposalId   String?            @db.Uuid
+  title              String
+  slugCandidate      String?
+  body               String
+  excerpt            String?
+  metaTitle          String?
+  metaDescription    String?
+  canonicalCandidate String?
+  schemaJson         Json?
+  author             String?
+  language           String
+  currentVersion     Int                @default(1)
+  currentContentHash String?
+  status             ContentDraftStatus @default(DRAFT)
+  generatedBy        ContentGeneratedBy
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  sourceProposal PublicationProposal?    @relation(fields: [sourceProposalId], references: [id], onDelete: SetNull)
+  versions       ContentDraftVersion[]
+  sourceRefs     ContentSourceReference[]
+  plans          PublicationPlan[]
+
+  @@index([projectId, updatedAt], map: "ContentDraft_project_updated_idx")
+  @@index([sourceProposalId], map: "ContentDraft_proposal_idx")
+}
+
+model ContentDraftVersion {
+  id                 String             @id @default(uuid()) @db.Uuid
+  draftId            String             @db.Uuid
+  version            Int
+  title              String
+  slugCandidate      String?
+  body               String
+  excerpt            String?
+  metaTitle          String?
+  metaDescription    String?
+  canonicalCandidate String?
+  schemaJson         Json?
+  author             String?
+  language           String
+  contentHash        String?
+  generatedBy        ContentGeneratedBy
+  createdAt          DateTime           @default(now())
+
+  draft ContentDraft @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@unique([draftId, version], map: "ContentDraftVersion_draft_version_key")
+  @@index([draftId, createdAt], map: "ContentDraftVersion_draft_created_idx")
+}
+
+model ContentSourceReference {
+  id           String   @id @default(uuid()) @db.Uuid
+  projectId    String   @db.Uuid
+  draftId      String?  @db.Uuid
+  title        String
+  author       String?
+  publisher    String?
+  sourceUrl    String?
+  publishedAt  DateTime?
+  sourceType   String
+  accessedAt   DateTime?
+  userProvided Boolean  @default(false)
+  internalRef  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  draft ContentDraft? @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt], map: "ContentSourceReference_project_created_idx")
+  @@index([draftId], map: "ContentSourceReference_draft_idx")
+}
+
+model PublicationPlan {
+  id                 String               @id @default(uuid()) @db.Uuid
+  projectId          String               @db.Uuid
+  proposalId         String               @db.Uuid
+  draftId            String               @db.Uuid
+  draftVersion       Int
+  siteId             String               @db.Uuid
+  channelId          String?              @db.Uuid
+  version            Int
+  targetPublicUrl    String
+  targetRepository   String
+  targetBranch       String
+  baseSha            String
+  targetBlobHashes   Json?
+  operations         Json
+  expectedOutcomes   Json
+  validatorVersion   String
+  riskClass          PublicationRiskClass
+  rollbackStrategy   String
+  planHash           String
+  createdAt          DateTime             @default(now())
+
+  proposal   PublicationProposal @relation(fields: [proposalId], references: [id], onDelete: Restrict)
+  draft      ContentDraft        @relation(fields: [draftId], references: [id], onDelete: Restrict)
+  site       PublicationSite     @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  channel    PublicationChannel? @relation(fields: [channelId], references: [id], onDelete: Restrict)
+  preview    PublicationPreview?
+  approvals  PublicationApproval[]
+  executions PublicationExecution[]
+
+  @@unique([proposalId, version], map: "PublicationPlan_proposal_version_key")
+  @@index([projectId, createdAt], map: "PublicationPlan_project_created_idx")
+  @@index([draftId, draftVersion], map: "PublicationPlan_draft_version_idx")
+}
+
+model PublicationPreview {
+  id               String   @id @default(uuid()) @db.Uuid
+  projectId        String   @db.Uuid
+  planId           String   @unique @db.Uuid
+  previewHash      String
+  diffSummary      String
+  diffPayload      Json?
+  validationResult Json?
+  createdAt        DateTime @default(now())
+
+  plan PublicationPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([projectId, createdAt], map: "PublicationPreview_project_created_idx")
+}
+
+model PublicationApproval {
+  id                 String               @id @default(uuid()) @db.Uuid
+  projectId          String               @db.Uuid
+  planId             String               @db.Uuid
+  planVersion        Int
+  planHash           String
+  contentHash        String
+  previewHash        String
+  baseSha            String
+  approverActorId    String
+  approvedRiskClass  PublicationRiskClass
+  expiresAt          DateTime?
+  createdAt          DateTime             @default(now())
+
+  plan       PublicationPlan        @relation(fields: [planId], references: [id], onDelete: Restrict)
+  executions PublicationExecution[]
+
+  @@index([projectId, createdAt], map: "PublicationApproval_project_created_idx")
+  @@index([planId, createdAt], map: "PublicationApproval_plan_created_idx")
+}
+
+model PublicationExecution {
+  id            String                     @id @default(uuid()) @db.Uuid
+  projectId     String                     @db.Uuid
+  planId        String                     @db.Uuid
+  approvalId    String                     @db.Uuid
+  executionKey  String                     @unique
+  status        PublicationExecutionStatus @default(PENDING)
+  branchName    String?
+  commitSha     String?
+  pullRequestNo Int?
+  pullRequestUrl String?
+  errorCode     String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+
+  plan              PublicationPlan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+  approval          PublicationApproval           @relation(fields: [approvalId], references: [id], onDelete: Restrict)
+  events            PublicationExecutionEvent[]
+  verifications     PublicationVerification[]
+  rollbackProposals PublicationRollbackProposal[]
+
+  @@index([projectId, createdAt], map: "PublicationExecution_project_created_idx")
+  @@index([planId, status], map: "PublicationExecution_plan_status_idx")
+}
+
+model PublicationExecutionEvent {
+  id           String                        @id @default(uuid()) @db.Uuid
+  executionId  String                        @db.Uuid
+  eventType    PublicationExecutionEventType
+  fromStatus   PublicationExecutionStatus?
+  toStatus     PublicationExecutionStatus
+  reasonCode   String
+  actorId      String?
+  metadata     Json?
+  createdAt    DateTime                      @default(now())
+
+  execution PublicationExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId, createdAt], map: "PublicationExecutionEvent_execution_created_idx")
+}
+
+model PublicationVerification {
+  id                    String                        @id @default(uuid()) @db.Uuid
+  projectId             String                        @db.Uuid
+  executionId           String                        @db.Uuid
+  status                PublicationVerificationStatus @default(PENDING)
+  observedUrl           String?
+  observedAt            DateTime?
+  httpStatus            Int?
+  titleMatches          Boolean?
+  descriptionMatches    Boolean?
+  canonicalMatches      Boolean?
+  h1Matches             Boolean?
+  indexable             Boolean?
+  schemaValid           Boolean?
+  contentFingerprintOk  Boolean?
+  regressionFindings    Json?
+  reasonCode            String?
+  createdAt             DateTime                      @default(now())
+
+  execution PublicationExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt], map: "PublicationVerification_project_created_idx")
+  @@index([executionId, createdAt], map: "PublicationVerification_execution_created_idx")
+}
+
+model PublicationRollbackProposal {
+  id           String                    @id @default(uuid()) @db.Uuid
+  projectId    String                    @db.Uuid
+  executionId  String                    @db.Uuid
+  strategy     String
+  status       PublicationRollbackStatus @default(PROPOSED)
+  reasonCode   String
+  proposedBy   String?
+  payload      Json?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  execution PublicationExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt], map: "PublicationRollback_project_created_idx")
+  @@index([executionId, status], map: "PublicationRollback_execution_status_idx")
+}
