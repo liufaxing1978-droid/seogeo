@@ -3,7 +3,8 @@ import { afterAll, describe, expect, it } from 'vitest';
 import type {
   GrowthEvidenceQuality,
   GrowthIdentityType,
-  GrowthOpportunityType
+  GrowthOpportunityType,
+  Prisma
 } from '@prisma/client';
 import { createApp } from '../../src/app.js';
 import { prisma } from '../../src/db/prisma.js';
@@ -33,7 +34,7 @@ async function opportunity(input: {
   score: number;
   rankingEligible?: boolean;
   evidenceQuality?: GrowthEvidenceQuality;
-  sourceProvenance?: Record<string, unknown>;
+  sourceProvenance?: Prisma.InputJsonObject;
 }) {
   const identityType = input.identityType ?? 'QUERY_PAGE_GROWTH';
   const identity = await prisma.growthOpportunityIdentity.create({
