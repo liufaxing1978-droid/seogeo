@@ -8,6 +8,7 @@ export type CannibalizationPageInput = {
 export type KeywordCannibalizationInput = {
   normalizedQuery: string;
   demandScore: number | null;
+  projectP50Impressions: number | null;
   pages: readonly CannibalizationPageInput[];
 };
 
@@ -139,6 +140,16 @@ export function detectKeywordCannibalization(
       primaryPageCandidate: { state: 'UNKNOWN', canonicalPage: null }, reasonCodes: ['DEMAND_BELOW_THRESHOLD']
     };
   }
+  if (
+    input.projectP50Impressions === null ||
+    !Number.isFinite(input.projectP50Impressions) ||
+    input.projectP50Impressions < 0
+  ) {
+    return {
+      state: 'UNKNOWN', type: 'KEYWORD_CANNIBALIZATION', competingPages: [],
+      primaryPageCandidate: { state: 'UNKNOWN', canonicalPage: null }, reasonCodes: ['PROJECT_P50_UNKNOWN']
+    };
+  }
 
   const collapsed = collapsePages(input.pages);
   if (collapsed.length < 2) {
@@ -152,6 +163,18 @@ export function detectKeywordCannibalization(
     return {
       state: 'UNKNOWN', type: 'KEYWORD_CANNIBALIZATION', competingPages: [],
       primaryPageCandidate: { state: 'UNKNOWN', canonicalPage: null }, reasonCodes: ['IMPRESSIONS_UNKNOWN']
+    };
+  }
+  if (totalImpressions < 20) {
+    return {
+      state: 'NOT_DETECTED', type: 'KEYWORD_CANNIBALIZATION', competingPages: [],
+      primaryPageCandidate: { state: 'UNKNOWN', canonicalPage: null }, reasonCodes: ['QUERY_IMPRESSIONS_BELOW_ABSOLUTE_FLOOR']
+    };
+  }
+  if (totalImpressions < input.projectP50Impressions) {
+    return {
+      state: 'NOT_DETECTED', type: 'KEYWORD_CANNIBALIZATION', competingPages: [],
+      primaryPageCandidate: { state: 'UNKNOWN', canonicalPage: null }, reasonCodes: ['QUERY_IMPRESSIONS_BELOW_PROJECT_P50']
     };
   }
 
