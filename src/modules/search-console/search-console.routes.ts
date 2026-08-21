@@ -31,6 +31,10 @@ const propertyBodySchema = z.object({
 
 let defaultService: SearchConsoleService | null = null;
 
+function routeParam(value: string | string[]): string {
+  return Array.isArray(value) ? value[0]! : value;
+}
+
 function configuredService(): SearchConsoleService {
   if (defaultService) return defaultService;
   const clientId = env.GOOGLE_OAUTH_CLIENT_ID;
@@ -79,7 +83,8 @@ export function createSearchConsoleRoutes(injectedService?: SearchConsoleService
 
   router.get('/projects/:projectId/search-console/status', searchConsoleGate, async (req, res, next) => {
     try {
-      res.json({ data: await service().getStatus(req.params.projectId) });
+      const projectId = routeParam(req.params.projectId);
+      res.json({ data: await service().getStatus(projectId) });
     } catch (error) {
       try { asAppError(error); } catch (mapped) { next(mapped); }
     }
@@ -88,8 +93,9 @@ export function createSearchConsoleRoutes(injectedService?: SearchConsoleService
   router.post('/projects/:projectId/search-console/oauth/start', searchConsoleGate, async (req, res, next) => {
     try {
       emptyBodySchema.parse(req.body ?? {});
-      const actorId = `project-api:${req.params.projectId}`;
-      const data = await service().beginGoogleOAuth(req.params.projectId, actorId);
+      const projectId = routeParam(req.params.projectId);
+      const actorId = `project-api:${projectId}`;
+      const data = await service().beginGoogleOAuth(projectId, actorId);
       res.status(201).json({ data });
     } catch (error) {
       try { asAppError(error); } catch (mapped) { next(mapped); }
@@ -108,7 +114,8 @@ export function createSearchConsoleRoutes(injectedService?: SearchConsoleService
 
   router.get('/projects/:projectId/search-console/properties', searchConsoleGate, async (req, res, next) => {
     try {
-      res.json({ data: await service().listReadableProperties(req.params.projectId) });
+      const projectId = routeParam(req.params.projectId);
+      res.json({ data: await service().listReadableProperties(projectId) });
     } catch (error) {
       try { asAppError(error); } catch (mapped) { next(mapped); }
     }
@@ -117,7 +124,8 @@ export function createSearchConsoleRoutes(injectedService?: SearchConsoleService
   router.post('/projects/:projectId/search-console/property', searchConsoleGate, async (req, res, next) => {
     try {
       const input = propertyBodySchema.parse(req.body);
-      const data = await service().bindProperty(req.params.projectId, input.propertyUri);
+      const projectId = routeParam(req.params.projectId);
+      const data = await service().bindProperty(projectId, input.propertyUri);
       res.json({ data });
     } catch (error) {
       try { asAppError(error); } catch (mapped) { next(mapped); }
@@ -126,7 +134,8 @@ export function createSearchConsoleRoutes(injectedService?: SearchConsoleService
 
   router.delete('/projects/:projectId/search-console/connection', searchConsoleGate, async (req, res, next) => {
     try {
-      await service().disconnect(req.params.projectId);
+      const projectId = routeParam(req.params.projectId);
+      await service().disconnect(projectId);
       res.status(204).end();
     } catch (error) {
       try { asAppError(error); } catch (mapped) { next(mapped); }
