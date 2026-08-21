@@ -5,7 +5,7 @@ import {
 } from '../../src/modules/ai/prompts/prompt-registry.js';
 
 describe('versioned AI prompt registry', () => {
-  it('defines immutable v1 prompt identities for P4 through P8-A intelligence', () => {
+  it('defines immutable v1 prompt identities for P4 through P8-B intelligence', () => {
     expect(PROMPT_DEFINITIONS.map((prompt) => prompt.id)).toEqual([
       'seo-audit-analysis-v1',
       'geo-readiness-analysis-v1',
@@ -17,7 +17,10 @@ describe('versioned AI prompt registry', () => {
       'visibility-trend-analysis-v1',
       'growth-opportunity-explanation-v1',
       'publication-content-brief-v1',
-      'publication-article-generation-v1'
+      'publication-article-generation-v1',
+      'distribution-canonical-repost-v1',
+      'distribution-adapted-article-v1',
+      'distribution-summary-v1'
     ]);
     expect(new Set(PROMPT_DEFINITIONS.map((prompt) => prompt.id)).size).toBe(PROMPT_DEFINITIONS.length);
     expect(PROMPT_DEFINITIONS.every((prompt) => prompt.version === 'v1')).toBe(true);
@@ -44,9 +47,16 @@ describe('versioned AI prompt registry', () => {
     }
   });
 
-  it('uses FAST only for bounded SEO analysis and article drafting, and REASONING for semantic work', () => {
-    expect(getPromptDefinition('seo-audit-analysis-v1').mode).toBe('FAST');
-    expect(getPromptDefinition('publication-article-generation-v1').mode).toBe('FAST');
+  it('uses FAST for bounded analysis/drafting/adaptation and REASONING for semantic work', () => {
+    for (const promptId of [
+      'seo-audit-analysis-v1',
+      'publication-article-generation-v1',
+      'distribution-canonical-repost-v1',
+      'distribution-adapted-article-v1',
+      'distribution-summary-v1'
+    ] as const) {
+      expect(getPromptDefinition(promptId).mode).toBe('FAST');
+    }
     for (const promptId of [
       'geo-readiness-analysis-v1',
       'entity-enrichment-v1',
