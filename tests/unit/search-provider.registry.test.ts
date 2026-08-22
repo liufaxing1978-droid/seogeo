@@ -64,11 +64,10 @@ describe('search provider capability registry', () => {
       .toThrow(/not implemented/i);
   });
 
-  it('keeps Baidu webmaster observations platform-only instead of fabricating API metrics', () => {
+  it('keeps only verified Baidu platform observations as PLATFORM_ONLY', () => {
     const manifest = getSearchProviderManifest('BAIDU_SEARCH_RESOURCE');
     for (const capability of [
       'QUERY_STATS',
-      'PAGE_STATS',
       'SITE_TRAFFIC_DAILY',
       'INDEX_COVERAGE',
       'CRAWL_STATS',
@@ -80,10 +79,93 @@ describe('search provider capability registry', () => {
         accessMode: 'PLATFORM_ONLY'
       });
     }
-    expect(manifest.capabilities.QUERY_PAGE_DAILY).toMatchObject({
-      state: 'NOT_SUPPORTED',
-      accessMode: 'NONE'
+    for (const capability of ['QUERY_PAGE_DAILY', 'PAGE_STATS', 'URL_INSPECTION'] as const) {
+      expect(manifest.capabilities[capability]).toMatchObject({
+        state: 'NOT_SUPPORTED',
+        accessMode: 'NONE'
+      });
+    }
+  });
+
+  it('keeps 360 exact analytics unsupported when only generic data-analysis UI is verified', () => {
+    const manifest = getSearchProviderManifest('QIHOO_360_WEBMASTER');
+    expect(manifest.capabilities.LIST_PROPERTIES).toMatchObject({
+      state: 'NOT_IMPLEMENTED', accessMode: 'PLATFORM_ONLY'
     });
+    expect(manifest.capabilities.URL_SUBMISSION).toMatchObject({
+      state: 'NOT_IMPLEMENTED', accessMode: 'PLATFORM_ONLY', readOnly: false
+    });
+    for (const capability of [
+      'QUERY_PAGE_DAILY',
+      'QUERY_STATS',
+      'PAGE_STATS',
+      'SITE_TRAFFIC_DAILY',
+      'INDEX_COVERAGE',
+      'CRAWL_STATS',
+      'ROBOTS_OBSERVATION',
+      'PROVIDER_DIAGNOSTICS',
+      'URL_INSPECTION'
+    ] as const) {
+      expect(manifest.capabilities[capability]).toMatchObject({
+        state: 'NOT_SUPPORTED', accessMode: 'NONE'
+      });
+    }
+  });
+
+  it('maps only Sogou webmaster surfaces verified by public platform documentation', () => {
+    const manifest = getSearchProviderManifest('SOGOU_WEBMASTER');
+    for (const capability of [
+      'LIST_PROPERTIES',
+      'QUERY_STATS',
+      'SITE_TRAFFIC_DAILY',
+      'INDEX_COVERAGE',
+      'CRAWL_STATS',
+      'URL_SUBMISSION',
+      'SITEMAP_SUBMISSION'
+    ] as const) {
+      expect(manifest.capabilities[capability]).toMatchObject({
+        state: 'NOT_IMPLEMENTED', accessMode: 'PLATFORM_ONLY'
+      });
+    }
+    expect(manifest.capabilities.SITE_TRAFFIC_DAILY.cadence).toBe('DAILY');
+    for (const capability of [
+      'QUERY_PAGE_DAILY',
+      'PAGE_STATS',
+      'ROBOTS_OBSERVATION',
+      'URL_INSPECTION'
+    ] as const) {
+      expect(manifest.capabilities[capability]).toMatchObject({
+        state: 'NOT_SUPPORTED', accessMode: 'NONE'
+      });
+    }
+  });
+
+  it('maps only Shenma webmaster surfaces verified by public platform documentation', () => {
+    const manifest = getSearchProviderManifest('SHENMA_WEBMASTER');
+    for (const capability of [
+      'LIST_PROPERTIES',
+      'QUERY_STATS',
+      'SITE_TRAFFIC_DAILY',
+      'INDEX_COVERAGE',
+      'CRAWL_STATS',
+      'PROVIDER_DIAGNOSTICS',
+      'SITEMAP_SUBMISSION'
+    ] as const) {
+      expect(manifest.capabilities[capability]).toMatchObject({
+        state: 'NOT_IMPLEMENTED', accessMode: 'PLATFORM_ONLY'
+      });
+    }
+    for (const capability of [
+      'QUERY_PAGE_DAILY',
+      'PAGE_STATS',
+      'ROBOTS_OBSERVATION',
+      'URL_INSPECTION',
+      'URL_SUBMISSION'
+    ] as const) {
+      expect(manifest.capabilities[capability]).toMatchObject({
+        state: 'NOT_SUPPORTED', accessMode: 'NONE'
+      });
+    }
   });
 
   it.each([
