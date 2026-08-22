@@ -55,7 +55,7 @@ async function createGrowthOpportunity(input: {
     score: input.score,
     priority: input.scoreState === 'KNOWN' ? 'HIGH' : 'UNKNOWN',
     scoreState: input.scoreState,
-    evidenceQuality: input.scoreState === 'KNOWN' ? 'COMPLETE' : 'INSUFFICIENT',
+    evidenceQuality: input.scoreState === 'KNOWN' ? 'COMPLETE' : 'UNKNOWN',
     evidenceCoverage: input.scoreState === 'KNOWN' ? 1 : 0,
     rankingEligible: input.rankingEligible,
     sourceProvenance: {
