@@ -163,7 +163,17 @@ describe('P7-A database-only growth materialization', () => {
     expect(snapshot.identity.normalizedQuery).toBe('六壬');
     expect(snapshot.identity.canonicalPage).toBe(canonicalPage);
     expect(snapshot.sourceProvenance).toMatchObject({
-      gscSnapshotIds: expect.arrayContaining(selectedIds)
+      gscSnapshotIds: expect.arrayContaining(selectedIds),
+      searchFacts: {
+        version: 'GROWTH_SEARCH_PROVENANCE_V1',
+        mode: 'UNCONFIGURED_LEGACY',
+        scoringLane: {
+          provider: 'GOOGLE_SEARCH_CONSOLE',
+          source: 'RAW_GSC_COMPATIBILITY',
+          gscSnapshotIds: expect.arrayContaining(selectedIds)
+        },
+        corroboratingLanes: []
+      }
     });
 
     const topic = await prisma.growthTopicCluster.findUniqueOrThrow({
