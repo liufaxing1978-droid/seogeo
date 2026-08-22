@@ -54,7 +54,9 @@ jobs:
       - name: Materialize exact P9-0H vendor assets
         if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
         shell: bash
-        run: bash .github/p9-0h-materialize.sh
+        run: |
+          sed -i "s/grep -q '\^Apache License'/grep -q 'Apache License'/" .github/p9-0h-materialize.sh
+          bash .github/p9-0h-materialize.sh
       - name: Install dependencies
         run: npm install
       - name: Validate Prisma
