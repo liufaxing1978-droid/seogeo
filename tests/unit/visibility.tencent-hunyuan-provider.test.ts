@@ -27,7 +27,7 @@ const request: VisibilitySampleRequest = {
   providerOptions: { searchContextSize: 'medium' }
 };
 
-function completedBody(annotations: unknown[] | undefined = [
+function completedBody(annotations: unknown[] | null = [
   { type: 'url_citation', index: 1, url: 'https://xingshantang.org/article', title: '兴善堂', start_index: 20, end_index: 23 },
   { type: 'url_citation', index: 2, url: 'https://example.cn/reference', title: '参考资料', start_index: 24, end_index: 27 },
   { type: 'url_citation', index: 3, url: 'https://xingshantang.org/article', title: '重复资料', start_index: 28, end_index: 31 }
@@ -36,7 +36,7 @@ function completedBody(annotations: unknown[] | undefined = [
     type: 'output_text',
     text: '兴善堂与参考资料均提供相关公开信息。[1][2]'
   };
-  if (annotations !== undefined) outputText.annotations = annotations;
+  if (annotations !== null) outputText.annotations = annotations;
   return {
     id: 'resp_tencent_123',
     output: [
@@ -136,7 +136,7 @@ describe('P9-0E Tencent Hunyuan TokenHub visibility adapter', () => {
   it('uses UNKNOWN when a successful response omits annotations', async () => {
     const adapter = new TencentHunyuanVisibilityProvider({
       apiKey: 'fixture-key',
-      transport: new FixtureTransport([{ status: 200, body: completedBody(undefined), latencyMs: 3 }])
+      transport: new FixtureTransport([{ status: 200, body: completedBody(null), latencyMs: 3 }])
     });
     await expect(adapter.sample(request)).resolves.toMatchObject({ citationEvidenceState: 'UNKNOWN' });
   });
