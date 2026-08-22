@@ -1,7 +1,8 @@
 import type {
   CitationEvidenceState,
   VisibilityGroundingMode,
-  VisibilityProvider
+  VisibilityProvider,
+  VisibilityProviderCapability
 } from '@prisma/client';
 
 export type VisibilitySampleStatus = 'COMPLETED' | 'REFUSED' | 'UNSUPPORTED' | 'INCOMPLETE';
@@ -42,6 +43,7 @@ export interface VisibilitySampleResponse {
 export interface VisibilityProviderAdapter {
   readonly provider: VisibilityProvider;
   readonly channel: 'API';
+  readonly capabilities: readonly VisibilityProviderCapability[];
   supportsWebGrounding(mode: VisibilityGroundingMode): boolean;
   estimateCostMicros(request: VisibilitySampleRequest): number | null;
   sample(request: VisibilitySampleRequest): Promise<VisibilitySampleResponse>;
