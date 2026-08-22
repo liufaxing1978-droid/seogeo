@@ -98,6 +98,7 @@ function normalizeDomainFilter(value: unknown): string[] | null {
 export class PerplexityVisibilityProvider implements VisibilityProviderAdapter {
   readonly provider = 'PERPLEXITY' as const;
   readonly channel = 'API' as const;
+  readonly capabilities = ['WEB_GROUNDED', 'CITATION_NATIVE'] as const;
   private readonly apiKey: string;
   private readonly transport: PerplexityVisibilityTransport;
 
