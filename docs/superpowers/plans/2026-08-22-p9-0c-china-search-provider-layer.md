@@ -6,6 +6,8 @@
 
 **Architecture:** Extend the existing P9-0B search-provider contracts and registry. P9-0C records official platform capabilities and access modes, but only exposes a callable runtime capability when a stable, authoritative programmatic interface is verified and safe enough for production. Current official research confirms Baidu has an API submission workflow, while 360/Sogou/Shenma mainly expose webmaster-platform/UI workflows in publicly verifiable documentation. Baidu's authoritative public documentation still shows a plaintext HTTP token endpoint, so P9-0C deliberately records the API as present-but-not-implemented rather than sending production secrets over plaintext HTTP.
 
+**Evidence-review rule:** A generic webmaster-platform label such as "data analysis" is not sufficient evidence for a precise capability. `PLATFORM_ONLY` is assigned only when an official public page supports the specific mapping; otherwise P9-0C uses `NOT_SUPPORTED + NONE`. This evidence-bounded rule supersedes broader early draft assumptions in this plan.
+
 **Hard boundaries:**
 
 - No authenticated-dashboard scraping.
@@ -25,17 +27,19 @@
 
 Public platform surface includes resource submission, index volume, traffic/keywords, crawl frequency/diagnostics/errors, robots, and related webmaster tools. Official documentation states ordinary-inclusion API submission and documents the endpoint as `http://data.zz.baidu.com/urls?site=...&token=...`; each request accepts at most 2,000 URLs. Because this documented endpoint transports the token over plaintext HTTP, runtime submission remains fail-closed in P9-0C.
 
+The evidence review does not infer a page-statistics or URL-inspection equivalent merely from the existence of broader platform analytics/diagnostics.
+
 ### 360 Search Webmaster Platform
 
-Public platform exposes data submission, data analysis, sitemap submission, mobile adaptation, site verification, and related webmaster tooling. No stable public statistics API contract was verified for P9-0C. A 2025 official/community answer to API sitemap submission still directs users to the webmaster UI rather than an API.
+Public platform exposes data submission, data analysis, official-site verification, mobile adaptation, and related webmaster tooling. No stable public statistics API contract was verified for P9-0C. The generic "data analysis" label is not treated as evidence for query statistics, page statistics, traffic cadence, index coverage, crawl statistics, or inspection semantics. Only verified site/property management and data/URL submission are represented as `PLATFORM_ONLY` in P9-0C.
 
 ### Sogou Webmaster Platform
 
-Public resource platform exposes URL/resource submission and webmaster tools. Current public resource-submission page is UI-based and does not establish a stable public statistics API contract for P9-0C.
+Official help pages expose site verification, sitemap/resource submission, crawl-pressure reporting, index reporting, site traffic, and keyword reporting. Official traffic help states that site traffic is available by day and updated daily. No stable public statistics API is claimed. P9-0C therefore maps only those explicit platform surfaces and keeps page statistics, robots observation, and URL inspection unsupported.
 
 ### Shenma Webmaster Platform
 
-Public platform exposes sitemap submission, data-open features, website analysis, and mobile adaptation. No stable public statistics API contract was verified for P9-0C.
+Official help pages expose site verification, search traffic/keywords, crawl quantity/frequency/exceptions, index/site analysis, sitemap/data-open workflows, and related diagnostics. No stable public statistics API contract was verified for P9-0C. P9-0C does not infer page-level statistics, robots observation, URL inspection, or URL-submission equivalence from those broader platform functions.
 
 ---
 
@@ -84,8 +88,8 @@ Rules:
 - Every manifest capability must explicitly declare access mode.
 - `SUPPORTED + API` means callable by current runtime.
 - `NOT_IMPLEMENTED + API` means official programmatic capability exists but P9 runtime deliberately does not expose it yet.
-- `NOT_IMPLEMENTED + PLATFORM_ONLY` means official platform/UI capability exists but no stable public API adapter is implemented.
-- `NOT_SUPPORTED + NONE` means the provider contract does not offer an equivalent surface.
+- `NOT_IMPLEMENTED + PLATFORM_ONLY` means an exact official platform/UI capability exists but no approved runtime adapter is implemented.
+- `NOT_SUPPORTED + NONE` means no equivalent capability is asserted by this release.
 
 RED tests must lock the exact provider/capability arrays and the access-mode union behavior.
 
@@ -99,44 +103,73 @@ RED tests must lock the exact provider/capability arrays and the access-mode uni
 
 ### Existing provider preservation
 
-Google and Bing retain all P9-0B states/cadences. Add accessMode without changing semantics:
+Google and Bing retain all P9-0B states/cadences. Add accessMode without changing runtime semantics:
 - callable existing reads → `API`
-- unimplemented provider/API concepts → `API` where an existing public API family supports them, otherwise `NONE`
+- unimplemented provider/API concepts → `API` only where an existing authoritative API family supports them, otherwise `NONE`
 - unsupported equivalence → `NONE`
 
-### Baidu manifest
-
-Conservative P9-0C states:
+### Baidu manifest — evidence-bounded final matrix
 
 - `LIST_PROPERTIES`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
 - `QUERY_PAGE_DAILY`: `NOT_SUPPORTED`, `NONE`
 - `QUERY_STATS`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
-- `PAGE_STATS`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
-- `SITE_TRAFFIC_DAILY`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
+- `PAGE_STATS`: `NOT_SUPPORTED`, `NONE`
+- `SITE_TRAFFIC_DAILY`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`, cadence unknown
 - `INDEX_COVERAGE`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
 - `CRAWL_STATS`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
 - `ROBOTS_OBSERVATION`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
 - `PROVIDER_DIAGNOSTICS`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
-- `URL_INSPECTION`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
+- `URL_INSPECTION`: `NOT_SUPPORTED`, `NONE`
 - `URL_SUBMISSION`: `NOT_IMPLEMENTED`, `API`, readOnly false; note secure-transport blocker
 - `SITEMAP_SUBMISSION`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`, readOnly false
 
-### 360 Search manifest
+### 360 Search manifest — evidence-bounded final matrix
 
-All publicly observed webmaster functions are `NOT_IMPLEMENTED + PLATFORM_ONLY`; no query/page equivalence is claimed. `QUERY_PAGE_DAILY` is `NOT_SUPPORTED + NONE`.
+Only precise public surfaces verified for this release are mapped:
 
-### Sogou manifest
+- `LIST_PROPERTIES`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
+- `URL_SUBMISSION`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`, readOnly false
+- `QUERY_PAGE_DAILY`, `QUERY_STATS`, `PAGE_STATS`, `SITE_TRAFFIC_DAILY`, `INDEX_COVERAGE`, `CRAWL_STATS`, `ROBOTS_OBSERVATION`, `PROVIDER_DIAGNOSTICS`, `URL_INSPECTION`: `NOT_SUPPORTED`, `NONE`
+- `SITEMAP_SUBMISSION`: `NOT_SUPPORTED`, `NONE`
 
-URL/resource submission and webmaster surfaces are `NOT_IMPLEMENTED + PLATFORM_ONLY`; no public statistics API is claimed. `QUERY_PAGE_DAILY` is `NOT_SUPPORTED + NONE`.
+The generic official label "data analysis" does not authorize mapping to precise statistic types.
 
-### Shenma manifest
+### Sogou manifest — evidence-bounded final matrix
 
-Sitemap/data-open/website-analysis/mobile-adaptation surfaces are `NOT_IMPLEMENTED + PLATFORM_ONLY`; no public statistics API is claimed. `QUERY_PAGE_DAILY` is `NOT_SUPPORTED + NONE`.
+- `LIST_PROPERTIES`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
+- `QUERY_PAGE_DAILY`: `NOT_SUPPORTED`, `NONE`
+- `QUERY_STATS`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
+- `PAGE_STATS`: `NOT_SUPPORTED`, `NONE`
+- `SITE_TRAFFIC_DAILY`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`, `DAILY`
+- `INDEX_COVERAGE`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
+- `CRAWL_STATS`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
+- `ROBOTS_OBSERVATION`: `NOT_SUPPORTED`, `NONE`
+- `PROVIDER_DIAGNOSTICS`: `NOT_SUPPORTED`, `NONE`
+- `URL_INSPECTION`: `NOT_SUPPORTED`, `NONE`
+- `URL_SUBMISSION`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`, readOnly false
+- `SITEMAP_SUBMISSION`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`, readOnly false
+
+### Shenma manifest — evidence-bounded final matrix
+
+- `LIST_PROPERTIES`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
+- `QUERY_PAGE_DAILY`: `NOT_SUPPORTED`, `NONE`
+- `QUERY_STATS`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
+- `PAGE_STATS`: `NOT_SUPPORTED`, `NONE`
+- `SITE_TRAFFIC_DAILY`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`, cadence unknown
+- `INDEX_COVERAGE`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
+- `CRAWL_STATS`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
+- `ROBOTS_OBSERVATION`: `NOT_SUPPORTED`, `NONE`
+- `PROVIDER_DIAGNOSTICS`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`
+- `URL_INSPECTION`: `NOT_SUPPORTED`, `NONE`
+- `URL_SUBMISSION`: `NOT_SUPPORTED`, `NONE`
+- `SITEMAP_SUBMISSION`: `NOT_IMPLEMENTED`, `PLATFORM_ONLY`, readOnly false
 
 Registry tests must verify:
 - all six providers list exactly once;
+- every capability declares `API`, `PLATFORM_ONLY`, or `NONE`;
 - China providers fail closed through `requireSearchProviderCapability`;
 - Baidu URL submission is not callable despite official API existence;
+- generic platform categories never become precise statistic capabilities without evidence;
 - existing Google/Bing supported capabilities remain supported and unchanged.
 
 ---
@@ -208,13 +241,13 @@ Source scan should be narrowly limited to `src/modules/search-providers/**/*.ts`
 - Create: `docs/development/p9-0c-china-search-provider-layer.md`
 
 Document:
-- provider matrix;
+- evidence-bounded provider matrix;
 - API vs platform-only distinction;
 - Baidu official API submission capability and plaintext-HTTP blocker;
 - 2,000 URL/request official Baidu limit as reference only, not runtime behavior;
 - 360/Sogou/Shenma verified public platform surfaces;
 - why dashboard scraping/private endpoints are prohibited;
-- relationship to P9-0F unified facts;
+- relationship to P9-0A markets and P9-0F unified facts;
 - upgrade path when an authoritative safe API becomes available;
 - rollback instructions.
 
@@ -239,7 +272,7 @@ npm audit --omit=dev --audit-level=high --legacy-peer-deps
 Completion assertions:
 - six provider manifests present;
 - Google/Bing behavior unchanged;
-- China providers explicit and fail closed;
+- China providers explicit, evidence-bounded, and fail closed;
 - no runtime China-provider write call;
 - no authenticated-dashboard scraping;
 - no credentials persisted;
