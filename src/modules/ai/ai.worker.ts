@@ -23,6 +23,12 @@ import { DeepSeekProvider } from './deepseek.provider.js';
 import { parseEntityEnrichmentOutput } from './entity-intelligence.js';
 import { parseGeoAnalysisOutput } from './geo-intelligence.js';
 import { parseGrowthOpportunityExplanationOutput } from './growth-opportunity-explanation.js';
+import {
+  materializeOptimizationRankingFallback,
+  materializeOptimizationRankingSuccess,
+  parseOptimizationPlanRankingOutput,
+  type OptimizationPlanRankingOutput,
+} from './optimization-plan-ranking.js';
 import { getPromptDefinition } from './prompts/prompt-registry.js';
 import { AiProviderError } from './provider.js';
 import { AiProviderRegistry } from './provider-registry.js';
@@ -123,6 +129,7 @@ function parseTaskOutput(task: AiTask, content: string): unknown {
     case 'REPORT_EXECUTIVE_SUMMARY': return parseReportExecutiveOutput(content, task.sourceReferences);
     case 'VISIBILITY_TREND_ANALYSIS': return parseVisibilityTrendAnalysisOutput(content, task.sourceReferences);
     case 'GROWTH_OPPORTUNITY_EXPLANATION': return parseGrowthOpportunityExplanationOutput(content, task.sourceReferences);
+    case 'OPTIMIZATION_PLAN_RANKING': return parseOptimizationPlanRankingOutput(content, task);
     case 'PUBLICATION_CONTENT_BRIEF': return parsePublicationContentBriefOutput(content, task.sourceReferences);
     case 'PUBLICATION_ARTICLE_GENERATION': return parsePublicationArticleGenerationOutput(content, task.sourceReferences);
     case 'PUBLICATION_CONTENT_ADAPTATION': return parseDistributionAdaptationTaskOutput(task, content);
@@ -161,21 +168,27 @@ export async function executeAiTask(taskId: string, dependencies: ExecuteAiTaskD
 
     const output = parseTaskOutput(task, response.content);
     observability.emit({ event: 'ai.output.validated', taskId: task.id, projectId: task.projectId, runId: run.id, provider: 'DEEPSEEK', model: response.model, promptVersion: task.promptVersion });
-    const materialize = task.taskType === 'CONTENT_BRIEF'
-      ? (tx: Prisma.TransactionClient) => persistContentBrief(task, output as ReturnType<typeof parseContentBriefOutput>, tx).then(() => undefined)
-      : task.taskType === 'PUBLICATION_ARTICLE_GENERATION'
-        ? (tx: Prisma.TransactionClient) => materializeArticleGenerationOutput(
-          task,
-          output as ReturnType<typeof parsePublicationArticleGenerationOutput>,
-          tx
-        )
-        : task.taskType === 'PUBLICATION_CONTENT_ADAPTATION'
-          ? (tx: Prisma.TransactionClient) => materializeDistributionAdaptationOutput(
+    const materialize = task.taskType === 'OPTIMIZATION_PLAN_RANKING'
+      ? (tx: Prisma.TransactionClient) => materializeOptimizationRankingSuccess(
+        task,
+        output as OptimizationPlanRankingOutput,
+        tx,
+      )
+      : task.taskType === 'CONTENT_BRIEF'
+        ? (tx: Prisma.TransactionClient) => persistContentBrief(task, output as ReturnType<typeof parseContentBriefOutput>, tx).then(() => undefined)
+        : task.taskType === 'PUBLICATION_ARTICLE_GENERATION'
+          ? (tx: Prisma.TransactionClient) => materializeArticleGenerationOutput(
             task,
-            output as ReturnType<typeof parseDistributionAdaptationTaskOutput>,
+            output as ReturnType<typeof parsePublicationArticleGenerationOutput>,
             tx
           )
-          : undefined;
+          : task.taskType === 'PUBLICATION_CONTENT_ADAPTATION'
+            ? (tx: Prisma.TransactionClient) => materializeDistributionAdaptationOutput(
+              task,
+              output as ReturnType<typeof parseDistributionAdaptationTaskOutput>,
+              tx
+            )
+            : undefined;
     await repository.completeRun(task, run.id, response, output as Prisma.InputJsonValue, resultSummary(task, output), materialize);
     if (task.taskType === 'PUBLICATION_CONTENT_ADAPTATION') {
       try {
@@ -191,6 +204,9 @@ export async function executeAiTask(taskId: string, dependencies: ExecuteAiTaskD
     await repository.failRun(task.id, run.id, { errorCode: code, errorMessage: safeErrorMessage(error), httpStatus });
     if (!providerCompleted) observability.emit({ event: 'ai.provider.request.failed', taskId: task.id, projectId: task.projectId, runId: run.id, provider: 'DEEPSEEK', model, promptVersion: task.promptVersion, httpStatus, errorCode: code });
     observability.emit({ event: 'ai.task.failed', taskId: task.id, projectId: task.projectId, runId: run.id, provider: 'DEEPSEEK', model, promptVersion: task.promptVersion, httpStatus, errorCode: code });
+    if (task.taskType === 'OPTIMIZATION_PLAN_RANKING') {
+      await materializeOptimizationRankingFallback(task);
+    }
     throw error;
   }
 }
