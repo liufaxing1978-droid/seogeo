@@ -35,7 +35,11 @@ describe('P9-0B search provider compatibility', () => {
   it('keeps provider manifests independent from project legacy market fields', () => {
     expect(listSearchProviderManifests().map((manifest) => manifest.provider)).toEqual([
       'GOOGLE_SEARCH_CONSOLE',
-      'BING_WEBMASTER'
+      'BING_WEBMASTER',
+      'BAIDU_SEARCH_RESOURCE',
+      'QIHOO_360_WEBMASTER',
+      'SOGOU_WEBMASTER',
+      'SHENMA_WEBMASTER'
     ]);
     expect(getSearchProviderManifest('GOOGLE_SEARCH_CONSOLE').provider).toBe('GOOGLE_SEARCH_CONSOLE');
     expect(getSearchProviderManifest('BING_WEBMASTER').provider).toBe('BING_WEBMASTER');
