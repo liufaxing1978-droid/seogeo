@@ -1,6 +1,8 @@
 import { Prisma, type VisibilityProvider } from '@prisma/client';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
+import { defaultVisibilityProviderRegistry } from './providers/default-registry.js';
+import type { VisibilityProviderRegistry } from './providers/provider-registry.js';
 import type {
   UpdateVisibilitySettingsInput,
   UpsertVisibilityProviderConfigInput
@@ -12,7 +14,10 @@ const PROVIDER_OPTION_ALLOWLIST: Record<VisibilityProvider, ReadonlySet<string>>
   PERPLEXITY: new Set(['searchDomainFilter', 'searchRecencyFilter']),
   ANTHROPIC: new Set(['maxUses']),
   DEEPSEEK: new Set(),
-  MICROSOFT: new Set(['timeZone'])
+  MICROSOFT: new Set(['timeZone']),
+  BAIDU_QIANFAN: new Set(),
+  QWEN: new Set(['workspaceId', 'region']),
+  TENCENT_HUNYUAN: new Set(['searchContextSize'])
 };
 
 const SECRET_KEY_PATTERN = /(key|token|secret|authorization|cookie)/i;
@@ -70,6 +75,10 @@ function validateProviderOptions(provider: VisibilityProvider, options: Record<s
 }
 
 export class VisibilitySettingsService {
+  constructor(
+    private readonly providerRegistry: VisibilityProviderRegistry = defaultVisibilityProviderRegistry
+  ) {}
+
   async getOrCreate(projectId: string) {
     await requireProject(projectId);
     return prisma.visibilityProjectSettings.upsert({
@@ -130,18 +139,23 @@ export class VisibilitySettingsService {
       'INVALID_VISIBILITY_PROVIDER_CONCURRENCY',
       'maxConcurrency must be between 1 and 10'
     );
-    if (!input.model.trim()) {
+    const model = input.model.trim();
+    if (!model) {
       throw new AppError('model is required', 400, 'INVALID_VISIBILITY_PROVIDER_MODEL');
     }
     validateProviderOptions(input.provider, input.providerOptionsJson);
 
     const providerOptionsJson = input.providerOptionsJson as Prisma.InputJsonValue;
+    const capabilities = [
+      ...this.providerRegistry.get(input.provider, model, 'API').capabilities
+    ];
+
     return prisma.visibilityProviderConfig.upsert({
       where: {
         projectId_provider_model_channel_groundingMode: {
           projectId,
           provider: input.provider,
-          model: input.model.trim(),
+          model,
           channel: input.channel,
           groundingMode: input.groundingMode
         }
@@ -150,9 +164,10 @@ export class VisibilitySettingsService {
         projectId,
         provider: input.provider,
         enabled: input.enabled,
-        model: input.model.trim(),
+        model,
         channel: input.channel,
         groundingMode: input.groundingMode,
+        capabilities,
         maxConcurrency: input.maxConcurrency,
         defaultLocale: input.defaultLocale ?? null,
         defaultCountry: input.defaultCountry ?? null,
@@ -160,6 +175,7 @@ export class VisibilitySettingsService {
       },
       update: {
         enabled: input.enabled,
+        capabilities,
         maxConcurrency: input.maxConcurrency,
         defaultLocale: input.defaultLocale ?? null,
         defaultCountry: input.defaultCountry ?? null,

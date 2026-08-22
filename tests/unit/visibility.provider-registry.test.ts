@@ -10,6 +10,7 @@ import { VisibilityProviderRegistry } from '../../src/modules/visibility/provide
 class FixtureOpenAiAdapter implements VisibilityProviderAdapter {
   readonly provider = 'OPENAI' as const;
   readonly channel = 'API' as const;
+  readonly capabilities = ['WEB_GROUNDED', 'CITATION_NATIVE'] as const;
   supportsWebGrounding(mode: VisibilitySampleRequest['groundingMode']) { return mode === 'WEB_SEARCH'; }
   estimateCostMicros(_request: VisibilitySampleRequest) { return 1200; }
   async sample(_request: VisibilitySampleRequest): Promise<VisibilitySampleResponse> {
@@ -35,6 +36,7 @@ class FixtureOpenAiAdapter implements VisibilityProviderAdapter {
 class FixtureUnsupportedDeepSeekAdapter implements VisibilityProviderAdapter {
   readonly provider = 'DEEPSEEK' as const;
   readonly channel = 'API' as const;
+  readonly capabilities = ['MODEL_ONLY'] as const;
   supportsWebGrounding(_mode: VisibilitySampleRequest['groundingMode']) { return false; }
   estimateCostMicros(_request: VisibilitySampleRequest) { return null; }
   async sample(_request: VisibilitySampleRequest): Promise<VisibilitySampleResponse> {

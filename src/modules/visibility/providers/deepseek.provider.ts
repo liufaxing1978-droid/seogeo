@@ -8,6 +8,7 @@ import type {
 export class DeepSeekVisibilityProvider implements VisibilityProviderAdapter {
   readonly provider = 'DEEPSEEK' as const;
   readonly channel = 'API' as const;
+  readonly capabilities = ['MODEL_ONLY'] as const;
 
   supportsWebGrounding(_mode: VisibilityGroundingMode) {
     return false;

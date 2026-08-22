@@ -15,6 +15,7 @@ class FakeVisibilityQueue implements VisibilityQueue {
 class FixtureAdapter implements VisibilityProviderAdapter {
   readonly provider = 'OPENAI' as const;
   readonly channel = 'API' as const;
+  readonly capabilities = ['WEB_GROUNDED', 'CITATION_NATIVE'] as const;
   supportsWebGrounding() { return true; }
   estimateCostMicros(_request: VisibilitySampleRequest) { return 1200; }
   async sample(_request: VisibilitySampleRequest): Promise<VisibilitySampleResponse> {

@@ -122,6 +122,7 @@ function maxUses(options: Record<string, unknown>): number {
 export class AnthropicVisibilityProvider implements VisibilityProviderAdapter {
   readonly provider = 'ANTHROPIC' as const;
   readonly channel = 'API' as const;
+  readonly capabilities = ['WEB_GROUNDED', 'CITATION_NATIVE'] as const;
   private readonly apiKey: string;
   private readonly transport: AnthropicVisibilityTransport;
 

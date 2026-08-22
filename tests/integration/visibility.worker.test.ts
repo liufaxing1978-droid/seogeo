@@ -7,6 +7,7 @@ import { executeVisibilityObservation } from '../../src/modules/visibility/visib
 class FixtureAdapter implements VisibilityProviderAdapter {
   readonly provider = 'OPENAI' as const;
   readonly channel = 'API' as const;
+  readonly capabilities = ['WEB_GROUNDED', 'CITATION_NATIVE'] as const;
   calls = 0;
 
   constructor(

@@ -147,6 +147,7 @@ function timeZone(options: Record<string, unknown>): string {
 export class MicrosoftVisibilityProvider implements VisibilityProviderAdapter {
   readonly provider = 'MICROSOFT' as const;
   readonly channel = 'API' as const;
+  readonly capabilities = ['WEB_GROUNDED', 'CITATION_NATIVE'] as const;
 
   private readonly accessToken: string;
   private readonly transport: MicrosoftVisibilityTransport;

@@ -208,6 +208,7 @@ function searchContextSize(options: Record<string, unknown>): 'low' | 'medium' |
 export class OpenAIVisibilityProvider implements VisibilityProviderAdapter {
   readonly provider = 'OPENAI' as const;
   readonly channel = 'API' as const;
+  readonly capabilities = ['WEB_GROUNDED', 'CITATION_NATIVE'] as const;
 
   private readonly apiKey: string;
   private readonly transport: OpenAIVisibilityTransport;
