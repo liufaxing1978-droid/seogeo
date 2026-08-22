@@ -1,0 +1,1 @@
+ALTER TYPE "VisibilityProvider" ADD VALUE 'MICROSOFT';
