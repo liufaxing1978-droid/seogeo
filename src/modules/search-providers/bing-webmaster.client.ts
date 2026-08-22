@@ -145,6 +145,22 @@ function buildRequest(auth: BingWebmasterAuth, method: string, siteUrl?: string)
   return { url, init: { headers } };
 }
 
+async function executeRequest(
+  fetchImpl: FetchLike,
+  url: URL,
+  init: RequestInit
+): Promise<Response> {
+  try {
+    return await fetchImpl(url, init);
+  } catch {
+    throw new BingWebmasterTransportError(
+      'Bing Webmaster network request failed',
+      'BING_WEBMASTER_NETWORK_ERROR',
+      null
+    );
+  }
+}
+
 async function parseOkJson(response: Response): Promise<unknown> {
   if (!response.ok) {
     throw new BingWebmasterTransportError(
@@ -169,7 +185,7 @@ export class BingWebmasterClient implements BingWebmasterTransport {
 
   async listSites(auth: BingWebmasterAuth): Promise<BingSiteEntry[]> {
     const { url, init } = buildRequest(auth, 'GetUserSites');
-    const response = await this.fetchImpl(url, init);
+    const response = await executeRequest(this.fetchImpl, url, init);
     const payload = await parseOkJson(response);
     const parsed = SiteWrapperSchema.safeParse(payload);
     if (!parsed.success) {
@@ -196,7 +212,7 @@ export class BingWebmasterClient implements BingWebmasterTransport {
   async getRankAndTrafficStats(auth: BingWebmasterAuth, siteUrl: string): Promise<BingTrafficStat[]> {
     validateCredentialFreeHttpUrl(siteUrl, 'Bing site URL');
     const { url, init } = buildRequest(auth, 'GetRankAndTrafficStats', siteUrl);
-    const response = await this.fetchImpl(url, init);
+    const response = await executeRequest(this.fetchImpl, url, init);
     const payload = await parseOkJson(response);
     const parsed = TrafficStatsWrapperSchema.safeParse(payload);
     if (!parsed.success) {
@@ -221,7 +237,7 @@ export class BingWebmasterClient implements BingWebmasterTransport {
   ): Promise<BingQueryStat[]> {
     validateCredentialFreeHttpUrl(siteUrl, 'Bing site URL');
     const { url, init } = buildRequest(auth, method, siteUrl);
-    const response = await this.fetchImpl(url, init);
+    const response = await executeRequest(this.fetchImpl, url, init);
     const payload = await parseOkJson(response);
     const parsed = QueryStatsWrapperSchema.safeParse(payload);
     if (!parsed.success) {
