@@ -5,7 +5,7 @@ import {
 } from '../../src/modules/ai/prompts/prompt-registry.js';
 
 describe('versioned AI prompt registry', () => {
-  it('defines immutable v1 prompt identities for P4 through P8-C intelligence', () => {
+  it('defines immutable v1 prompt identities for P4 through P9-A intelligence', () => {
     expect(PROMPT_DEFINITIONS.map((prompt) => prompt.id)).toEqual([
       'seo-audit-analysis-v1',
       'geo-readiness-analysis-v1',
@@ -16,6 +16,7 @@ describe('versioned AI prompt registry', () => {
       'project-report-summary-v1',
       'visibility-trend-analysis-v1',
       'growth-opportunity-explanation-v1',
+      'optimization-plan-ranking-v1',
       'publication-content-brief-v1',
       'publication-article-generation-v1',
       'distribution-canonical-repost-v1',
@@ -69,6 +70,7 @@ describe('versioned AI prompt registry', () => {
       'project-report-summary-v1',
       'visibility-trend-analysis-v1',
       'growth-opportunity-explanation-v1',
+      'optimization-plan-ranking-v1',
       'publication-content-brief-v1',
       'distribution-entity-suggestion-v1'
     ] as const) {
