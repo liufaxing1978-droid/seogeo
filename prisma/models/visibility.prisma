@@ -4,6 +4,7 @@ enum VisibilityProvider {
   PERPLEXITY
   ANTHROPIC
   DEEPSEEK
+  MICROSOFT
 }
 
 enum VisibilityChannel {
