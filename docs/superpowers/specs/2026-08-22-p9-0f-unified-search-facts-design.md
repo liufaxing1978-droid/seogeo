@@ -1,7 +1,7 @@
 # P9-0F Unified Search Facts Design
 
 Date: 2026-08-22
-Status: Approved in chat; written spec awaiting review
+Status: Written spec self-reviewed; awaiting user review
 Repository: `liufaxing1978-droid/seogeo`
 Base: `main@a6d1fd648b0d836ef590d33492bdc44df18a190f`
 Branch: `feat/p9-0f-unified-search-facts`
@@ -10,7 +10,7 @@ Branch: `feat/p9-0f-unified-search-facts`
 
 P9-0F introduces a provider-aware normalized search-fact layer between provider-native search observations and P7 Growth Intelligence.
 
-The layer must preserve provider provenance, market, locale, property/site identity, exact source snapshot/cutoff, metric semantics, evidence state, and source completeness without rewriting or weakening any existing authoritative provider data.
+The layer must preserve provider provenance, market, locale, property/site identity, exact source reference/cutoff, metric semantics, evidence state, and source completeness without rewriting or weakening any existing authoritative provider data.
 
 P9-0F does **not** change P7 scoring. P9-0G will consume the unified search facts and adapt P7 to multiple providers.
 
@@ -42,17 +42,17 @@ P9-0F MUST NOT:
 - force provider-specific metrics into a false common semantic;
 - treat `UNKNOWN`, `NOT_SUPPORTED`, missing values, or absent provider fields as zero;
 - fabricate CTR, position, click, impression, completeness, or provider evidence;
-- erase the original provider/property/source snapshot reference;
+- erase the original provider/property/source reference;
 - perform AI inference or semantic merging of authoritative facts;
 - write directly to `main`;
 - auto-merge the P9-0F pull request.
 
 ## 4. Chosen architecture
 
-Use an additive three-layer model:
+Use an additive three-layer normalized model above provider-native source data:
 
 ```text
-provider-native source observations
+provider-native persisted source observations
         ↓
 SearchFactSnapshot
         ↓
@@ -63,7 +63,7 @@ SearchFactMetric
 P9-0G Growth adapter
 ```
 
-Existing GSC persisted tables remain authoritative provider-native data. Bing and future providers require durable source observations where their current adapter output is otherwise transient.
+Existing GSC persisted tables remain authoritative provider-native data. Bing and future providers require a durable append-only source-observation boundary where their current adapter output is otherwise transient.
 
 The normalized layer is immutable by normalization version: newer normalization logic creates a new snapshot/version instead of rewriting completed historical normalized facts.
 
@@ -104,7 +104,7 @@ P9-0F does not add normalized facts for a provider unless the provider has an of
 
 ### 7.1 `SearchFactSnapshot`
 
-Purpose: freeze the normalization boundary for one provider/property/market/locale/source cutoff/version.
+Purpose: freeze the normalization boundary for one provider/property/market/locale/source reference/cutoff/version.
 
 Required fields:
 
@@ -115,7 +115,8 @@ Required fields:
 - `locale`
 - `propertyRef`
 - `propertyType`
-- `sourceSnapshotRef`
+- `sourceKind`
+- `sourceRef`
 - `sourceCutoffAt`
 - `sourceCompleteness`
 - `normalizationVersion`
@@ -127,6 +128,15 @@ Required fields:
 - `errorCode`
 - `createdAt`
 - `updatedAt`
+
+`sourceKind` identifies the authoritative source boundary. Initial values are expected to distinguish at least:
+
+```text
+GSC_DAILY_SNAPSHOT
+PROVIDER_SOURCE_BATCH
+```
+
+`sourceRef` is the immutable identifier of that authoritative source boundary. For GSC it is the existing `GscDailySnapshot.id`; for non-GSC providers it is the durable provider-source batch identifier introduced by P9-0F.
 
 Suggested status values:
 
@@ -145,7 +155,8 @@ projectId
 + marketCode
 + locale
 + propertyRef
-+ sourceSnapshotRef or sourceCutoff
++ sourceKind
++ sourceRef
 + normalizationVersion
 ```
 
@@ -162,13 +173,20 @@ Suggested dimensions:
 - `projectId`
 - `factKey`
 - `factKind`
+- `sourceObservationRef`
 - `sourceDate`
 - `query`
 - `normalizedQuery`
 - `queryNormalizationVersion`
 - `page`
 - `canonicalPage`
+- `canonicalizationVersion`
 - `createdAt`
+
+`sourceObservationRef` points to the exact provider-native row/observation that produced the normalized fact:
+
+- GSC -> `GscQueryPageFact.id`
+- Bing/future non-GSC -> durable provider-source observation row id
 
 Initial `factKind` values:
 
@@ -189,19 +207,21 @@ Rules:
 
 ### 7.3 `SearchFactMetric`
 
-Purpose: store one explicit metric semantic and value attached to a normalized fact.
+Purpose: store one explicit metric semantic and evidence state attached to a normalized fact.
 
 Suggested fields:
 
 - `id`
 - `factId`
 - `metricSemantic`
-- `numericValue`
+- `numericValue` nullable
 - `evidenceState`
 - `sourceField`
 - `createdAt`
 
 A unique constraint on `(factId, metricSemantic)` prevents duplicate semantics within one fact.
+
+`numericValue` MUST be nullable. `UNKNOWN` and `NOT_SUPPORTED` must never be encoded as numeric zero.
 
 ## 8. Metric semantic contract
 
@@ -241,9 +261,16 @@ NOT_SUPPORTED
 Semantics:
 
 - `KNOWN_PRESENT`: provider returned the metric with an unambiguous value.
-- `KNOWN_EMPTY`: provider/source explicitly represented an empty result for that fact/metric context.
+- `KNOWN_EMPTY`: provider/source explicitly represented an empty value for that exact fact/metric context.
 - `UNKNOWN`: source does not establish whether the metric is absent, unavailable, truncated, or omitted.
 - `NOT_SUPPORTED`: provider capability contract explicitly does not support the metric/surface.
+
+Rules:
+
+- `KNOWN_PRESENT` requires a non-null `numericValue`.
+- `UNKNOWN` and `NOT_SUPPORTED` require `numericValue = null`.
+- `KNOWN_EMPTY` is used only when the provider explicitly distinguishes empty from unknown; it is never inferred from a missing field.
+- an empty provider result set normally produces zero facts for that source batch; it does not fabricate metric rows.
 
 `UNKNOWN`, `KNOWN_EMPTY`, and `NOT_SUPPORTED` are semantically different and must remain different in persistence and downstream queries.
 
@@ -281,30 +308,58 @@ GscDailySnapshot
 → GscQueryPageFact
 ```
 
-The normalized snapshot stores `sourceSnapshotRef = GscDailySnapshot.id` and normalized facts preserve the deterministic source relationship through fact identity/source reference metadata.
+Normalized provenance:
+
+```text
+SearchFactSnapshot.sourceKind = GSC_DAILY_SNAPSHOT
+SearchFactSnapshot.sourceRef = GscDailySnapshot.id
+SearchFact.sourceObservationRef = GscQueryPageFact.id
+```
+
+Only completed GSC source snapshots are eligible for normalization.
 
 P9-0F does not delete, rewrite, or reinterpret historical GSC facts.
 
-### Bing Webmaster
+### Bing Webmaster and future non-GSC providers
 
 Current Bing provider observations are typed at the adapter layer but do not have the same durable provider-native fact model as GSC.
 
-P9-0F therefore introduces a lightweight append-only provider-source observation persistence boundary for non-GSC providers that need durable provenance before normalization.
+P9-0F therefore introduces a lightweight append-only provider-source persistence boundary with two conceptual levels:
 
-The persisted source record must preserve at least:
+```text
+provider source batch
+→ provider source observation rows
+```
+
+The batch preserves at least:
 
 - project
 - provider
 - property/site reference
-- source date/cutoff
-- observation kind
-- provider-native payload fields required by normalization
+- market
+- locale
+- source cutoff
 - source completeness
 - adapter/schema version
-- input/source hash
+- source hash
 - created timestamp
 
-It must not store credentials, authorization headers, hidden provider traces, or arbitrary secret-bearing upstream error bodies.
+Each observation row preserves only the provider-native fields required for deterministic normalization plus:
+
+- observation kind
+- source date
+- deterministic observation key
+- created timestamp
+
+The source persistence boundary must not store credentials, authorization headers, hidden provider traces, or arbitrary secret-bearing upstream error bodies.
+
+For normalized provenance:
+
+```text
+SearchFactSnapshot.sourceKind = PROVIDER_SOURCE_BATCH
+SearchFactSnapshot.sourceRef = provider source batch id
+SearchFact.sourceObservationRef = provider source observation row id
+```
 
 ## 12. Normalizer interfaces
 
@@ -332,12 +387,14 @@ For every existing `GscQueryPageFact` in the selected completed source snapshot:
 
 Create one `QUERY_PAGE` `SearchFact` preserving:
 
+- source observation id
 - source date
 - query
 - normalized query
 - query normalization version
 - page
 - canonical page
+- canonicalization version when available/defined by the current deterministic rule
 
 Metrics:
 
@@ -352,7 +409,7 @@ Snapshot completeness derives from the source `GscDailySnapshot.sourceCompletene
 
 ## 14. Bing normalization
 
-Map existing Bing observation kinds without inventing query/page joins.
+Map persisted Bing source observations without inventing query/page joins.
 
 ### `QUERY_STATS`
 
@@ -360,10 +417,10 @@ Create `QUERY` fact with:
 
 - `CLICKS`
 - `IMPRESSIONS`
-- `BING_AVG_CLICK_POSITION` when supplied
-- `BING_AVG_IMPRESSION_POSITION` when supplied
+- `BING_AVG_CLICK_POSITION`
+- `BING_AVG_IMPRESSION_POSITION`
 
-Nullable position fields become `UNKNOWN` unless the source contract explicitly establishes an empty or unsupported state.
+If either nullable Bing position field is not supplied, create that supported semantic with `numericValue = null` and `evidenceState = UNKNOWN` unless the source contract explicitly establishes `KNOWN_EMPTY` or `NOT_SUPPORTED`.
 
 ### `PAGE_STATS`
 
@@ -371,8 +428,10 @@ Create `PAGE` fact with:
 
 - `CLICKS`
 - `IMPRESSIONS`
-- `BING_AVG_CLICK_POSITION` when supplied
-- `BING_AVG_IMPRESSION_POSITION` when supplied
+- `BING_AVG_CLICK_POSITION`
+- `BING_AVG_IMPRESSION_POSITION`
+
+Apply the same nullable-position evidence rule as query facts.
 
 ### `SITE_TRAFFIC_DAILY`
 
@@ -380,6 +439,8 @@ Create `SITE` fact with:
 
 - `CLICKS`
 - `IMPRESSIONS`
+
+Do not create query/page/position semantics that the site observation does not contain.
 
 Bing completeness remains `PROVIDER_UNSPECIFIED` with the current provider contract.
 
@@ -393,7 +454,8 @@ Rules:
 - preserve original `query` and `page` strings;
 - persist normalization/canonicalization version alongside normalized values;
 - if a source observation has no page dimension, do not fabricate one;
-- if a source observation has no query dimension, do not fabricate one.
+- if a source observation has no query dimension, do not fabricate one;
+- if a current source already stores a normalized/canonical value plus version, preserve that value/version instead of silently applying a new rule.
 
 ## 16. Idempotency and versioning
 
@@ -404,7 +466,7 @@ Materialization must be idempotent for the same source identity and normalizatio
 Rules:
 
 - a completed snapshot is immutable;
-- rerunning the same source/version returns or recognizes the existing completed snapshot;
+- rerunning the same `sourceKind + sourceRef + normalizationVersion` recognizes the existing completed snapshot;
 - changed normalization logic increments `normalizationVersion` and creates a new normalized snapshot;
 - failed snapshots may be retried only under deterministic identity/error rules without duplicating completed facts;
 - no fuzzy merge of normalized facts across versions.
@@ -426,9 +488,19 @@ Minimum downstream query dimensions:
 - canonical page
 - normalized query
 
-Returned data must include enough provenance for P9-0G to attach provider/market/source references to Growth evidence.
+Returned data must include:
 
-P9-0F does not perform cross-provider deduplication or scoring. Those decisions belong to P9-0G.
+- snapshot id
+- source kind/ref
+- fact id
+- source observation ref
+- metric semantic/evidence state/value
+- completeness
+- normalization version
+
+This is sufficient for P9-0G to attach provider/market/source references to Growth evidence without reaching back into provider-specific tables for every read.
+
+P9-0F does not perform cross-provider deduplication, weighting, opportunity detection, or scoring. Those decisions belong to P9-0G.
 
 ## 18. Error and failure behavior
 
@@ -454,7 +526,7 @@ P9-0F is additive.
 Migration may add:
 
 - normalized snapshot/fact/metric enums/tables
-- lightweight non-GSC provider-source observation table if required
+- lightweight non-GSC provider-source batch/observation tables
 - indexes/unique constraints for deterministic identity and downstream lookup
 
 Migration must not drop or rewrite:
@@ -474,26 +546,30 @@ Required coverage:
 
 1. schema/semantic contract
    - explicit provider-specific position semantics
+   - nullable numeric value for unknown/unsupported evidence
    - evidence state distinctions
    - completeness distinctions
 2. GSC normalizer
+   - only completed source snapshots
    - exact query-page mapping
    - exact metric semantics
-   - provenance
+   - exact source snapshot and source-row provenance
    - top-row completeness
-3. Bing normalizer
+3. Bing source persistence + normalizer
+   - append-only batch/row provenance
    - QUERY/PAGE/SITE fact-kind separation
-   - nullable position -> `UNKNOWN`
+   - nullable position -> `UNKNOWN` with null numeric value
    - no fabricated query-page join
    - provider-unspecified completeness
 4. idempotency/versioning
    - same source/version does not duplicate facts
    - new normalization version creates a new immutable snapshot
 5. provenance/security
-   - source references preserved
+   - source refs preserved at snapshot and fact levels
    - no secrets copied into provider-source or normalized records
 6. repository reads
    - provider/market/locale/property/date/semantic filters
+   - returned provenance is sufficient without provider-specific joins
 7. regression
    - existing GSC ingestion remains valid
    - existing search-provider adapters remain valid
@@ -520,11 +596,13 @@ After exact-head green, the PR may be marked Ready for human review. It must not
 P9-0F is complete when:
 
 - GSC and Bing can materialize provider-aware normalized search facts;
-- every normalized snapshot carries provider, market, locale, property, source cutoff/snapshot, completeness, normalization version, and provenance;
+- every normalized snapshot carries provider, market, locale, property, source kind/ref/cutoff, completeness, normalization version, and provenance;
+- every normalized fact carries an exact source observation reference;
 - every metric carries an explicit semantic and evidence state;
+- unknown/unsupported scalar metrics use null numeric values rather than zero;
 - GSC and Bing position semantics remain distinct;
 - missing/unknown/unsupported data is never represented as zero;
 - original GSC authority remains intact;
-- non-GSC source observations are durably traceable before normalization where needed;
+- non-GSC source observations are durably traceable before normalization;
 - P7 remains unchanged;
 - the exact final PR head passes `verify`, `production-audit`, and `e2e`.
