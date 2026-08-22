@@ -204,4 +204,28 @@ describe('BingWebmasterClient', () => {
     expect(transportError.message).not.toContain(secret);
     expect(transportError.message).not.toContain(bodySecret);
   });
+
+  it.each([
+    [{ kind: 'API_KEY', apiKey: 'network-secret-api-key' } as const, 'network-secret-api-key'],
+    [{ kind: 'OAUTH_BEARER', accessToken: 'network-secret-token' } as const, 'network-secret-token']
+  ])('bounds rejected fetch errors for %o without leaking credentials', async (networkAuth, secret) => {
+    const fetchImpl = vi.fn().mockRejectedValue(
+      new Error(`network failed for request carrying ${secret}`)
+    );
+    const client = new BingWebmasterClient(fetchImpl);
+
+    let error: unknown;
+    try {
+      await client.listSites(networkAuth);
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(BingWebmasterTransportError);
+    const transportError = error as BingWebmasterTransportError;
+    expect(transportError.httpStatus).toBeNull();
+    expect(transportError.code).toBe('BING_WEBMASTER_NETWORK_ERROR');
+    expect(transportError.message).not.toContain(secret);
+    expect(transportError.message).not.toContain('network failed for request carrying');
+  });
 });
