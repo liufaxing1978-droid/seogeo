@@ -1,10 +1,13 @@
-import type { MarketCode } from '@prisma/client';
-import type {
-  SearchFactCompleteness,
-  SearchFactKind,
-  SearchFactMetricSemantic,
-  SearchFactProviderCode,
-  SearchFactView
+import type { MarketCode, PrismaClient } from '@prisma/client';
+import { SearchFactMaterializer } from '../search-facts/search-fact.materializer.js';
+import { SearchFactRepository } from '../search-facts/search-fact.repository.js';
+import {
+  SEARCH_FACT_NORMALIZATION_VERSION,
+  type SearchFactCompleteness,
+  type SearchFactKind,
+  type SearchFactMetricSemantic,
+  type SearchFactProviderCode,
+  type SearchFactView
 } from '../search-facts/search-fact.types.js';
 import type { QueryPageFactLike } from './growth.types.js';
 
@@ -71,6 +74,11 @@ export type GrowthSearchSourceResult = {
   scoringFacts: QueryPageFactLike[];
   selectedGscSnapshotIds: string[];
   provenance: GrowthSearchProvenanceV1;
+};
+
+export type GrowthSearchSourceDeps = {
+  materializer?: Pick<SearchFactMaterializer, 'materializeGoogleSnapshot'>;
+  repository?: Pick<SearchFactRepository, 'listCompletedFacts'>;
 };
 
 const REQUIRED_GOOGLE_METRICS = [
@@ -214,4 +222,197 @@ export function adaptGoogleScoringFacts(
         : left.identity.localeCompare(right.identity)
     )
     .map((candidate) => candidate.row);
+}
+
+function assertSourceInput(input: GrowthSearchSourceInput): void {
+  if (
+    input.projectId.trim().length === 0 ||
+    input.propertyId.trim().length === 0 ||
+    input.selectedGscSnapshotIds.length === 0 ||
+    Number.isNaN(input.sourceDateFrom.getTime()) ||
+    Number.isNaN(input.sourceDateTo.getTime()) ||
+    input.sourceDateFrom.getTime() > input.sourceDateTo.getTime()
+  ) {
+    sourceMismatch();
+  }
+
+  const unique = new Set(input.selectedGscSnapshotIds);
+  if (
+    unique.size !== input.selectedGscSnapshotIds.length ||
+    [...unique].some((id) => id.trim().length === 0)
+  ) {
+    sourceMismatch();
+  }
+}
+
+export class GrowthSearchSourceAdapter {
+  private readonly materializer: Pick<SearchFactMaterializer, 'materializeGoogleSnapshot'>;
+  private readonly repository: Pick<SearchFactRepository, 'listCompletedFacts'>;
+
+  constructor(
+    private readonly db: PrismaClient,
+    deps: GrowthSearchSourceDeps = {}
+  ) {
+    this.materializer = deps.materializer ?? new SearchFactMaterializer(db);
+    this.repository = deps.repository ?? new SearchFactRepository(db);
+  }
+
+  async load(input: GrowthSearchSourceInput): Promise<GrowthSearchSourceResult> {
+    assertSourceInput(input);
+
+    const property = await this.db.searchConsoleProperty.findFirst({
+      where: {
+        id: input.propertyId,
+        projectId: input.projectId
+      },
+      select: {
+        id: true,
+        propertyUri: true,
+        propertyType: true
+      }
+    });
+    if (!property) sourceMismatch();
+
+    const selectedIds = [...input.selectedGscSnapshotIds];
+    const snapshots = await this.db.gscDailySnapshot.findMany({
+      where: {
+        id: { in: selectedIds },
+        projectId: input.projectId,
+        propertyId: property.id,
+        status: 'COMPLETED'
+      },
+      select: {
+        id: true,
+        date: true,
+        syncVersion: true,
+        status: true
+      },
+      orderBy: [
+        { date: 'asc' },
+        { syncVersion: 'desc' },
+        { id: 'asc' }
+      ]
+    });
+
+    if (snapshots.length !== selectedIds.length) sourceMismatch();
+    if (snapshots.some((snapshot) =>
+      snapshot.date.getTime() < input.sourceDateFrom.getTime() ||
+      snapshot.date.getTime() > input.sourceDateTo.getTime()
+    )) {
+      sourceMismatch();
+    }
+
+    const authoritativeIds = snapshots.map((snapshot) => snapshot.id);
+    const authoritativeSet = new Set(authoritativeIds);
+    const markets = await this.db.projectMarket.findMany({
+      where: {
+        projectId: input.projectId,
+        enabled: true
+      },
+      select: {
+        id: true,
+        marketCode: true,
+        locale: true
+      },
+      orderBy: [
+        { marketCode: 'asc' },
+        { locale: 'asc' },
+        { id: 'asc' }
+      ]
+    });
+
+    if (markets.length === 0) {
+      const facts = await this.db.gscQueryPageFact.findMany({
+        where: {
+          projectId: input.projectId,
+          snapshotId: { in: authoritativeIds }
+        },
+        select: {
+          date: true,
+          normalizedQuery: true,
+          canonicalPage: true,
+          clicks: true,
+          impressions: true,
+          ctr: true,
+          position: true
+        },
+        orderBy: [
+          { date: 'asc' },
+          { normalizedQuery: 'asc' },
+          { canonicalPage: 'asc' },
+          { id: 'asc' }
+        ]
+      });
+
+      return {
+        scoringFacts: facts,
+        selectedGscSnapshotIds: authoritativeIds,
+        provenance: {
+          version: GROWTH_SEARCH_PROVENANCE_VERSION,
+          mode: 'UNCONFIGURED_LEGACY',
+          scoringLane: {
+            provider: 'GOOGLE_SEARCH_CONSOLE',
+            source: 'RAW_GSC_COMPATIBILITY',
+            gscSnapshotIds: authoritativeIds
+          },
+          corroboratingLanes: []
+        }
+      };
+    }
+
+    const normalizedSnapshotIds: string[] = [];
+    for (const snapshot of snapshots) {
+      for (const market of markets) {
+        const normalized = await this.materializer.materializeGoogleSnapshot({
+          snapshotId: snapshot.id,
+          marketCode: market.marketCode,
+          locale: market.locale,
+          normalizationVersion: SEARCH_FACT_NORMALIZATION_VERSION
+        });
+        normalizedSnapshotIds.push(normalized.id);
+      }
+    }
+
+    const unifiedFacts: SearchFactView[] = [];
+    for (const market of markets) {
+      unifiedFacts.push(...await this.repository.listCompletedFacts({
+        projectId: input.projectId,
+        provider: 'GOOGLE_SEARCH_CONSOLE',
+        marketCode: market.marketCode,
+        locale: market.locale,
+        propertyRef: property.propertyUri,
+        factKind: 'QUERY_PAGE',
+        sourceDateFrom: input.sourceDateFrom,
+        sourceDateTo: input.sourceDateTo
+      }));
+    }
+
+    const scoringFacts = adaptGoogleScoringFacts(unifiedFacts, authoritativeSet);
+    const marketProjections = markets.map((market) => ({
+      marketCode: market.marketCode,
+      locale: market.locale,
+      propertyRef: property.propertyUri
+    })).sort((left, right) =>
+      left.marketCode.localeCompare(right.marketCode) ||
+      left.locale.localeCompare(right.locale) ||
+      left.propertyRef.localeCompare(right.propertyRef)
+    );
+
+    return {
+      scoringFacts,
+      selectedGscSnapshotIds: authoritativeIds,
+      provenance: {
+        version: GROWTH_SEARCH_PROVENANCE_VERSION,
+        mode: 'CONFIGURED_MARKET',
+        scoringLane: {
+          provider: 'GOOGLE_SEARCH_CONSOLE',
+          factKind: 'QUERY_PAGE',
+          snapshotIds: [...new Set(normalizedSnapshotIds)].sort(),
+          sourceRefs: [...authoritativeSet].sort(),
+          marketProjections
+        },
+        corroboratingLanes: []
+      }
+    };
+  }
 }
