@@ -9,7 +9,7 @@ import type {
 const PROVIDER_OPTION_ALLOWLIST: Record<VisibilityProvider, ReadonlySet<string>> = {
   OPENAI: new Set(['searchContextSize']),
   GEMINI: new Set(),
-  PERPLEITY: new Set(['searchDomainFilter', 'searchRecencyFilter']),
+  PERPLEXITY: new Set(['searchDomainFilter', 'searchRecencyFilter']),
   ANTHROPIC: new Set(['maxUses']),
   DEEPSEEK: new Set(),
   MICROSOFT: new Set(['timeZone'])
