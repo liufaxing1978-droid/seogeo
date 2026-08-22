@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { OptimizationCandidateDraft } from '../../src/modules/optimization/optimization.candidate.js'
-import { rankEligibleCandidates } from '../../src/modules/optimization/optimization.ranking.js'
+import {
+  applyBoundedRankAdjustments,
+  rankEligibleCandidates,
+} from '../../src/modules/optimization/optimization.ranking.js'
 
 function candidate(overrides: Partial<OptimizationCandidateDraft> = {}): OptimizationCandidateDraft {
   return {
@@ -27,6 +30,14 @@ function candidate(overrides: Partial<OptimizationCandidateDraft> = {}): Optimiz
     eligibilityReasonCodes: [],
     sourceFactReferences: [],
     ...overrides,
+  }
+}
+
+function rankedSeed(rank: number, key: string) {
+  return {
+    candidateId: `00000000-0000-4000-8000-${String(rank).padStart(12, '0')}`,
+    candidateKey: key.repeat(64),
+    deterministicRank: rank,
   }
 }
 
@@ -63,5 +74,74 @@ describe('P9-A deterministic ranking', () => {
 
     expect(ranked).toHaveLength(1)
     expect(ranked[0]).toMatchObject({ candidateKey: 'a'.repeat(64), growthScore: 70, deterministicRank: 1 })
+  })
+
+  it('uses negative adjustments to improve rank and positive adjustments to worsen rank within the two-place bound', () => {
+    const first = rankedSeed(1, 'a')
+    const second = rankedSeed(2, 'b')
+    const third = rankedSeed(3, 'c')
+
+    const adjusted = applyBoundedRankAdjustments(
+      [first, second, third],
+      [
+        { candidateId: first.candidateId, adjustment: 1 },
+        { candidateId: second.candidateId, adjustment: -1 },
+      ],
+    )
+
+    expect(adjusted).toEqual([
+      { candidateId: first.candidateId, deterministicRank: 1, aiRankAdjustment: 1, finalRank: 2 },
+      { candidateId: second.candidateId, deterministicRank: 2, aiRankAdjustment: -1, finalRank: 1 },
+      { candidateId: third.candidateId, deterministicRank: 3, aiRankAdjustment: 0, finalRank: 3 },
+    ])
+  })
+
+  it('breaks adjusted-signal ties by deterministic rank then candidate key', () => {
+    const first = rankedSeed(1, 'b')
+    const second = rankedSeed(2, 'a')
+    const third = rankedSeed(3, 'c')
+
+    const adjusted = applyBoundedRankAdjustments(
+      [first, second, third],
+      [
+        { candidateId: first.candidateId, adjustment: 1 },
+        { candidateId: second.candidateId, adjustment: 0 },
+      ],
+    )
+
+    expect(adjusted.find((item) => item.candidateId === first.candidateId)?.finalRank).toBe(1)
+    expect(adjusted.find((item) => item.candidateId === second.candidateId)?.finalRank).toBe(2)
+  })
+
+  it('rejects the whole AI set to deterministic zero when any final displacement exceeds two places', () => {
+    const ranked = [
+      rankedSeed(1, 'a'),
+      rankedSeed(2, 'b'),
+      rankedSeed(3, 'c'),
+      rankedSeed(4, 'd'),
+      rankedSeed(5, 'e'),
+      rankedSeed(6, 'f'),
+      rankedSeed(7, 'g'),
+    ]
+
+    const adjusted = applyBoundedRankAdjustments(
+      ranked,
+      [
+        { candidateId: ranked[0]!.candidateId, adjustment: 2 },
+        { candidateId: ranked[1]!.candidateId, adjustment: 2 },
+        { candidateId: ranked[2]!.candidateId, adjustment: 2 },
+        { candidateId: ranked[3]!.candidateId, adjustment: -2 },
+        { candidateId: ranked[4]!.candidateId, adjustment: -2 },
+        { candidateId: ranked[5]!.candidateId, adjustment: -2 },
+        { candidateId: ranked[6]!.candidateId, adjustment: -2 },
+      ],
+    )
+
+    expect(adjusted).toEqual(ranked.map((item) => ({
+      candidateId: item.candidateId,
+      deterministicRank: item.deterministicRank,
+      aiRankAdjustment: 0,
+      finalRank: item.deterministicRank,
+    })))
   })
 })
