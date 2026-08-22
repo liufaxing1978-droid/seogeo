@@ -115,11 +115,38 @@ async function createGrowthFixture() {
   return { project, identity, firstSnapshot, latestSnapshot };
 }
 
-afterAll(async () => {
-  for (const projectId of projectIds.reverse()) {
-    await prisma.project.delete({ where: { id: projectId } }).catch(() => undefined);
+async function cleanupImmutableFixtures() {
+  if (projectIds.length === 0) return;
+
+  await prisma.$executeRawUnsafe(
+    'ALTER TABLE "OptimizationPlan" DISABLE TRIGGER "OptimizationPlan_immutable"'
+  );
+  await prisma.$executeRawUnsafe(
+    'ALTER TABLE "OptimizationCandidate" DISABLE TRIGGER "OptimizationCandidate_immutable"'
+  );
+
+  try {
+    await prisma.optimizationPlan.deleteMany({
+      where: { projectId: { in: projectIds } }
+    });
+    await prisma.optimizationCandidate.deleteMany({
+      where: { projectId: { in: projectIds } }
+    });
+  } finally {
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "OptimizationCandidate" ENABLE TRIGGER "OptimizationCandidate_immutable"'
+    );
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "OptimizationPlan" ENABLE TRIGGER "OptimizationPlan_immutable"'
+    );
   }
-});
+
+  for (const projectId of [...projectIds].reverse()) {
+    await prisma.project.delete({ where: { id: projectId } });
+  }
+}
+
+afterAll(cleanupImmutableFixtures);
 
 describe('P9-A immutable persistence', () => {
   it('reads exactly the latest persisted Growth snapshot for a planner identity', async () => {
