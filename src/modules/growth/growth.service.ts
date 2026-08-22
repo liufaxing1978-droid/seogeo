@@ -431,8 +431,12 @@ export async function materializeGrowthWindow(
   });
   const facts = searchSource.scoringFacts;
 
-  const currentFacts = facts.filter((row) => row.date >= currentStart && row.date <= currentEnd);
-  const previousFacts = facts.filter((row) => row.date >= previousStart && row.date <= previousEnd);
+  const currentFacts = facts.filter((row) =>
+    row.date instanceof Date && row.date >= currentStart && row.date <= currentEnd
+  );
+  const previousFacts = facts.filter((row) =>
+    row.date instanceof Date && row.date >= previousStart && row.date <= previousEnd
+  );
   const currentAggregates = aggregateQueryPageFacts(currentFacts).slice(0, GROWTH_MAX_CANDIDATES);
   const previousAggregates = aggregateQueryPageFacts(previousFacts);
   const previousByKey = new Map(previousAggregates.map((row) => [aggregateKey(row), row]));
