@@ -9,9 +9,10 @@ import type {
 const PROVIDER_OPTION_ALLOWLIST: Record<VisibilityProvider, ReadonlySet<string>> = {
   OPENAI: new Set(['searchContextSize']),
   GEMINI: new Set(),
-  PERPLEXITY: new Set(['searchDomainFilter', 'searchRecencyFilter']),
+  PERPLEITY: new Set(['searchDomainFilter', 'searchRecencyFilter']),
   ANTHROPIC: new Set(['maxUses']),
-  DEEPSEEK: new Set()
+  DEEPSEEK: new Set(),
+  MICROSOFT: new Set(['timeZone'])
 };
 
 const SECRET_KEY_PATTERN = /(key|token|secret|authorization|cookie)/i;
