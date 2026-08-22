@@ -96,22 +96,28 @@ function loadInput(source: Awaited<ReturnType<typeof createGscFixture>>) {
   };
 }
 
+function expectFixtureScoringFact(
+  scoringFacts: Awaited<ReturnType<GrowthSearchSourceAdapter['load']>>['scoringFacts'],
+  sourceDate: Date
+): void {
+  expect(scoringFacts).toHaveLength(1);
+  expect(scoringFacts[0]).toMatchObject({
+    date: sourceDate,
+    normalizedQuery: '兴善堂',
+    canonicalPage: 'https://example.com/liuren',
+    clicks: 7,
+    impressions: 120,
+    position: 2.8
+  });
+  expect(scoringFacts[0]!.ctr).toBeCloseTo(7 / 120, 15);
+}
+
 describe('P9-0G Growth search source handoff', () => {
   it('uses explicit UNCONFIGURED_LEGACY mode when the project has no enabled market', async () => {
     const source = await createGscFixture('Legacy growth handoff');
     const result = await new GrowthSearchSourceAdapter(prisma).load(loadInput(source));
 
-    expect(result.scoringFacts).toEqual([
-      {
-        date: source.sourceDate,
-        normalizedQuery: '兴善堂',
-        canonicalPage: 'https://example.com/liuren',
-        clicks: 7,
-        impressions: 120,
-        ctr: 7 / 120,
-        position: 2.8
-      }
-    ]);
+    expectFixtureScoringFact(result.scoringFacts, source.sourceDate);
     expect(result.provenance).toEqual({
       version: 'GROWTH_SEARCH_PROVENANCE_V1',
       mode: 'UNCONFIGURED_LEGACY',
@@ -140,17 +146,7 @@ describe('P9-0G Growth search source handoff', () => {
 
     expect(result.provenance.mode).toBe('CONFIGURED_MARKET');
     if (result.provenance.mode !== 'CONFIGURED_MARKET') throw new Error('configured provenance expected');
-    expect(result.scoringFacts).toEqual([
-      {
-        date: source.sourceDate,
-        normalizedQuery: '兴善堂',
-        canonicalPage: 'https://example.com/liuren',
-        clicks: 7,
-        impressions: 120,
-        ctr: 7 / 120,
-        position: 2.8
-      }
-    ]);
+    expectFixtureScoringFact(result.scoringFacts, source.sourceDate);
     expect(result.provenance.scoringLane).toMatchObject({
       provider: 'GOOGLE_SEARCH_CONSOLE',
       factKind: 'QUERY_PAGE',
