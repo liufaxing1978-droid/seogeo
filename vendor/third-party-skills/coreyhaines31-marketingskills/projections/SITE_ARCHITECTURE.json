@@ -1,0 +1,43 @@
+{
+  "projectionVersion": "ADVISORY_METHOD_PROJECTION_V1",
+  "skillId": "corey.site-architecture",
+  "methodKey": "SITE_ARCHITECTURE",
+  "title": "Site architecture",
+  "purpose": "Plan clear page hierarchy, navigation, URL structure, and internal-link relationships for discovery and user comprehension.",
+  "whenToUse": [
+    "Restructuring information architecture, navigation, URLs, or internal linking."
+  ],
+  "requiredInputs": [
+    "Current page inventory or representative structure",
+    "Priority topics and user journeys"
+  ],
+  "steps": [
+    "Group pages by intent and topic.",
+    "Define hierarchy and canonical destination pages.",
+    "Map navigation and contextual internal links.",
+    "Identify orphan, duplicate, or excessively deep paths."
+  ],
+  "checks": [
+    "Do not assume crawl depth or orphan status without a page/link inventory.",
+    "Preserve migration and redirect requirements as explicit implementation work."
+  ],
+  "outputs": [
+    "Advisory hierarchy, navigation, URL, and internal-link plan."
+  ],
+  "evidenceRules": [
+    "Observed evidence must stay distinct from recommendations and third-party method guidance.",
+    "Missing observed data remains unknown and must never be converted to zero, failure, or success.",
+    "Any externally sourced benchmark or claim must retain provenance and applicability limits."
+  ],
+  "forbiddenInferences": [
+    "Do not fabricate rankings, citations, traffic, conversions, backlinks, performance, or verification state.",
+    "Do not elevate advisory output into P7 authoritative facts, deterministic scores, P8 risk, approvals, mutation authority, or VERIFIED status.",
+    "Do not request or use credentials, execute commands, call networks, mutate databases, publish, deploy, merge, or perform runtime actions."
+  ],
+  "sourceRefs": [
+    {
+      "upstreamPath": "upstream/skills/site-architecture/SKILL.md",
+      "upstreamSha256": "a47f693c6a4f45db89276d8c341b3aa3054090cc8002dd4a2635448d7d152492"
+    }
+  ]
+}

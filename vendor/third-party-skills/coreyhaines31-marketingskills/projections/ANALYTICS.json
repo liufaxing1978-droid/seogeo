@@ -1,0 +1,44 @@
+{
+  "projectionVersion": "ADVISORY_METHOD_PROJECTION_V1",
+  "skillId": "corey.analytics",
+  "methodKey": "ANALYTICS",
+  "title": "Analytics measurement",
+  "purpose": "Design trustworthy measurement plans with explicit events, properties, baselines, and interpretation limits.",
+  "whenToUse": [
+    "Planning analytics instrumentation, funnels, KPIs, or SEO/GEO measurement."
+  ],
+  "requiredInputs": [
+    "Business objective",
+    "User journey",
+    "Available event and attribution data"
+  ],
+  "steps": [
+    "Translate objectives into measurable questions.",
+    "Define events, properties, and identity boundaries.",
+    "Specify funnel and segment logic.",
+    "Document attribution and data-quality limitations before interpretation."
+  ],
+  "checks": [
+    "Missing events or attribution data remain unknown rather than zero.",
+    "Do not claim causality from descriptive analytics alone."
+  ],
+  "outputs": [
+    "Advisory measurement specification, data-quality checks, and analysis questions."
+  ],
+  "evidenceRules": [
+    "Observed evidence must stay distinct from recommendations and third-party method guidance.",
+    "Missing observed data remains unknown and must never be converted to zero, failure, or success.",
+    "Any externally sourced benchmark or claim must retain provenance and applicability limits."
+  ],
+  "forbiddenInferences": [
+    "Do not fabricate rankings, citations, traffic, conversions, backlinks, performance, or verification state.",
+    "Do not elevate advisory output into P7 authoritative facts, deterministic scores, P8 risk, approvals, mutation authority, or VERIFIED status.",
+    "Do not request or use credentials, execute commands, call networks, mutate databases, publish, deploy, merge, or perform runtime actions."
+  ],
+  "sourceRefs": [
+    {
+      "upstreamPath": "upstream/skills/analytics/SKILL.md",
+      "upstreamSha256": "3eda97d96b2329daa933b6fdb94bf81aaa1196e3e344e56a8805f972a7438404"
+    }
+  ]
+}

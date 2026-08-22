@@ -1,0 +1,43 @@
+{
+  "projectionVersion": "ADVISORY_METHOD_PROJECTION_V1",
+  "skillId": "corey.seo-audit",
+  "methodKey": "SEO_AUDIT",
+  "title": "SEO audit",
+  "purpose": "Structure a read-only SEO audit that separates observed evidence from recommendations.",
+  "whenToUse": [
+    "Auditing crawlability, indexation, technical SEO, on-page quality, content quality, and authority signals."
+  ],
+  "requiredInputs": [
+    "Site scope and business goals",
+    "Observed crawl/index/page evidence when available"
+  ],
+  "steps": [
+    "Establish scope and evidence coverage.",
+    "Check crawlability and indexation before downstream optimization.",
+    "Review technical, on-page, content, and authority findings.",
+    "Prioritize findings by impact and confidence."
+  ],
+  "checks": [
+    "Distinguish directly observed findings from unavailable checks.",
+    "Avoid declaring schema or rendered-page failures from tooling that cannot observe them."
+  ],
+  "outputs": [
+    "Prioritized advisory audit findings with evidence status and recommended next checks."
+  ],
+  "evidenceRules": [
+    "Observed evidence must stay distinct from recommendations and third-party method guidance.",
+    "Missing observed data remains unknown and must never be converted to zero, failure, or success.",
+    "Any externally sourced benchmark or claim must retain provenance and applicability limits."
+  ],
+  "forbiddenInferences": [
+    "Do not fabricate rankings, citations, traffic, conversions, backlinks, performance, or verification state.",
+    "Do not elevate advisory output into P7 authoritative facts, deterministic scores, P8 risk, approvals, mutation authority, or VERIFIED status.",
+    "Do not request or use credentials, execute commands, call networks, mutate databases, publish, deploy, merge, or perform runtime actions."
+  ],
+  "sourceRefs": [
+    {
+      "upstreamPath": "upstream/skills/seo-audit/SKILL.md",
+      "upstreamSha256": "9420a6c1ffcf7212766bcb618c28766ecb084631bed8045f3115d42b1230d368"
+    }
+  ]
+}

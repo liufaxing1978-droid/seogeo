@@ -1,0 +1,44 @@
+{
+  "projectionVersion": "ADVISORY_METHOD_PROJECTION_V1",
+  "skillId": "aaron.domain-authority-auditor",
+  "methodKey": "DOMAIN_TRUST_AUDIT",
+  "title": "Domain trust audit",
+  "purpose": "Review observable domain trust and authority signals without inventing backlink, reputation, or authority metrics.",
+  "whenToUse": [
+    "Assessing domain-level trust, authority, provenance, and reputation evidence."
+  ],
+  "requiredInputs": [
+    "Observed domain and publisher evidence",
+    "Observed backlink or citation data when available",
+    "Business and topic context"
+  ],
+  "steps": [
+    "Inventory available trust evidence.",
+    "Separate first-party claims from externally observed support.",
+    "Identify missing authority and provenance signals.",
+    "Prioritize evidence-building opportunities."
+  ],
+  "checks": [
+    "Do not infer domain authority scores without observed source data.",
+    "Do not treat upstream trust gates as P7 or P8 authoritative state."
+  ],
+  "outputs": [
+    "Advisory domain-trust observations, unknowns, and evidence-building recommendations."
+  ],
+  "evidenceRules": [
+    "Observed evidence must stay distinct from recommendations and third-party method guidance.",
+    "Missing observed data remains unknown and must never be converted to zero, failure, or success.",
+    "Any externally sourced benchmark or claim must retain provenance and applicability limits."
+  ],
+  "forbiddenInferences": [
+    "Do not fabricate rankings, citations, traffic, conversions, backlinks, performance, or verification state.",
+    "Do not elevate advisory output into P7 authoritative facts, deterministic scores, P8 risk, approvals, mutation authority, or VERIFIED status.",
+    "Do not request or use credentials, execute commands, call networks, mutate databases, publish, deploy, merge, or perform runtime actions."
+  ],
+  "sourceRefs": [
+    {
+      "upstreamPath": "upstream/seo-geo/evaluate/domain-authority-auditor/SKILL.md",
+      "upstreamSha256": "b3f8ac9d2f9605b77b258230592e5fa99e7a0dbe248840e1f5a8adc37b1216e9"
+    }
+  ]
+}
