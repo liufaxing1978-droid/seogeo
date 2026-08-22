@@ -5,9 +5,6 @@ on:
     branches: [main]
   pull_request:
 
-permissions:
-  contents: write
-
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -45,18 +42,9 @@ jobs:
       SESSION_SECRET: ci-test-secret
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Materialize exact P9-0H vendor assets
-        if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
-        shell: bash
-        run: |
-          sed -i "s/grep -q '\^Apache License'/grep -q 'Apache License'/" .github/p9-0h-materialize.sh
-          bash .github/p9-0h-materialize.sh
       - name: Install dependencies
         run: npm install
       - name: Validate Prisma
@@ -84,20 +72,6 @@ jobs:
           tail -n 30 /tmp/vitest.log
       - name: Build
         run: npm run build
-      - name: Commit exact P9-0H vendor assets
-        if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A vendor/third-party-skills
-          if git diff --cached --quiet; then
-            echo 'No vendor changes to commit'
-            exit 0
-          fi
-          git commit -m 'feat: vendor reviewed third-party SEO methods'
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
 
   production-audit:
     runs-on: ubuntu-latest
