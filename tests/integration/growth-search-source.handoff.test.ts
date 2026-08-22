@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '../../src/db/prisma.js';
 import { GrowthSearchSourceAdapter } from '../../src/modules/growth/growth-search-source.adapter.js';
+import { SearchFactMaterializer } from '../../src/modules/search-facts/search-fact.materializer.js';
+import { SEARCH_FACT_NORMALIZATION_VERSION } from '../../src/modules/search-facts/search-fact.types.js';
 
 beforeEach(async () => {
   await prisma.searchFactMetric.deleteMany();
@@ -167,6 +169,65 @@ describe('P9-0G Growth search source handoff', () => {
         status: 'COMPLETED'
       }
     })).toBe(1);
+  });
+
+  it('ignores older completed normalized GSC history outside the selected authoritative snapshot set', async () => {
+    const source = await createGscFixture('Historical normalized GSC handoff');
+    await prisma.projectMarket.create({
+      data: {
+        projectId: source.project.id,
+        marketCode: 'GLOBAL',
+        locale: 'zh-CN',
+        enabled: true
+      }
+    });
+
+    const oldSnapshot = await prisma.gscDailySnapshot.create({
+      data: {
+        projectId: source.project.id,
+        propertyId: source.property.id,
+        date: source.sourceDate,
+        status: 'COMPLETED',
+        syncVersion: 0,
+        inputHash: `${source.project.id}:old-gsc-source-hash`,
+        rowCount: 1,
+        sourceFreshness: new Date('2026-08-21T05:00:00.000Z'),
+        sourceCompletenessState: 'TOP_ROWS_ONLY',
+        startedAt: new Date('2026-08-21T05:01:00.000Z'),
+        completedAt: new Date('2026-08-21T05:02:00.000Z')
+      }
+    });
+    await prisma.gscQueryPageFact.create({
+      data: {
+        snapshotId: oldSnapshot.id,
+        projectId: source.project.id,
+        date: source.sourceDate,
+        factKey: 'growth-handoff-old-fact',
+        query: '旧数据',
+        normalizedQuery: '旧数据',
+        normalizationVersion: 'GSC_QUERY_NORMALIZATION_V1',
+        page: 'https://example.com/old',
+        canonicalPage: 'https://example.com/old',
+        clicks: 99,
+        impressions: 999,
+        ctr: 99 / 999,
+        position: 99
+      }
+    });
+    const oldNormalized = await new SearchFactMaterializer(prisma).materializeGoogleSnapshot({
+      snapshotId: oldSnapshot.id,
+      marketCode: 'GLOBAL',
+      locale: 'zh-CN',
+      normalizationVersion: SEARCH_FACT_NORMALIZATION_VERSION
+    });
+
+    const result = await new GrowthSearchSourceAdapter(prisma).load(loadInput(source));
+
+    expectFixtureScoringFact(result.scoringFacts, source.sourceDate);
+    expect(result.provenance.mode).toBe('CONFIGURED_MARKET');
+    if (result.provenance.mode !== 'CONFIGURED_MARKET') throw new Error('configured provenance expected');
+    expect(result.provenance.scoringLane.sourceRefs).toEqual([source.snapshot.id]);
+    expect(result.provenance.scoringLane.snapshotIds).not.toContain(oldNormalized.id);
   });
 
   it('projects one raw GSC source into multiple enabled markets without multiplying scoring facts', async () => {
