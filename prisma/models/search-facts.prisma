@@ -1,0 +1,157 @@
+enum SearchFactProvider {
+  GOOGLE_SEARCH_CONSOLE
+  BING_WEBMASTER
+  BAIDU_SEARCH_RESOURCE
+  QIHOO_360_WEBMASTER
+  SOGOU_WEBMASTER
+  SHENMA_WEBMASTER
+}
+
+enum SearchFactSnapshotStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum SearchFactKind {
+  QUERY_PAGE
+  QUERY
+  PAGE
+  SITE
+}
+
+enum SearchFactMetricSemantic {
+  CLICKS
+  IMPRESSIONS
+  CTR
+  GOOGLE_SEARCH_CONSOLE_POSITION
+  BING_AVG_CLICK_POSITION
+  BING_AVG_IMPRESSION_POSITION
+}
+
+enum SearchFactEvidenceState {
+  KNOWN_PRESENT
+  KNOWN_EMPTY
+  UNKNOWN
+  NOT_SUPPORTED
+}
+
+enum SearchFactCompleteness {
+  COMPLETE
+  TOP_ROWS_ONLY
+  PROVIDER_UNSPECIFIED
+  UNKNOWN
+}
+
+enum SearchFactSourceKind {
+  GSC_DAILY_SNAPSHOT
+  PROVIDER_OBSERVATION_BATCH
+}
+
+model SearchProviderObservationBatch {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  projectId          String                 @db.Uuid
+  provider           SearchFactProvider
+  marketCode         MarketCode
+  locale             String
+  propertyRef        String
+  propertyType       String
+  sourceCutoffAt     DateTime
+  sourceCompleteness SearchFactCompleteness
+  schemaVersion      String
+  inputHash          String
+  observationCount   Int
+  createdAt          DateTime               @default(now())
+
+  observations SearchProviderObservationRecord[]
+
+  @@unique([projectId, provider, marketCode, locale, propertyRef, sourceCutoffAt, schemaVersion, inputHash], map: "SearchProviderObservationBatch_identity_key")
+  @@index([projectId, provider, marketCode, locale, sourceCutoffAt], map: "SearchProviderObservationBatch_lookup_idx")
+}
+
+model SearchProviderObservationRecord {
+  id              String                 @id @default(uuid()) @db.Uuid
+  batchId         String                 @db.Uuid
+  projectId       String                 @db.Uuid
+  sourceDate      DateTime               @db.Date
+  observationKind String
+  observationKey  String
+  completeness    SearchFactCompleteness
+  inputHash       String
+  payloadJson     Json
+  createdAt       DateTime               @default(now())
+
+  batch SearchProviderObservationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@unique([batchId, observationKey], map: "SearchProviderObservationRecord_batch_key")
+  @@index([projectId, sourceDate, observationKind], map: "SearchProviderObservationRecord_project_date_kind_idx")
+}
+
+model SearchFactSnapshot {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  projectId            String                   @db.Uuid
+  provider             SearchFactProvider
+  marketCode           MarketCode
+  locale               String
+  propertyRef          String
+  propertyType         String
+  sourceKind           SearchFactSourceKind
+  sourceRef            String
+  sourceCutoffAt       DateTime
+  sourceCompleteness   SearchFactCompleteness
+  normalizationVersion String
+  inputHash            String
+  status               SearchFactSnapshotStatus @default(PENDING)
+  factCount            Int                      @default(0)
+  startedAt            DateTime?
+  completedAt          DateTime?
+  errorCode            String?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+
+  facts SearchFact[]
+
+  @@unique([projectId, provider, marketCode, locale, propertyRef, sourceKind, sourceRef, normalizationVersion], map: "SearchFactSnapshot_identity_key")
+  @@index([projectId, provider, marketCode, locale, sourceCutoffAt, status], map: "SearchFactSnapshot_lookup_idx")
+}
+
+model SearchFact {
+  id                        String         @id @default(uuid()) @db.Uuid
+  snapshotId                String         @db.Uuid
+  projectId                 String         @db.Uuid
+  factKey                   String
+  factKind                  SearchFactKind
+  sourceObservationRef      String
+  sourceDate                DateTime       @db.Date
+  query                     String?
+  normalizedQuery           String?
+  queryNormalizationVersion String?
+  page                      String?
+  canonicalPage             String?
+  canonicalizationVersion   String?
+  createdAt                 DateTime       @default(now())
+
+  snapshot SearchFactSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  metrics  SearchFactMetric[]
+
+  @@unique([snapshotId, factKey], map: "SearchFact_snapshot_fact_key")
+  @@index([projectId, factKind, sourceDate], map: "SearchFact_project_kind_date_idx")
+  @@index([projectId, canonicalPage, sourceDate], map: "SearchFact_project_page_date_idx")
+  @@index([projectId, normalizedQuery, sourceDate], map: "SearchFact_project_query_date_idx")
+}
+
+model SearchFactMetric {
+  id             String                    @id @default(uuid()) @db.Uuid
+  factId         String                    @db.Uuid
+  metricSemantic SearchFactMetricSemantic
+  numericValue   Float?
+  evidenceState  SearchFactEvidenceState
+  sourceField    String
+  createdAt      DateTime                  @default(now())
+
+  fact SearchFact @relation(fields: [factId], references: [id], onDelete: Cascade)
+
+  @@unique([factId, metricSemantic], map: "SearchFactMetric_fact_semantic_key")
+  @@index([metricSemantic, evidenceState], map: "SearchFactMetric_semantic_evidence_idx")
+}
