@@ -75,13 +75,13 @@ export const BAIDU_SEARCH_PROVIDER_MANIFEST = freezeManifest({
     LIST_PROPERTIES: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', true, 'PLATFORM_ONLY'),
     QUERY_PAGE_DAILY: descriptor('NOT_SUPPORTED', 'UNKNOWN', true, 'NONE'),
     QUERY_STATS: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
-    PAGE_STATS: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
+    PAGE_STATS: descriptor('NOT_SUPPORTED', 'UNKNOWN', true, 'NONE'),
     SITE_TRAFFIC_DAILY: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
     INDEX_COVERAGE: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
     CRAWL_STATS: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
     ROBOTS_OBSERVATION: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', true, 'PLATFORM_ONLY'),
     PROVIDER_DIAGNOSTICS: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', true, 'PLATFORM_ONLY'),
-    URL_INSPECTION: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', true, 'PLATFORM_ONLY'),
+    URL_INSPECTION: descriptor('NOT_SUPPORTED', 'ON_DEMAND', true, 'NONE'),
     URL_SUBMISSION: descriptor(
       'NOT_IMPLEMENTED',
       'ON_DEMAND',
@@ -93,44 +93,62 @@ export const BAIDU_SEARCH_PROVIDER_MANIFEST = freezeManifest({
   }
 });
 
-function platformOnlyChinaManifest(
-  provider: Extract<SearchProviderCode, 'QIHOO_360_WEBMASTER' | 'SOGOU_WEBMASTER' | 'SHENMA_WEBMASTER'>,
-  displayName: string
-): SearchProviderManifest {
-  return freezeManifest({
-    provider,
-    displayName,
-    capabilities: {
-      LIST_PROPERTIES: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', true, 'PLATFORM_ONLY'),
-      QUERY_PAGE_DAILY: descriptor('NOT_SUPPORTED', 'UNKNOWN', true, 'NONE'),
-      QUERY_STATS: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
-      PAGE_STATS: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
-      SITE_TRAFFIC_DAILY: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
-      INDEX_COVERAGE: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
-      CRAWL_STATS: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
-      ROBOTS_OBSERVATION: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', true, 'PLATFORM_ONLY'),
-      PROVIDER_DIAGNOSTICS: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', true, 'PLATFORM_ONLY'),
-      URL_INSPECTION: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', true, 'PLATFORM_ONLY'),
-      URL_SUBMISSION: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', false, 'PLATFORM_ONLY'),
-      SITEMAP_SUBMISSION: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', false, 'PLATFORM_ONLY')
-    }
-  });
-}
+export const QIHOO_360_SEARCH_PROVIDER_MANIFEST = freezeManifest({
+  provider: 'QIHOO_360_WEBMASTER',
+  displayName: '360 Search Webmaster Platform',
+  capabilities: {
+    LIST_PROPERTIES: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', true, 'PLATFORM_ONLY'),
+    QUERY_PAGE_DAILY: descriptor('NOT_SUPPORTED', 'UNKNOWN', true, 'NONE'),
+    QUERY_STATS: descriptor('NOT_SUPPORTED', 'UNKNOWN', true, 'NONE'),
+    PAGE_STATS: descriptor('NOT_SUPPORTED', 'UNKNOWN', true, 'NONE'),
+    SITE_TRAFFIC_DAILY: descriptor('NOT_SUPPORTED', 'UNKNOWN', true, 'NONE'),
+    INDEX_COVERAGE: descriptor('NOT_SUPPORTED', 'UNKNOWN', true, 'NONE'),
+    CRAWL_STATS: descriptor('NOT_SUPPORTED', 'UNKNOWN', true, 'NONE'),
+    ROBOTS_OBSERVATION: descriptor('NOT_SUPPORTED', 'ON_DEMAND', true, 'NONE'),
+    PROVIDER_DIAGNOSTICS: descriptor('NOT_SUPPORTED', 'ON_DEMAND', true, 'NONE'),
+    URL_INSPECTION: descriptor('NOT_SUPPORTED', 'ON_DEMAND', true, 'NONE'),
+    URL_SUBMISSION: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', false, 'PLATFORM_ONLY'),
+    SITEMAP_SUBMISSION: descriptor('NOT_SUPPORTED', 'ON_DEMAND', false, 'NONE')
+  }
+});
 
-export const QIHOO_360_SEARCH_PROVIDER_MANIFEST = platformOnlyChinaManifest(
-  'QIHOO_360_WEBMASTER',
-  '360 Search Webmaster Platform'
-);
+export const SOGOU_SEARCH_PROVIDER_MANIFEST = freezeManifest({
+  provider: 'SOGOU_WEBMASTER',
+  displayName: 'Sogou Webmaster Platform',
+  capabilities: {
+    LIST_PROPERTIES: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', true, 'PLATFORM_ONLY'),
+    QUERY_PAGE_DAILY: descriptor('NOT_SUPPORTED', 'UNKNOWN', true, 'NONE'),
+    QUERY_STATS: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
+    PAGE_STATS: descriptor('NOT_SUPPORTED', 'UNKNOWN', true, 'NONE'),
+    SITE_TRAFFIC_DAILY: descriptor('NOT_IMPLEMENTED', 'DAILY', true, 'PLATFORM_ONLY'),
+    INDEX_COVERAGE: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
+    CRAWL_STATS: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
+    ROBOTS_OBSERVATION: descriptor('NOT_SUPPORTED', 'ON_DEMAND', true, 'NONE'),
+    PROVIDER_DIAGNOSTICS: descriptor('NOT_SUPPORTED', 'ON_DEMAND', true, 'NONE'),
+    URL_INSPECTION: descriptor('NOT_SUPPORTED', 'ON_DEMAND', true, 'NONE'),
+    URL_SUBMISSION: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', false, 'PLATFORM_ONLY'),
+    SITEMAP_SUBMISSION: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', false, 'PLATFORM_ONLY')
+  }
+});
 
-export const SOGOU_SEARCH_PROVIDER_MANIFEST = platformOnlyChinaManifest(
-  'SOGOU_WEBMASTER',
-  'Sogou Webmaster Platform'
-);
-
-export const SHENMA_SEARCH_PROVIDER_MANIFEST = platformOnlyChinaManifest(
-  'SHENMA_WEBMASTER',
-  'Shenma Webmaster Platform'
-);
+export const SHENMA_SEARCH_PROVIDER_MANIFEST = freezeManifest({
+  provider: 'SHENMA_WEBMASTER',
+  displayName: 'Shenma Webmaster Platform',
+  capabilities: {
+    LIST_PROPERTIES: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', true, 'PLATFORM_ONLY'),
+    QUERY_PAGE_DAILY: descriptor('NOT_SUPPORTED', 'UNKNOWN', true, 'NONE'),
+    QUERY_STATS: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
+    PAGE_STATS: descriptor('NOT_SUPPORTED', 'UNKNOWN', true, 'NONE'),
+    SITE_TRAFFIC_DAILY: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
+    INDEX_COVERAGE: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
+    CRAWL_STATS: descriptor('NOT_IMPLEMENTED', 'UNKNOWN', true, 'PLATFORM_ONLY'),
+    ROBOTS_OBSERVATION: descriptor('NOT_SUPPORTED', 'ON_DEMAND', true, 'NONE'),
+    PROVIDER_DIAGNOSTICS: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', true, 'PLATFORM_ONLY'),
+    URL_INSPECTION: descriptor('NOT_SUPPORTED', 'ON_DEMAND', true, 'NONE'),
+    URL_SUBMISSION: descriptor('NOT_SUPPORTED', 'ON_DEMAND', false, 'NONE'),
+    SITEMAP_SUBMISSION: descriptor('NOT_IMPLEMENTED', 'ON_DEMAND', false, 'PLATFORM_ONLY')
+  }
+});
 
 const MANIFESTS: Readonly<Record<SearchProviderCode, SearchProviderManifest>> = Object.freeze({
   GOOGLE_SEARCH_CONSOLE: GOOGLE_SEARCH_PROVIDER_MANIFEST,
