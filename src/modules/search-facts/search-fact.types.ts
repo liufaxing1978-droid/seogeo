@@ -79,3 +79,50 @@ export type SearchFactMaterializeIdentity = {
   sourceCompleteness: SearchFactCompleteness;
   normalizationVersion: string;
 };
+
+export type SearchFactReadFilter = {
+  projectId: string;
+  provider?: SearchFactProviderCode;
+  marketCode?: MarketCode;
+  locale?: string;
+  propertyRef?: string;
+  factKind?: SearchFactKind;
+  metricSemantic?: SearchFactMetricSemantic;
+  canonicalPage?: string;
+  normalizedQuery?: string;
+  sourceDateFrom?: Date;
+  sourceDateTo?: Date;
+};
+
+export type SearchFactMetricView = {
+  metricSemantic: SearchFactMetricSemantic;
+  numericValue: number | null;
+  evidenceState: SearchFactEvidenceState;
+  sourceField: string;
+};
+
+export type SearchFactView = {
+  snapshotId: string;
+  projectId: string;
+  provider: SearchFactProviderCode;
+  marketCode: MarketCode;
+  locale: string;
+  propertyRef: string;
+  propertyType: string;
+  sourceKind: SearchFactSourceKind;
+  sourceRef: string;
+  sourceObservationRef: string;
+  sourceCutoffAt: Date;
+  sourceCompleteness: SearchFactCompleteness;
+  normalizationVersion: string;
+  factKey: string;
+  factKind: SearchFactKind;
+  sourceDate: Date;
+  query: string | null;
+  normalizedQuery: string | null;
+  queryNormalizationVersion: string | null;
+  page: string | null;
+  canonicalPage: string | null;
+  canonicalizationVersion: string | null;
+  metrics: SearchFactMetricView[];
+};
