@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a P7-authoritative, immutable optimization planner that materializes market-aware candidates, ranks eligible work deterministically, attaches integrity-checked advisory methods, optionally applies a bounded DeepSeek rerank, and freezes `OptimizationPlan` artifacts without owning P8 risk or execution.
+**Goal:** Build a P7-authoritative immutable optimization planner that materializes market-aware candidates, ranks eligible work deterministically, packages integrity-checked advisory method provenance, optionally applies bounded DeepSeek reranking, and freezes `OptimizationPlan` artifacts without owning P8 risk or execution.
 
-**Architecture:** P9-A reads only persisted P7 Growth identities/latest snapshots/lifecycle as its authoritative opportunity input. Pure first-party modules project market provenance, eligibility, action class, candidate identity, and deterministic ranking; immutable Prisma rows persist candidates/plans; P9-0H contributes projection-only advisory provenance; the existing AI gateway optionally supplies strict `[-2,+2]` ranking adjustments and falls back to zero without blocking frozen deterministic plans.
+**Architecture:** P9-A reads only persisted P7 Growth identities/latest snapshots/lifecycle as authoritative opportunity input. Pure first-party modules project market provenance, eligibility, action class, candidate identity, and deterministic rank; immutable Prisma rows persist candidates/plans; P9-0H contributes projection-only advisory provenance; the existing AI gateway optionally supplies strict `[-2,+2]` adjustments and falls back to zero without blocking deterministic frozen plans.
 
 **Tech Stack:** Node.js 22, TypeScript 5.9, Prisma 6.14/PostgreSQL, Zod 3.25, Vitest 3.2, existing DeepSeek AI gateway/BullMQ AI queue, GitHub Actions.
 
@@ -15,48 +15,46 @@
 - Base is `main@60c9dbf56c23d4b7644913e123383538d6f8699c`; branch is `feat/p9-a-optimization-planner`.
 - Never write implementation directly to `main`.
 - P7 Growth remains authoritative for opportunity identity, score, priority, evidence, lifecycle, and UNKNOWN semantics.
-- P9-A never reads P5/P6/Search Facts to synthesize a second opportunity universe.
-- P9-A never changes P7 score/evidence/lifecycle and never treats unknown values as zero.
+- P9-A never reads P5/P6/Search Facts to synthesize a second opportunity universe and never calls P7 score/detector implementations.
+- Unknown/missing P7 values remain unknown; they are never converted to zero or inferred success/failure.
 - P8 remains authoritative for risk class, approval, PublicationPlan, preview, mutation, Draft PR execution, verification, rollback, merge, and deploy.
 - `automationEligibility` is always `false` in P9-A V1.
-- P9-0H third-party skills remain `ADVISORY_ONLY`; only first-party projections/provenance may be consumed.
-- No raw vendor Markdown body is returned, persisted as instructions, imported, executed, or sent as authority to DeepSeek.
-- No new optimization BullMQ queue, cron, event bus, or daily reconciliation in P9-A; P9-B owns orchestration.
+- P9-0H skills remain `ADVISORY_ONLY`; only first-party projection identities/provenance may enter planner artifacts.
+- No raw vendor Markdown is persisted as planner instructions, imported, executed, or sent to DeepSeek as authority.
+- No new optimization BullMQ queue, cron, event bus, or daily reconciliation; P9-B owns orchestration.
 - No HTTP route in P9-A V1.
-- DeepSeek may only adjust already-eligible candidate ordering by an integer `[-2,+2]`; it cannot change facts, eligibility, action, market, score, risk, or approvals.
-- Any accepted AI adjustment set must also satisfy `abs(finalRank - deterministicRank) <= 2` for every candidate; otherwise the whole set falls back to zero.
+- DeepSeek may only adjust already-eligible ordering by integer `[-2,+2]`; it cannot change facts, eligibility, action, market, score, risk, or approval.
+- Accepted AI output must also satisfy `abs(finalRank - deterministicRank) <= 2` for every candidate; otherwise the entire adjustment set falls back to zero.
 - `historicalRankAdjustment = 0` for all P9-A V1 plans.
-- Candidate and plan rows are database-immutable through dedicated PostgreSQL `BEFORE UPDATE OR DELETE` triggers.
+- Candidate and plan rows are database-immutable through P9-A-specific PostgreSQL `BEFORE UPDATE OR DELETE` triggers.
+- Migrations are forward-only during implementation: Task 2 creates planner tables; Task 6 creates a later migration for the new AI enum. Never edit an already-applied migration to add Task 6 state.
 - Final exact PR head must pass `verify`, `production-audit`, and `e2e`. Do not merge without a separate explicit human `合并` instruction.
 
 ## File Structure
 
 Prisma:
+- `prisma/models/optimization.prisma` — planner enums/models.
+- `prisma/schema.prisma` — root Prisma client schema mirror.
+- `prisma/models/ai-gateway.prisma` — add `OPTIMIZATION_PLAN_RANKING` in Task 6.
+- `prisma/migrations/20260822151000_add_p9a_optimization_planner/migration.sql` — planner tables/indexes/FKs/immutability.
+- `prisma/migrations/20260822152000_add_p9a_optimization_ai_task_type/migration.sql` — forward-only AI enum addition.
 
-- `prisma/models/optimization.prisma` — P9-A enums/models.
-- `prisma/schema.prisma` — generated-client source mirror for the new enums/models and `AiTaskType` value.
-- `prisma/models/ai-gateway.prisma` — add `OPTIMIZATION_PLAN_RANKING` to modular AI task enum.
-- `prisma/migrations/20260822151000_add_p9a_optimization_planner/migration.sql` — enum value, P9-A tables/indexes/FKs, immutability triggers.
+Planner:
+- `src/modules/optimization/optimization.types.ts`
+- `src/modules/optimization/optimization.policy.ts`
+- `src/modules/optimization/optimization.provenance.ts`
+- `src/modules/optimization/optimization.candidate.ts`
+- `src/modules/optimization/optimization.ranking.ts`
+- `src/modules/optimization/optimization.advisory.ts`
+- `src/modules/optimization/optimization.repository.ts`
+- `src/modules/optimization/optimization.service.ts`
 
-First-party planner:
-
-- `src/modules/optimization/optimization.types.ts` — V1 literal contracts.
-- `src/modules/optimization/optimization.policy.ts` — action map, eligibility policy, priority ordinal, advisory map.
-- `src/modules/optimization/optimization.provenance.ts` — strict P9-0G market provenance projection.
-- `src/modules/optimization/optimization.candidate.ts` — canonical hash identity and candidate draft materialization.
-- `src/modules/optimization/optimization.ranking.ts` — deterministic ranks and bounded AI adjustment application.
-- `src/modules/optimization/optimization.advisory.ts` — projection-only advisory packaging.
-- `src/modules/optimization/optimization.repository.ts` — immutable create/get/list persistence and authoritative P7 read query.
-- `src/modules/optimization/optimization.service.ts` — explicit manual/programmatic planner entrypoint.
-
-AI integration:
-
-- `src/modules/ai/optimization-plan-ranking.ts` — strict task builder/parser + success/fallback plan materializers.
-- `src/modules/ai/prompts/prompt-registry.ts` — `optimization-plan-ranking-v1` prompt.
-- `src/modules/ai/ai.worker.ts` — dispatch, parsing, materialization, and failure fallback for the new task.
+AI:
+- `src/modules/ai/optimization-plan-ranking.ts`
+- `src/modules/ai/prompts/prompt-registry.ts`
+- `src/modules/ai/ai.worker.ts`
 
 Tests/docs:
-
 - `tests/unit/optimization.policy.test.ts`
 - `tests/unit/optimization.provenance.test.ts`
 - `tests/unit/optimization.ranking.test.ts`
@@ -70,7 +68,7 @@ Tests/docs:
 
 ---
 
-### Task 1: Lock the pure P9-A contracts, identity, provenance, eligibility, and action map
+### Task 1: Lock pure planner contracts, market provenance, eligibility, action map, and candidate identity
 
 **Files:**
 - Create: `tests/unit/optimization.policy.test.ts`
@@ -81,8 +79,6 @@ Tests/docs:
 - Create: `src/modules/optimization/optimization.candidate.ts`
 
 **Interfaces:**
-
-Produces these exact V1 values/types:
 
 ```ts
 export const OPTIMIZATION_CANDIDATE_VERSION = 'OPTIMIZATION_CANDIDATE_V1' as const
@@ -120,7 +116,11 @@ Pure functions:
 
 ```ts
 export function projectGrowthMarketScopes(sourceProvenance: unknown): {
-  scopes: Array<{ marketScopeMode: OptimizationMarketScopeMode; marketCode: string | null; locale: string | null }>
+  scopes: Array<{
+    marketScopeMode: OptimizationMarketScopeMode
+    marketCode: string | null
+    locale: string | null
+  }>
   provenanceReasonCodes: OptimizationEligibilityReason[]
 }
 
@@ -146,12 +146,12 @@ export function evaluateOptimizationEligibility(input: {
 }): { state: OptimizationEligibilityState; reasonCodes: OptimizationEligibilityReason[] }
 ```
 
-- [ ] **Step 1: Write the failing contract tests**
+- [ ] **Step 1: Write test-only RED**
 
-`tests/unit/optimization.policy.test.ts` must lock all nine Growth type mappings and fail-closed eligibility:
+`optimization.policy.test.ts` locks every V1 action mapping and fail-closed eligibility:
 
 ```ts
-it('maps all P7 V1 opportunity types without AI authority', () => {
+it('maps every P7 V1 opportunity type deterministically', () => {
   expect(recommendedActionForGrowthType('RANKING_UPSIDE')).toBe('ON_PAGE_OPTIMIZATION')
   expect(recommendedActionForGrowthType('CTR_UNDERPERFORMANCE')).toBe('SERP_SNIPPET_OPTIMIZATION')
   expect(recommendedActionForGrowthType('CONTENT_GAP')).toBe('CONTENT_CREATION')
@@ -169,19 +169,22 @@ it('keeps UNKNOWN score ineligible instead of converting it to zero', () => {
     marketScopeMode: 'UNCONFIGURED_LEGACY', provenanceReasonCodes: [],
     growthRankingEligible: true, growthScoreState: 'UNKNOWN', growthScore: null,
     growthLifecycleStatus: 'NEW', opportunityType: 'RANKING_UPSIDE'
-  })).toEqual({ state: 'INELIGIBLE', reasonCodes: ['GROWTH_SCORE_UNKNOWN', 'GROWTH_SCORE_MISSING'] })
+  })).toEqual({
+    state: 'INELIGIBLE',
+    reasonCodes: ['GROWTH_SCORE_UNKNOWN', 'GROWTH_SCORE_MISSING']
+  })
 })
 ```
 
-`tests/unit/optimization.provenance.test.ts` must lock configured fan-out, legacy null scope, invalid audit scope, dedupe, and candidate-key determinism:
+`optimization.provenance.test.ts` locks configured fan-out, legacy null scope, invalid audit scope, dedupe/sort, and candidate-key determinism:
 
 ```ts
-it('projects configured market scopes from P9-0G scoring-lane provenance', () => {
+it('projects P9-0G configured market scopes', () => {
   const result = projectGrowthMarketScopes({ searchFacts: {
     version: 'GROWTH_SEARCH_PROVENANCE_V1', mode: 'CONFIGURED_MARKET',
     scoringLane: { marketProjections: [
-      { marketCode: 'CN', locale: 'zh-CN', propertyRef: 'gsc:site' },
-      { marketCode: 'GLOBAL', locale: 'en', propertyRef: 'gsc:site' }
+      { marketCode: 'GLOBAL', locale: 'en', propertyRef: 'gsc:site' },
+      { marketCode: 'CN', locale: 'zh-CN', propertyRef: 'gsc:site' }
     ] }
   } })
   expect(result.scopes).toEqual([
@@ -191,42 +194,29 @@ it('projects configured market scopes from P9-0G scoring-lane provenance', () =>
   expect(result.provenanceReasonCodes).toEqual([])
 })
 
-it('persists one invalid-provenance identity instead of inventing a market', () => {
-  expect(projectGrowthMarketScopes({}).scopes).toEqual([
-    { marketScopeMode: 'INVALID_PROVENANCE', marketCode: null, locale: null }
-  ])
+it('creates one invalid provenance scope without inventing a market', () => {
+  expect(projectGrowthMarketScopes({})).toEqual({
+    scopes: [{ marketScopeMode: 'INVALID_PROVENANCE', marketCode: null, locale: null }],
+    provenanceReasonCodes: ['SOURCE_PROVENANCE_MISSING']
+  })
 })
 ```
 
 - [ ] **Step 2: Verify RED**
 
-Run on the branch:
-
 ```bash
 npx vitest run tests/unit/optimization.policy.test.ts tests/unit/optimization.provenance.test.ts
 ```
 
-Expected: RED because `src/modules/optimization/*` production modules do not exist. Commit the test-only RED before production code.
+Expected: module-resolution/type failure because `src/modules/optimization/*` does not exist. Commit this test-only RED before production code.
 
-- [ ] **Step 3: Implement the minimal pure contracts**
+- [ ] **Step 3: Implement minimal pure production modules**
 
-In `optimization.policy.ts`, use frozen first-party maps and a stable reason ordering. `INVALID_PROVENANCE` must force `INELIGIBLE`. `DONE`, `DISMISSED`, and `RESOLVED` are terminal; `NEW`, `REVIEWED`, `PLANNED`, `IN_PROGRESS`, and `REOPENED` are not terminal by P9-A policy.
+`optimization.policy.ts` uses frozen first-party maps and stable reason ordering. `INVALID_PROVENANCE` always forces `INELIGIBLE`. `DONE`, `DISMISSED`, `RESOLVED` are terminal; `NEW`, `REVIEWED`, `PLANNED`, `IN_PROGRESS`, `REOPENED` are not terminal.
 
-In `optimization.provenance.ts`, accept only:
+`optimization.provenance.ts` accepts only the P9-0G V1 shape. `CONFIGURED_MARKET` requires at least one non-empty `marketCode`/`locale`; exact pairs are deduped and sorted. `UNCONFIGURED_LEGACY` always returns one null scope. Missing/malformed/contradictory data returns one `INVALID_PROVENANCE` null scope plus stable reason codes; project defaults are never consulted.
 
-```ts
-{
-  searchFacts: {
-    version: 'GROWTH_SEARCH_PROVENANCE_V1',
-    mode: 'CONFIGURED_MARKET' | 'UNCONFIGURED_LEGACY',
-    scoringLane: { marketProjections?: Array<{ marketCode: string; locale: string; propertyRef?: string }> }
-  }
-}
-```
-
-Configured mode requires at least one non-empty `marketCode`/`locale` pair. Deduplicate by exact pair and sort by `marketCode`, then `locale`. Anything missing/contradictory returns the single `INVALID_PROVENANCE` scope and `INVALID_MARKET_PROVENANCE` or `SOURCE_PROVENANCE_MISSING`; no project defaults are consulted.
-
-In `optimization.candidate.ts`, canonicalize object keys recursively and SHA-256 exactly the candidate identity contract. Do not hash score, priority, advisory data, or current time.
+`optimization.candidate.ts` recursively canonicalizes object keys and SHA-256 hashes exactly the identity fields from the spec. Score, priority, advisory content, and timestamps never enter the key.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -239,11 +229,11 @@ Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
-Commit production + tests as `feat: add P9-A planner contracts`.
+`feat: add P9-A planner contracts`
 
 ---
 
-### Task 2: Add immutable OptimizationCandidate and OptimizationPlan persistence
+### Task 2: Add immutable planner tables and repository persistence
 
 **Files:**
 - Create: `prisma/models/optimization.prisma`
@@ -280,7 +270,7 @@ enum RecommendedActionType {
 }
 ```
 
-Models must use P7 enum types for opportunity/score/priority/evidence/lifecycle where possible rather than duplicate semantic enums.
+Use existing P7 enums for `GrowthOpportunityType`, `GrowthScoreState`, `GrowthPriority`, `GrowthEvidenceQuality`, and `GrowthLifecycleStatus` instead of duplicating them.
 
 Repository surface:
 
@@ -296,26 +286,24 @@ export class OptimizationRepository {
 }
 ```
 
-`listLatestGrowthInputs` must return one latest snapshot per Growth identity using deterministic ordering `currentWindowEnd desc`, `createdAt desc`, `id desc`, including identity/lifecycle/snapshot evidence references and sourceProvenance. It is a read boundary only.
+No update/delete methods.
 
 - [ ] **Step 1: Write persistence RED**
 
-Create `tests/integration/optimization.persistence.test.ts` with unique project fixtures. First assert the Prisma client/models do not yet support P9-A; after schema generation this becomes the persistence/immutability test.
-
-The final test must prove:
+Create DB fixtures and final assertions for candidate/plan idempotency plus trigger rejection:
 
 ```ts
-const candidate = await repository.createCandidate(validCandidateInput)
-const again = await repository.createCandidate(validCandidateInput)
-expect(again.id).toBe(candidate.id)
+const first = await repository.createCandidate(validCandidateInput)
+const second = await repository.createCandidate(validCandidateInput)
+expect(second.id).toBe(first.id)
 
 await expect(prisma.optimizationCandidate.update({
-  where: { id: candidate.id }, data: { normalizedQuery: 'mutated' }
+  where: { id: first.id }, data: { normalizedQuery: 'mutated' }
 })).rejects.toThrow()
-await expect(prisma.optimizationCandidate.delete({ where: { id: candidate.id } })).rejects.toThrow()
+await expect(prisma.optimizationCandidate.delete({ where: { id: first.id } })).rejects.toThrow()
 ```
 
-and equivalent UPDATE/DELETE rejection for `OptimizationPlan`.
+Repeat UPDATE/DELETE rejection for `OptimizationPlan`.
 
 - [ ] **Step 2: Verify RED**
 
@@ -323,11 +311,11 @@ and equivalent UPDATE/DELETE rejection for `OptimizationPlan`.
 npx vitest run tests/integration/optimization.persistence.test.ts
 ```
 
-Expected: RED because Prisma models/repository do not exist.
+Expected: missing Prisma models/repository.
 
-- [ ] **Step 3: Add schema and migration**
+- [ ] **Step 3: Add schema + first forward migration**
 
-`OptimizationCandidate` must include the spec fields and these constraints:
+`OptimizationCandidate` includes all spec fields and:
 
 ```prisma
 @@unique([projectId, candidateKey], map: "OptimizationCandidate_project_key")
@@ -335,16 +323,16 @@ Expected: RED because Prisma models/repository do not exist.
 @@index([growthOpportunityIdentityId, growthSnapshotId], map: "OptimizationCandidate_growth_source_idx")
 ```
 
-`OptimizationPlan`:
+`OptimizationPlan` includes all spec fields and:
 
 ```prisma
 @@unique([candidateId, planVersion], map: "OptimizationPlan_candidate_version")
 @@index([projectId, finalRank, createdAt], map: "OptimizationPlan_project_rank_idx")
 ```
 
-Use `Json` for bounded `sourceProvenance`, `eligibilityReasonCodes`, `sourceFactReferences`, `advisoryContext`, and `explanation`. Use `Int` for ranks/adjustments; `Boolean @default(false)` for automation eligibility.
+Use bounded `Json` fields for `sourceProvenance`, `eligibilityReasonCodes`, `sourceFactReferences`, `advisoryContext`, `explanation`; `Int` for ranks/adjustments; `Boolean @default(false)` for `automationEligibility`.
 
-The migration must add FKs to `Project`, `GrowthOpportunityIdentity`, `GrowthOpportunitySnapshot`, and candidate→plan with `ON DELETE RESTRICT`. Add:
+Migration FKs reference `Project`, `GrowthOpportunityIdentity`, `GrowthOpportunitySnapshot`, and candidate→plan with `ON DELETE RESTRICT`. Add dedicated immutability function/triggers:
 
 ```sql
 CREATE OR REPLACE FUNCTION "reject_p9a_immutable_mutation"() RETURNS trigger AS $$
@@ -362,11 +350,13 @@ BEFORE UPDATE OR DELETE ON "OptimizationPlan"
 FOR EACH ROW EXECUTE FUNCTION "reject_p9a_immutable_mutation"();
 ```
 
-Do not reuse or alter P8's immutability function.
+Do not modify P8's function/triggers.
 
-- [ ] **Step 4: Implement repository create/get/list only**
+- [ ] **Step 4: Implement repository**
 
-`createCandidate` and `createPlan` must be idempotent on their unique identities: lookup-first or catch unique collision and return the exact stored row after validating project/source identity. No update/delete methods exist.
+`listLatestGrowthInputs` reads one latest snapshot per Growth identity ordered `currentWindowEnd desc`, `createdAt desc`, `id desc`, including identity/lifecycle/snapshot fields, sourceProvenance, and bounded evidence references. It does not call GrowthService, score functions, or detectors.
+
+`createCandidate`/`createPlan` are idempotent on unique identity. On collision, return the exact stored row only after validating project/source identity; never update an immutable row.
 
 - [ ] **Step 5: Verify GREEN**
 
@@ -382,11 +372,11 @@ Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
-Commit as `feat: persist immutable P9-A planner artifacts`.
+`feat: persist immutable P9-A planner artifacts`
 
 ---
 
-### Task 3: Materialize market-aware candidates from authoritative P7 latest snapshots
+### Task 3: Materialize audit candidates from latest persisted P7 snapshots
 
 **Files:**
 - Modify: `src/modules/optimization/optimization.candidate.ts`
@@ -420,15 +410,14 @@ export function buildCandidateDrafts(source: GrowthPlannerSource): OptimizationC
 
 - [ ] **Step 1: Write materialization RED**
 
-Lock these cases:
-
-1. configured Growth provenance with CN/zh-CN + GLOBAL/en yields two candidate rows;
-2. duplicate same market projection yields one row;
-3. legacy provenance yields one `UNCONFIGURED_LEGACY` candidate with null market/locale;
-4. missing provenance yields one `INVALID_PROVENANCE` ineligible candidate with null market/locale and no inferred country/language;
-5. terminal lifecycle and UNKNOWN score still persist ineligible candidates for audit;
-6. rerunning unchanged P7 snapshots is idempotent;
-7. a newer Growth snapshot produces a new candidate and leaves prior candidate untouched.
+Lock:
+1. configured CN/zh-CN + GLOBAL/en → two candidates;
+2. duplicate exact projection → one candidate;
+3. legacy → one null-market candidate;
+4. missing/malformed provenance → one `INVALID_PROVENANCE` ineligible candidate with null market/locale and no plan eligibility;
+5. terminal lifecycle and UNKNOWN score still persist audit candidates as ineligible;
+6. unchanged rerun is idempotent;
+7. newer Growth snapshot creates a new candidate and never rewrites the prior row.
 
 - [ ] **Step 2: Verify RED**
 
@@ -436,17 +425,13 @@ Lock these cases:
 npx vitest run tests/integration/optimization.materialization.test.ts
 ```
 
-Expected: RED because source-to-candidate orchestration is incomplete.
+Expected: source→candidate orchestration missing.
 
-- [ ] **Step 3: Implement candidate drafts**
+- [ ] **Step 3: Implement candidate draft materialization**
 
-Each projected scope is evaluated with `evaluateOptimizationEligibility`. Copy only bounded P7 fields and first-party source references; do not embed evidence bodies/provider raw payloads. `INVALID_PROVENANCE` must be forced ineligible before any rank/action plan work.
+For each projected scope, compute stable key and eligibility. Copy only bounded stored P7 fields and source reference identities. Do not embed arbitrary provider payloads or raw evidence bodies. `INVALID_PROVENANCE` is ineligible before action/ranking work.
 
-- [ ] **Step 4: Add repository source reader integration**
-
-Use `OptimizationRepository.listLatestGrowthInputs(projectId)` to obtain authoritative latest snapshots. The reader must not call Growth score functions/detectors; it reads stored values only.
-
-- [ ] **Step 5: Verify GREEN**
+- [ ] **Step 4: Verify GREEN**
 
 ```bash
 npx vitest run tests/unit/optimization.policy.test.ts tests/unit/optimization.provenance.test.ts tests/integration/optimization.materialization.test.ts
@@ -455,13 +440,13 @@ npm run typecheck
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
-Commit as `feat: materialize P9-A optimization candidates`.
+`feat: materialize P9-A optimization candidates`
 
 ---
 
-### Task 4: Add deterministic ranking and integrity-checked advisory packaging
+### Task 4: Add deterministic ranking and projection-only advisory packaging
 
 **Files:**
 - Create: `src/modules/optimization/optimization.ranking.ts`
@@ -473,7 +458,6 @@ Commit as `feat: materialize P9-A optimization candidates`.
 
 ```ts
 export type RankedCandidate = OptimizationCandidateDraft & { deterministicRank: number }
-
 export function rankEligibleCandidates(candidates: readonly OptimizationCandidateDraft[]): RankedCandidate[]
 
 export type AdvisoryPlanContext = Array<{
@@ -486,17 +470,15 @@ export type AdvisoryPlanContext = Array<{
   localVersion: string
 }>
 
-export async function buildAdvisoryContext(input: {
+export function buildAdvisoryContext(input: {
   actionType: RecommendedActionType
   registry: AdvisorySkillRegistry
-}): Promise<AdvisoryPlanContext>
+}): AdvisoryPlanContext
 ```
 
 - [ ] **Step 1: Write ranking/advisory RED**
 
-Ranking tests lock score-desc, priority ordinal, coverage-desc, candidateKey tiebreak, exclusion of ineligible candidates, and no score recomputation.
-
-Advisory tests use a fake `AdvisorySkillRegistry` and require exact action→method keys, deterministic ordering, only bounded provenance fields, and `authority: 'ADVISORY_ONLY'`. Assert serialized context does not contain projection steps/raw bodies.
+Ranking tests lock score-desc, priority ordinal, coverage-desc, candidateKey tiebreak, and exclusion of ineligible candidates. Advisory tests use a fake registry and assert exact action→method mapping, deterministic order, exact bounded provenance fields, `ADVISORY_ONLY`, and absence of projection steps/raw bodies.
 
 - [ ] **Step 2: Verify RED**
 
@@ -506,19 +488,19 @@ npx vitest run tests/unit/optimization.ranking.test.ts tests/unit/optimization.a
 
 Expected: missing production modules.
 
-- [ ] **Step 3: Implement deterministic ranking**
-
-Priority ordinal is first-party constant:
+- [ ] **Step 3: Implement ranking**
 
 ```ts
-const PRIORITY_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, MONITOR: 4, UNKNOWN: 5 } as const
+const PRIORITY_ORDER = {
+  CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, MONITOR: 4, UNKNOWN: 5
+} as const
 ```
 
-Sort only eligible candidates by `growthScore desc`, priority ordinal asc, evidenceCoverage desc, candidateKey asc; assign 1-based ranks.
+Sort eligible candidates by `growthScore desc`, priority asc, evidenceCoverage desc, candidateKey asc; assign 1-based rank. Never compute another opportunity score.
 
 - [ ] **Step 4: Implement advisory packaging**
 
-Use the exact method-key mapping from the spec and call `registry.getByMethodKeys(...)`. Require every requested method to exist exactly once; missing/duplicate/integrity exceptions abort plan packaging. Return only provenance identity fields, not `projection.steps/checks/outputs`.
+Use the exact action→method map from the spec and `registry.getByMethodKeys(...)`. Every requested method must exist exactly once. Missing/duplicate/integrity errors abort plan packaging. Persist only method/provenance identity fields.
 
 - [ ] **Step 5: Verify GREEN**
 
@@ -531,7 +513,7 @@ Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
-Commit as `feat: rank and package P9-A advisory plans`.
+`feat: rank and package P9-A advisory plans`
 
 ---
 
@@ -557,11 +539,14 @@ export type MaterializeOptimizationResult = {
 }
 
 export class OptimizationService {
-  materializeProject(projectId: string, options: MaterializeOptimizationOptions): Promise<MaterializeOptimizationResult>
+  materializeProject(
+    projectId: string,
+    options: MaterializeOptimizationOptions
+  ): Promise<MaterializeOptimizationResult>
 }
 ```
 
-For `useAi !== true`, freeze plans immediately with:
+For `useAi !== true`, persist plans with exactly:
 
 ```text
 planVersion = OPTIMIZATION_PLAN_V1
@@ -571,17 +556,9 @@ finalRank = deterministicRank
 automationEligibility = false
 ```
 
-- [ ] **Step 1: Write zero-AI service RED**
+- [ ] **Step 1: Write service RED**
 
-The integration test builds P7 fixtures, runs `materializeProject(..., { advisoryRootDir, useAi: false })`, and requires:
-
-- all auditable candidates persisted;
-- plans only for eligible candidates;
-- plan action comes from first-party map;
-- exact deterministic/advisory provenance persists;
-- `aiTaskId === null`;
-- rerun returns the same candidate/plan ids;
-- no PublicationProposal/PublicationPlan/Execution rows are created.
+Build P7 fixtures and call `materializeProject(..., { advisoryRootDir, useAi: false })`. Require all audit candidates persisted, plans only for eligible candidates, deterministic action/advisory provenance, `aiTaskId === null`, idempotent rerun, and unchanged P8 publication table counts.
 
 - [ ] **Step 2: Verify RED**
 
@@ -589,11 +566,9 @@ The integration test builds P7 fixtures, runs `materializeProject(..., { advisor
 npx vitest run tests/integration/optimization.service.test.ts
 ```
 
-Expected: missing/incomplete service.
+Expected: service missing.
 
-- [ ] **Step 3: Implement plan-seed and deterministic explanation**
-
-The first-party explanation JSON must separate authority:
+- [ ] **Step 3: Implement first-party frozen explanation**
 
 ```ts
 {
@@ -606,11 +581,11 @@ The first-party explanation JSON must separate authority:
 }
 ```
 
-Do not duplicate raw P7 evidence text or vendor projection content.
+No raw P7 evidence text or vendor projection body.
 
-- [ ] **Step 4: Implement zero-AI persistence path**
+- [ ] **Step 4: Implement zero-AI plan persistence**
 
-Create/get the immutable plan by `(candidateId, OPTIMIZATION_PLAN_V1)`. It must never update an existing plan. If an existing plan identity is present with conflicting payload, fail closed rather than rewriting it.
+Existing `(candidateId, OPTIMIZATION_PLAN_V1)` must be returned only when immutable payload identity is consistent; conflicting content fails closed rather than updating it.
 
 - [ ] **Step 5: Verify GREEN**
 
@@ -623,37 +598,41 @@ Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
-Commit as `feat: freeze deterministic P9-A plans`.
+`feat: freeze deterministic P9-A plans`
 
 ---
 
-### Task 6: Add strict DeepSeek optimization ranking task contract
+### Task 6: Add the DeepSeek ranking task with a separate forward migration
 
 **Files:**
 - Modify: `prisma/models/ai-gateway.prisma`
 - Modify: `prisma/schema.prisma`
-- Modify: `prisma/migrations/20260822151000_add_p9a_optimization_planner/migration.sql`
+- Create: `prisma/migrations/20260822152000_add_p9a_optimization_ai_task_type/migration.sql`
 - Create: `src/modules/ai/optimization-plan-ranking.ts`
 - Modify: `src/modules/ai/prompts/prompt-registry.ts`
 - Create: `tests/integration/optimization.ai-ranking.test.ts`
 
 **Interfaces:**
 
-Add enum value:
+Add exactly:
 
 ```prisma
 OPTIMIZATION_PLAN_RANKING
 ```
 
-Prompt id is exactly:
+to `AiTaskType` through the **new** Task 6 migration:
+
+```sql
+ALTER TYPE "AiTaskType" ADD VALUE 'OPTIMIZATION_PLAN_RANKING';
+```
+
+Do not edit `20260822151000_add_p9a_optimization_planner` after Task 2 has been applied.
+
+Prompt/task contract:
 
 ```ts
 export const OPTIMIZATION_PLAN_RANKING_PROMPT_ID = 'optimization-plan-ranking-v1'
-```
 
-Strict output:
-
-```ts
 const OptimizationPlanRankingOutputSchema = z.object({
   adjustments: z.array(z.object({
     candidateId: z.string().uuid(),
@@ -663,18 +642,21 @@ const OptimizationPlanRankingOutputSchema = z.object({
   }).strict()).max(100),
   sourceReferences: z.array(z.string().min(1)).max(200)
 }).strict()
-```
 
-Functions:
+export function parseOptimizationPlanRankingOutput(
+  content: string,
+  task: Pick<AiTask, 'factSnapshot' | 'sourceReferences'>
+): OptimizationPlanRankingOutput
 
-```ts
-export function parseOptimizationPlanRankingOutput(content: string, task: Pick<AiTask, 'factSnapshot' | 'sourceReferences'>): OptimizationPlanRankingOutput
-export function buildOptimizationPlanRankingTaskInput(projectId: string, seeds: readonly OptimizationPlanSeed[]): CreateAiTaskInput
+export function buildOptimizationPlanRankingTaskInput(
+  projectId: string,
+  seeds: readonly OptimizationPlanSeed[]
+): CreateAiTaskInput
 ```
 
 - [ ] **Step 1: Write AI contract RED**
 
-Test valid adjustment, out-of-range ±3, duplicate candidate ids, unknown candidate id, unknown output fields, and source references not supplied to the task. Also assert the fact snapshot contains only bounded candidate facts/actions/ranks/market/advisory identities and not vendor raw bodies/P8 risk.
+Test valid output plus: ±3 reject, duplicate candidate reject, unknown candidate reject, unknown object fields reject, unsupplied source ref reject. Assert task factSnapshot contains only candidate facts/action/ranks/market/advisory identities and contains neither vendor raw content nor P8 risk/approval state.
 
 - [ ] **Step 2: Verify RED**
 
@@ -682,46 +664,48 @@ Test valid adjustment, out-of-range ±3, duplicate candidate ids, unknown candid
 npx vitest run tests/integration/optimization.ai-ranking.test.ts
 ```
 
-Expected: missing task type/module/prompt.
+Expected: missing enum/module/prompt.
 
-- [ ] **Step 3: Add Prisma enum value and prompt**
+- [ ] **Step 3: Add forward migration and prompt registry entry**
 
-The prompt system message must explicitly state: ranking advice only; never invent facts; never alter eligibility/action/score/market/risk/approval; return strict JSON. Use existing `REASONING` + `JSON` prompt conventions.
+Prompt states: ranking advice only; never invent facts; never alter eligibility/action/score/market/risk/approval; return strict JSON. Follow existing JSON/REASONING prompt conventions.
 
-- [ ] **Step 4: Implement strict task builder/parser**
+- [ ] **Step 4: Implement task builder/parser**
 
-Task request key is deterministic over planner version + sorted candidate ids/seed hashes, for example:
+Use a deterministic seed-set hash over sorted candidate ids and immutable seed fields:
 
 ```ts
 requestKey: `optimization-plan-ranking:${seedSetHash}:${OPTIMIZATION_PLAN_RANKING_PROMPT_ID}`
 ```
 
-Allowed source references are represented with first-party `TYPE:id` strings and validated as a subset on output.
+Source refs are first-party `TYPE:id` strings and output refs must be a subset.
 
 - [ ] **Step 5: Verify GREEN**
 
 ```bash
 npx prisma validate
 npx prisma generate
+npx prisma migrate deploy
 npx vitest run tests/integration/optimization.ai-ranking.test.ts
 npm run typecheck
 ```
 
-Expected: PASS.
+Expected: both forward migrations apply and test passes.
 
 - [ ] **Step 6: Commit**
 
-Commit as `feat: add bounded P9-A DeepSeek ranking task`.
+`feat: add bounded P9-A DeepSeek ranking task`
 
 ---
 
-### Task 7: Materialize AI-ranked plans atomically and fall back to zero on AI failure
+### Task 7: Materialize AI-ranked plans and deterministic failure fallback
 
 **Files:**
 - Modify: `src/modules/optimization/optimization.ranking.ts`
 - Modify: `src/modules/ai/optimization-plan-ranking.ts`
 - Modify: `src/modules/ai/ai.worker.ts`
 - Modify: `src/modules/optimization/optimization.service.ts`
+- Modify: `tests/unit/optimization.ranking.test.ts`
 - Modify: `tests/integration/optimization.ai-ranking.test.ts`
 - Modify: `tests/integration/optimization.service.test.ts`
 
@@ -731,23 +715,25 @@ Commit as `feat: add bounded P9-A DeepSeek ranking task`.
 export function applyBoundedRankAdjustments(
   ranked: readonly RankedCandidate[],
   adjustments: readonly { candidateId: string; adjustment: number }[]
-): Array<{ candidateId: string; deterministicRank: number; aiRankAdjustment: number; finalRank: number }>
+): Array<{
+  candidateId: string
+  deterministicRank: number
+  aiRankAdjustment: number
+  finalRank: number
+}>
 
-export async function materializeOptimizationRankingSuccess(task: AiTask, output: OptimizationPlanRankingOutput, tx: Prisma.TransactionClient): Promise<void>
+export async function materializeOptimizationRankingSuccess(
+  task: AiTask,
+  output: OptimizationPlanRankingOutput,
+  tx: Prisma.TransactionClient
+): Promise<void>
+
 export async function materializeOptimizationRankingFallback(task: AiTask): Promise<void>
 ```
 
-- [ ] **Step 1: Write final-rank/fallback RED**
+- [ ] **Step 1: Write RED for rank direction/displacement/fallback**
 
-Tests require:
-
-- negative adjustment improves the rank signal; positive worsens it;
-- ties resolve by deterministic rank then candidate key;
-- every accepted final displacement is ≤2;
-- an adjustment set causing displacement >2 is rejected as a set;
-- valid AI worker completion freezes plans with accepted adjustments/model annotation;
-- provider error and invalid output both leave the AI task auditable as failed **and then idempotently freeze plans with zero adjustments**;
-- fallback never changes candidate eligibility/action/advisory context.
+Require: negative adjustment improves signal; positive worsens; ties use deterministic rank then key; accepted final displacement ≤2; violating set falls back all-zero; worker success freezes adjusted plans; provider error/invalid output leaves failed AI task auditable and then idempotently freezes zero-adjustment plans; fallback never changes eligibility/action/advisory context.
 
 - [ ] **Step 2: Verify RED**
 
@@ -755,28 +741,27 @@ Tests require:
 npx vitest run tests/unit/optimization.ranking.test.ts tests/integration/optimization.ai-ranking.test.ts tests/integration/optimization.service.test.ts
 ```
 
-Expected: RED for missing worker materialization/fallback behavior.
+Expected: missing worker materializer/fallback behavior.
 
 - [ ] **Step 3: Implement bounded rank application**
 
-Start with each missing candidate adjustment = 0. Compute `adjustedRankSignal = deterministicRank + adjustment`, sort ascending, assign final ordinal, then reject if any `Math.abs(finalRank - deterministicRank) > 2`. On rejection, use the all-zero result.
+Missing candidate adjustments default to 0. Compute `adjustedRankSignal = deterministicRank + aiRankAdjustment`, sort by signal asc then deterministic rank asc then key asc, assign final ordinals, then enforce displacement ≤2. Any violation rejects the set and returns all-zero ranking.
 
-- [ ] **Step 4: Wire AI worker success**
+- [ ] **Step 4: Wire exhaustive AI worker switches**
 
-Update all exhaustive `AiTaskType` switches in `ai.worker.ts`:
-
+In `ai.worker.ts` add:
 - `expectedPromptId` → `optimization-plan-ranking-v1`;
 - `resultSummary` → `Optimization plan ranking completed.`;
-- `parseTaskOutput` → `parseOptimizationPlanRankingOutput`;
-- `completeRun` materializer → `materializeOptimizationRankingSuccess` inside the same completion transaction.
+- `parseTaskOutput` → strict optimization parser;
+- successful completion transaction → `materializeOptimizationRankingSuccess`.
 
 - [ ] **Step 5: Wire worker failure fallback**
 
-After the existing durable `failRun(...)` records AI failure, if `task.taskType === 'OPTIMIZATION_PLAN_RANKING'`, call `materializeOptimizationRankingFallback(task)`. This fallback must be idempotent and create only P9-A plans. If fallback itself fails, rethrow the original/combined failure and never create P8 artifacts.
+After existing durable `failRun(...)`, if task type is `OPTIMIZATION_PLAN_RANKING`, call idempotent `materializeOptimizationRankingFallback(task)`. It creates only P9-A plans. If fallback fails, surface failure; never create P8 artifacts.
 
 - [ ] **Step 6: Wire service AI mode**
 
-For `useAi: true`, persist candidates, build deterministic ranked plan seeds + advisory context, create/enqueue exactly one `OPTIMIZATION_PLAN_RANKING` task, return `plans: []` until worker success/fallback materializes them, and return its `aiTaskId`. Do not create a new optimization queue.
+For `useAi: true`, persist candidates, rank eligible seeds, package advisory context, create/enqueue exactly one existing AI-queue task, return `plans: []` and its `aiTaskId`; worker success/fallback later freezes plans. No optimization queue is added.
 
 - [ ] **Step 7: Verify GREEN**
 
@@ -789,32 +774,30 @@ Expected: PASS.
 
 - [ ] **Step 8: Commit**
 
-Commit as `feat: materialize bounded P9-A AI ranking`.
+`feat: materialize bounded P9-A AI ranking`
 
 ---
 
-### Task 8: Lock planner authority boundaries and regression isolation
+### Task 8: Lock P7/P8/advisory/runtime authority boundaries
 
 **Files:**
 - Create: `tests/unit/optimization.boundary.test.ts`
-- Modify production files only if the test exposes a real boundary leak.
+- Modify production only if a boundary test finds a real leak.
 
-- [ ] **Step 1: Write static/runtime boundary tests**
-
-Require all of these:
+- [ ] **Step 1: Write boundary tests**
 
 ```ts
 it('optimization modules do not import P7 score or detector implementations')
 it('optimization modules do not import P8 mutation approval execution verification or Git adapters')
 it('optimization modules expose no merge deploy rollback or Draft PR operation')
-it('optimization modules do not add BullMQ queue cron or event-bus ownership')
+it('optimization modules add no BullMQ optimization queue cron or event-bus ownership')
 it('advisory context contains no raw projection body or executable handle')
 it('AI ranking schema has no risk approval score evidence or action override fields')
-it('P7 Growth score and lifecycle rows are byte/field stable before and after planner materialization')
-it('P8 publication row counts remain unchanged after planner materialization')
+it('P7 score evidence and lifecycle are unchanged by planner materialization')
+it('P8 publication row counts are unchanged by planner materialization')
 ```
 
-Static inspection may allow imports of P7/P8 **types** only when they do not provide mutation authority. Prefer reading P7 persisted records via the planner repository rather than importing GrowthService.
+Type-only imports are allowed when they provide no mutation authority. Prefer planner repository reads over GrowthService imports.
 
 - [ ] **Step 2: Verify boundary suite**
 
@@ -822,9 +805,9 @@ Static inspection may allow imports of P7/P8 **types** only when they do not pro
 npx vitest run tests/unit/optimization.boundary.test.ts tests/unit/advisory-skill.boundary.test.ts
 ```
 
-If RED exposes a real leak, make only the minimum boundary fix.
+If a leak is RED, make the minimum fix.
 
-- [ ] **Step 3: Run focused P9-A regression**
+- [ ] **Step 3: Run focused P9-A suite**
 
 ```bash
 npx vitest run \
@@ -845,32 +828,18 @@ Expected: PASS.
 
 - [ ] **Step 4: Commit**
 
-Commit as `test: lock P9-A planner authority boundaries` if test-only, otherwise use a narrowly named `fix:` commit.
+Use `test: lock P9-A planner authority boundaries` if test-only; otherwise a narrowly named `fix:` commit followed by the same verification.
 
 ---
 
-### Task 9: Document P9-A operational contract and run full local regression
+### Task 9: Development documentation and full regression
 
 **Files:**
 - Create: `docs/development/p9-a-optimization-planner.md`
 
-- [ ] **Step 1: Write development documentation**
+- [ ] **Step 1: Document the operational contract**
 
-Document:
-
-- authoritative P7 input boundary;
-- candidate/plan versions and identities;
-- `CONFIGURED_MARKET`, `UNCONFIGURED_LEGACY`, `INVALID_PROVENANCE` semantics;
-- all eligibility reason codes and terminal lifecycle states;
-- exact action map;
-- deterministic rank order;
-- advisory mapping/provenance and fail-closed integrity behavior;
-- DeepSeek `[-2,+2]` and final-displacement bounds;
-- AI failure → zero-adjustment frozen-plan fallback;
-- immutable DB triggers and idempotency;
-- `automationEligibility=false` and P8 authority boundary;
-- P9-B/P9-C future handoffs;
-- rollback by reverting the additive PR/migration under repository migration policy, never rewriting historical planner rows.
+Cover: P7 input authority; candidate/plan identities; all three market modes; eligibility reasons/terminal states; action map; deterministic rank; advisory mapping/provenance/integrity failure; DeepSeek bounds and zero fallback; immutability/idempotency; `automationEligibility=false`; P8 boundary; P9-B/P9-C handoffs; additive migration/revert policy without rewriting historical rows.
 
 - [ ] **Step 2: Run Prisma gates**
 
@@ -880,7 +849,7 @@ npx prisma generate
 npx prisma migrate deploy
 ```
 
-Expected: PASS on a clean/review database.
+Expected: PASS with both P9-A migrations applied in order.
 
 - [ ] **Step 3: Run full regression**
 
@@ -890,36 +859,24 @@ npm test
 npm run build
 ```
 
-Expected: all existing P0-P9-0H tests plus P9-A tests pass.
+Expected: all existing P0-P9-0H plus P9-A tests pass.
 
 - [ ] **Step 4: Commit docs/final narrow fixes**
 
-Commit as `docs: document P9-A optimization planner` unless verification required a narrow production fix, in which case commit the fix separately and rerun the affected gates.
+`docs: document P9-A optimization planner`, with any verification-discovered production fix committed separately and reverified.
 
 ---
 
-### Task 10: Draft PR, exact-head CI, final diff review, and release gate
+### Task 10: Draft PR, exact-head CI, diff review, release gate
 
 **Files:**
-- No planned production changes; only final fixes if evidence exposes a defect.
+- No planned production changes; final narrow fixes only if evidence exposes a defect.
 
 - [ ] **Step 1: Open/update Draft PR**
 
-PR body must state:
+PR body states: base/head; P7 authority unchanged; P8 authority unchanged; advisory-only boundary; no HTTP/optimization queue/cron/auto-PR/merge/deploy; `automationEligibility=false`; bounded DeepSeek + zero fallback; two additive forward migrations; separate human `合并` required.
 
-- base and current exact head;
-- P7 remains score/evidence/lifecycle authority;
-- P8 remains risk/approval/mutation/verification authority;
-- P9-0H remains advisory-only;
-- P9-A has no HTTP route, optimization queue, cron, auto-PR, merge, deploy, or rollback execution;
-- `automationEligibility=false`;
-- DeepSeek is bounded ranking only with deterministic zero fallback;
-- migration adds only immutable planner artifacts + AI task enum;
-- human `合并` is separately required.
-
-- [ ] **Step 2: Run/inspect exact-head CI**
-
-Require the exact final PR head to have:
+- [ ] **Step 2: Require exact-head CI**
 
 ```text
 verify = success
@@ -927,7 +884,7 @@ production-audit = success
 e2e = success
 ```
 
-Within `verify`, require:
+Within `verify`:
 
 ```text
 Validate Prisma = success
@@ -940,23 +897,12 @@ Build = success
 
 - [ ] **Step 3: Manual final diff review**
 
-Reject release if the diff contains any of:
+Reject if the diff contains: P7 scoring/detector/formula changes; P8 risk/approval/mutation/execution/verification changes; Git write/PR/merge/deploy code in optimization; optimization queues/cron/event bus; runtime third-party fetch/raw-vendor execution; AI authority over eligibility/action/score/market/risk/approval; mutable candidate/plan repository APIs; unprotected planner tables; rewritten earlier migration; unrelated package/dependency changes; credentials/private data.
 
-- P7 scoring/detector/formula changes;
-- P8 risk/approval/mutation/execution/verification semantic changes;
-- direct Git write/PR creation/merge/deploy code in `src/modules/optimization`;
-- optimization BullMQ queue/cron/event bus;
-- runtime third-party fetching or raw-vendor execution;
-- model ability to alter eligibility/action/score/market/risk/approval;
-- candidate/plan update/delete repository methods;
-- unprotected mutable planner tables;
-- unrelated package/dependency changes;
-- credentials/private data.
+- [ ] **Step 4: Fresh verification-before-completion**
 
-- [ ] **Step 4: Fresh release verification**
+Re-fetch current PR head and its CI after every final commit; the verified SHA must equal the current head.
 
-Use `verification-before-completion`. Re-fetch PR head and CI; ensure the verified SHA equals the current head after all final commits.
+- [ ] **Step 5: Mark Ready for Review only after the gate**
 
-- [ ] **Step 5: Mark Ready for Review**
-
-Only after exact-head three-job green + manual diff review. Do **not** merge, deploy, or delete the feature branch. A separate explicit human `合并` instruction is required.
+Do not merge, deploy, or delete the branch. Human merge requires separate explicit `合并`.
