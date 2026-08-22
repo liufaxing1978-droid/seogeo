@@ -59,6 +59,7 @@ function expectedPromptId(task: AiTask): string {
     case 'REPORT_EXECUTIVE_SUMMARY': return 'project-report-summary-v1';
     case 'VISIBILITY_TREND_ANALYSIS': return 'visibility-trend-analysis-v1';
     case 'GROWTH_OPPORTUNITY_EXPLANATION': return 'growth-opportunity-explanation-v1';
+    case 'OPTIMIZATION_PLAN_RANKING': return 'optimization-plan-ranking-v1';
     case 'PUBLICATION_CONTENT_BRIEF': return 'publication-content-brief-v1';
     case 'PUBLICATION_ARTICLE_GENERATION': return 'publication-article-generation-v1';
     case 'PUBLICATION_CONTENT_ADAPTATION': return promptIdForDistributionTask(task);
@@ -104,6 +105,7 @@ function resultSummary(task: AiTask, output: unknown): string {
     case 'REPORT_EXECUTIVE_SUMMARY': return 'Project report executive summary completed.';
     case 'VISIBILITY_TREND_ANALYSIS': return 'Visibility trend analysis completed.';
     case 'GROWTH_OPPORTUNITY_EXPLANATION': return 'Growth opportunity explanation completed.';
+    case 'OPTIMIZATION_PLAN_RANKING': return 'Optimization plan ranking completed.';
     case 'PUBLICATION_CONTENT_BRIEF': return 'Advisory publication content brief generated.';
     case 'PUBLICATION_ARTICLE_GENERATION': return 'Advisory publication article draft generated.';
     case 'PUBLICATION_CONTENT_ADAPTATION': return 'Advisory distribution adaptation draft generated.';
