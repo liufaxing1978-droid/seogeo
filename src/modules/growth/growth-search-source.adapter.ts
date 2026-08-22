@@ -519,7 +519,7 @@ export class GrowthSearchSourceAdapter {
 
     const unifiedFacts: SearchFactView[] = [];
     for (const market of markets) {
-      unifiedFacts.push(...await this.repository.listCompletedFacts({
+      const marketFacts = await this.repository.listCompletedFacts({
         projectId: input.projectId,
         provider: 'GOOGLE_SEARCH_CONSOLE',
         marketCode: market.marketCode,
@@ -528,7 +528,8 @@ export class GrowthSearchSourceAdapter {
         factKind: 'QUERY_PAGE',
         sourceDateFrom: input.sourceDateFrom,
         sourceDateTo: input.sourceDateTo
-      }));
+      });
+      unifiedFacts.push(...marketFacts.filter((fact) => authoritativeSet.has(fact.sourceRef)));
     }
 
     const scoringFacts = adaptGoogleScoringFacts(unifiedFacts, authoritativeSet);
