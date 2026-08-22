@@ -217,7 +217,7 @@ describe('P9-A planner authority boundaries', () => {
     const beforeGrowth = await prisma.growthOpportunityIdentity.findUniqueOrThrow({
       where: { id: identity.id },
       select: {
-        lifecycle: { select: { status: true, currentSnapshotId: true } },
+        lifecycle: { select: { status: true, latestSnapshotId: true } },
         snapshots: {
           where: { id: snapshot.id },
           select: {
@@ -246,7 +246,7 @@ describe('P9-A planner authority boundaries', () => {
     const afterGrowth = await prisma.growthOpportunityIdentity.findUniqueOrThrow({
       where: { id: identity.id },
       select: {
-        lifecycle: { select: { status: true, currentSnapshotId: true } },
+        lifecycle: { select: { status: true, latestSnapshotId: true } },
         snapshots: {
           where: { id: snapshot.id },
           select: {
