@@ -12,7 +12,10 @@ const PROVIDER_OPTION_ALLOWLIST: Record<VisibilityProvider, ReadonlySet<string>>
   PERPLEXITY: new Set(['searchDomainFilter', 'searchRecencyFilter']),
   ANTHROPIC: new Set(['maxUses']),
   DEEPSEEK: new Set(),
-  MICROSOFT: new Set(['timeZone'])
+  MICROSOFT: new Set(['timeZone']),
+  BAIDU_QIANFAN: new Set(),
+  QWEN: new Set(['workspaceId', 'region']),
+  TENCENT_HUNYUAN: new Set(['searchContextSize'])
 };
 
 const SECRET_KEY_PATTERN = /(key|token|secret|authorization|cookie)/i;
