@@ -152,6 +152,7 @@ function providerHttpError(status: number): VisibilityProviderError {
 export class GeminiVisibilityProvider implements VisibilityProviderAdapter {
   readonly provider = 'GEMINI' as const;
   readonly channel = 'API' as const;
+  readonly capabilities = ['WEB_GROUNDED', 'CITATION_NATIVE'] as const;
   private readonly apiKey: string;
   private readonly transport: GeminiVisibilityTransport;
 
