@@ -122,6 +122,8 @@ Raw upstream content is **not part of the public runtime advisory API** and MUST
 
 This prevents arbitrary third-party Markdown instructions such as tool calls, credential requests, mutation commands, connector setup, or prompt-like directives from becoming an unreviewed instruction channel.
 
+For each selected skill, its reviewed upstream dependency closure contains the skill entrypoint plus only Markdown, JSON, or plain-text documentation that is necessary to understand the selected method. A reference from upstream Markdown to a script, connector, executable, MCP config, hook, binary, or unrelated skill does **not** authorize vendoring that referenced executable/runtime asset. Such a reference may remain visible in the byte-for-byte raw Markdown, but the referenced executable file is excluded.
+
 ### 5.2 Local advisory projection
 
 Each selected skill has a locally reviewed JSON projection containing only the method information we explicitly choose to expose.
@@ -175,14 +177,19 @@ interface AdvisoryRegistryV1 {
 Each source manifest records at least:
 
 ```ts
+interface HashedLegalFile {
+  path: string
+  sha256: string
+}
+
 interface AdvisorySourceManifestV1 {
   manifestVersion: 'ADVISORY_SOURCE_MANIFEST_V1'
   sourceId: string
   sourceRepo: string
   upstreamCommit: string
   licenseSpdx: 'MIT' | 'Apache-2.0'
-  licenseFile: string
-  noticeFile?: string
+  licenseFile: HashedLegalFile
+  noticeFile?: HashedLegalFile
   localVersion: string
   reviewedAt: string
   skills: Array<{
@@ -205,6 +212,8 @@ All SHA-256 values are lowercase hex digests of the exact committed bytes. No ne
 
 `upstreamCommit` MUST be a full 40-character Git commit SHA. Branch names, tags, shortened SHAs, or `latest` are invalid.
 
+The legal files, every raw upstream file, and every projection are therefore all hash-bound. `manifest.json` itself is hash-bound by the top-level registry.
+
 ## 7. Stable local identity and deduplication
 
 Every selected advisory method receives:
@@ -219,11 +228,29 @@ Broad umbrella and narrow methods remain distinct. For example, `SEO_AUDIT` may 
 
 Capabilities are discovery tags, not execution permissions. A capability match MUST NOT automatically cause every matching skill to run. Later P9-A policy will request explicit method keys or a bounded ordered set.
 
-Initial method keys should map one-to-one to the 13 selected methods and remain provider-neutral.
+The initial 13 identities are fixed as follows:
+
+| Upstream method | `skillId` | `methodKey` |
+| --- | --- | --- |
+| Corey `seo-audit` | `corey.seo-audit` | `SEO_AUDIT` |
+| Corey `ai-seo` | `corey.ai-seo` | `AI_SEO` |
+| Corey `schema` | `corey.schema` | `SCHEMA` |
+| Corey `programmatic-seo` | `corey.programmatic-seo` | `PROGRAMMATIC_SEO` |
+| Corey `site-architecture` | `corey.site-architecture` | `SITE_ARCHITECTURE` |
+| Corey `content-strategy` | `corey.content-strategy` | `CONTENT_STRATEGY` |
+| Corey `analytics` | `corey.analytics` | `ANALYTICS` |
+| Corey `ab-testing` | `corey.ab-testing` | `EXPERIMENT_DESIGN` |
+| Aaron `content-quality-auditor` | `aaron.content-quality-auditor` | `CONTENT_QUALITY_AUDIT` |
+| Aaron `domain-authority-auditor` | `aaron.domain-authority-auditor` | `DOMAIN_TRUST_AUDIT` |
+| Aaron `technical-seo-checker` | `aaron.technical-seo-checker` | `TECHNICAL_SEO_CHECK` |
+| Aaron `on-page-seo-checker` | `aaron.on-page-seo-checker` | `ON_PAGE_SEO_CHECK` |
+| Aaron `offsite-signal-analyzer` | `aaron.offsite-signal-analyzer` | `OFFSITE_SIGNAL_ANALYSIS` |
+
+These method keys are local advisory identities, not upstream-defined authority labels.
 
 ## 8. Capability policy
 
-V1 uses an explicit allowlist. The initial capability vocabulary is limited to advisory areas needed by the selected methods, such as:
+V1 uses an explicit allowlist. The initial capability vocabulary is limited to advisory areas needed by the selected methods:
 
 - `SEO_AUDIT_METHOD`
 - `AI_SEO_METHOD`
@@ -294,16 +321,18 @@ Before returning any method, the registry/loader validates:
 6. symlinks are rejected;
 7. unsupported file types are rejected;
 8. license SPDX is allowlisted;
-9. required license file exists;
-10. upstream commit is a full 40-character SHA;
-11. every upstream file exists and matches SHA-256;
-12. every projection exists and matches SHA-256;
-13. each projection validates against `ADVISORY_METHOD_PROJECTION_V1`;
-14. projection `skillId`, `methodKey`, and source hashes match the manifest;
-15. duplicate source IDs, skill IDs, or method keys fail;
-16. unknown capabilities fail;
-17. regular files under a source directory that are not declared by its manifest, excluding `manifest.json` itself, fail the file census;
-18. top-level unexpected files/directories under `vendor/third-party-skills/` fail the registry census.
+9. required `licenseFile` exists and matches its SHA-256;
+10. declared `noticeFile`, when present, exists and matches its SHA-256;
+11. upstream commit is a full 40-character SHA;
+12. every upstream file exists and matches SHA-256;
+13. every projection exists and matches SHA-256;
+14. each projection validates against `ADVISORY_METHOD_PROJECTION_V1`;
+15. projection `skillId` and `methodKey` match the manifest;
+16. every projection `sourceRef` is a non-empty subset of that skill's declared `upstreamFiles`, and every referenced path/hash pair matches exactly;
+17. duplicate source IDs, skill IDs, or method keys fail;
+18. unknown capabilities fail;
+19. regular files under a source directory that are not declared as `licenseFile`, `noticeFile`, `upstreamFiles`, or `projectionPath`, excluding `manifest.json` itself, fail the file census;
+20. top-level unexpected files/directories under `vendor/third-party-skills/` fail the registry census.
 
 The purpose of the file census is to prevent an unnoticed `.sh`, `.py`, `.js`, executable payload, connector, or extra prompt file from being added beside reviewed assets.
 
@@ -336,7 +365,7 @@ The V1 runtime allowlist contains only the licenses reviewed for the initial sou
 - MIT
 - Apache-2.0
 
-The exact upstream `LICENSE` file is vendored. If Apache or another future source includes a required NOTICE file, it is preserved verbatim and declared in the manifest.
+The exact upstream `LICENSE` file is vendored and hash-bound. If Apache or another future source includes a required NOTICE file, it is preserved verbatim, declared in the manifest, and hash-bound.
 
 A future license addition requires an explicit code/spec review. The system MUST NOT treat an unknown or missing license as permissive.
 
@@ -363,7 +392,7 @@ select exact upstream commit
 → human merge
 ```
 
-If a newer upstream commit contains unrelated runtime, connector, hook, or automation changes, those changes are not vendored unless they are reviewed Markdown/JSON dependencies required for a selected advisory method. Executable upstream runtime remains excluded.
+If a newer upstream commit contains unrelated runtime, connector, hook, or automation changes, those changes are not vendored unless they are reviewed Markdown/JSON/plain-text documentation dependencies required for a selected advisory method. Executable upstream runtime remains excluded even when referenced by selected Markdown.
 
 ## 14. Relationship to P9-A
 
@@ -409,7 +438,7 @@ This keeps P9-0H usable in tests and development without creating a hidden deplo
 
 ## 16. Error handling
 
-Integrity or policy violations use stable first-party error codes. Suggested V1 classes include:
+Integrity or policy violations use stable first-party error codes. V1 error codes are:
 
 - `ADVISORY_REGISTRY_INVALID`
 - `ADVISORY_MANIFEST_INVALID`
@@ -448,6 +477,7 @@ P9-0H uses TDD and must cover positive and negative supply-chain behavior.
 - changed Markdown fails hash validation;
 - changed projection fails hash validation;
 - changed manifest fails top-level registry hash validation;
+- changed LICENSE/NOTICE fails hash validation;
 - path traversal fails;
 - symlink fails;
 - missing declared file fails;
@@ -461,6 +491,7 @@ P9-0H uses TDD and must cover positive and negative supply-chain behavior.
 - loaded authority is always first-party `ADVISORY_ONLY`;
 - manifest/projection cannot self-elevate authority;
 - projection missing required evidence rules or forbidden-inference fields fails schema validation;
+- projection source refs must resolve to declared matching raw hashes;
 - capabilities are tags only and do not invoke work;
 - loader does not mutate P7/P8 state;
 - loader has no Prisma, queue, Git, MCP, child-process, or HTTP dependency;
@@ -512,7 +543,7 @@ P9-0H is complete when:
 
 1. the two approved upstream sources are pinned to exact reviewed commits;
 2. only the approved initial SEO/GEO method set and required non-executable documentation dependencies are vendored;
-3. exact licenses/NOTICE obligations are preserved;
+3. exact licenses/NOTICE obligations are preserved and hash-bound;
 4. raw upstream snapshots are hash-bound and never exposed through the normal runtime advisory API;
 5. locally reviewed advisory projections are hash-bound, schema-valid, and `ADVISORY_ONLY`;
 6. registry and source manifests fail closed on tampering, path escape, symlinks, undeclared files, unsupported file types, unknown licenses, unknown capabilities, or duplicates;
