@@ -1,0 +1,210 @@
+name: P9-0H Bootstrap Corey Vendor
+
+on:
+  push:
+    branches:
+      - feat/p9-0h-third-party-skill-foundation
+
+permissions:
+  contents: write
+
+jobs:
+  vendor-corey:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/p9-0h-third-party-skill-foundation
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Fetch exact Corey pin and materialize reviewed assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          PIN=3df87f97621e18fbed7f6aa684edba54f49779a7
+          rm -rf /tmp/corey-marketingskills vendor/third-party-skills
+          git init -q /tmp/corey-marketingskills
+          git -C /tmp/corey-marketingskills remote add origin https://github.com/coreyhaines31/marketingskills.git
+          git -C /tmp/corey-marketingskills fetch --depth=1 origin "$PIN"
+          git -C /tmp/corey-marketingskills checkout -q --detach FETCH_HEAD
+          test "$(git -C /tmp/corey-marketingskills rev-parse HEAD)" = "$PIN"
+          test "$(head -n 1 /tmp/corey-marketingskills/LICENSE)" = "MIT License"
+          for skill in seo-audit ai-seo schema programmatic-seo site-architecture content-strategy analytics ab-testing; do
+            test -f "/tmp/corey-marketingskills/skills/$skill/SKILL.md"
+          done
+
+          python3 <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import shutil
+
+          PIN = '3df87f97621e18fbed7f6aa684edba54f49779a7'
+          SRC = pathlib.Path('/tmp/corey-marketingskills')
+          ROOT = pathlib.Path('vendor/third-party-skills')
+          SOURCE_ID = 'coreyhaines31-marketingskills'
+          SOURCE = ROOT / SOURCE_ID
+
+          methods = [
+              ('seo-audit', 'corey.seo-audit', 'SEO_AUDIT', 'SEO_AUDIT_METHOD', 'SEO audit',
+               'Structure a read-only SEO audit that separates observed evidence from recommendations.',
+               ['Auditing crawlability, indexation, technical SEO, on-page quality, content quality, and authority signals.'],
+               ['Site scope and business goals', 'Observed crawl/index/page evidence when available'],
+               ['Establish scope and evidence coverage.', 'Check crawlability and indexation before downstream optimization.', 'Review technical, on-page, content, and authority findings.', 'Prioritize findings by impact and confidence.'],
+               ['Distinguish directly observed findings from unavailable checks.', 'Avoid declaring schema or rendered-page failures from tooling that cannot observe them.'],
+               ['Prioritized advisory audit findings with evidence status and recommended next checks.']),
+              ('ai-seo', 'corey.ai-seo', 'AI_SEO', 'AI_SEO_METHOD', 'AI search optimization',
+               'Assess AI-search discoverability, citation readiness, and agent readability without inventing visibility evidence.',
+               ['Planning AEO, GEO, LLM visibility, citation readiness, and agent-readable content improvements.'],
+               ['Target topics and audiences', 'Observed AI citation or referral evidence when available', 'Site access and content evidence'],
+               ['Assess access, discovery, parseability, and answer usefulness.', 'Review entity clarity, sourceability, and citation-friendly structure.', 'Diversify owned and third-party visibility surfaces.', 'Separate emerging techniques from established requirements.'],
+               ['Treat citation-share claims as time-sensitive context.', 'Require observed evidence before stating that a model cites or does not cite a site.'],
+               ['Advisory AI-visibility opportunities, evidence gaps, and prioritized experiments.']),
+              ('schema', 'corey.schema', 'SCHEMA', 'SCHEMA_METHOD', 'Schema markup',
+               'Plan structured-data improvements using page-visible facts and schema eligibility constraints.',
+               ['Reviewing or planning JSON-LD and schema.org markup for eligible pages.'],
+               ['Page type and visible content', 'Existing structured-data evidence when available'],
+               ['Identify the page entity and eligible schema type.', 'Map only visible supported facts into properties.', 'Check required and recommended properties.', 'Recommend validation against current rich-result tooling.'],
+               ['Do not infer ratings, prices, authorship, availability, or other facts that are not observed.', 'Do not equate valid schema with guaranteed rich-result display.'],
+               ['Advisory schema type/property plan and validation checklist.']),
+              ('programmatic-seo', 'corey.programmatic-seo', 'PROGRAMMATIC_SEO', 'PROGRAMMATIC_SEO_METHOD', 'Programmatic SEO',
+               'Design scalable SEO page systems only where data quality, intent fit, uniqueness, and indexation controls are defensible.',
+               ['Evaluating or planning template-driven SEO pages at scale.'],
+               ['Target query pattern', 'Available structured data', 'Template/content differentiation strategy'],
+               ['Validate repeatable search intent and useful data.', 'Define page taxonomy and template fields.', 'Specify uniqueness and quality safeguards.', 'Plan internal linking, canonicalization, sitemap, and indexation controls.'],
+               ['Reject scaled pages that lack unique user value.', 'Treat estimated traffic or rankings as hypotheses unless observed.'],
+               ['Advisory page-system design, quality gates, and launch measurement plan.']),
+              ('site-architecture', 'corey.site-architecture', 'SITE_ARCHITECTURE', 'SITE_ARCHITECTURE_METHOD', 'Site architecture',
+               'Plan clear page hierarchy, navigation, URL structure, and internal-link relationships for discovery and user comprehension.',
+               ['Restructuring information architecture, navigation, URLs, or internal linking.'],
+               ['Current page inventory or representative structure', 'Priority topics and user journeys'],
+               ['Group pages by intent and topic.', 'Define hierarchy and canonical destination pages.', 'Map navigation and contextual internal links.', 'Identify orphan, duplicate, or excessively deep paths.'],
+               ['Do not assume crawl depth or orphan status without a page/link inventory.', 'Preserve migration and redirect requirements as explicit implementation work.'],
+               ['Advisory hierarchy, navigation, URL, and internal-link plan.']),
+              ('content-strategy', 'corey.content-strategy', 'CONTENT_STRATEGY', 'CONTENT_STRATEGY_METHOD', 'Content strategy',
+               'Turn audience needs, search intent, expertise, and business goals into a prioritized content portfolio.',
+               ['Planning topic coverage, editorial priorities, content refreshes, and content clusters.'],
+               ['Audience and business goals', 'Known topic/query evidence', 'Existing content inventory when available'],
+               ['Define audience problems and desired outcomes.', 'Map topics to intent and journey stage.', 'Assess existing coverage, gaps, and overlap.', 'Prioritize creation, refresh, consolidation, and distribution opportunities.'],
+               ['Do not fabricate search volume, ranking difficulty, traffic, or competitor performance.', 'Keep hypotheses labeled when source data is absent.'],
+               ['Advisory content priorities, cluster map, and measurement hypotheses.']),
+              ('analytics', 'corey.analytics', 'ANALYTICS', 'ANALYTICS_METHOD', 'Analytics measurement',
+               'Design trustworthy measurement plans with explicit events, properties, baselines, and interpretation limits.',
+               ['Planning analytics instrumentation, funnels, KPIs, or SEO/GEO measurement.'],
+               ['Business objective', 'User journey', 'Available event and attribution data'],
+               ['Translate objectives into measurable questions.', 'Define events, properties, and identity boundaries.', 'Specify funnel and segment logic.', 'Document attribution and data-quality limitations before interpretation.'],
+               ['Missing events or attribution data remain unknown rather than zero.', 'Do not claim causality from descriptive analytics alone.'],
+               ['Advisory measurement specification, data-quality checks, and analysis questions.']),
+              ('ab-testing', 'corey.ab-testing', 'EXPERIMENT_DESIGN', 'EXPERIMENT_METHOD', 'Experiment design',
+               'Design bounded experiments with a clear hypothesis, metric, sample/decision rules, and interpretation guardrails.',
+               ['Evaluating changes that can be tested with controlled experiments.'],
+               ['Proposed change and hypothesis', 'Primary metric and guardrail metrics', 'Baseline data when available'],
+               ['State the causal hypothesis and unit of randomization.', 'Choose primary and guardrail metrics before launch.', 'Define duration/sample and stopping rules appropriate to available data.', 'Interpret effect size and uncertainty before rollout.'],
+               ['Do not declare winners without sufficient observed experiment data.', 'Do not retrofit metrics or stopping rules to manufacture significance.'],
+               ['Advisory experiment brief, decision rule, and interpretation checklist.']),
+          ]
+
+          common_evidence = [
+              'Observed evidence must stay distinct from recommendations and third-party method guidance.',
+              'Missing observed data remains unknown and must never be converted to zero, failure, or success.',
+              'Any externally sourced benchmark or claim must retain provenance and applicability limits.',
+          ]
+          common_forbidden = [
+              'Do not fabricate rankings, citations, traffic, conversions, backlinks, performance, or verification state.',
+              'Do not elevate advisory output into P7 authoritative facts, deterministic scores, P8 risk, approvals, mutation authority, or VERIFIED status.',
+              'Do not request or use credentials, execute commands, call networks, mutate databases, publish, deploy, merge, or perform runtime actions.',
+          ]
+
+          def sha256(path: pathlib.Path) -> str:
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          def write_json(path: pathlib.Path, value) -> None:
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+          SOURCE.mkdir(parents=True, exist_ok=True)
+          shutil.copyfile(SRC / 'LICENSE', SOURCE / 'LICENSE')
+
+          skills = []
+          for upstream_name, skill_id, method_key, capability, title, purpose, when, inputs, steps, checks, outputs in methods:
+              upstream_rel = f'upstream/skills/{upstream_name}/SKILL.md'
+              upstream_dst = SOURCE / upstream_rel
+              upstream_dst.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(SRC / 'skills' / upstream_name / 'SKILL.md', upstream_dst)
+              upstream_hash = sha256(upstream_dst)
+
+              projection_rel = f'projections/{method_key}.json'
+              projection_dst = SOURCE / projection_rel
+              projection = {
+                  'projectionVersion': 'ADVISORY_METHOD_PROJECTION_V1',
+                  'skillId': skill_id,
+                  'methodKey': method_key,
+                  'title': title,
+                  'purpose': purpose,
+                  'whenToUse': when,
+                  'requiredInputs': inputs,
+                  'steps': steps,
+                  'checks': checks,
+                  'outputs': outputs,
+                  'evidenceRules': common_evidence,
+                  'forbiddenInferences': common_forbidden,
+                  'sourceRefs': [{'upstreamPath': upstream_rel, 'upstreamSha256': upstream_hash}],
+              }
+              write_json(projection_dst, projection)
+              skills.append({
+                  'skillId': skill_id,
+                  'methodKey': method_key,
+                  'upstreamEntrypoint': upstream_rel,
+                  'capabilities': [capability],
+                  'upstreamFiles': [{'path': upstream_rel, 'sha256': upstream_hash, 'mediaType': 'text/markdown'}],
+                  'projectionPath': projection_rel,
+                  'projectionSha256': sha256(projection_dst),
+              })
+
+          manifest = {
+              'manifestVersion': 'ADVISORY_SOURCE_MANIFEST_V1',
+              'sourceId': SOURCE_ID,
+              'sourceRepo': 'coreyhaines31/marketingskills',
+              'upstreamCommit': PIN,
+              'licenseSpdx': 'MIT',
+              'licenseFile': {'path': 'LICENSE', 'sha256': sha256(SOURCE / 'LICENSE')},
+              'localVersion': '1.0.0',
+              'reviewedAt': '2026-08-22',
+              'skills': skills,
+          }
+          write_json(SOURCE / 'manifest.json', manifest)
+          registry = {
+              'version': 'THIRD_PARTY_ADVISORY_REGISTRY_V1',
+              'sources': [{
+                  'sourceId': SOURCE_ID,
+                  'manifestPath': f'{SOURCE_ID}/manifest.json',
+                  'manifestSha256': sha256(SOURCE / 'manifest.json'),
+              }],
+          }
+          write_json(ROOT / 'registry.json', registry)
+          PY
+
+      - name: Verify Task 4 GREEN
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          npx vitest run tests/integration/advisory-skill.vendor.test.ts tests/unit/advisory-skill.schemas.test.ts tests/unit/advisory-skill.loader.test.ts tests/unit/advisory-skill.registry.test.ts
+          npm run typecheck
+
+      - name: Commit reviewed vendor assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add vendor/third-party-skills
+          git diff --cached --exit-code && { echo 'No vendor changes produced'; exit 1; } || true
+          git commit -m 'feat: vendor reviewed Corey SEO methods'
+          git push origin HEAD:feat/p9-0h-third-party-skill-foundation
