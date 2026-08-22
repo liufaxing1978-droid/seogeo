@@ -7,7 +7,8 @@ describe('P6-A default visibility provider registry', () => {
       openAiApiKey: 'openai-fixture',
       geminiApiKey: 'gemini-fixture',
       perplexityApiKey: 'perplexity-fixture',
-      anthropicApiKey: 'anthropic-fixture'
+      anthropicApiKey: 'anthropic-fixture',
+      microsoftWorkIqAccessToken: 'microsoft-fixture'
     });
 
     expect(registry.list().map((adapter) => adapter.provider)).toEqual([
@@ -15,12 +16,14 @@ describe('P6-A default visibility provider registry', () => {
       'GEMINI',
       'PERPLEXITY',
       'ANTHROPIC',
-      'DEEPSEEK'
+      'DEEPSEEK',
+      'MICROSOFT'
     ]);
     expect(registry.get('OPENAI', 'gpt-5.4-mini', 'API').provider).toBe('OPENAI');
     expect(registry.get('GEMINI', 'gemini-3.6-flash', 'API').provider).toBe('GEMINI');
     expect(registry.get('PERPLEXITY', 'sonar-pro', 'API').provider).toBe('PERPLEXITY');
     expect(registry.get('ANTHROPIC', 'claude-sonnet-4-20250514', 'API').provider).toBe('ANTHROPIC');
     expect(registry.get('DEEPSEEK', 'deepseek-v4-flash', 'API').provider).toBe('DEEPSEEK');
+    expect(registry.get('MICROSOFT', 'microsoft-365-copilot', 'API').provider).toBe('MICROSOFT');
   });
 });
