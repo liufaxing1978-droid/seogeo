@@ -1,7 +1,9 @@
-import type { PrismaClient, SearchFactSnapshot } from '@prisma/client';
+import type { Prisma, PrismaClient, SearchFactSnapshot } from '@prisma/client';
 import type {
   NormalizedSearchFactDraft,
-  SearchFactMaterializeIdentity
+  SearchFactMaterializeIdentity,
+  SearchFactReadFilter,
+  SearchFactView
 } from './search-fact.types.js';
 
 const assertIdentity = (identity: SearchFactMaterializeIdentity): void => {
@@ -57,6 +59,34 @@ const assertDrafts = (
         throw new Error('SEARCH_FACT_INVALID_METRIC');
       }
     }
+  }
+};
+
+const assertReadFilter = (filter: SearchFactReadFilter): void => {
+  const required = filter.projectId.trim();
+  if (required.length === 0) {
+    throw new Error('SEARCH_FACT_INVALID_READ_FILTER');
+  }
+
+  for (const value of [
+    filter.locale,
+    filter.propertyRef,
+    filter.canonicalPage,
+    filter.normalizedQuery
+  ]) {
+    if (value !== undefined && value.trim().length === 0) {
+      throw new Error('SEARCH_FACT_INVALID_READ_FILTER');
+    }
+  }
+
+  if (
+    (filter.sourceDateFrom && Number.isNaN(filter.sourceDateFrom.getTime())) ||
+    (filter.sourceDateTo && Number.isNaN(filter.sourceDateTo.getTime())) ||
+    (filter.sourceDateFrom &&
+      filter.sourceDateTo &&
+      filter.sourceDateFrom.getTime() > filter.sourceDateTo.getTime())
+  ) {
+    throw new Error('SEARCH_FACT_INVALID_READ_FILTER');
   }
 };
 
@@ -161,5 +191,81 @@ export class SearchFactRepository {
         }
       });
     });
+  }
+
+  async listCompletedFacts(filter: SearchFactReadFilter): Promise<SearchFactView[]> {
+    assertReadFilter(filter);
+
+    const sourceDate =
+      filter.sourceDateFrom || filter.sourceDateTo
+        ? {
+            ...(filter.sourceDateFrom ? { gte: filter.sourceDateFrom } : {}),
+            ...(filter.sourceDateTo ? { lte: filter.sourceDateTo } : {})
+          }
+        : undefined;
+
+    const where: Prisma.SearchFactWhereInput = {
+      projectId: filter.projectId,
+      ...(filter.factKind ? { factKind: filter.factKind } : {}),
+      ...(filter.metricSemantic
+        ? { metrics: { some: { metricSemantic: filter.metricSemantic } } }
+        : {}),
+      ...(filter.canonicalPage !== undefined
+        ? { canonicalPage: filter.canonicalPage }
+        : {}),
+      ...(filter.normalizedQuery !== undefined
+        ? { normalizedQuery: filter.normalizedQuery }
+        : {}),
+      ...(sourceDate ? { sourceDate } : {}),
+      snapshot: {
+        projectId: filter.projectId,
+        status: 'COMPLETED',
+        completedAt: { not: null },
+        ...(filter.provider ? { provider: filter.provider } : {}),
+        ...(filter.marketCode ? { marketCode: filter.marketCode } : {}),
+        ...(filter.locale !== undefined ? { locale: filter.locale } : {}),
+        ...(filter.propertyRef !== undefined ? { propertyRef: filter.propertyRef } : {})
+      }
+    };
+
+    const rows = await this.db.searchFact.findMany({
+      where,
+      include: {
+        snapshot: true,
+        metrics: true
+      },
+      orderBy: [{ sourceDate: 'asc' }, { factKey: 'asc' }]
+    });
+
+    return rows.map((row) => ({
+      snapshotId: row.snapshotId,
+      projectId: row.projectId,
+      provider: row.snapshot.provider,
+      marketCode: row.snapshot.marketCode,
+      locale: row.snapshot.locale,
+      propertyRef: row.snapshot.propertyRef,
+      propertyType: row.snapshot.propertyType,
+      sourceKind: row.snapshot.sourceKind,
+      sourceRef: row.snapshot.sourceRef,
+      sourceObservationRef: row.sourceObservationRef,
+      sourceCutoffAt: row.snapshot.sourceCutoffAt,
+      sourceCompleteness: row.snapshot.sourceCompleteness,
+      normalizationVersion: row.snapshot.normalizationVersion,
+      factKey: row.factKey,
+      factKind: row.factKind,
+      sourceDate: row.sourceDate,
+      query: row.query,
+      normalizedQuery: row.normalizedQuery,
+      queryNormalizationVersion: row.queryNormalizationVersion,
+      page: row.page,
+      canonicalPage: row.canonicalPage,
+      canonicalizationVersion: row.canonicalizationVersion,
+      metrics: row.metrics.map((metric) => ({
+        metricSemantic: metric.metricSemantic,
+        numericValue: metric.numericValue,
+        evidenceState: metric.evidenceState,
+        sourceField: metric.sourceField
+      }))
+    }));
   }
 }
