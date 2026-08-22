@@ -25,4 +25,9 @@ describe('search provider contracts', () => {
       'SITEMAP_SUBMISSION'
     ]);
   });
+
+  it('freezes provider and capability constants at runtime', () => {
+    expect(Object.isFrozen(SEARCH_PROVIDER_CODES)).toBe(true);
+    expect(Object.isFrozen(SEARCH_PROVIDER_CAPABILITIES)).toBe(true);
+  });
 });
