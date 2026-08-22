@@ -15,6 +15,7 @@ import {
 import { detectNormalOpportunityTypes, selectPrimaryType } from './growth-detectors.js';
 import { emitGrowthEvent } from './growth.observability.js';
 import { growthRepository } from './growth.repository.js';
+import { GrowthSearchSourceAdapter } from './growth-search-source.adapter.js';
 import {
   calculateGrowthScore,
   scoreCtrGap,
@@ -421,19 +422,14 @@ export async function materializeGrowthWindow(
     };
   }
 
-  const facts = await prisma.gscQueryPageFact.findMany({
-    where: { projectId, snapshotId: { in: selectedGscSnapshotIds } },
-    select: {
-      date: true,
-      normalizedQuery: true,
-      canonicalPage: true,
-      clicks: true,
-      impressions: true,
-      ctr: true,
-      position: true
-    },
-    orderBy: [{ date: 'asc' }, { normalizedQuery: 'asc' }, { canonicalPage: 'asc' }]
+  const searchSource = await new GrowthSearchSourceAdapter(prisma).load({
+    projectId,
+    propertyId: property.id,
+    selectedGscSnapshotIds,
+    sourceDateFrom: windowStart,
+    sourceDateTo: windowEnd
   });
+  const facts = searchSource.scoringFacts;
 
   const currentFacts = facts.filter((row) => row.date >= currentStart && row.date <= currentEnd);
   const previousFacts = facts.filter((row) => row.date >= previousStart && row.date <= previousEnd);
@@ -452,7 +448,8 @@ export async function materializeGrowthWindow(
   const provenance = {
     materializationVersion: GROWTH_MATERIALIZATION_VERSION,
     evidenceVersion: GROWTH_EVIDENCE_VERSION,
-    gscSnapshotIds: selectedGscSnapshotIds
+    gscSnapshotIds: selectedGscSnapshotIds,
+    searchFacts: searchSource.provenance
   };
   const scoreContextFor = (aggregate: QueryPageAggregate) => {
     const previous = previousByKey.get(aggregateKey(aggregate));
