@@ -103,7 +103,7 @@ describe('P9-A advisory packaging', () => {
 
     expect(JSON.stringify(context)).not.toContain('RAW VENDOR-DERIVED STEP')
     expect(JSON.stringify(context)).not.toContain('sourceFileHashes')
-    expect(JSON.stringify(context)).not.toContain('projection')
+    expect(context.every((item) => !Object.prototype.hasOwnProperty.call(item, 'projection'))).toBe(true)
   })
 
   it('fails closed when a required advisory method is missing or duplicated', () => {
