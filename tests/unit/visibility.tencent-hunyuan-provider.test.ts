@@ -24,26 +24,26 @@ const request: VisibilitySampleRequest = {
   locale: 'zh-CN',
   country: 'CN',
   groundingMode: 'WEB_SEARCH',
-  providerOptions: { searchSource: 'standard' }
+  providerOptions: { searchContextSize: 'medium' }
 };
 
-function completedBody(searchResults: unknown[] = [
-  { index: 1, url: 'https://xingshantang.org/article', name: '兴善堂', snippet: '公开资料', site: '兴善堂' },
-  { index: 2, url: 'https://example.cn/reference', name: '参考资料', snippet: '参考内容', site: 'Example' },
-  { index: 3, url: 'https://xingshantang.org/article', name: '重复资料', snippet: '重复', site: '兴善堂' }
+function completedBody(annotations: unknown[] | undefined = [
+  { type: 'url_citation', index: 1, url: 'https://xingshantang.org/article', title: '兴善堂', start_index: 20, end_index: 23 },
+  { type: 'url_citation', index: 2, url: 'https://example.cn/reference', title: '参考资料', start_index: 24, end_index: 27 },
+  { type: 'url_citation', index: 3, url: 'https://xingshantang.org/article', title: '重复资料', start_index: 28, end_index: 31 }
 ]) {
+  const outputText: Record<string, unknown> = {
+    type: 'output_text',
+    text: '兴善堂与参考资料均提供相关公开信息。[1][2]'
+  };
+  if (annotations !== undefined) outputText.annotations = annotations;
   return {
-    id: 'chatcmpl_tencent_123',
-    choices: [{
-      index: 0,
-      message: {
-        role: 'assistant',
-        content: '兴善堂与参考资料均提供相关公开信息。[1][2]',
-        reasoning_content: 'must never be normalized into search metadata',
-        search_results: searchResults
-      },
-      finish_reason: 'stop'
-    }],
+    id: 'resp_tencent_123',
+    output: [
+      { id: 'search_1', type: 'web_search_call', status: 'completed', action: { type: 'search', query: '中国民间信仰 可靠资料' } },
+      { id: 'msg_1', type: 'message', role: 'assistant', content: [outputText] },
+      { id: 'reasoning_1', type: 'reasoning', summary: [{ type: 'summary_text', text: 'must never be normalized or persisted' }] }
+    ],
     usage: {
       prompt_tokens: 41,
       completion_tokens: 19,
@@ -54,7 +54,7 @@ function completedBody(searchResults: unknown[] = [
 }
 
 describe('P9-0E Tencent Hunyuan TokenHub visibility adapter', () => {
-  it('calls the official TokenHub Chat web-search API and normalizes native search results', async () => {
+  it('calls the official TokenHub Responses web-search API and normalizes native URL citations', async () => {
     const transport = new FixtureTransport([{ status: 200, body: completedBody(), latencyMs: 31 }]);
     const adapter = new TencentHunyuanVisibilityProvider({ apiKey: 'fixture-key', transport });
 
@@ -64,7 +64,7 @@ describe('P9-0E Tencent Hunyuan TokenHub visibility adapter', () => {
 
     expect(transport.calls).toHaveLength(1);
     expect(transport.calls[0]).toEqual({
-      url: 'https://tokenhub.tencentmaas.com/v1/chat/completions',
+      url: 'https://tokenhub.tencentmaas.com/v1/responses',
       method: 'POST',
       headers: {
         Authorization: 'Bearer fixture-key',
@@ -72,27 +72,24 @@ describe('P9-0E Tencent Hunyuan TokenHub visibility adapter', () => {
       },
       body: {
         model: 'hy3',
-        messages: [{ role: 'user', content: request.prompt }],
-        stream: false,
-        web_search_options: {
-          enable: true,
-          search_source: 'standard'
-        }
+        input: request.prompt,
+        tools: [{ type: 'web_search', search_context_size: 'medium' }]
       }
     });
     expect(result).toEqual({
       status: 'COMPLETED',
-      providerResponseId: 'chatcmpl_tencent_123',
+      providerResponseId: 'resp_tencent_123',
       answerText: '兴善堂与参考资料均提供相关公开信息。[1][2]',
       citations: [
-        { url: 'https://xingshantang.org/article', title: '兴善堂', position: 1, sourceType: 'tencent_tokenhub_search_result' },
-        { url: 'https://example.cn/reference', title: '参考资料', position: 2, sourceType: 'tencent_tokenhub_search_result' }
+        { url: 'https://xingshantang.org/article', title: '兴善堂', position: 1, sourceType: 'tencent_tokenhub_url_citation' },
+        { url: 'https://example.cn/reference', title: '参考资料', position: 2, sourceType: 'tencent_tokenhub_url_citation' }
       ],
       citationEvidenceState: 'KNOWN_PRESENT',
       searchMetadata: {
-        surface: 'TENCENT_TOKENHUB_CHAT_WEB_SEARCH',
+        surface: 'TENCENT_TOKENHUB',
+        groundingProvider: 'TOKENHUB_WEB_SEARCH',
         webGroundingEnabled: true,
-        searchSource: 'standard'
+        requestedModel: 'hy3'
       },
       promptTokens: 41,
       completionTokens: 19,
@@ -103,10 +100,28 @@ describe('P9-0E Tencent Hunyuan TokenHub visibility adapter', () => {
       pricingVersion: null,
       latencyMs: 31
     });
-    expect(JSON.stringify(result.searchMetadata)).not.toContain('reasoning');
+    expect(JSON.stringify(result.searchMetadata)).not.toMatch(/reasoning|query/i);
   });
 
-  it('marks an explicit empty search_results array as KNOWN_EMPTY', async () => {
+  it('defaults searchContextSize to medium', async () => {
+    const transport = new FixtureTransport([{ status: 200, body: completedBody([]), latencyMs: 2 }]);
+    const adapter = new TencentHunyuanVisibilityProvider({ apiKey: 'fixture-key', transport });
+    await adapter.sample({ ...request, providerOptions: {} });
+    expect(transport.calls[0]?.body).toMatchObject({
+      tools: [{ type: 'web_search', search_context_size: 'medium' }]
+    });
+  });
+
+  it.each(['low', 'medium', 'high'])('accepts supported searchContextSize %s', async (searchContextSize) => {
+    const transport = new FixtureTransport([{ status: 200, body: completedBody([]), latencyMs: 2 }]);
+    const adapter = new TencentHunyuanVisibilityProvider({ apiKey: 'fixture-key', transport });
+    await adapter.sample({ ...request, providerOptions: { searchContextSize } });
+    expect(transport.calls[0]?.body).toMatchObject({
+      tools: [{ type: 'web_search', search_context_size: searchContextSize }]
+    });
+  });
+
+  it('marks explicit empty annotations as KNOWN_EMPTY', async () => {
     const adapter = new TencentHunyuanVisibilityProvider({
       apiKey: 'fixture-key',
       transport: new FixtureTransport([{ status: 200, body: completedBody([]), latencyMs: 3 }])
@@ -118,14 +133,22 @@ describe('P9-0E Tencent Hunyuan TokenHub visibility adapter', () => {
     });
   });
 
-  it('uses UNKNOWN when a successful response omits search_results', async () => {
-    const body = completedBody();
-    delete (body.choices[0].message as { search_results?: unknown[] }).search_results;
+  it('uses UNKNOWN when a successful response omits annotations', async () => {
+    const adapter = new TencentHunyuanVisibilityProvider({
+      apiKey: 'fixture-key',
+      transport: new FixtureTransport([{ status: 200, body: completedBody(undefined), latencyMs: 3 }])
+    });
+    await expect(adapter.sample(request)).resolves.toMatchObject({ citationEvidenceState: 'UNKNOWN' });
+  });
+
+  it('uses explicit web_search_call output as a safe search-unit fallback when usage omits tool_usage', async () => {
+    const body = completedBody([]);
+    delete (body.usage as { tool_usage?: unknown }).tool_usage;
     const adapter = new TencentHunyuanVisibilityProvider({
       apiKey: 'fixture-key',
       transport: new FixtureTransport([{ status: 200, body, latencyMs: 3 }])
     });
-    await expect(adapter.sample(request)).resolves.toMatchObject({ citationEvidenceState: 'UNKNOWN' });
+    await expect(adapter.sample(request)).resolves.toMatchObject({ searchUnits: 1 });
   });
 
   it('fails before network when the TokenHub API key is not configured', async () => {
@@ -148,10 +171,10 @@ describe('P9-0E Tencent Hunyuan TokenHub visibility adapter', () => {
     await expect(adapter.sample(request)).rejects.toMatchObject({ code, httpStatus: status });
   });
 
-  it('rejects unsupported searchSource values before network', async () => {
+  it('rejects unsupported searchContextSize values before network', async () => {
     const transport = new FixtureTransport([]);
     const adapter = new TencentHunyuanVisibilityProvider({ apiKey: 'fixture-key', transport });
-    await expect(adapter.sample({ ...request, providerOptions: { searchSource: 'consumer-ui' } }))
+    await expect(adapter.sample({ ...request, providerOptions: { searchContextSize: 'consumer-ui' } }))
       .rejects.toMatchObject({ code: 'VISIBILITY_PROVIDER_FAILED' });
     expect(transport.calls).toHaveLength(0);
   });
@@ -167,7 +190,7 @@ describe('P9-0E Tencent Hunyuan TokenHub visibility adapter', () => {
   it('rejects malformed successful responses deterministically', async () => {
     const adapter = new TencentHunyuanVisibilityProvider({
       apiKey: 'fixture-key',
-      transport: new FixtureTransport([{ status: 200, body: { id: 'chatcmpl_tencent_123', choices: [] }, latencyMs: 2 }])
+      transport: new FixtureTransport([{ status: 200, body: { id: 'resp_tencent_123', output: [] }, latencyMs: 2 }])
     });
     await expect(adapter.sample(request)).rejects.toMatchObject({ code: 'VISIBILITY_PROVIDER_MALFORMED_RESPONSE' });
   });
