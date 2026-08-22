@@ -34,7 +34,7 @@ export interface SearchProviderCapabilityDescriptor {
   state: CapabilityState;
   cadence: SourceCadence;
   readOnly: boolean;
-  accessMode?: SearchProviderAccessMode;
+  accessMode: SearchProviderAccessMode;
   notes?: string;
 }
 
