@@ -5,6 +5,17 @@ enum VisibilityProvider {
   ANTHROPIC
   DEEPSEEK
   MICROSOFT
+  BAIDU_QIANFAN
+  QWEN
+  TENCENT_HUNYUAN
+}
+
+enum VisibilityProviderCapability {
+  MODEL_ONLY
+  WEB_GROUNDED
+  SEARCH_API
+  CITATION_NATIVE
+  CONSUMER_OBSERVATION
 }
 
 enum VisibilityChannel {
@@ -70,19 +81,20 @@ model VisibilityProjectSettings {
 }
 
 model VisibilityProviderConfig {
-  id                  String                    @id @default(uuid()) @db.Uuid
-  projectId           String                    @db.Uuid
+  id                  String                         @id @default(uuid()) @db.Uuid
+  projectId           String                         @db.Uuid
   provider            VisibilityProvider
-  enabled             Boolean                   @default(false)
+  enabled             Boolean                        @default(false)
   model               String
-  channel             VisibilityChannel         @default(API)
+  channel             VisibilityChannel              @default(API)
   groundingMode       VisibilityGroundingMode
-  maxConcurrency      Int                       @default(2)
+  capabilities        VisibilityProviderCapability[]  @default([])
+  maxConcurrency      Int                            @default(2)
   defaultLocale       String?
   defaultCountry      String?
   providerOptionsJson Json
-  createdAt           DateTime                  @default(now())
-  updatedAt           DateTime                  @updatedAt
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
 
   @@unique([projectId, provider, model, channel, groundingMode])
   @@index([projectId, enabled, provider])
@@ -183,8 +195,8 @@ model PlatformObservation {
   latencyMs             Int?
   errorCode             String?
   observedAt            DateTime                  @default(now())
-  createdAt             DateTime                  @default(now())
-  updatedAt             DateTime                  @updatedAt
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
 
   run    VisibilityRun    @relation(fields: [visibilityRunId], references: [id], onDelete: Cascade)
   prompt VisibilityPrompt @relation(fields: [visibilityPromptId], references: [id], onDelete: Cascade)
