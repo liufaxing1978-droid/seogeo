@@ -1,0 +1,44 @@
+{
+  "projectionVersion": "ADVISORY_METHOD_PROJECTION_V1",
+  "skillId": "corey.programmatic-seo",
+  "methodKey": "PROGRAMMATIC_SEO",
+  "title": "Programmatic SEO",
+  "purpose": "Design scalable SEO page systems only where data quality, intent fit, uniqueness, and indexation controls are defensible.",
+  "whenToUse": [
+    "Evaluating or planning template-driven SEO pages at scale."
+  ],
+  "requiredInputs": [
+    "Target query pattern",
+    "Available structured data",
+    "Template/content differentiation strategy"
+  ],
+  "steps": [
+    "Validate repeatable search intent and useful data.",
+    "Define page taxonomy and template fields.",
+    "Specify uniqueness and quality safeguards.",
+    "Plan internal linking, canonicalization, sitemap, and indexation controls."
+  ],
+  "checks": [
+    "Reject scaled pages that lack unique user value.",
+    "Treat estimated traffic or rankings as hypotheses unless observed."
+  ],
+  "outputs": [
+    "Advisory page-system design, quality gates, and launch measurement plan."
+  ],
+  "evidenceRules": [
+    "Observed evidence must stay distinct from recommendations and third-party method guidance.",
+    "Missing observed data remains unknown and must never be converted to zero, failure, or success.",
+    "Any externally sourced benchmark or claim must retain provenance and applicability limits."
+  ],
+  "forbiddenInferences": [
+    "Do not fabricate rankings, citations, traffic, conversions, backlinks, performance, or verification state.",
+    "Do not elevate advisory output into P7 authoritative facts, deterministic scores, P8 risk, approvals, mutation authority, or VERIFIED status.",
+    "Do not request or use credentials, execute commands, call networks, mutate databases, publish, deploy, merge, or perform runtime actions."
+  ],
+  "sourceRefs": [
+    {
+      "upstreamPath": "upstream/skills/programmatic-seo/SKILL.md",
+      "upstreamSha256": "15cb5979cab5263ede902a830e03342869256ece17905bff240eef498e27cde1"
+    }
+  ]
+}

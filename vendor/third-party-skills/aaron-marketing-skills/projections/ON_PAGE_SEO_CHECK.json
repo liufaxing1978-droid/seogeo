@@ -1,0 +1,44 @@
+{
+  "projectionVersion": "ADVISORY_METHOD_PROJECTION_V1",
+  "skillId": "aaron.on-page-seo-checker",
+  "methodKey": "ON_PAGE_SEO_CHECK",
+  "title": "On-page SEO check",
+  "purpose": "Review on-page relevance, structure, metadata, and evidence alignment without mutating published content.",
+  "whenToUse": [
+    "Reviewing page titles, headings, intent fit, content structure, internal links, and on-page signals."
+  ],
+  "requiredInputs": [
+    "Page-visible content",
+    "Target topic or query intent",
+    "Observed metadata and link evidence when available"
+  ],
+  "steps": [
+    "Check intent and page-purpose alignment.",
+    "Review title, heading, and content structure.",
+    "Assess internal-link and supporting-evidence opportunities.",
+    "Prioritize advisory on-page improvements."
+  ],
+  "checks": [
+    "Do not invent rankings, keyword volume, or page performance.",
+    "Do not mutate pages or invoke external optimization tooling in P9-0H."
+  ],
+  "outputs": [
+    "Advisory on-page findings and prioritized improvement plan."
+  ],
+  "evidenceRules": [
+    "Observed evidence must stay distinct from recommendations and third-party method guidance.",
+    "Missing observed data remains unknown and must never be converted to zero, failure, or success.",
+    "Any externally sourced benchmark or claim must retain provenance and applicability limits."
+  ],
+  "forbiddenInferences": [
+    "Do not fabricate rankings, citations, traffic, conversions, backlinks, performance, or verification state.",
+    "Do not elevate advisory output into P7 authoritative facts, deterministic scores, P8 risk, approvals, mutation authority, or VERIFIED status.",
+    "Do not request or use credentials, execute commands, call networks, mutate databases, publish, deploy, merge, or perform runtime actions."
+  ],
+  "sourceRefs": [
+    {
+      "upstreamPath": "upstream/seo-geo/tune/on-page-seo-checker/SKILL.md",
+      "upstreamSha256": "597a7046cd7f752b8a5585ff198cf9c5e8891a42537d23b1dc478ab1e0720901"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "version": "THIRD_PARTY_ADVISORY_REGISTRY_V1",
+  "sources": [
+    {
+      "sourceId": "aaron-marketing-skills",
+      "manifestPath": "aaron-marketing-skills/manifest.json",
+      "manifestSha256": "08fedbc81318642f431895223b25a504514eaf76830282f59c3cf4bb4e971fe9"
+    },
+    {
+      "sourceId": "coreyhaines31-marketingskills",
+      "manifestPath": "coreyhaines31-marketingskills/manifest.json",
+      "manifestSha256": "6b5aeeb507603267a6dfe22f441283332e6d668db3a25c7e495aea4e004fa41f"
+    }
+  ]
+}

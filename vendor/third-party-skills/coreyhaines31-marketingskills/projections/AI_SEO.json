@@ -1,0 +1,44 @@
+{
+  "projectionVersion": "ADVISORY_METHOD_PROJECTION_V1",
+  "skillId": "corey.ai-seo",
+  "methodKey": "AI_SEO",
+  "title": "AI search optimization",
+  "purpose": "Assess AI-search discoverability, citation readiness, and agent readability without inventing visibility evidence.",
+  "whenToUse": [
+    "Planning AEO, GEO, LLM visibility, citation readiness, and agent-readable content improvements."
+  ],
+  "requiredInputs": [
+    "Target topics and audiences",
+    "Observed AI citation or referral evidence when available",
+    "Site access and content evidence"
+  ],
+  "steps": [
+    "Assess access, discovery, parseability, and answer usefulness.",
+    "Review entity clarity, sourceability, and citation-friendly structure.",
+    "Diversify owned and third-party visibility surfaces.",
+    "Separate emerging techniques from established requirements."
+  ],
+  "checks": [
+    "Treat citation-share claims as time-sensitive context.",
+    "Require observed evidence before stating that a model cites or does not cite a site."
+  ],
+  "outputs": [
+    "Advisory AI-visibility opportunities, evidence gaps, and prioritized experiments."
+  ],
+  "evidenceRules": [
+    "Observed evidence must stay distinct from recommendations and third-party method guidance.",
+    "Missing observed data remains unknown and must never be converted to zero, failure, or success.",
+    "Any externally sourced benchmark or claim must retain provenance and applicability limits."
+  ],
+  "forbiddenInferences": [
+    "Do not fabricate rankings, citations, traffic, conversions, backlinks, performance, or verification state.",
+    "Do not elevate advisory output into P7 authoritative facts, deterministic scores, P8 risk, approvals, mutation authority, or VERIFIED status.",
+    "Do not request or use credentials, execute commands, call networks, mutate databases, publish, deploy, merge, or perform runtime actions."
+  ],
+  "sourceRefs": [
+    {
+      "upstreamPath": "upstream/skills/ai-seo/SKILL.md",
+      "upstreamSha256": "b4394dde31fba2aceebb6626d545a0e38d008f2c69c52c25a513f2a602aee1e0"
+    }
+  ]
+}

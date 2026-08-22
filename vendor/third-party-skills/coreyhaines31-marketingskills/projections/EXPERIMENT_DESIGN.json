@@ -1,0 +1,44 @@
+{
+  "projectionVersion": "ADVISORY_METHOD_PROJECTION_V1",
+  "skillId": "corey.ab-testing",
+  "methodKey": "EXPERIMENT_DESIGN",
+  "title": "Experiment design",
+  "purpose": "Design bounded experiments with a clear hypothesis, metric, sample/decision rules, and interpretation guardrails.",
+  "whenToUse": [
+    "Evaluating changes that can be tested with controlled experiments."
+  ],
+  "requiredInputs": [
+    "Proposed change and hypothesis",
+    "Primary metric and guardrail metrics",
+    "Baseline data when available"
+  ],
+  "steps": [
+    "State the causal hypothesis and unit of randomization.",
+    "Choose primary and guardrail metrics before launch.",
+    "Define duration/sample and stopping rules appropriate to available data.",
+    "Interpret effect size and uncertainty before rollout."
+  ],
+  "checks": [
+    "Do not declare winners without sufficient observed experiment data.",
+    "Do not retrofit metrics or stopping rules to manufacture significance."
+  ],
+  "outputs": [
+    "Advisory experiment brief, decision rule, and interpretation checklist."
+  ],
+  "evidenceRules": [
+    "Observed evidence must stay distinct from recommendations and third-party method guidance.",
+    "Missing observed data remains unknown and must never be converted to zero, failure, or success.",
+    "Any externally sourced benchmark or claim must retain provenance and applicability limits."
+  ],
+  "forbiddenInferences": [
+    "Do not fabricate rankings, citations, traffic, conversions, backlinks, performance, or verification state.",
+    "Do not elevate advisory output into P7 authoritative facts, deterministic scores, P8 risk, approvals, mutation authority, or VERIFIED status.",
+    "Do not request or use credentials, execute commands, call networks, mutate databases, publish, deploy, merge, or perform runtime actions."
+  ],
+  "sourceRefs": [
+    {
+      "upstreamPath": "upstream/skills/ab-testing/SKILL.md",
+      "upstreamSha256": "1fd229160f6014f3f2d7c92cc7d2f991fbf8dc9ed68aac9793c71b408a6d1144"
+    }
+  ]
+}

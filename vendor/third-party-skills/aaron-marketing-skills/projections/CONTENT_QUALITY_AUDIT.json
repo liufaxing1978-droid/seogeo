@@ -1,0 +1,44 @@
+{
+  "projectionVersion": "ADVISORY_METHOD_PROJECTION_V1",
+  "skillId": "aaron.content-quality-auditor",
+  "methodKey": "CONTENT_QUALITY_AUDIT",
+  "title": "Content quality audit",
+  "purpose": "Assess content quality, support, completeness, and trust signals without turning upstream heuristics into authoritative scores.",
+  "whenToUse": [
+    "Reviewing content quality, evidence support, completeness, and trust signals."
+  ],
+  "requiredInputs": [
+    "Page or content evidence",
+    "Audience and intent context",
+    "Observed source and author evidence when available"
+  ],
+  "steps": [
+    "Review whether the content answers the intended need.",
+    "Check support for material claims and attribution.",
+    "Identify clarity, completeness, and trust gaps.",
+    "Prioritize improvements as advisory recommendations."
+  ],
+  "checks": [
+    "Treat CORE-EEAT or similar upstream scoring language as advisory method vocabulary only.",
+    "Do not convert method heuristics into P7 scores, P8 risk, approvals, or VERIFIED state."
+  ],
+  "outputs": [
+    "Advisory content-quality findings, evidence gaps, and prioritized improvements."
+  ],
+  "evidenceRules": [
+    "Observed evidence must stay distinct from recommendations and third-party method guidance.",
+    "Missing observed data remains unknown and must never be converted to zero, failure, or success.",
+    "Any externally sourced benchmark or claim must retain provenance and applicability limits."
+  ],
+  "forbiddenInferences": [
+    "Do not fabricate rankings, citations, traffic, conversions, backlinks, performance, or verification state.",
+    "Do not elevate advisory output into P7 authoritative facts, deterministic scores, P8 risk, approvals, mutation authority, or VERIFIED status.",
+    "Do not request or use credentials, execute commands, call networks, mutate databases, publish, deploy, merge, or perform runtime actions."
+  ],
+  "sourceRefs": [
+    {
+      "upstreamPath": "upstream/seo-geo/tune/content-quality-auditor/SKILL.md",
+      "upstreamSha256": "a9052b924de1a8d876c25a3ad415db84e8698a540fd3196fe49dc8fde7c46d13"
+    }
+  ]
+}

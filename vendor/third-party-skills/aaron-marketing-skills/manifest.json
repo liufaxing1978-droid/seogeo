@@ -1,0 +1,100 @@
+{
+  "manifestVersion": "ADVISORY_SOURCE_MANIFEST_V1",
+  "sourceId": "aaron-marketing-skills",
+  "sourceRepo": "aaron-he-zhu/aaron-marketing-skills",
+  "upstreamCommit": "17296c71d1ff822975efb1ea28de52668c9c9022",
+  "licenseSpdx": "Apache-2.0",
+  "licenseFile": {
+    "path": "LICENSE",
+    "sha256": "664cd12e1c315650bf14cb1385359d13d4724ac03940ac10918390ef78e4f5e7"
+  },
+  "localVersion": "1.0.0",
+  "reviewedAt": "2026-08-22",
+  "skills": [
+    {
+      "skillId": "aaron.content-quality-auditor",
+      "methodKey": "CONTENT_QUALITY_AUDIT",
+      "upstreamEntrypoint": "upstream/seo-geo/tune/content-quality-auditor/SKILL.md",
+      "capabilities": [
+        "CONTENT_QUALITY_METHOD"
+      ],
+      "upstreamFiles": [
+        {
+          "path": "upstream/seo-geo/tune/content-quality-auditor/SKILL.md",
+          "sha256": "a9052b924de1a8d876c25a3ad415db84e8698a540fd3196fe49dc8fde7c46d13",
+          "mediaType": "text/markdown"
+        }
+      ],
+      "projectionPath": "projections/CONTENT_QUALITY_AUDIT.json",
+      "projectionSha256": "650ef71dce8c448e992a7a6a3c94652ec6dde76e046df4f2ddb79ced23bcc8e0"
+    },
+    {
+      "skillId": "aaron.domain-authority-auditor",
+      "methodKey": "DOMAIN_TRUST_AUDIT",
+      "upstreamEntrypoint": "upstream/seo-geo/evaluate/domain-authority-auditor/SKILL.md",
+      "capabilities": [
+        "DOMAIN_TRUST_METHOD"
+      ],
+      "upstreamFiles": [
+        {
+          "path": "upstream/seo-geo/evaluate/domain-authority-auditor/SKILL.md",
+          "sha256": "b3f8ac9d2f9605b77b258230592e5fa99e7a0dbe248840e1f5a8adc37b1216e9",
+          "mediaType": "text/markdown"
+        }
+      ],
+      "projectionPath": "projections/DOMAIN_TRUST_AUDIT.json",
+      "projectionSha256": "be7a8e1529c6615cc2863f68f8533a53893c177cdf8622280cce71edb9470f2d"
+    },
+    {
+      "skillId": "aaron.technical-seo-checker",
+      "methodKey": "TECHNICAL_SEO_CHECK",
+      "upstreamEntrypoint": "upstream/seo-geo/tune/technical-seo-checker/SKILL.md",
+      "capabilities": [
+        "TECHNICAL_SEO_METHOD"
+      ],
+      "upstreamFiles": [
+        {
+          "path": "upstream/seo-geo/tune/technical-seo-checker/SKILL.md",
+          "sha256": "fb5285474fb08b6e6478b982daed6792885ca718d710ca5ae9046f5ff23ead3c",
+          "mediaType": "text/markdown"
+        }
+      ],
+      "projectionPath": "projections/TECHNICAL_SEO_CHECK.json",
+      "projectionSha256": "43e2692ec9fc3448419ca5b0da4c0e04675b16d6d1195d2081e302fcc8bdb30f"
+    },
+    {
+      "skillId": "aaron.on-page-seo-checker",
+      "methodKey": "ON_PAGE_SEO_CHECK",
+      "upstreamEntrypoint": "upstream/seo-geo/tune/on-page-seo-checker/SKILL.md",
+      "capabilities": [
+        "ON_PAGE_SEO_METHOD"
+      ],
+      "upstreamFiles": [
+        {
+          "path": "upstream/seo-geo/tune/on-page-seo-checker/SKILL.md",
+          "sha256": "597a7046cd7f752b8a5585ff198cf9c5e8891a42537d23b1dc478ab1e0720901",
+          "mediaType": "text/markdown"
+        }
+      ],
+      "projectionPath": "projections/ON_PAGE_SEO_CHECK.json",
+      "projectionSha256": "6637223d264a3280b7574118a596d905df430380ed10521607fe42692dae13ad"
+    },
+    {
+      "skillId": "aaron.offsite-signal-analyzer",
+      "methodKey": "OFFSITE_SIGNAL_ANALYSIS",
+      "upstreamEntrypoint": "upstream/seo-geo/evaluate/offsite-signal-analyzer/SKILL.md",
+      "capabilities": [
+        "OFFSITE_SIGNAL_METHOD"
+      ],
+      "upstreamFiles": [
+        {
+          "path": "upstream/seo-geo/evaluate/offsite-signal-analyzer/SKILL.md",
+          "sha256": "7d382139226e8701197e2469916adddeabb7c2b08a58ad023e063a6b4a6758ce",
+          "mediaType": "text/markdown"
+        }
+      ],
+      "projectionPath": "projections/OFFSITE_SIGNAL_ANALYSIS.json",
+      "projectionSha256": "c376c67fd96d97022796c8f86a606e87c938907f7dac644fa6f064f1353465c4"
+    }
+  ]
+}

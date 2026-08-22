@@ -1,0 +1,44 @@
+{
+  "projectionVersion": "ADVISORY_METHOD_PROJECTION_V1",
+  "skillId": "aaron.technical-seo-checker",
+  "methodKey": "TECHNICAL_SEO_CHECK",
+  "title": "Technical SEO check",
+  "purpose": "Review technical SEO evidence and propose fixes without invoking scanners, connectors, or page mutation.",
+  "whenToUse": [
+    "Checking crawl, indexation, canonical, metadata, rendering, and technical SEO conditions."
+  ],
+  "requiredInputs": [
+    "Observed crawl or page evidence",
+    "Target URLs and site context",
+    "Tool outputs when explicitly supplied as evidence"
+  ],
+  "steps": [
+    "Identify which technical checks are directly observable.",
+    "Evaluate crawl/index/canonical/rendering evidence.",
+    "Separate confirmed issues from unavailable checks.",
+    "Recommend bounded remediation steps."
+  ],
+  "checks": [
+    "Do not claim scanner results that were not observed.",
+    "Do not mutate pages or invoke upstream scanners/connectors in P9-0H."
+  ],
+  "outputs": [
+    "Advisory technical findings with evidence status and recommended remediation."
+  ],
+  "evidenceRules": [
+    "Observed evidence must stay distinct from recommendations and third-party method guidance.",
+    "Missing observed data remains unknown and must never be converted to zero, failure, or success.",
+    "Any externally sourced benchmark or claim must retain provenance and applicability limits."
+  ],
+  "forbiddenInferences": [
+    "Do not fabricate rankings, citations, traffic, conversions, backlinks, performance, or verification state.",
+    "Do not elevate advisory output into P7 authoritative facts, deterministic scores, P8 risk, approvals, mutation authority, or VERIFIED status.",
+    "Do not request or use credentials, execute commands, call networks, mutate databases, publish, deploy, merge, or perform runtime actions."
+  ],
+  "sourceRefs": [
+    {
+      "upstreamPath": "upstream/seo-geo/tune/technical-seo-checker/SKILL.md",
+      "upstreamSha256": "fb5285474fb08b6e6478b982daed6792885ca718d710ca5ae9046f5ff23ead3c"
+    }
+  ]
+}

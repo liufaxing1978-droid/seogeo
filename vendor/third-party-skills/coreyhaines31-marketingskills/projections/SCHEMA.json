@@ -1,0 +1,43 @@
+{
+  "projectionVersion": "ADVISORY_METHOD_PROJECTION_V1",
+  "skillId": "corey.schema",
+  "methodKey": "SCHEMA",
+  "title": "Schema markup",
+  "purpose": "Plan structured-data improvements using page-visible facts and schema eligibility constraints.",
+  "whenToUse": [
+    "Reviewing or planning JSON-LD and schema.org markup for eligible pages."
+  ],
+  "requiredInputs": [
+    "Page type and visible content",
+    "Existing structured-data evidence when available"
+  ],
+  "steps": [
+    "Identify the page entity and eligible schema type.",
+    "Map only visible supported facts into properties.",
+    "Check required and recommended properties.",
+    "Recommend validation against current rich-result tooling."
+  ],
+  "checks": [
+    "Do not infer ratings, prices, authorship, availability, or other facts that are not observed.",
+    "Do not equate valid schema with guaranteed rich-result display."
+  ],
+  "outputs": [
+    "Advisory schema type/property plan and validation checklist."
+  ],
+  "evidenceRules": [
+    "Observed evidence must stay distinct from recommendations and third-party method guidance.",
+    "Missing observed data remains unknown and must never be converted to zero, failure, or success.",
+    "Any externally sourced benchmark or claim must retain provenance and applicability limits."
+  ],
+  "forbiddenInferences": [
+    "Do not fabricate rankings, citations, traffic, conversions, backlinks, performance, or verification state.",
+    "Do not elevate advisory output into P7 authoritative facts, deterministic scores, P8 risk, approvals, mutation authority, or VERIFIED status.",
+    "Do not request or use credentials, execute commands, call networks, mutate databases, publish, deploy, merge, or perform runtime actions."
+  ],
+  "sourceRefs": [
+    {
+      "upstreamPath": "upstream/skills/schema/SKILL.md",
+      "upstreamSha256": "d8b7aa7bcd9727a87fb5470a6c9ee252b99a7ccb84f637d7c67c5d155b507e0b"
+    }
+  ]
+}

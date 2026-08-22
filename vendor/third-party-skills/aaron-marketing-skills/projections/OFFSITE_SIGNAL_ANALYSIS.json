@@ -1,0 +1,44 @@
+{
+  "projectionVersion": "ADVISORY_METHOD_PROJECTION_V1",
+  "skillId": "aaron.offsite-signal-analyzer",
+  "methodKey": "OFFSITE_SIGNAL_ANALYSIS",
+  "title": "Offsite signal analysis",
+  "purpose": "Analyze observed offsite citations, backlinks, mentions, and referral evidence without inferring signals that were not supplied.",
+  "whenToUse": [
+    "Evaluating backlinks, mentions, citations, referrals, and third-party presence."
+  ],
+  "requiredInputs": [
+    "Observed offsite evidence",
+    "Source provenance and observation time",
+    "Brand/domain/topic context"
+  ],
+  "steps": [
+    "Inventory observed offsite signals by source.",
+    "Separate links, mentions, citations, and referrals.",
+    "Assess relevance and provenance of observed signals.",
+    "Identify evidence gaps and bounded outreach opportunities."
+  ],
+  "checks": [
+    "Do not infer backlinks, AI referrals, citations, or mention status without observed inputs.",
+    "Do not convert upstream CITE-style gates or scores into authoritative system state."
+  ],
+  "outputs": [
+    "Advisory offsite-signal summary, unknowns, and evidence-backed opportunities."
+  ],
+  "evidenceRules": [
+    "Observed evidence must stay distinct from recommendations and third-party method guidance.",
+    "Missing observed data remains unknown and must never be converted to zero, failure, or success.",
+    "Any externally sourced benchmark or claim must retain provenance and applicability limits."
+  ],
+  "forbiddenInferences": [
+    "Do not fabricate rankings, citations, traffic, conversions, backlinks, performance, or verification state.",
+    "Do not elevate advisory output into P7 authoritative facts, deterministic scores, P8 risk, approvals, mutation authority, or VERIFIED status.",
+    "Do not request or use credentials, execute commands, call networks, mutate databases, publish, deploy, merge, or perform runtime actions."
+  ],
+  "sourceRefs": [
+    {
+      "upstreamPath": "upstream/seo-geo/evaluate/offsite-signal-analyzer/SKILL.md",
+      "upstreamSha256": "7d382139226e8701197e2469916adddeabb7c2b08a58ad023e063a6b4a6758ce"
+    }
+  ]
+}
