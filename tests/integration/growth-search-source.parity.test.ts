@@ -143,7 +143,7 @@ async function addExtremeBingEvidence(projectId: string) {
     marketCode: 'GLOBAL',
     locale: 'zh-CN',
     propertyRef: propertyUri,
-    propertyType: 'URL_PREFIX',
+    propertyType: 'SITE',
     sourceCutoffAt: new Date('2026-08-20T12:00:00.000Z'),
     observations: [
       {
@@ -267,7 +267,7 @@ describe('P9-0G configured Growth parity', () => {
       googleOutcome.opportunity.breakdown?.weightedTotal
     );
     expect(bingOutcome.opportunity.identity).toMatchObject({
-      opportunityType: googleOutcome.opportunity.identity.opportunityType,
+      identityType: googleOutcome.opportunity.identity.identityType,
       normalizedQuery: googleOutcome.opportunity.identity.normalizedQuery,
       canonicalPage: googleOutcome.opportunity.identity.canonicalPage
     });
