@@ -38,8 +38,6 @@ P7 remains authoritative for facts/opportunities. P8 remains authoritative for m
 
 ## 3. Chosen architecture
 
-High-level data flow:
-
 ```text
 P5 / P6 / Search Facts
         ↓
@@ -58,7 +56,7 @@ P9-0H Advisory Projection Packaging
 (ADVISORY_ONLY context)
         ↓
 Optional DeepSeek Bounded Re-rank
-(adjustment only, fail-open to 0)
+(adjustment only; deterministic fallback = 0)
         ↓
 Frozen OptimizationPlan
         ↓
@@ -73,7 +71,7 @@ P9-A V1 consumes the latest persisted P7 Growth opportunity snapshot for each Gr
 
 The planner does not independently query P5/P6/Search Facts to synthesize additional opportunities. Those sources remain represented through P7 evidence/provenance.
 
-A candidate source projection must retain references to at least:
+A candidate source projection retains references to:
 
 - Growth opportunity identity id;
 - Growth opportunity snapshot id;
@@ -86,7 +84,7 @@ A candidate source projection must retain references to at least:
 - P7 evidence quality and coverage;
 - P7 ranking eligibility;
 - P7 lifecycle state;
-- P7 source provenance reference/normalized planner projection.
+- bounded P7 source provenance projection.
 
 The planner must not copy arbitrary raw provider payloads into candidate rows.
 
@@ -94,7 +92,7 @@ The planner must not copy arbitrary raw provider payloads into candidate rows.
 
 ### 5.1 `OptimizationCandidate`
 
-Required conceptual fields:
+Required fields:
 
 - `id`
 - `projectId`
@@ -124,7 +122,7 @@ Candidate rows are immutable after creation.
 
 ### 5.2 `OptimizationPlan`
 
-Required conceptual fields:
+Required fields:
 
 - `id`
 - `candidateId`
@@ -147,9 +145,7 @@ P9-A V1 sets `automationEligibility = false` for every plan. P9-C owns controlle
 
 ## 6. Stable candidate identity
 
-Candidate identity must be deterministic and idempotent.
-
-`candidateKey` is SHA-256 over canonical JSON containing only stable identity fields:
+`candidateKey` is SHA-256 over canonical JSON containing exactly:
 
 ```text
 candidateVersion
@@ -164,41 +160,40 @@ locale
 Rules:
 
 - canonical object keys are sorted before hashing;
-- nullable values remain explicit `null` when part of the identity contract;
-- duplicate materialization of the same source/scope returns the same candidate identity;
+- nullable values remain explicit `null`;
+- repeated materialization of the same source/scope returns the same candidate identity;
 - a new Growth snapshot creates a new candidate identity;
 - historical candidate rows are never rewritten to point at newer Growth snapshots.
 
 ## 7. Market and locale projection
 
-P9-A consumes the P9-0G `GROWTH_SEARCH_PROVENANCE_V1` semantics from P7 `sourceProvenance`.
+P9-A consumes P9-0G `GROWTH_SEARCH_PROVENANCE_V1` semantics from P7 `sourceProvenance`.
 
 ### 7.1 Configured-market mode
 
-When Growth provenance exposes:
+For:
 
 ```text
 mode = CONFIGURED_MARKET
 ```
 
-P9-A materializes one candidate per distinct valid `(marketCode, locale)` projection represented by the Growth scoring-lane provenance.
+P9-A materializes one candidate per distinct valid `(marketCode, locale)` projection in Growth scoring-lane provenance.
 
 Rules:
 
-- market/locale values must come from persisted provenance, never Project defaults guessed by P9-A;
-- duplicate identical market/locale projections are deduped deterministically;
-- contradictory malformed provenance fails closed for planning of that snapshot;
-- P9-A does not merge multiple market scopes into a synthetic GLOBAL candidate.
+- values come from persisted Growth provenance, never guessed from project defaults;
+- duplicate identical projections are deduped deterministically;
+- P9-A never merges scopes into a synthetic GLOBAL candidate.
 
 ### 7.2 Legacy mode
 
-When Growth provenance exposes:
+For:
 
 ```text
 mode = UNCONFIGURED_LEGACY
 ```
 
-P9-A creates a single legacy candidate with:
+P9-A materializes one candidate with:
 
 ```text
 marketScopeMode = UNCONFIGURED_LEGACY
@@ -206,33 +201,40 @@ marketCode = null
 locale = null
 ```
 
-It must not invent `GLOBAL`, `CN`, `zh-CN`, `en`, or any other value.
+It must not invent `GLOBAL`, `CN`, `zh-CN`, `en`, or another scope.
 
-### 7.3 Unknown/malformed provenance
+### 7.3 Invalid or missing provenance
 
-If a Growth snapshot lacks the minimum market provenance required by the supported P9-0G contract, P9-A records a deterministic ineligible/no-plan reason rather than filling defaults.
+If the Growth snapshot lacks the minimum supported P9-0G provenance, or configured-market projections contradict each other, the planner **does not persist an `OptimizationCandidate`** because a stable scope identity cannot be derived safely.
+
+The materialization result must return one of these deterministic rejection codes:
+
+```text
+INVALID_MARKET_PROVENANCE
+SOURCE_PROVENANCE_MISSING
+```
+
+No default market is filled, no plan is created, and retrying unchanged input returns the same rejection.
 
 ## 8. Deterministic eligibility policy
 
 Eligibility is a planner gate, not a new Growth score.
 
-An OptimizationCandidate is eligible only when all V1 conditions pass:
+A persisted OptimizationCandidate is eligible only when all conditions pass:
 
 - `growthRankingEligible === true`;
 - `growthScoreState === KNOWN`;
 - `growthScore !== null` and is finite;
 - lifecycle state is not terminal for planning;
-- opportunity type has an explicit supported action mapping;
-- market provenance is valid for its declared mode;
-- required source references/provenance are present and structurally valid.
+- opportunity type has an explicit supported action mapping.
 
-Terminal lifecycle states for P9-A V1:
+Terminal lifecycle states:
 
-- `DONE`
-- `DISMISSED`
-- `RESOLVED`
-
-Other states remain potentially plan-eligible if the rest of the gate passes.
+```text
+DONE
+DISMISSED
+RESOLVED
+```
 
 Eligibility states:
 
@@ -241,7 +243,7 @@ ELIGIBLE
 INELIGIBLE
 ```
 
-Reason codes must be deterministic, stable strings. Initial required reasons include:
+Candidate reason codes are stable strings:
 
 ```text
 GROWTH_NOT_RANKING_ELIGIBLE
@@ -249,17 +251,13 @@ GROWTH_SCORE_UNKNOWN
 GROWTH_SCORE_MISSING
 GROWTH_LIFECYCLE_TERMINAL
 UNSUPPORTED_OPPORTUNITY_TYPE
-INVALID_MARKET_PROVENANCE
-SOURCE_PROVENANCE_MISSING
 ```
 
-Unknown data never becomes an inferred pass.
+An eligible candidate has an empty reason-code array. Unknown data never becomes an inferred pass.
 
 ## 9. Deterministic action mapping
 
 AI cannot choose the action class.
-
-V1 action mapping is fixed:
 
 | P7 GrowthOpportunityType | P9-A RecommendedActionType |
 | --- | --- |
@@ -273,42 +271,46 @@ V1 action mapping is fixed:
 | `KEYWORD_CANNIBALIZATION` | `CANNIBALIZATION_REMEDIATION` |
 | `DECLINING_PERFORMANCE` | `CONTENT_REFRESH` |
 
-Changes to this table require an explicit versioned planner change.
+This mapping is versioned as `OPTIMIZATION_ACTION_MAP_V1`.
 
 ## 10. Deterministic base ranking
 
-P9-A does not calculate a second opportunity score. It uses P7 values to establish an ordering among already-eligible candidates.
+P9-A does not calculate a second opportunity score. It establishes ordering among already-eligible candidates.
 
-V1 ordering inputs, in order:
+V1 ordering inputs:
 
 1. P7 `growthScore` descending;
-2. P7 priority ordinal (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, `MONITOR`, `UNKNOWN`), with eligible candidates expected to have known ranking semantics;
+2. priority ordinal `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, `MONITOR`, `UNKNOWN`;
 3. evidence coverage descending;
-4. deterministic candidate key ascending as final tiebreak.
+4. `candidateKey` ascending as final tiebreak.
 
-The persisted `deterministicRank` is a 1-based ordinal after this ordering within one planner materialization scope.
+`deterministicRank` is a 1-based ordinal within one planner materialization scope.
 
-P9-A does not change the stored P7 score or priority.
+P9-A never changes the P7 score or priority.
 
 ## 11. Historical adjustment
 
-P9-A V1 defines the field but does not yet learn from outcome history.
+P9-A V1 does not learn from outcome history:
 
 ```text
 historicalRankAdjustment = 0
 ```
 
-A later experiment/feedback phase may introduce a bounded versioned adjustment. P9-A V1 must not invent historical weighting before the outcome data contract exists.
+Outcome-derived weighting belongs to a later experiment/feedback phase.
 
 ## 12. Third-party advisory skill handoff
 
 P9-0H remains advisory-only.
 
-P9-A may attach bounded advisory projections to a plan according to deterministic action-to-method mapping. It may consume only `LoadedAdvisoryMethod` from `createAdvisorySkillRegistry({ rootDir })`.
+P9-A consumes only `LoadedAdvisoryMethod` returned by:
 
-It must never consume raw upstream Markdown bodies or execute vendor content.
+```ts
+createAdvisorySkillRegistry({ rootDir })
+```
 
-Initial advisory mapping:
+It never consumes raw upstream Markdown bodies or executes vendor content.
+
+Action-to-method mapping:
 
 | RecommendedActionType | Advisory method keys |
 | --- | --- |
@@ -321,33 +323,30 @@ Initial advisory mapping:
 | `CANNIBALIZATION_REMEDIATION` | `SITE_ARCHITECTURE`, `SEO_AUDIT` |
 | `CONTENT_REFRESH` | `CONTENT_QUALITY_AUDIT`, `CONTENT_STRATEGY` |
 
-Persisted advisory context stores bounded provenance, not arbitrary vendor data. At minimum:
+Persisted advisory context stores only:
 
 - `skillId`
 - `methodKey`
+- `authority = ADVISORY_ONLY`
 - `projectionSha256`
 - `sourceRepo`
 - `upstreamCommit`
 - `localVersion`
 
-The authority value remains `ADVISORY_ONLY` in first-party code.
-
-If the advisory registry fails integrity validation, P9-A fails closed for advisory packaging of the affected planning execution. It must not fetch replacement skills from the network or silently bypass the hash chain.
+If advisory-registry integrity validation fails, planning fails closed before plan persistence. P9-A must not fetch replacement skills from the network or bypass the hash chain.
 
 ## 13. Optional DeepSeek bounded re-ranking
 
-P9-A may use DeepSeek only after deterministic candidate eligibility, action mapping, and base ranking are complete.
-
-Introduce a dedicated AI task contract such as:
+P9-A introduces the exact AI task contract:
 
 ```text
 AiTaskType = OPTIMIZATION_PLAN_RANKING
 promptVersion = optimization-plan-ranking-v1
 ```
 
-The model receives only bounded planner facts and supplied candidate/source references.
+DeepSeek runs only after deterministic eligibility, action mapping, advisory packaging, and base ranking are complete.
 
-Allowed model output per candidate:
+Allowed output per supplied candidate:
 
 ```text
 candidateId
@@ -358,35 +357,47 @@ sourceReferences
 
 Validation rules:
 
-- every returned candidate id must be in the supplied eligible candidate set;
-- no candidate may appear twice;
-- `adjustment` must be an integer in `[-2, -1, 0, 1, 2]`;
-- model output cannot add fields that alter eligibility, score, action, market, risk, approval, evidence, or source facts;
-- all returned source references must be a subset of supplied source references;
+- candidate id must be in the supplied eligible candidate set;
+- candidate ids cannot repeat;
+- `adjustment` is an integer in `[-2, -1, 0, 1, 2]`;
+- negative means preference upward; positive means preference downward;
+- returned source references must be a subset of supplied source references;
 - structured output is strict and rejects unknown fields;
-- malformed/invalid output is rejected.
+- output cannot alter eligibility, score, action, market, risk, approval, evidence, or facts.
+
+Rank application is deterministic:
+
+```text
+adjustedRankSignal = deterministicRank + aiRankAdjustment
+```
+
+Candidates are sorted by:
+
+1. `adjustedRankSignal` ascending;
+2. `deterministicRank` ascending;
+3. `candidateKey` ascending.
+
+`finalRank` is then assigned sequentially as a 1-based ordinal. The model never returns `finalRank` directly.
 
 AI failure semantics:
 
-- provider unavailable, task failure, invalid structured output, or rejected source references must not make deterministic planning unavailable;
-- fallback is `aiRankAdjustment = 0` for all candidates;
+- provider unavailable, task failure, invalid output, or rejected references does not block deterministic planning;
+- every candidate receives `aiRankAdjustment = 0`;
 - the failure is observable/auditable;
-- AI failure cannot change candidate eligibility.
-
-`finalRank` is recalculated deterministically from bounded adjustments with a stable tie-break. The model cannot directly return final ordinal rank.
+- eligibility and action mapping remain unchanged.
 
 ## 14. Plan explanation
 
-Each frozen plan contains a first-party deterministic explanation summary including:
+Each frozen plan contains first-party deterministic explanation data covering:
 
 - source Growth opportunity type;
-- P7 score/priority/evidence state references;
-- deterministic action mapping reason;
+- P7 score/priority/evidence references;
+- action-map version and mapping reason;
 - market scope;
-- advisory method identities selected;
-- whether AI adjustment was applied or defaulted to zero.
+- advisory method identities;
+- whether AI adjustment was accepted or defaulted to zero.
 
-DeepSeek may provide a bounded explanatory annotation, but first-party code must distinguish model commentary from authoritative source facts.
+DeepSeek commentary is stored as bounded model annotation and is distinguishable from authoritative source facts.
 
 ## 15. Persistence and immutability
 
@@ -394,88 +405,74 @@ P9-A introduces a dedicated Prisma model file and migration.
 
 Requirements:
 
-- candidate uniqueness is enforced with `candidateKey` plus project identity as appropriate;
-- plan uniqueness is versioned per candidate/planner materialization contract;
-- candidate and plan rows cannot be updated or deleted through normal repository APIs;
-- database migration should add protective immutability triggers following existing project conventions where used by P7/P8 immutable artifacts;
-- repository APIs expose create/get/list operations only for immutable artifacts;
-- planner retries are idempotent.
+- candidate uniqueness is enforced by project + `candidateKey`;
+- plan uniqueness is enforced by candidate + `planVersion`;
+- repository APIs expose create/get/list operations only for frozen artifacts;
+- retries are idempotent;
+- candidate and plan rows are database-immutable.
 
-A P9-A rollback is a normal additive schema rollback by reverting the PR/migration only under the repository's established migration policy; historical rows must not be silently rewritten.
+The migration follows the established P8 PostgreSQL immutability pattern: a P9-A-specific trigger function raises on mutation, and `BEFORE UPDATE OR DELETE` triggers protect both `OptimizationCandidate` and `OptimizationPlan`.
+
+P9-A does not modify P8's existing immutability function or triggers.
 
 ## 16. Service boundary
 
-Expected first-party module boundary:
+First-party module:
 
 ```text
 src/modules/optimization/
 ```
 
-Suggested responsibilities:
+Responsibilities:
 
 - `optimization.types.ts` — planner enums/contracts;
 - `optimization.policy.ts` — eligibility, action map, ranking and advisory map constants;
 - `optimization.provenance.ts` — strict Growth market/source provenance projection;
-- `optimization.candidate.ts` — candidate identity/materialization functions;
-- `optimization.ranking.ts` — deterministic rank and bounded adjustment application;
+- `optimization.candidate.ts` — candidate identity/materialization pure functions;
+- `optimization.ranking.ts` — deterministic ranking and bounded adjustment application;
 - `optimization.repository.ts` — immutable persistence;
-- `optimization.service.ts` — orchestration of candidate/plan materialization;
-- optional `optimization.routes.ts` only if a read/manual-trigger API is required by implementation scope;
-- AI-specific builder/parser remains under `src/modules/ai/` following current project patterns.
+- `optimization.service.ts` — explicit candidate/plan materialization orchestration.
 
-P9-A V1 does not add BullMQ optimization orchestration queues. P9-B owns durable workflow orchestration.
+AI task builder/parser remains under `src/modules/ai/` to follow existing AI gateway patterns.
+
+P9-A adds no optimization BullMQ queue, cron, event bus, or daily reconciliation. P9-B owns those concerns.
 
 ## 17. Runtime triggering scope
 
-P9-A V1 should expose an explicit service/manual materialization entrypoint that P9-B can call later.
+P9-A V1 exposes an explicit service entrypoint for manual/test/programmatic materialization. P9-B can call that entrypoint later.
 
-It must not independently add:
+P9-A V1 does not independently schedule itself.
 
-- cron scheduling;
-- event bus infrastructure;
-- daily reconciliation;
-- optimization orchestration queues.
+## 18. HTTP/API scope
 
-This prevents P9-A from pre-implementing P9-B.
+P9-A V1 adds **no HTTP route**. This keeps the first milestone focused on a tested service/persistence boundary and avoids pre-implementing P9-B orchestration or a UI contract.
 
-## 18. API scope
-
-If an HTTP surface is added in P9-A, it is limited to authenticated project-scoped read/manual-planning operations and must follow existing route/service patterns.
-
-No P9-A endpoint may:
-
-- execute publication;
-- mutate site content;
-- create or merge PRs;
-- change P8 approval state;
-- change P7 Growth source facts or lifecycle as a side effect of merely reading a plan.
-
-An HTTP route is not required if tests/service integration prove the planner boundary without it.
+A later phase may expose authenticated read/trigger routes without changing planner authority.
 
 ## 19. Testing strategy
 
-P9-A requires TDD coverage for at least:
+TDD coverage must include:
 
 1. deterministic candidate key generation;
 2. configured-market candidate fan-out;
-3. legacy market candidate with null market/locale;
-4. malformed/unknown provenance fail-closed behavior;
+3. legacy candidate with null market/locale;
+4. invalid/missing provenance rejection with no candidate persistence;
 5. eligibility reason codes;
 6. complete opportunity-to-action mapping;
-7. deterministic ranking/tiebreaks;
-8. bounded `[-2,+2]` AI adjustment validation;
-9. invalid/duplicate/unknown AI candidate id rejection;
-10. AI failure fallback to zero adjustment;
-11. advisory action-to-method mapping and exact provenance packaging;
-12. no raw vendor body exposure;
-13. idempotent candidate/plan persistence;
-14. immutability of frozen candidate/plan artifacts;
-15. P7 score/evidence/lifecycle authority isolation;
-16. P8 risk/approval/mutation/verification authority isolation;
-17. no automatic Draft PR/merge/deploy path from P9-A;
-18. migration validation;
-19. full existing Vitest regression;
-20. TypeScript typecheck and build.
+7. deterministic base ranking/tiebreaks;
+8. bounded `[-2,+2]` AI adjustment validation and exact direction semantics;
+9. invalid/duplicate/unknown AI candidate-id rejection;
+10. deterministic final-rank recomputation;
+11. AI failure fallback to zero adjustment;
+12. advisory action-to-method mapping and exact provenance packaging;
+13. no raw vendor body exposure;
+14. advisory-integrity failure before plan persistence;
+15. idempotent candidate/plan persistence;
+16. database rejection of UPDATE/DELETE on frozen candidate/plan rows;
+17. P7 score/evidence/lifecycle authority isolation;
+18. P8 risk/approval/mutation/verification authority isolation;
+19. no Draft PR/merge/deploy path from P9-A;
+20. migration validation, full Vitest regression, Typecheck, and Build.
 
 ## 20. Release gate
 
@@ -484,7 +481,7 @@ Before P9-A may be marked complete:
 - Prisma schema validates;
 - Prisma client generates;
 - migrations apply on clean CI database;
-- P9-A focused unit/integration tests pass;
+- focused P9-A tests pass;
 - full Vitest suite passes;
 - Typecheck passes;
 - Build passes;
@@ -503,4 +500,4 @@ P9-A deliberately leaves these to later phases:
 - **P9-C Controlled Autopilot:** project opt-in, operation allowlists, authoritative automation eligibility/risk policy, automatic Draft PR preparation for allowed LOW-risk changes;
 - **P9-D/P9-E Experiment & Feedback:** observed outcomes and bounded historical rank adjustment.
 
-P9-A produces the immutable planner artifacts those phases can consume without weakening P7/P8 authority boundaries.
+P9-A produces immutable planner artifacts those phases can consume without weakening P7/P8 authority boundaries.
