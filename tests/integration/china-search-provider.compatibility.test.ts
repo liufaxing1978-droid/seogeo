@@ -60,13 +60,16 @@ describe('P9-0C China search provider compatibility', () => {
   it('does not add China authenticated-dashboard runtime client modules', () => {
     const filenames = sourceFiles(SEARCH_PROVIDER_ROOT)
       .map((path) => relative(SEARCH_PROVIDER_ROOT, path).replaceAll('\\', '/'));
+    const prohibitedClientPatterns = [
+      /baidu.*client\.ts$/i,
+      /(?:360|qihoo).*client\.ts$/i,
+      /sogou.*client\.ts$/i,
+      /shenma.*client\.ts$/i
+    ];
 
-    expect(filenames).not.toEqual(expect.arrayContaining([
-      expect.stringMatching(/baidu.*client\.ts$/i),
-      expect.stringMatching(/(?:360|qihoo).*client\.ts$/i),
-      expect.stringMatching(/sogou.*client\.ts$/i),
-      expect.stringMatching(/shenma.*client\.ts$/i)
-    ]));
+    for (const pattern of prohibitedClientPatterns) {
+      expect(filenames.some((filename) => pattern.test(filename)), String(pattern)).toBe(false);
+    }
   });
 
   it('keeps provider production source independent from legacy project market fields', () => {
