@@ -163,11 +163,20 @@ Rules:
 - nullable values remain explicit `null`;
 - repeated materialization of the same source/scope returns the same candidate identity;
 - a new Growth snapshot creates a new candidate identity;
-- historical candidate rows are never rewritten to point at newer Growth snapshots.
+- historical candidate rows are never rewritten to point at newer Growth snapshots;
+- malformed/missing market provenance uses the explicit `INVALID_PROVENANCE` scope mode, never a guessed valid market.
 
 ## 7. Market and locale projection
 
 P9-A consumes P9-0G `GROWTH_SEARCH_PROVENANCE_V1` semantics from P7 `sourceProvenance`.
+
+The V1 scope modes are exactly:
+
+```text
+CONFIGURED_MARKET
+UNCONFIGURED_LEGACY
+INVALID_PROVENANCE
+```
 
 ### 7.1 Configured-market mode
 
@@ -205,16 +214,23 @@ It must not invent `GLOBAL`, `CN`, `zh-CN`, `en`, or another scope.
 
 ### 7.3 Invalid or missing provenance
 
-If the Growth snapshot lacks the minimum supported P9-0G provenance, or configured-market projections contradict each other, the planner **does not persist an `OptimizationCandidate`** because a stable scope identity cannot be derived safely.
+If the Growth snapshot lacks the minimum supported P9-0G provenance, or configured-market projections are malformed/contradictory, P9-A persists exactly one auditable ineligible candidate with:
 
-The materialization result must return one of these deterministic rejection codes:
+```text
+marketScopeMode = INVALID_PROVENANCE
+marketCode = null
+locale = null
+eligibilityState = INELIGIBLE
+```
+
+The candidate receives one or both deterministic reason codes:
 
 ```text
 INVALID_MARKET_PROVENANCE
 SOURCE_PROVENANCE_MISSING
 ```
 
-No default market is filled, no plan is created, and retrying unchanged input returns the same rejection.
+This row makes the rejection idempotent and inspectable without inventing market truth. It is included in candidate persistence/audit results but excluded from deterministic ranking and **never produces an `OptimizationPlan`**. Retrying unchanged input returns the same candidate identity and reason codes.
 
 ## 8. Deterministic eligibility policy
 
@@ -222,6 +238,7 @@ Eligibility is a planner gate, not a new Growth score.
 
 A persisted OptimizationCandidate is eligible only when all conditions pass:
 
+- `marketScopeMode !== INVALID_PROVENANCE`;
 - `growthRankingEligible === true`;
 - `growthScoreState === KNOWN`;
 - `growthScore !== null` and is finite;
@@ -246,6 +263,8 @@ INELIGIBLE
 Candidate reason codes are stable strings:
 
 ```text
+INVALID_MARKET_PROVENANCE
+SOURCE_PROVENANCE_MISSING
 GROWTH_NOT_RANKING_ELIGIBLE
 GROWTH_SCORE_UNKNOWN
 GROWTH_SCORE_MISSING
@@ -379,9 +398,11 @@ Candidates are sorted by:
 
 `finalRank` is then assigned sequentially as a 1-based ordinal. The model never returns `finalRank` directly.
 
+The resulting ordinal displacement must remain bounded: for every candidate, `abs(finalRank - deterministicRank) <= 2`. If an otherwise-valid adjustment set would violate this invariant, reject the entire set and use zero adjustments for all candidates.
+
 AI failure semantics:
 
-- provider unavailable, task failure, invalid output, or rejected references does not block deterministic planning;
+- provider unavailable, task failure, invalid output, rejected references, or displacement-bound rejection does not block deterministic planning;
 - every candidate receives `aiRankAdjustment = 0`;
 - the failure is observable/auditable;
 - eligibility and action mapping remain unchanged.
@@ -456,13 +477,13 @@ TDD coverage must include:
 1. deterministic candidate key generation;
 2. configured-market candidate fan-out;
 3. legacy candidate with null market/locale;
-4. invalid/missing provenance rejection with no candidate persistence;
+4. invalid/missing provenance persists one `INVALID_PROVENANCE` ineligible candidate, idempotently, and creates no plan;
 5. eligibility reason codes;
 6. complete opportunity-to-action mapping;
 7. deterministic base ranking/tiebreaks;
 8. bounded `[-2,+2]` AI adjustment validation and exact direction semantics;
 9. invalid/duplicate/unknown AI candidate-id rejection;
-10. deterministic final-rank recomputation;
+10. deterministic final-rank recomputation and displacement bound;
 11. AI failure fallback to zero adjustment;
 12. advisory action-to-method mapping and exact provenance packaging;
 13. no raw vendor body exposure;
