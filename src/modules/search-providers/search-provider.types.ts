@@ -1,6 +1,10 @@
 export const SEARCH_PROVIDER_CODES = Object.freeze([
   'GOOGLE_SEARCH_CONSOLE',
-  'BING_WEBMASTER'
+  'BING_WEBMASTER',
+  'BAIDU_SEARCH_RESOURCE',
+  'QIHOO_360_WEBMASTER',
+  'SOGOU_WEBMASTER',
+  'SHENMA_WEBMASTER'
 ] as const);
 
 export type SearchProviderCode = (typeof SEARCH_PROVIDER_CODES)[number];
@@ -11,7 +15,10 @@ export const SEARCH_PROVIDER_CAPABILITIES = Object.freeze([
   'QUERY_STATS',
   'PAGE_STATS',
   'SITE_TRAFFIC_DAILY',
+  'INDEX_COVERAGE',
   'CRAWL_STATS',
+  'ROBOTS_OBSERVATION',
+  'PROVIDER_DIAGNOSTICS',
   'URL_INSPECTION',
   'URL_SUBMISSION',
   'SITEMAP_SUBMISSION'
@@ -21,11 +28,13 @@ export type SearchProviderCapability = (typeof SEARCH_PROVIDER_CAPABILITIES)[num
 export type CapabilityState = 'SUPPORTED' | 'NOT_SUPPORTED' | 'NOT_IMPLEMENTED';
 export type SourceCadence = 'DAILY' | 'WEEKLY' | 'ON_DEMAND' | 'UNKNOWN';
 export type CompletenessState = 'COMPLETE' | 'TOP_ROWS_ONLY' | 'PROVIDER_UNSPECIFIED';
+export type SearchProviderAccessMode = 'API' | 'PLATFORM_ONLY' | 'NONE';
 
 export interface SearchProviderCapabilityDescriptor {
   state: CapabilityState;
   cadence: SourceCadence;
   readOnly: boolean;
+  accessMode?: SearchProviderAccessMode;
   notes?: string;
 }
 
