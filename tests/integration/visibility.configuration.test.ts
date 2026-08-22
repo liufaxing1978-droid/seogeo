@@ -130,6 +130,43 @@ describe('P6-A visibility configuration services', () => {
     ).rejects.toMatchObject({ code: 'VISIBILITY_PROVIDER_OPTIONS_CONTAIN_SECRET' });
   });
 
+  it('derives persisted provider capabilities from the server adapter and ignores client-authored claims', async () => {
+    const suffix = `${Date.now()}-${Math.random()}`;
+    const project = await prisma.project.create({
+      data: {
+        name: 'Visibility Capability Authority',
+        slug: `visibility-capability-${suffix}`,
+        primaryDomain: `visibility-capability-${suffix}.example.com`,
+        planLevel: 'ADVANCED'
+      }
+    });
+    projectIds.push(project.id);
+
+    const service = new VisibilitySettingsService();
+    const clientPayload = {
+      provider: 'QWEN' as const,
+      enabled: true,
+      model: 'qwen-max',
+      channel: 'API' as const,
+      groundingMode: 'WEB_SEARCH' as const,
+      maxConcurrency: 1,
+      defaultLocale: 'zh-CN',
+      defaultCountry: 'CN',
+      providerOptionsJson: {
+        workspaceId: 'workspace-fixture',
+        region: 'cn-beijing'
+      },
+      capabilities: ['CONSUMER_OBSERVATION'] as const
+    };
+
+    const config = await service.upsertProviderConfig(project.id, clientPayload);
+    expect(config.capabilities).toEqual(['WEB_GROUNDED', 'CITATION_NATIVE']);
+    expect(config.capabilities).not.toContain('CONSUMER_OBSERVATION');
+
+    const stored = await prisma.visibilityProviderConfig.findUniqueOrThrow({ where: { id: config.id } });
+    expect(stored.capabilities).toEqual(['WEB_GROUNDED', 'CITATION_NATIVE']);
+  });
+
   it('creates immutable prompt versions with deterministic hashes', async () => {
     const suffix = `${Date.now()}-${Math.random()}`;
     const project = await prisma.project.create({
