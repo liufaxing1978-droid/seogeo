@@ -1,6 +1,11 @@
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { prisma } from '../../src/db/prisma.js'
+import { AiRepository } from '../../src/modules/ai/ai.repository.js'
+import type { CreateAiTaskInput } from '../../src/modules/ai/ai.service.js'
+import { executeAiTask } from '../../src/modules/ai/ai.worker.js'
+import { materializeOptimizationRankingFallback } from '../../src/modules/ai/optimization-plan-ranking.js'
+import { AiProviderError } from '../../src/modules/ai/provider.js'
 import { growthRepository } from '../../src/modules/growth/growth.repository.js'
 import { buildCandidateDrafts } from '../../src/modules/optimization/optimization.candidate.js'
 import { OptimizationRepository } from '../../src/modules/optimization/optimization.repository.js'
@@ -9,7 +14,32 @@ import { OptimizationService } from '../../src/modules/optimization/optimization
 const advisoryRootDir = path.resolve('vendor/third-party-skills')
 const repository = new OptimizationRepository()
 const service = new OptimizationService()
+const aiRepository = new AiRepository()
+const directTaskService = {
+  createAndEnqueue(input: CreateAiTaskInput) {
+    return aiRepository.createTask(input)
+  },
+}
 const projectIds: string[] = []
+
+function providerResponse(content: string) {
+  return {
+    provider: 'DEEPSEEK' as const,
+    model: 'deepseek-reasoner',
+    responseId: 'p9-a-test-response',
+    content,
+    finishReason: 'stop',
+    latencyMs: 5,
+    usage: {
+      promptTokens: 10,
+      completionTokens: 10,
+      totalTokens: 20,
+      cacheHitTokens: 0,
+      cacheMissTokens: 10,
+      reasoningTokens: 4,
+    },
+  }
+}
 
 async function createProject() {
   const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -117,6 +147,8 @@ async function cleanupImmutableFixtures() {
       'ALTER TABLE "OptimizationPlan" ENABLE TRIGGER "OptimizationPlan_immutable"',
     )
   }
+
+  await prisma.aiTask.deleteMany({ where: { projectId: { in: projectIds } } })
 
   for (const projectId of [...projectIds].reverse()) {
     await prisma.project.delete({ where: { id: projectId } })
@@ -228,5 +260,188 @@ describe('P9-A deterministic plan service', () => {
     await expect(
       service.materializeProject(project.id, { advisoryRootDir, useAi: false }),
     ).rejects.toThrow(/conflict|immutable/i)
+  })
+
+  it('queues one bounded AI ranking task and freezes adjusted plans only after worker success', async () => {
+    const project = await createProject()
+    await createGrowthOpportunity({
+      projectId: project.id,
+      query: 'ai success high',
+      primaryType: 'RANKING_UPSIDE',
+      score: 90,
+      scoreState: 'KNOWN',
+      rankingEligible: true,
+    })
+    await createGrowthOpportunity({
+      projectId: project.id,
+      query: 'ai success low',
+      primaryType: 'RANKING_UPSIDE',
+      score: 80,
+      scoreState: 'KNOWN',
+      rankingEligible: true,
+    })
+
+    const aiService = new OptimizationService(repository, directTaskService)
+    const result = await aiService.materializeProject(project.id, { advisoryRootDir, useAi: true })
+
+    expect(result.aiTaskId).toBeTruthy()
+    expect(result.plans).toEqual([])
+    expect(await repository.listPlans(project.id)).toEqual([])
+
+    const high = result.candidates.find((candidate) => candidate.growthScore === 90)
+    const low = result.candidates.find((candidate) => candidate.growthScore === 80)
+    expect(high).toBeDefined()
+    expect(low).toBeDefined()
+
+    await executeAiTask(result.aiTaskId!, {
+      repository: aiRepository,
+      gateway: {
+        async complete() {
+          return providerResponse(JSON.stringify({
+            adjustments: [
+              { candidateId: high!.id, adjustment: 1, explanation: 'Move high candidate down one bounded place.', sourceReferences: [] },
+              { candidateId: low!.id, adjustment: -1, explanation: 'Move low candidate up one bounded place.', sourceReferences: [] },
+            ],
+            sourceReferences: [],
+          }))
+        },
+      },
+    })
+
+    const task = await aiRepository.getTask(result.aiTaskId!)
+    expect(task?.status).toBe('COMPLETED')
+
+    const plans = await repository.listPlans(project.id)
+    expect(plans).toHaveLength(2)
+    expect(plans.find((plan) => plan.candidateId === high!.id)).toMatchObject({
+      deterministicRank: 1,
+      aiRankAdjustment: 1,
+      finalRank: 2,
+      recommendedActionType: 'ON_PAGE_OPTIMIZATION',
+      automationEligibility: false,
+    })
+    expect(plans.find((plan) => plan.candidateId === low!.id)).toMatchObject({
+      deterministicRank: 2,
+      aiRankAdjustment: -1,
+      finalRank: 1,
+      recommendedActionType: 'ON_PAGE_OPTIMIZATION',
+      automationEligibility: false,
+    })
+
+    expect(plans.map((plan) => plan.explanation)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ai: expect.objectContaining({ applied: true, fallback: false }) }),
+      expect.objectContaining({ ai: expect.objectContaining({ applied: true, fallback: false }) }),
+    ]))
+
+    expect(await prisma.publicationProposal.count({ where: { projectId: project.id } })).toBe(0)
+    expect(await prisma.publicationPlan.count({ where: { projectId: project.id } })).toBe(0)
+  })
+
+  it('keeps the AI task failed but idempotently freezes deterministic fallback plans after provider failure', async () => {
+    const project = await createProject()
+    await createGrowthOpportunity({
+      projectId: project.id,
+      query: 'ai provider failure high',
+      primaryType: 'RANKING_UPSIDE',
+      score: 91,
+      scoreState: 'KNOWN',
+      rankingEligible: true,
+    })
+    await createGrowthOpportunity({
+      projectId: project.id,
+      query: 'ai provider failure low',
+      primaryType: 'CONTENT_GAP',
+      score: 71,
+      scoreState: 'KNOWN',
+      rankingEligible: true,
+    })
+
+    const aiService = new OptimizationService(repository, directTaskService)
+    const result = await aiService.materializeProject(project.id, { advisoryRootDir, useAi: true })
+    expect(result.aiTaskId).toBeTruthy()
+    expect(result.plans).toEqual([])
+
+    await expect(executeAiTask(result.aiTaskId!, {
+      repository: aiRepository,
+      gateway: {
+        async complete() {
+          throw new AiProviderError('P9-A upstream unavailable', 'UPSTREAM', 'DEEPSEEK', true, 503)
+        },
+      },
+    })).rejects.toThrow(/upstream unavailable/i)
+
+    const task = await aiRepository.getTask(result.aiTaskId!)
+    expect(task).toMatchObject({ status: 'FAILED', errorCode: 'UPSTREAM' })
+
+    const firstPlans = await repository.listPlans(project.id)
+    expect(firstPlans).toHaveLength(2)
+    expect(firstPlans.every((plan) => plan.aiRankAdjustment === 0)).toBe(true)
+    expect(firstPlans.every((plan) => plan.finalRank === plan.deterministicRank)).toBe(true)
+    expect(firstPlans.every((plan) => plan.automationEligibility === false)).toBe(true)
+    expect(firstPlans.map((plan) => plan.explanation)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ai: { applied: false, fallback: true, adjustment: 0, annotation: null } }),
+      expect.objectContaining({ ai: { applied: false, fallback: true, adjustment: 0, annotation: null } }),
+    ]))
+
+    await materializeOptimizationRankingFallback(task!)
+    const secondPlans = await repository.listPlans(project.id)
+    expect(secondPlans.map((plan) => plan.id)).toEqual(firstPlans.map((plan) => plan.id))
+    expect(secondPlans.map((plan) => plan.recommendedActionType).sort()).toEqual(
+      firstPlans.map((plan) => plan.recommendedActionType).sort(),
+    )
+
+    expect(await prisma.publicationProposal.count({ where: { projectId: project.id } })).toBe(0)
+    expect(await prisma.publicationPlan.count({ where: { projectId: project.id } })).toBe(0)
+  })
+
+  it('uses the same deterministic fallback after invalid AI output without changing actions or eligibility', async () => {
+    const project = await createProject()
+    await createGrowthOpportunity({
+      projectId: project.id,
+      query: 'ai invalid output',
+      primaryType: 'RANKING_UPSIDE',
+      score: 86,
+      scoreState: 'KNOWN',
+      rankingEligible: true,
+    })
+
+    const aiService = new OptimizationService(repository, directTaskService)
+    const result = await aiService.materializeProject(project.id, { advisoryRootDir, useAi: true })
+    const candidate = result.candidates.find((item) => item.eligibilityState === 'ELIGIBLE')
+    expect(candidate).toBeDefined()
+
+    await expect(executeAiTask(result.aiTaskId!, {
+      repository: aiRepository,
+      gateway: {
+        async complete() {
+          return providerResponse(JSON.stringify({
+            adjustments: [{
+              candidateId: candidate!.id,
+              adjustment: 3,
+              explanation: 'Out of bounds and must be rejected.',
+              sourceReferences: [],
+            }],
+            sourceReferences: [],
+          }))
+        },
+      },
+    })).rejects.toThrow(/required schema|valid structured output|match/i)
+
+    expect(await aiRepository.getTask(result.aiTaskId!)).toMatchObject({
+      status: 'FAILED',
+      errorCode: 'INVALID_AI_OUTPUT',
+    })
+    expect(await repository.listPlans(project.id)).toEqual([
+      expect.objectContaining({
+        candidateId: candidate!.id,
+        recommendedActionType: 'ON_PAGE_OPTIMIZATION',
+        aiRankAdjustment: 0,
+        finalRank: 1,
+        automationEligibility: false,
+        explanation: expect.objectContaining({
+          ai: { applied: false, fallback: true, adjustment: 0, annotation: null },
+        }),
+      }),
+    ])
   })
 })
