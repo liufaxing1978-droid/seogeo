@@ -154,7 +154,7 @@ describe('P9-0D Microsoft 365 Copilot Work IQ visibility adapter', () => {
   it('returns UNSUPPORTED without network calls for non-web grounding modes', async () => {
     const transport = new FixtureTransport([]);
     const adapter = new MicrosoftVisibilityProvider({ accessToken: 'fixture-token', transport });
-    const result = await adapter.sample({ ...request, groundingMode: 'NONE' });
+    const result = await adapter.sample({ ...request, groundingMode: 'SONAR' });
     expect(result).toMatchObject({ status: 'UNSUPPORTED', citationEvidenceState: 'NOT_APPLICABLE' });
     expect(transport.calls).toHaveLength(0);
   });
