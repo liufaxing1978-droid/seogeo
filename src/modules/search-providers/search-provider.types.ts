@@ -1,11 +1,11 @@
-export const SEARCH_PROVIDER_CODES = [
+export const SEARCH_PROVIDER_CODES = Object.freeze([
   'GOOGLE_SEARCH_CONSOLE',
   'BING_WEBMASTER'
-] as const;
+] as const);
 
 export type SearchProviderCode = (typeof SEARCH_PROVIDER_CODES)[number];
 
-export const SEARCH_PROVIDER_CAPABILITIES = [
+export const SEARCH_PROVIDER_CAPABILITIES = Object.freeze([
   'LIST_PROPERTIES',
   'QUERY_PAGE_DAILY',
   'QUERY_STATS',
@@ -15,7 +15,7 @@ export const SEARCH_PROVIDER_CAPABILITIES = [
   'URL_INSPECTION',
   'URL_SUBMISSION',
   'SITEMAP_SUBMISSION'
-] as const;
+] as const);
 
 export type SearchProviderCapability = (typeof SEARCH_PROVIDER_CAPABILITIES)[number];
 export type CapabilityState = 'SUPPORTED' | 'NOT_SUPPORTED' | 'NOT_IMPLEMENTED';
