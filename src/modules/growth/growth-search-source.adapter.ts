@@ -88,6 +88,12 @@ const REQUIRED_GOOGLE_METRICS = [
   'GOOGLE_SEARCH_CONSOLE_POSITION'
 ] as const satisfies readonly SearchFactMetricSemantic[];
 
+const BING_CORROBORATING_FACT_KINDS = [
+  'PAGE',
+  'QUERY',
+  'SITE'
+] as const satisfies readonly SearchFactKind[];
+
 type RequiredGoogleMetric = (typeof REQUIRED_GOOGLE_METRICS)[number];
 
 type ScoringCandidate = {
@@ -222,6 +228,144 @@ export function adaptGoogleScoringFacts(
         : left.identity.localeCompare(right.identity)
     )
     .map((candidate) => candidate.row);
+}
+
+function corroboratingFactIdentity(fact: SearchFactView): string {
+  return JSON.stringify([
+    fact.provider,
+    fact.marketCode,
+    fact.locale,
+    fact.propertyRef,
+    fact.factKind,
+    fact.sourceDate.toISOString(),
+    fact.factKey
+  ]);
+}
+
+function preferCorroboratingFact(
+  candidate: SearchFactView,
+  existing: SearchFactView
+): boolean {
+  const candidateCutoff = candidate.sourceCutoffAt.getTime();
+  const existingCutoff = existing.sourceCutoffAt.getTime();
+  if (candidateCutoff !== existingCutoff) {
+    return candidateCutoff > existingCutoff;
+  }
+
+  const candidateTieBreak = [
+    candidate.snapshotId,
+    candidate.sourceRef,
+    candidate.sourceObservationRef
+  ];
+  const existingTieBreak = [
+    existing.snapshotId,
+    existing.sourceRef,
+    existing.sourceObservationRef
+  ];
+
+  for (let index = 0; index < candidateTieBreak.length; index += 1) {
+    const order = candidateTieBreak[index]!.localeCompare(existingTieBreak[index]!);
+    if (order !== 0) return order < 0;
+  }
+  return false;
+}
+
+export function dedupeCorroboratingFacts(
+  facts: readonly SearchFactView[]
+): SearchFactView[] {
+  const allowedKinds = new Set<SearchFactKind>(BING_CORROBORATING_FACT_KINDS);
+  const selected = new Map<string, SearchFactView>();
+
+  for (const fact of facts) {
+    if (
+      fact.provider !== 'BING_WEBMASTER' ||
+      !allowedKinds.has(fact.factKind) ||
+      Number.isNaN(fact.sourceDate.getTime()) ||
+      Number.isNaN(fact.sourceCutoffAt.getTime()) ||
+      fact.factKey.trim().length === 0 ||
+      fact.snapshotId.trim().length === 0 ||
+      fact.sourceRef.trim().length === 0 ||
+      fact.sourceObservationRef.trim().length === 0
+    ) {
+      throw new Error('GROWTH_SEARCH_SOURCE_CONFLICT');
+    }
+
+    const identity = corroboratingFactIdentity(fact);
+    const existing = selected.get(identity);
+    if (!existing || preferCorroboratingFact(fact, existing)) {
+      selected.set(identity, fact);
+    }
+  }
+
+  return [...selected.values()].sort((left, right) =>
+    left.provider.localeCompare(right.provider) ||
+    left.marketCode.localeCompare(right.marketCode) ||
+    left.locale.localeCompare(right.locale) ||
+    left.propertyRef.localeCompare(right.propertyRef) ||
+    left.factKind.localeCompare(right.factKind) ||
+    left.sourceDate.getTime() - right.sourceDate.getTime() ||
+    left.factKey.localeCompare(right.factKey) ||
+    left.snapshotId.localeCompare(right.snapshotId)
+  );
+}
+
+export function summarizeCorroboratingFacts(
+  facts: readonly SearchFactView[]
+): GrowthSearchCorroboratingLane[] {
+  const lanes = new Map<
+    string,
+    {
+      provider: SearchFactProviderCode;
+      marketCode: MarketCode;
+      locale: string;
+      propertyRef: string;
+      factKinds: Set<SearchFactKind>;
+      snapshotIds: Set<string>;
+      sourceCompleteness: Set<SearchFactCompleteness>;
+    }
+  >();
+
+  for (const fact of facts) {
+    const laneKey = JSON.stringify([
+      fact.provider,
+      fact.marketCode,
+      fact.locale,
+      fact.propertyRef
+    ]);
+    let lane = lanes.get(laneKey);
+    if (!lane) {
+      lane = {
+        provider: fact.provider,
+        marketCode: fact.marketCode,
+        locale: fact.locale,
+        propertyRef: fact.propertyRef,
+        factKinds: new Set<SearchFactKind>(),
+        snapshotIds: new Set<string>(),
+        sourceCompleteness: new Set<SearchFactCompleteness>()
+      };
+      lanes.set(laneKey, lane);
+    }
+    lane.factKinds.add(fact.factKind);
+    lane.snapshotIds.add(fact.snapshotId);
+    lane.sourceCompleteness.add(fact.sourceCompleteness);
+  }
+
+  return [...lanes.values()]
+    .map((lane) => ({
+      provider: lane.provider,
+      marketCode: lane.marketCode,
+      locale: lane.locale,
+      propertyRef: lane.propertyRef,
+      factKinds: [...lane.factKinds].sort(),
+      snapshotIds: [...lane.snapshotIds].sort(),
+      sourceCompleteness: [...lane.sourceCompleteness].sort()
+    }))
+    .sort((left, right) =>
+      left.provider.localeCompare(right.provider) ||
+      left.marketCode.localeCompare(right.marketCode) ||
+      left.locale.localeCompare(right.locale) ||
+      left.propertyRef.localeCompare(right.propertyRef)
+    );
 }
 
 function assertSourceInput(input: GrowthSearchSourceInput): void {
@@ -388,6 +532,22 @@ export class GrowthSearchSourceAdapter {
     }
 
     const scoringFacts = adaptGoogleScoringFacts(unifiedFacts, authoritativeSet);
+    const corroboratingFacts: SearchFactView[] = [];
+    for (const market of markets) {
+      corroboratingFacts.push(...await this.repository.listCompletedFacts({
+        projectId: input.projectId,
+        provider: 'BING_WEBMASTER',
+        marketCode: market.marketCode,
+        locale: market.locale,
+        propertyRef: property.propertyUri,
+        sourceDateFrom: input.sourceDateFrom,
+        sourceDateTo: input.sourceDateTo
+      }));
+    }
+    const corroboratingLanes = summarizeCorroboratingFacts(
+      dedupeCorroboratingFacts(corroboratingFacts)
+    );
+
     const marketProjections = markets.map((market) => ({
       marketCode: market.marketCode,
       locale: market.locale,
@@ -411,7 +571,7 @@ export class GrowthSearchSourceAdapter {
           sourceRefs: [...authoritativeSet].sort(),
           marketProjections
         },
-        corroboratingLanes: []
+        corroboratingLanes
       }
     };
   }
