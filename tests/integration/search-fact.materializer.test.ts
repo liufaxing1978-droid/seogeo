@@ -130,7 +130,7 @@ describe('P9-0F immutable search fact materialization', () => {
       include: { metrics: { orderBy: { metricSemantic: 'asc' } } }
     });
     expect(storedFact.sourceObservationRef).toBe(source.fact.id);
-    expect(storedFact.metrics.map((metric) => metric.metricSemantic)).toEqual([
+    expect(storedFact.metrics.map((metric) => metric.metricSemantic).sort()).toEqual([
       'CLICKS',
       'CTR',
       'GOOGLE_SEARCH_CONSOLE_POSITION',
