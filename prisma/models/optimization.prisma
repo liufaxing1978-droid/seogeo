@@ -1,0 +1,75 @@
+enum OptimizationMarketScopeMode {
+  CONFIGURED_MARKET
+  UNCONFIGURED_LEGACY
+  INVALID_PROVENANCE
+}
+
+enum OptimizationEligibilityState {
+  ELIGIBLE
+  INELIGIBLE
+}
+
+enum RecommendedActionType {
+  ON_PAGE_OPTIMIZATION
+  SERP_SNIPPET_OPTIMIZATION
+  CONTENT_CREATION
+  TECHNICAL_SEO_REMEDIATION
+  GEO_CITABILITY_IMPROVEMENT
+  AI_VISIBILITY_IMPROVEMENT
+  CANNIBALIZATION_REMEDIATION
+  CONTENT_REFRESH
+}
+
+model OptimizationCandidate {
+  id                          String                         @id @default(uuid()) @db.Uuid
+  projectId                   String                         @db.Uuid
+  growthOpportunityIdentityId String                         @db.Uuid
+  growthSnapshotId            String                         @db.Uuid
+  candidateVersion            String
+  candidateKey                String
+  marketScopeMode             OptimizationMarketScopeMode
+  marketCode                  MarketCode?
+  locale                      String?
+  opportunityType             GrowthOpportunityType
+  normalizedQuery             String
+  canonicalPage               String?
+  growthScore                 Int?
+  growthScoreState            GrowthScoreState
+  growthPriority              GrowthPriority
+  growthEvidenceQuality       GrowthEvidenceQuality
+  growthEvidenceCoverage      Float
+  growthRankingEligible       Boolean
+  growthLifecycleStatus       GrowthLifecycleStatus
+  sourceProvenance            Json
+  eligibilityState            OptimizationEligibilityState
+  eligibilityReasonCodes      Json
+  createdAt                   DateTime                       @default(now())
+
+  plans OptimizationPlan[]
+
+  @@unique([projectId, candidateKey], map: "OptimizationCandidate_project_key")
+  @@index([projectId, eligibilityState, createdAt], map: "OptimizationCandidate_project_eligibility_idx")
+  @@index([growthOpportunityIdentityId, growthSnapshotId], map: "OptimizationCandidate_growth_source_idx")
+}
+
+model OptimizationPlan {
+  id                       String                @id @default(uuid()) @db.Uuid
+  candidateId              String                @db.Uuid
+  projectId                String                @db.Uuid
+  planVersion              String
+  recommendedActionType    RecommendedActionType
+  sourceFactReferences     Json
+  deterministicRank        Int
+  aiRankAdjustment         Int
+  historicalRankAdjustment Int
+  finalRank                Int
+  advisoryContext          Json
+  automationEligibility    Boolean               @default(false)
+  explanation              Json
+  createdAt                DateTime              @default(now())
+
+  candidate OptimizationCandidate @relation(fields: [candidateId], references: [id], onDelete: Restrict)
+
+  @@unique([candidateId, planVersion], map: "OptimizationPlan_candidate_version")
+  @@index([projectId, finalRank, createdAt], map: "OptimizationPlan_project_rank_idx")
+}
