@@ -83,6 +83,10 @@ function canonicalize(value: unknown): unknown {
   );
 }
 
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(canonicalize(value));
+}
+
 function asJson(value: unknown): Prisma.InputJsonValue {
   return canonicalize(value) as Prisma.InputJsonValue;
 }
@@ -107,9 +111,18 @@ function assertPlanIdentity(existing: OptimizationPlan, input: CreateOptimizatio
   if (
     existing.candidateId !== input.candidateId ||
     existing.projectId !== input.projectId ||
-    existing.planVersion !== input.planVersion
+    existing.planVersion !== input.planVersion ||
+    existing.recommendedActionType !== input.recommendedActionType ||
+    canonicalJson(existing.sourceFactReferences) !== canonicalJson(input.sourceFactReferences) ||
+    existing.deterministicRank !== input.deterministicRank ||
+    existing.aiRankAdjustment !== input.aiRankAdjustment ||
+    existing.historicalRankAdjustment !== input.historicalRankAdjustment ||
+    existing.finalRank !== input.finalRank ||
+    canonicalJson(existing.advisoryContext) !== canonicalJson(input.advisoryContext) ||
+    existing.automationEligibility !== input.automationEligibility ||
+    canonicalJson(existing.explanation) !== canonicalJson(input.explanation)
   ) {
-    throw new Error('Optimization plan identity conflict');
+    throw new Error('Optimization plan immutable payload conflict');
   }
 }
 
