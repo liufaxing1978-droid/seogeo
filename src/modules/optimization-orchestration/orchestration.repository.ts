@@ -218,7 +218,27 @@ export class OptimizationOrchestrationRepository {
         lastErrorCode: null
       }
     });
-    return updated.count === 1;
+    if (updated.count === 1) return true;
+
+    const existing = await this.db.optimizationRun.findUnique({
+      where: { id: input.runId },
+      select: {
+        status: true,
+        planningCompletedAt: true,
+        candidateCount: true,
+        plannedCount: true,
+        itemCount: true
+      }
+    });
+
+    return Boolean(
+      existing &&
+      existing.status === 'RUNNING' &&
+      existing.planningCompletedAt !== null &&
+      existing.candidateCount === input.candidateCount &&
+      existing.plannedCount === input.plannedCount &&
+      existing.itemCount === input.itemCount
+    );
   }
 
   async createOrGetRunItem(input: CreateRunItemInput): Promise<OptimizationRunItem> {
