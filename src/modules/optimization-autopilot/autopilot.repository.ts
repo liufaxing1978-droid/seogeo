@@ -5,7 +5,12 @@ import {
 } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { canonicalJson } from './autopilot.identity.js';
-import { CONTROLLED_AUTOPILOT_POLICY_VERSION, type CreateAutopilotDecisionInput, type NormalizedAutopilotPolicy } from './autopilot.types.js';
+import {
+  CONTROLLED_AUTOPILOT_POLICY_VERSION,
+  type AutopilotRunItemContext,
+  type CreateAutopilotDecisionInput,
+  type NormalizedAutopilotPolicy
+} from './autopilot.types.js';
 
 function asJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(canonicalJson(value)) as Prisma.InputJsonValue;
@@ -95,6 +100,56 @@ export class OptimizationAutopilotRepository {
         updatedBy: actorId
       }
     });
+  }
+
+  async loadRunItemContext(
+    runItemId: string,
+    projectId: string
+  ): Promise<AutopilotRunItemContext | null> {
+    const row = await this.db.optimizationRunItem.findFirst({
+      where: {
+        id: runItemId,
+        projectId,
+        run: { projectId }
+      },
+      select: {
+        id: true,
+        projectId: true,
+        runId: true,
+        optimizationPlanId: true
+      }
+    });
+
+    if (!row) return null;
+    return {
+      runItemId: row.id,
+      projectId: row.projectId,
+      runId: row.runId,
+      optimizationPlanId: row.optimizationPlanId
+    };
+  }
+
+  async listReadyItemsWithoutEffectiveDecision(
+    limit: number
+  ): Promise<Array<{ id: string; projectId: string }>> {
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new Error('AUTOPILOT_RECONCILIATION_LIMIT_INVALID');
+    }
+
+    return this.db.$queryRaw<Array<{ id: string; projectId: string }>>(Prisma.sql`
+      SELECT item."id", item."projectId"
+      FROM "OptimizationRunItem" AS item
+      WHERE item."currentStage" = 'READY_FOR_POLICY'::"OptimizationRunItemStage"
+        AND item."status" = 'COMPLETED'::"OptimizationRunItemStatus"
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "OptimizationAutopilotDecision" AS decision
+          WHERE decision."runItemId" = item."id"
+            AND decision."optimizationPlanId" = item."optimizationPlanId"
+        )
+      ORDER BY item."createdAt" ASC, item."id" ASC
+      LIMIT ${limit}
+    `);
   }
 
   async createOrGetDecision(
