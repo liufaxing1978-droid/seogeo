@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { GrowthTriggerInput } from '../optimization-orchestration/orchestration.types.js';
 import { GROWTH_SCORE_VERSION } from './growth-score.js';
 import {
   GROWTH_MATERIALIZATION_VERSION,
@@ -31,6 +32,9 @@ export type GrowthMaterializationWorkerDeps = {
   materialize?: (projectId: string, asOfDate: Date) => Promise<GrowthMaterializationResult>;
   emit?: (event: Record<string, unknown>) => void;
   now?: () => Date;
+  optimizationTrigger?: {
+    triggerGrowth(input: GrowthTriggerInput): Promise<unknown>;
+  };
 };
 
 type GrowthMaterializationJobLike = {
@@ -94,8 +98,9 @@ export async function processGrowthMaterializationJob(
     formulaVersion: GROWTH_SCORE_VERSION
   }));
 
+  let result: GrowthMaterializationResult;
   try {
-    const result = await materialize(job.data.projectId, asOfDate);
+    result = await materialize(job.data.projectId, asOfDate);
     const endedAt = now();
     emit(serializeGrowthEvent('growth.materialization.completed', {
       projectId: job.data.projectId,
@@ -118,5 +123,20 @@ export async function processGrowthMaterializationJob(
       durationMs: Math.max(0, endedAt.getTime() - startedAt.getTime())
     }));
     throw error;
+  }
+
+  if (!deps.optimizationTrigger) return;
+
+  try {
+    await deps.optimizationTrigger.triggerGrowth({
+      projectId: job.data.projectId,
+      asOfDate: job.data.asOfDate,
+      materializationVersion: GROWTH_MATERIALIZATION_VERSION,
+      formulaVersion: GROWTH_SCORE_VERSION,
+      state: result.state,
+      selectedGscSnapshotIds: result.selectedGscSnapshotIds
+    });
+  } catch {
+    // Growth persistence already committed successfully. Daily reconciliation repairs a missed handoff.
   }
 }
