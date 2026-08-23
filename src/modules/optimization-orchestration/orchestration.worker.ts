@@ -19,13 +19,19 @@ export class OptimizationOrchestrationWorkerError extends Error {
 
 const NON_RETRYABLE_CODES = new Set([
   'INVALID_PLANNING_JOB',
+  'INVALID_ORCHESTRATION_JOB',
   'RUN_NOT_FOUND',
   'RUN_PROJECT_MISMATCH',
   'INVALID_RUN_STATE',
+  'PLANNING_NOT_COMPLETE',
   'CANDIDATE_PROJECT_MISMATCH',
+  'RUN_ITEM_PROJECT_MISMATCH',
+  'RUN_ITEM_INVALID_STATE',
+  'PLAN_NOT_FOUND',
   'PLAN_PROJECT_MISMATCH',
   'ASYNC_AI_NOT_ALLOWED',
   'PLANNING_CHECKPOINT_CONFLICT',
+  'RUN_TERMINAL_TRANSITION_CONFLICT',
   'WORKER_DEPENDENCIES_MISSING'
 ]);
 
@@ -63,7 +69,27 @@ export type PlanningWorkerDeps = {
   transaction?: <T>(callback: (tx: Prisma.TransactionClient) => Promise<T>) => Promise<T>;
 };
 
-function requireDeps(deps?: PlanningWorkerDeps): PlanningWorkerDeps {
+export type AdvanceWorkerRepositoryPort = Pick<
+  OptimizationOrchestrationRepository,
+  'getRun' | 'getPlan' | 'listRunItems' | 'transitionItem' | 'refreshRunCounters' | 'transitionRun'
+>;
+
+export type AdvanceWorkerDeps = {
+  repository: AdvanceWorkerRepositoryPort;
+  now?: () => Date;
+};
+
+function requirePlanningDeps(deps?: PlanningWorkerDeps): PlanningWorkerDeps {
+  if (!deps) {
+    throw new OptimizationOrchestrationWorkerError(
+      'WORKER_DEPENDENCIES_MISSING',
+      'Optimization planning worker dependencies are required'
+    );
+  }
+  return deps;
+}
+
+function requireAdvanceDeps(deps?: AdvanceWorkerDeps): AdvanceWorkerDeps {
   if (!deps) {
     throw new OptimizationOrchestrationWorkerError(
       'WORKER_DEPENDENCIES_MISSING',
@@ -226,7 +252,7 @@ export async function processOptimizationPlanningJob(
   job: { name: string; data: OptimizationPlanningJobData },
   deps?: PlanningWorkerDeps
 ): Promise<void> {
-  const resolved = requireDeps(deps);
+  const resolved = requirePlanningDeps(deps);
 
   if (job.data.kind === 'RECONCILE_DAILY') {
     if (job.name !== 'reconcile-daily') {
@@ -239,11 +265,188 @@ export async function processOptimizationPlanningJob(
   await processMaterializeRun(job.name, job.data, resolved);
 }
 
-export type OrchestrationWorkerDeps = PlanningWorkerDeps;
+async function failAdvanceRun(input: {
+  repository: AdvanceWorkerRepositoryPort;
+  runId: string;
+  itemId?: string;
+  itemStatus?: 'PENDING' | 'COMPLETED' | 'FAILED';
+  code: string;
+  completedAt: Date;
+}): Promise<void> {
+  if (input.itemId && input.itemStatus && input.itemStatus !== 'FAILED') {
+    await input.repository.transitionItem({
+      itemId: input.itemId,
+      from: input.itemStatus,
+      to: 'FAILED',
+      patch: {
+        reasonCode: input.code,
+        completedAt: input.completedAt
+      }
+    });
+  }
+
+  const refreshed = await input.repository.refreshRunCounters(input.runId);
+  await input.repository.transitionRun({
+    runId: input.runId,
+    from: 'RUNNING',
+    to: 'FAILED',
+    patch: {
+      itemCount: refreshed.itemCount,
+      completedCount: refreshed.completedCount,
+      failureCount: refreshed.failureCount === 0 ? 1 : refreshed.failureCount,
+      completedAt: input.completedAt,
+      lastErrorCode: input.code
+    }
+  });
+}
+
+export type OrchestrationWorkerDeps = AdvanceWorkerDeps;
 
 export async function processOptimizationOrchestrationJob(
-  _job: { name: string; data: OptimizationOrchestrationJobData },
-  _deps?: OrchestrationWorkerDeps
+  job: { name: string; data: OptimizationOrchestrationJobData },
+  deps?: OrchestrationWorkerDeps
 ): Promise<void> {
-  throw workerError('INVALID_RUN_STATE', 'Optimization advance worker is not implemented yet');
+  const resolved = requireAdvanceDeps(deps);
+  if (job.name !== 'advance-run') {
+    throw workerError('INVALID_ORCHESTRATION_JOB', 'Unexpected optimization orchestration job name');
+  }
+
+  const run = await resolved.repository.getRun(job.data.runId);
+  if (!run) throw workerError('RUN_NOT_FOUND', 'Optimization run does not exist');
+  if (run.projectId !== job.data.projectId) {
+    throw workerError('RUN_PROJECT_MISMATCH', 'Optimization run project mismatch');
+  }
+  if (run.status === 'SUCCEEDED' || run.status === 'FAILED') return;
+  if (run.status !== 'RUNNING') {
+    throw workerError('INVALID_RUN_STATE', 'Optimization run is not eligible for orchestration');
+  }
+
+  const completedAt = (resolved.now ?? (() => new Date()))();
+  if (!run.planningCompletedAt) {
+    await failAdvanceRun({
+      repository: resolved.repository,
+      runId: run.id,
+      code: 'PLANNING_NOT_COMPLETE',
+      completedAt
+    });
+    throw workerError('PLANNING_NOT_COMPLETE', 'Optimization planning checkpoint is missing');
+  }
+
+  const items = await resolved.repository.listRunItems(run.id);
+  for (const item of items) {
+    if (item.projectId !== run.projectId) {
+      await failAdvanceRun({
+        repository: resolved.repository,
+        runId: run.id,
+        itemId: item.id,
+        itemStatus: item.status,
+        code: 'RUN_ITEM_PROJECT_MISMATCH',
+        completedAt
+      });
+      throw workerError('RUN_ITEM_PROJECT_MISMATCH', 'Optimization run item project mismatch');
+    }
+
+    const plan = await resolved.repository.getPlan(item.optimizationPlanId);
+    if (!plan) {
+      await failAdvanceRun({
+        repository: resolved.repository,
+        runId: run.id,
+        itemId: item.id,
+        itemStatus: item.status,
+        code: 'PLAN_NOT_FOUND',
+        completedAt
+      });
+      throw workerError('PLAN_NOT_FOUND', 'Optimization plan does not exist');
+    }
+    if (plan.projectId !== run.projectId) {
+      await failAdvanceRun({
+        repository: resolved.repository,
+        runId: run.id,
+        itemId: item.id,
+        itemStatus: item.status,
+        code: 'PLAN_PROJECT_MISMATCH',
+        completedAt
+      });
+      throw workerError('PLAN_PROJECT_MISMATCH', 'Optimization plan project mismatch');
+    }
+
+    if (item.status === 'FAILED') {
+      const code = item.reasonCode ?? 'RUN_ITEM_INVALID_STATE';
+      await failAdvanceRun({
+        repository: resolved.repository,
+        runId: run.id,
+        code,
+        completedAt
+      });
+      throw workerError(code, 'Optimization run already contains a failed item');
+    }
+
+    if (item.status === 'COMPLETED') {
+      if (item.currentStage !== 'READY_FOR_POLICY') {
+        await failAdvanceRun({
+          repository: resolved.repository,
+          runId: run.id,
+          itemId: item.id,
+          itemStatus: item.status,
+          code: 'RUN_ITEM_INVALID_STATE',
+          completedAt
+        });
+        throw workerError('RUN_ITEM_INVALID_STATE', 'Completed run item is not at policy checkpoint');
+      }
+      continue;
+    }
+
+    await resolved.repository.transitionItem({
+      itemId: item.id,
+      from: 'PENDING',
+      to: 'COMPLETED',
+      patch: {
+        currentStage: 'READY_FOR_POLICY',
+        reasonCode: null,
+        completedAt
+      }
+    });
+  }
+
+  const refreshed = await resolved.repository.refreshRunCounters(run.id);
+  if (refreshed.failureCount > 0) {
+    await resolved.repository.transitionRun({
+      runId: run.id,
+      from: 'RUNNING',
+      to: 'FAILED',
+      patch: {
+        itemCount: refreshed.itemCount,
+        completedCount: refreshed.completedCount,
+        failureCount: refreshed.failureCount,
+        completedAt,
+        lastErrorCode: 'RUN_ITEM_INVALID_STATE'
+      }
+    });
+    throw workerError('RUN_ITEM_INVALID_STATE', 'Optimization run contains failed items');
+  }
+
+  if (refreshed.completedCount !== refreshed.itemCount) {
+    throw workerError('RUN_ITEM_INVALID_STATE', 'Optimization run items did not reach a terminal checkpoint');
+  }
+
+  const transitioned = await resolved.repository.transitionRun({
+    runId: run.id,
+    from: 'RUNNING',
+    to: 'SUCCEEDED',
+    patch: {
+      itemCount: refreshed.itemCount,
+      completedCount: refreshed.completedCount,
+      failureCount: refreshed.failureCount,
+      completedAt,
+      lastErrorCode: null
+    }
+  });
+  if (!transitioned) {
+    const latest = await resolved.repository.getRun(run.id);
+    if (latest?.status === 'SUCCEEDED' || latest?.status === 'FAILED') return;
+    throw workerError(
+      'RUN_TERMINAL_TRANSITION_CONFLICT',
+      'Optimization run terminal transition was not applied'
+    );
+  }
 }
