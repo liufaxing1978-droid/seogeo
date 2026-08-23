@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a controlled-autopilot policy layer that can automatically prepare and create a P8 Draft PR for an explicitly opted-in Advanced/Enterprise project only when the exact persisted P8 change is provably LOW risk, exact `CREATE_CONTENT_PAGE`, current, warning-free, quota-safe, conflict-free, and authorized by a distinct machine-authorization record.
+**Goal:** Build controlled autopilot so an explicitly opted-in Advanced/Enterprise project can automatically create a P8 Draft PR only for a current, warning-free, exact LOW-risk `CREATE_CONTENT_PAGE` change, while preserving human merge/deploy authority.
 
-**Architecture:** P9-C owns policy, deterministic decisions, quota/concurrency reservation, and one `optimization-autopilot` BullMQ queue. It consumes P9-B items only after `READY_FOR_POLICY / COMPLETED`, creates immutable P9 policy decisions, and invokes narrow P8-owned preparation/authorization/execution services. P8 remains authoritative for content preparation, exact `PublicationPlan`, `PublicationPreview`, deterministic validation, risk, live target checks, Git mutation, Draft PR creation, and verification. Human `PublicationApproval -> APPROVED` and machine `PublicationAutomationAuthorization -> AUTOMATION_AUTHORIZED` remain semantically distinct but converge into the existing P8 execution worker.
+**Architecture:** P9-C owns policy, immutable policy decisions, race-safe quota/concurrency reservation, and exactly one `optimization-autopilot` BullMQ queue. It starts only from P9-B `READY_FOR_POLICY / COMPLETED` items. P8 remains authoritative for content preparation, exact `PublicationPlan`/`PublicationPreview`, deterministic validation, risk, machine authorization, live target validation, Git mutation, Draft PR creation, and verification. Human `PublicationApproval -> APPROVED` and machine `PublicationAutomationAuthorization -> AUTOMATION_AUTHORIZED` remain distinct and converge into the existing P8 execution worker.
 
 **Tech Stack:** Node.js 22, TypeScript 5.9, Prisma 6.14/PostgreSQL, BullMQ 5.58, Zod 3.25, Express 5, Vitest 3.2, Supertest 7, Playwright, GitHub Actions.
 
@@ -12,45 +12,47 @@
 
 ## Global Constraints
 
-- Base is `main@58d031cb07342a6655ae84093c00ce7bfaf6f0c2`; implementation branch is `feat/p9-c-controlled-autopilot`.
-- The P9-C design was explicitly approved by the user on 2026-08-23. Do not implement directly on `main`.
-- P7 remains authoritative for Growth identity, score, evidence, ranking eligibility, lifecycle, and provenance. P9-C may read persisted P7 facts but must not import or call detector/scoring functions.
-- P9-A candidates/plans remain immutable. P9-C must not set or rewrite `OptimizationPlan.automationEligibility`.
-- P9-B remains authoritative for run/item orchestration position. P9-C must not rewrite `OptimizationRun` or `OptimizationRunItem` state.
-- P8 remains authoritative for exact publication operations, risk, deterministic validation, immutable plan/preview binding, Git mutation, Draft PR creation, real-site verification, rollback proposals, merge, and deploy.
-- Machine authorization must never be represented as human `PublicationApproval`; machine entry status is `AUTOMATION_AUTHORIZED`, never `APPROVED`.
-- P9-C V1 automatic scope is exactly `P9-A CONTENT_CREATION -> P8 CREATE_CONTENT_PAGE`. Every other P9 action or exact P8 operation is manual-only in V1.
-- P8 risk must be exactly `LOW`; MEDIUM/HIGH can never receive machine authorization.
-- Any P8 warning, including `SOURCE_GAP`, requires human review and blocks automatic authorization. P9-C must never auto-confirm warning codes.
-- `CONTROLLED_AUTOPILOT`: STANDARD=false, ADVANCED=true, ENTERPRISE=true. Entitlement does not imply opt-in.
-- Project policy defaults: disabled, LOW only, `[CREATE_CONTENT_PAGE]`, daily quota 3, concurrency 1, fresh evidence required, minimum coverage 70, pause on verification failure enabled, project kill switch off.
-- Policy bounds: daily quota 1..10, concurrency 1..3, minimum evidence coverage 70..100.
-- `CONTROLLED_AUTOPILOT_GLOBAL_KILL_SWITCH` fails closed: only an explicitly parsed OFF value allows machine authorization/enqueue; missing/malformed/unknown means ON.
-- Add exactly one P9-C-owned queue: `optimization-autopilot`. Do not add an event bus or a second P8 execution queue.
-- P9-C queue payloads contain durable IDs only. Never put article bodies, provider payloads, prompts, responses, Git tokens, diffs, source evidence bodies, or policy JSON in BullMQ payloads.
-- Daily reconciliation uses UTC and a date-free scheduled job. The worker derives the UTC date at runtime.
-- Quota/concurrency must use a PostgreSQL serialization guard; a non-atomic count-then-insert implementation is forbidden.
-- All schema changes are additive/forward-only. Never edit an already-applied P8/P9-A/P9-B migration.
-- P9-C implementation modules must not import `github-mutation.adapter.ts`, `deepseek.provider.ts`, P7 score/detector implementations, merge helpers, deploy helpers, or automatic rollback code.
-- Human P8 approval/execution behavior must remain regression-compatible.
-- PR stays Draft until its exact final head passes `verify`, `production-audit`, and `e2e`, manual authority review is complete, and unresolved review threads are zero.
-- Merge still requires a separate explicit human `合并`. Deployment requires a separate explicit authorization.
+- Base: `main@58d031cb07342a6655ae84093c00ce7bfaf6f0c2`; branch: `feat/p9-c-controlled-autopilot`.
+- The user approved the P9-C design on 2026-08-23. Never implement directly on `main`.
+- P7 owns Growth identity, score, evidence, ranking eligibility, lifecycle, and provenance. P9-C reads persisted facts only and never imports P7 scoring/detector implementations.
+- P9-A candidates/plans remain immutable. P9-C never updates `OptimizationPlan.automationEligibility`.
+- P9-B owns workflow run/item position. P9-C never rewrites `OptimizationRun`/`OptimizationRunItem`.
+- P8 owns exact operations, risk, validation, plan/preview, target revision checks, mutation adapter, Draft PR, verification, rollback proposals, merge, and deploy.
+- Never fake a human `PublicationApproval`. Machine authorization is `PublicationAutomationAuthorization`, and machine execution starts at `AUTOMATION_AUTHORIZED`, not `APPROVED`.
+- V1 automatic mapping is exactly `CONTENT_CREATION -> CREATE_CONTENT_PAGE`. Every other P9 action and every other exact P8 operation is manual-only.
+- Exact P8 risk must be LOW. MEDIUM/HIGH never receive machine authorization.
+- Any P8 warning blocks automation. P9-C never confirms `SOURCE_GAP` or another warning on behalf of a human.
+- Feature: `CONTROLLED_AUTOPILOT`; STANDARD=false, ADVANCED=true, ENTERPRISE=true. Entitlement never enables policy automatically.
+- Policy defaults: enabled=false, allowed risk LOW, operations `[CREATE_CONTENT_PAGE]`, daily quota=3, max concurrency=1, require fresh evidence=true, minimum evidence coverage=70, pause on verification failure=true, project kill switch=false.
+- Bounds: daily quota 1..10, max concurrency 1..3, minimum evidence coverage 70..100.
+- `CONTROLLED_AUTOPILOT_GLOBAL_KILL_SWITCH` fails closed. Only explicit OFF permits machine authorization/enqueue; missing/malformed/unknown means ON.
+- Add exactly one P9-C queue: `optimization-autopilot`. No event bus and no second P8 execution queue.
+- Queue payloads contain durable IDs only. Never queue content bodies, prompts/responses, raw evidence/provider payloads, policy JSON, diffs, Git tokens, or credentials.
+- P9-C daily reconciliation is UTC and date-free at scheduling time; worker derives the UTC date when processing.
+- Quota/concurrency reservation must be transactionally serialized in PostgreSQL. Non-atomic count-then-insert is forbidden.
+- All migrations are forward-only. Never edit applied P8/P9-A/P9-B migrations.
+- P9-C implementation modules must not import `github-mutation.adapter.ts`, DeepSeek transport/provider implementations, P7 scoring/detectors, merge/deploy helpers, or automatic rollback code.
+- Existing human P8 approval/execution semantics must remain green.
+- PR stays Draft until exact-head `verify`, `production-audit`, and `e2e` are green, manual authority review is complete, and unresolved review threads are zero.
+- Merge requires a separate explicit human `合并`; deployment requires separate explicit authorization.
 
-## Planned File Structure
+## Planned Files
 
-P9-C module:
+P9-C:
 - `src/modules/optimization-autopilot/autopilot.config.ts`
 - `src/modules/optimization-autopilot/autopilot.types.ts`
 - `src/modules/optimization-autopilot/autopilot.identity.ts`
 - `src/modules/optimization-autopilot/autopilot.policy.ts`
+- `src/modules/optimization-autopilot/autopilot.gates.ts`
 - `src/modules/optimization-autopilot/autopilot.repository.ts`
 - `src/modules/optimization-autopilot/autopilot.reservation.ts`
 - `src/modules/optimization-autopilot/autopilot.queue.ts`
 - `src/modules/optimization-autopilot/autopilot.service.ts`
 - `src/modules/optimization-autopilot/autopilot.worker.ts`
 - `src/modules/optimization-autopilot/autopilot.routes.ts`
+- `src/modules/optimization-autopilot/autopilot-observability.ts`
 
-P8 additive/refactor surface:
+P8/cross-cutting:
 - `src/modules/publication/publication-automation-preparation.ts`
 - `src/modules/publication/publication-automation-authorization.ts`
 - `src/modules/publication/publication-execution.service.ts`
@@ -60,12 +62,10 @@ P8 additive/refactor surface:
 - `src/modules/publication/publication-execution.worker.ts`
 - `src/modules/publication/publication-ai.ts`
 - `src/modules/ai/ai.worker.ts`
-
-Cross-cutting:
+- `src/modules/optimization-orchestration/orchestration.worker.ts`
 - `src/auth/feature-flags.ts`
 - `src/queue/queues.ts`
 - `src/queue/worker-bootstrap.ts`
-- `src/modules/optimization-orchestration/orchestration.worker.ts`
 - `src/app.ts`
 - `.env.example`
 
@@ -75,31 +75,9 @@ Prisma:
 - `prisma/models/publication.prisma`
 - `prisma/migrations/20260823140000_add_p9c_controlled_autopilot/migration.sql`
 
-Tests:
-- `tests/unit/autopilot.config.test.ts`
-- `tests/unit/autopilot.feature-gate.test.ts`
-- `tests/unit/autopilot.identity.test.ts`
-- `tests/unit/autopilot.policy.test.ts`
-- `tests/unit/autopilot.gates.test.ts`
-- `tests/unit/autopilot.queue.test.ts`
-- `tests/unit/autopilot.boundary.test.ts`
-- `tests/integration/autopilot.persistence.test.ts`
-- `tests/integration/autopilot.reservation.test.ts`
-- `tests/integration/autopilot.preparation.test.ts`
-- `tests/integration/autopilot.authorization.test.ts`
-- `tests/integration/autopilot.execution.test.ts`
-- `tests/integration/autopilot.worker.test.ts`
-- `tests/integration/autopilot.api.test.ts`
-- extend `tests/integration/publication.execution.test.ts`
-- extend `tests/unit/publication.execution-worker.test.ts`
-- extend `tests/unit/orchestration.advance-worker.test.ts`
-- extend `tests/unit/queues.test.ts`
-- extend `tests/unit/worker-bootstrap.test.ts`
-- create `tests/e2e/p9c-controlled-autopilot.spec.ts`
-
 ---
 
-### Task 1: Add policy/persistence foundation, feature entitlement, and fail-closed global switch
+### Task 1: Persistence foundation, feature entitlement, and fail-closed global switch
 
 **Files:**
 - Create: `prisma/models/optimization-autopilot.prisma`
@@ -113,7 +91,7 @@ Tests:
 - Create: `tests/unit/autopilot.feature-gate.test.ts`
 - Create: `tests/integration/autopilot.persistence.test.ts`
 
-**Schema contract:**
+**Schema:**
 
 ```prisma
 enum OptimizationAutopilotDecisionStatus {
@@ -127,27 +105,21 @@ enum OptimizationAutopilotDecisionStatus {
   P8_VALIDATION_BLOCKED
 }
 
-enum AutopilotReservationStatus {
-  RESERVED
-  CONSUMED
-  RELEASED
-}
+enum AutopilotReservationStatus { RESERVED CONSUMED RELEASED }
 ```
 
-Add `AutopilotPolicy`, immutable `OptimizationAutopilotDecision`, and `AutopilotExecutionReservation`. Extend `PublicationProposalSourceType` with `P9_OPTIMIZATION_PLAN`. Add immutable `PublicationAutomationAuthorization`. Extend `PublicationExecutionStatus` and `PublicationExecutionEventType` with `AUTOMATION_AUTHORIZED`. Make `PublicationExecution.approvalId` nullable, add nullable `automationAuthorizationId`, and enforce a PostgreSQL CHECK requiring exactly one authorization source.
-
-Add one nullable unique `automationPreparationKey` to `PublicationProposal` so repeated P9 preparation can reuse one proposal without relying on mutable metadata queries.
+Add `AutopilotPolicy`, immutable `OptimizationAutopilotDecision`, `AutopilotExecutionReservation`, and immutable P8 `PublicationAutomationAuthorization`. Add `P9_OPTIMIZATION_PLAN` to `PublicationProposalSourceType`; add `AUTOMATION_AUTHORIZED` to publication execution status/event enums. Make `PublicationExecution.approvalId` nullable, add nullable `automationAuthorizationId`, and add a DB CHECK enforcing exactly one non-null authorization source. Add nullable unique `PublicationProposal.automationPreparationKey` for idempotent P9 preparation.
 
 - [ ] **Step 1: Write RED tests**
 
 ```ts
-it('gates controlled autopilot to Advanced and Enterprise only', () => {
+it('gates controlled autopilot to Advanced and Enterprise', () => {
   expect(hasFeature('STANDARD', 'CONTROLLED_AUTOPILOT')).toBe(false)
   expect(hasFeature('ADVANCED', 'CONTROLLED_AUTOPILOT')).toBe(true)
   expect(hasFeature('ENTERPRISE', 'CONTROLLED_AUTOPILOT')).toBe(true)
 })
 
-it('treats missing or malformed global switch values as killed', () => {
+it('fails the global switch closed', () => {
   expect(parseControlledAutopilotGlobalKillSwitch(undefined)).toBe(true)
   expect(parseControlledAutopilotGlobalKillSwitch('garbage')).toBe(true)
   expect(parseControlledAutopilotGlobalKillSwitch('true')).toBe(true)
@@ -155,11 +127,7 @@ it('treats missing or malformed global switch values as killed', () => {
 })
 ```
 
-Persistence RED must additionally prove:
-- `PublicationExecution` cannot persist with both authorization IDs null;
-- it cannot persist with both non-null;
-- `OptimizationAutopilotDecision` and `PublicationAutomationAuthorization` reject UPDATE/DELETE through DB immutability triggers;
-- `PublicationProposal.automationPreparationKey` is unique.
+Persistence RED also proves execution rejects both authorization IDs null and both non-null; decision/automation authorization reject UPDATE/DELETE; preparation key is unique.
 
 - [ ] **Step 2: Verify RED**
 
@@ -167,23 +135,20 @@ Persistence RED must additionally prove:
 npx vitest run tests/unit/autopilot.config.test.ts tests/unit/autopilot.feature-gate.test.ts tests/integration/autopilot.persistence.test.ts
 ```
 
-Expected: missing feature/module/schema contracts.
+Expected: missing P9-C modules/schema/feature.
 
-- [ ] **Step 3: Implement minimal schema/config/feature code**
+- [ ] **Step 3: Implement minimal GREEN**
 
 ```ts
 export function parseControlledAutopilotGlobalKillSwitch(value: string | undefined): boolean {
   if (value === undefined) return true
   const normalized = value.trim().toLowerCase()
   if (normalized === 'false' || normalized === '0' || normalized === 'off') return false
-  if (normalized === 'true' || normalized === '1' || normalized === 'on') return true
   return true
 }
 ```
 
-Add `CONTROLLED_AUTOPILOT` to the feature union and Advanced set only; Enterprise inherits it. Add `CONTROLLED_AUTOPILOT_GLOBAL_KILL_SWITCH=true` to `.env.example` so newly configured environments are safe by default.
-
-Migration SQL must add enums/models/relations/checks/indexes/immutability triggers without changing prior migration files.
+Add `CONTROLLED_AUTOPILOT` to Advanced only; Enterprise inherits. Add `CONTROLLED_AUTOPILOT_GLOBAL_KILL_SWITCH=true` to `.env.example`. Migration adds all new types/tables/relations/checks/immutability triggers without altering old migrations.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -204,7 +169,7 @@ git commit -m "feat(p9-c): add controlled autopilot persistence foundation"
 
 ---
 
-### Task 2: Implement policy normalization, deterministic identities, and immutable decision persistence
+### Task 2: Policy normalization, deterministic identities, and immutable decisions
 
 **Files:**
 - Create: `src/modules/optimization-autopilot/autopilot.types.ts`
@@ -216,7 +181,7 @@ git commit -m "feat(p9-c): add controlled autopilot persistence foundation"
 - Create: `tests/unit/autopilot.policy.test.ts`
 - Extend: `tests/integration/autopilot.persistence.test.ts`
 
-**Public constants/interfaces:**
+**Interfaces:**
 
 ```ts
 export const CONTROLLED_AUTOPILOT_POLICY_VERSION = 'CONTROLLED_AUTOPILOT_POLICY_V1' as const
@@ -236,10 +201,10 @@ export type AutopilotPolicyMutation = {
 }
 ```
 
-Repository/service surface:
+Repository API:
 
 ```ts
-export class OptimizationAutopilotRepository {
+class OptimizationAutopilotRepository {
   getPolicy(projectId: string): Promise<AutopilotPolicy | null>
   upsertPolicy(projectId: string, input: NormalizedAutopilotPolicy, actorId: string): Promise<AutopilotPolicy>
   loadRunItemContext(runItemId: string, projectId: string): Promise<AutopilotRunItemContext | null>
@@ -251,28 +216,20 @@ export class OptimizationAutopilotRepository {
 - [ ] **Step 1: Write RED tests**
 
 ```ts
-it('normalizes policy to the exact V1 safe bounds', () => {
-  expect(normalizeAutopilotPolicy({ enabled: true })).toMatchObject({
-    enabled: true,
-    allowedRiskClass: 'LOW',
-    allowedOperationClasses: ['CREATE_CONTENT_PAGE'],
-    dailyDraftPrLimit: 3,
-    maxConcurrentRuns: 1,
-    requireFreshEvidence: true,
-    minimumEvidenceCoverage: 70,
-    pauseOnVerificationFailure: true,
-    killSwitch: false
-  })
-})
-
-it('creates a new decision identity when immutable P8 binding changes', () => {
-  const before = buildAutopilotDecisionKey({ ...input, p8PlanId: null, p8PreviewId: null })
-  const after = buildAutopilotDecisionKey({ ...input, p8PlanId: 'plan-1', p8PreviewId: 'preview-1' })
-  expect(before).not.toBe(after)
+expect(normalizeAutopilotPolicy({ enabled: true })).toMatchObject({
+  enabled: true,
+  allowedRiskClass: 'LOW',
+  allowedOperationClasses: ['CREATE_CONTENT_PAGE'],
+  dailyDraftPrLimit: 3,
+  maxConcurrentRuns: 1,
+  requireFreshEvidence: true,
+  minimumEvidenceCoverage: 70,
+  pauseOnVerificationFailure: true,
+  killSwitch: false
 })
 ```
 
-Also prove MEDIUM/HIGH risk input, quota outside 1..10, concurrency outside 1..3, coverage outside 70..100, and any operation other than `CREATE_CONTENT_PAGE` are rejected.
+Prove MEDIUM/HIGH, unsupported operations, quota outside 1..10, concurrency outside 1..3, coverage outside 70..100 are rejected. Same immutable inputs reuse one decision; changed policy snapshot or exact P8 plan/preview changes decision key.
 
 - [ ] **Step 2: Verify RED**
 
@@ -280,11 +237,9 @@ Also prove MEDIUM/HIGH risk input, quota outside 1..10, concurrency outside 1..3
 npx vitest run tests/unit/autopilot.identity.test.ts tests/unit/autopilot.policy.test.ts tests/integration/autopilot.persistence.test.ts
 ```
 
-- [ ] **Step 3: Implement canonical identity and policy persistence**
+- [ ] **Step 3: Implement canonical identity/policy persistence**
 
-Use recursive canonical JSON with sorted object keys and explicit nulls. Policy snapshots sort/dedupe operation classes before hashing. `createOrGetDecision()` reuses only an exactly identical unique decision key; a P2002 collision must be re-read and identity-checked.
-
-`getPolicy()` must not create a row. A missing row means autopilot is disabled. A read route may render a calculated default projection, but GET cannot write defaults.
+Canonical JSON recursively sorts object keys and preserves explicit nulls. Sort/dedupe operation arrays before policy hashing. `createOrGetDecision()` re-reads and exact-identity-checks P2002 collisions. `getPolicy()` performs no write; missing row means disabled.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -302,7 +257,7 @@ git commit -m "feat(p9-c): add autopilot policy and decisions"
 
 ---
 
-### Task 3: Add freshness, verification-pause, conflict, and exact P8 gate evaluation
+### Task 3: Freshness, verification pause, conflicts, and exact P8 gates
 
 **Files:**
 - Create: `src/modules/optimization-autopilot/autopilot.gates.ts`
@@ -310,49 +265,36 @@ git commit -m "feat(p9-c): add autopilot policy and decisions"
 - Create: `tests/unit/autopilot.gates.test.ts`
 - Create: `tests/integration/autopilot.authority.test.ts`
 
-**Gate result contract:**
+**Result:**
 
 ```ts
-export type AutopilotGateResult =
+type AutopilotGateResult =
   | { allowed: true }
-  | { allowed: false; status: 'MANUAL_REQUIRED' | 'POLICY_BLOCKED' | 'DEFERRED_CONFLICT' | 'STALE' | 'P8_VALIDATION_BLOCKED'; reasonCode: string }
-
-export function evaluateStaticAutopilotGates(input: AutopilotGateInput): AutopilotGateResult
+  | {
+      allowed: false
+      status: 'P8_PREPARATION_REQUIRED' | 'MANUAL_REQUIRED' | 'POLICY_BLOCKED' | 'DEFERRED_CONFLICT' | 'STALE' | 'P8_VALIDATION_BLOCKED'
+      reasonCode: string
+    }
 ```
 
-Repository readers must provide only persisted facts:
-- latest Growth snapshot ID for the candidate's `growthOpportunityIdentityId`;
-- latest authoritative project P8 verification outcome;
-- active P8 execution target URL/path conflicts;
-- existing machine authorization/execution for the same P9 run item/source identity;
-- exact P8 plan/preview/site/channel when present.
+Readers load latest Growth snapshot for the candidate identity, latest authoritative P8 verification state, active P8 URL/path conflicts, existing automatic handoff, and exact P8 plan/preview/site/channel if present.
 
 - [ ] **Step 1: Write RED tests**
 
 ```ts
-it('never infers LOW automation from the P9 recommended action alone', () => {
-  const result = evaluateStaticAutopilotGates({
-    ...base,
-    recommendedActionType: 'CONTENT_CREATION',
-    p8: null
-  })
-  expect(result).toEqual({
-    allowed: false,
-    status: 'P8_VALIDATION_BLOCKED',
-    reasonCode: 'AUTOPILOT_P8_PREPARATION_REQUIRED'
-  })
+expect(evaluateStaticAutopilotGates({ ...base, p8: null })).toEqual({
+  allowed: false,
+  status: 'P8_PREPARATION_REQUIRED',
+  reasonCode: 'AUTOPILOT_P8_PREPARATION_REQUIRED'
 })
 
-it('blocks any warning even when P8 risk is LOW', () => {
-  const result = evaluateStaticAutopilotGates({
-    ...base,
-    p8: { ...p8, riskClass: 'LOW', operationTypes: ['CREATE_CONTENT_PAGE'], warningCodes: ['SOURCE_GAP'] }
-  })
-  expect(result).toMatchObject({ allowed: false, reasonCode: 'AUTOPILOT_P8_WARNING_REQUIRES_HUMAN' })
-})
+expect(evaluateStaticAutopilotGates({
+  ...base,
+  p8: { ...p8, riskClass: 'LOW', operationTypes: ['CREATE_CONTENT_PAGE'], warningCodes: ['SOURCE_GAP'] }
+})).toMatchObject({ allowed: false, reasonCode: 'AUTOPILOT_P8_WARNING_REQUIRES_HUMAN' })
 ```
 
-Lock deterministic first-failure order for: stale source, insufficient evidence, terminal lifecycle, unresolved verification failure, conflict, unsupported P9 action, P8 MEDIUM/HIGH, broad `UPDATE_CONTENT_PAGE`, missing Git Draft PR capability, and stale target binding.
+Lock deterministic first-failure ordering for unsupported action, insufficient evidence, stale source, terminal lifecycle, unresolved verification failure, conflict, P8 MEDIUM/HIGH, broad/unknown operation, any warning, missing Git Draft PR capability, and stale target binding.
 
 - [ ] **Step 2: Verify RED**
 
@@ -360,11 +302,9 @@ Lock deterministic first-failure order for: stale source, insufficient evidence,
 npx vitest run tests/unit/autopilot.gates.test.ts tests/integration/autopilot.authority.test.ts
 ```
 
-- [ ] **Step 3: Implement read-only deterministic gates**
+- [ ] **Step 3: Implement persisted-facts-only gates**
 
-Do not call P7 detector/scoring code. Freshness is equality against the latest persisted Growth snapshot for the same identity. Terminal lifecycle blocks. Verification pause is based on persisted P8 state only. Ambiguous overlap is conflict.
-
-The exact automatic P8 operation predicate is:
+Fresh means the candidate references the latest persisted Growth snapshot for its identity; do not calculate a new Growth formula. Ambiguous overlap is conflict. Exact automatic operation predicate:
 
 ```ts
 function exactAutomaticOperationAllowed(types: readonly string[]): boolean {
@@ -388,7 +328,7 @@ git commit -m "feat(p9-c): enforce deterministic autopilot gates"
 
 ---
 
-### Task 4: Implement race-safe daily quota and concurrency reservation
+### Task 4: Race-safe daily quota and concurrency reservation
 
 **Files:**
 - Create: `src/modules/optimization-autopilot/autopilot.reservation.ts`
@@ -398,41 +338,22 @@ git commit -m "feat(p9-c): enforce deterministic autopilot gates"
 **Interface:**
 
 ```ts
-export type ReserveAutopilotCapacityResult =
+type ReserveAutopilotCapacityResult =
   | { reserved: true; reservation: AutopilotExecutionReservation }
   | { reserved: false; reasonCode: 'AUTOPILOT_DAILY_QUOTA_EXHAUSTED' | 'AUTOPILOT_CONCURRENCY_LIMIT' }
-
-export async function reserveAutopilotCapacity(input: {
-  projectId: string
-  decisionId: string
-  utcDate: string
-  dailyDraftPrLimit: number
-  maxConcurrentRuns: number
-}): Promise<ReserveAutopilotCapacityResult>
 ```
 
 - [ ] **Step 1: Write RED race tests**
 
 ```ts
-const results = await Promise.all(
-  Array.from({ length: 2 }, (_, index) => reserveAutopilotCapacity({
-    projectId,
-    decisionId: decisionIds[index]!,
-    utcDate: '2026-08-23',
-    dailyDraftPrLimit: 1,
-    maxConcurrentRuns: 3
-  }))
-)
+const results = await Promise.all([
+  reserveAutopilotCapacity({ projectId, decisionId: d1, utcDate: '2026-08-23', dailyDraftPrLimit: 1, maxConcurrentRuns: 3 }),
+  reserveAutopilotCapacity({ projectId, decisionId: d2, utcDate: '2026-08-23', dailyDraftPrLimit: 1, maxConcurrentRuns: 3 })
+])
 expect(results.filter((result) => result.reserved)).toHaveLength(1)
 ```
 
-Also prove:
-- repeated reservation for the same decision reuses one row;
-- projects do not share quota;
-- UTC dates do not share quota;
-- `AUTOMATION_AUTHORIZED`, `QUEUED`, `EXECUTING` consume concurrency;
-- `PR_CREATED` no longer consumes concurrency but still consumes the daily slot;
-- human-approved executions never count against P9-C quota/concurrency.
+Also prove same-decision reuse; project/date isolation; `AUTOMATION_AUTHORIZED`, `QUEUED`, `EXECUTING` consume concurrency; `PR_CREATED` releases concurrency but retains daily quota; human-approved executions do not count.
 
 - [ ] **Step 2: Verify RED**
 
@@ -440,17 +361,15 @@ Also prove:
 npx vitest run tests/integration/autopilot.reservation.test.ts
 ```
 
-- [ ] **Step 3: Implement transaction serialization**
+- [ ] **Step 3: Implement PostgreSQL serialization**
 
-Use one PostgreSQL transaction and one transaction-scoped advisory lock keyed from `p9c:${projectId}:${utcDate}` before reading capacity and inserting the reservation. The lock and reads/insertion must share the same transaction client.
-
-Conceptual SQL:
+Within one Prisma transaction acquire:
 
 ```sql
 SELECT pg_advisory_xact_lock(hashtextextended($1, 0));
 ```
 
-Do not perform `count -> return -> insert` outside the lock transaction.
+with key `p9c:${projectId}:${utcDate}`, then count capacity and create/reuse reservation in the same transaction. Never count outside the lock and insert later.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -463,12 +382,12 @@ npm run typecheck
 
 ```bash
 git add src/modules/optimization-autopilot/autopilot.reservation.ts src/modules/optimization-autopilot/autopilot.repository.ts tests/integration/autopilot.reservation.test.ts
-git commit -m "feat(p9-c): add race-safe autopilot capacity reservations"
+git commit -m "feat(p9-c): add race-safe autopilot reservations"
 ```
 
 ---
 
-### Task 5: Add the one P9-C queue, P9-B durable handoff, and daily reconciliation
+### Task 5: One P9-C queue, P9-B handoff, and UTC reconciliation
 
 **Files:**
 - Create: `src/modules/optimization-autopilot/autopilot.queue.ts`
@@ -481,24 +400,18 @@ git commit -m "feat(p9-c): add race-safe autopilot capacity reservations"
 - Extend: `tests/unit/queues.test.ts`
 - Extend: `tests/unit/worker-bootstrap.test.ts`
 
-**Queue contract:**
+**Queue:**
 
 ```ts
 export const OPTIMIZATION_AUTOPILOT_QUEUE_NAME = 'optimization-autopilot' as const
-export const OPTIMIZATION_AUTOPILOT_QUEUE_ATTEMPTS = 2
-
 export type OptimizationAutopilotJobData =
   | { kind: 'EVALUATE_RUN_ITEM'; runItemId: string; projectId: string }
   | { kind: 'RECONCILE_DAILY' }
-
-export class OptimizationAutopilotQueue {
-  enqueueRunItem(runItemId: string, projectId: string): Promise<unknown>
-}
 ```
 
-Job options: attempts=2, exponential 5000ms, removeOnComplete=100, removeOnFail=200, deterministic run-item job ID.
+Use attempts=2, exponential 5000ms, removeOnComplete=100, removeOnFail=200, deterministic `optimization-autopilot-${runItemId}` job ID.
 
-- [ ] **Step 1: Write RED queue/handoff/bootstrap tests**
+- [ ] **Step 1: Write RED tests**
 
 ```ts
 expect(QUEUE_NAMES).toContain('optimization-autopilot')
@@ -509,7 +422,7 @@ expect(buildOptimizationAutopilotJobOptions(RUN_ITEM_ID)).toMatchObject({
 })
 ```
 
-P9-B advance-worker test must prove enqueue happens only after the item is durably `READY_FOR_POLICY / COMPLETED`. A queue failure may reject the worker attempt, but persisted P9-B state must remain completed so retry/reconciliation is safe.
+P9-B test proves enqueue occurs only after durable `READY_FOR_POLICY / COMPLETED`. If enqueue throws, the worker attempt may fail, but P9-B state remains committed; replay/reconciliation may enqueue again.
 
 - [ ] **Step 2: Verify RED**
 
@@ -517,29 +430,17 @@ P9-B advance-worker test must prove enqueue happens only after the item is durab
 npx vitest run tests/unit/autopilot.queue.test.ts tests/unit/orchestration.advance-worker.test.ts tests/unit/queues.test.ts tests/unit/worker-bootstrap.test.ts
 ```
 
-- [ ] **Step 3: Implement queue/handoff/reconciliation skeleton**
+- [ ] **Step 3: Implement queue and scheduler**
 
-Add an injected port to P9-B advance dependencies:
+Inject:
 
 ```ts
-export type AutopilotRunItemQueuePort = {
+type AutopilotRunItemQueuePort = {
   enqueueRunItem(runItemId: string, projectId: string): Promise<unknown>
 }
 ```
 
-After the durable item transition/reload proves `READY_FOR_POLICY / COMPLETED`, enqueue the ID. Replayed completed items may safely re-enqueue the deterministic job.
-
-Register one date-free daily scheduler on the same queue:
-
-```ts
-export const OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_SCHEDULER = {
-  id: 'optimization-autopilot-daily-reconcile',
-  repeat: { every: 24 * 60 * 60 * 1000 },
-  job: { name: 'reconcile-daily', data: { kind: 'RECONCILE_DAILY' } }
-} as const
-```
-
-Reconciliation scans bounded `READY_FOR_POLICY` items without an effective decision and re-enqueues them; it does not modify P9-B rows.
+into P9-B advance worker. Register one `reconcile-daily` scheduler on the same P9-C queue; payload is only `{ kind: 'RECONCILE_DAILY' }`. Reconciliation scans bounded ready items without an effective current decision and never mutates P9-B rows.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -557,7 +458,7 @@ git commit -m "feat(p9-c): add autopilot queue and durable handoff"
 
 ---
 
-### Task 6: Add P8-owned automatic content-creation preparation through the existing P4/P8 AI path
+### Task 6: P8-owned automatic CONTENT_CREATION preparation through existing P4/P8 AI
 
 **Files:**
 - Create: `src/modules/publication/publication-automation-preparation.ts`
@@ -567,12 +468,12 @@ git commit -m "feat(p9-c): add autopilot queue and durable handoff"
 - Modify: `src/modules/ai/ai.worker.ts`
 - Modify: `src/queue/worker-bootstrap.ts`
 - Create: `tests/integration/autopilot.preparation.test.ts`
-- Extend: relevant P8 AI worker tests
+- Extend: existing publication AI tests
 
-**P8-owned preparation port:**
+**Port:**
 
 ```ts
-export interface PublicationAutomationPreparationPort {
+interface PublicationAutomationPreparationPort {
   prepareContentCreation(input: {
     projectId: string
     runItemId: string
@@ -591,17 +492,20 @@ export interface PublicationAutomationPreparationPort {
 
 - [ ] **Step 1: Write RED preparation tests**
 
-Lock these contracts:
-- only `OptimizationPlan.recommendedActionType === CONTENT_CREATION` may enter this service;
-- proposal is `P9_OPTIMIZATION_PLAN`, has deterministic `automationPreparationKey`, bounded provenance, and is reused on retry;
-- P8 creates a deterministic seed draft only as an AI-workspace input; the seed itself can never be planned/executed automatically;
-- content brief uses existing `createContentBriefTask()`;
-- article generation uses existing `createArticleGenerationTask()` only after the brief is completed;
-- article output must create a newer immutable draft version before plan creation;
-- automatic site/channel selection requires exactly one enabled `GITHUB_GIT / GIT_DRAFT_PR` target and one compatible enabled content channel; zero or multiple matches return `MANUAL_REQUIRED`;
-- P8 validator must produce zero blocking and zero warning codes;
-- exact built operation is `CREATE_CONTENT_PAGE`, risk is classified by P8 as LOW, and exact preview exists;
-- no Git adapter `apply()` is called during preparation.
+Prove:
+- only `CONTENT_CREATION` enters automatic preparation;
+- proposal source is `P9_OPTIMIZATION_PLAN`, with deterministic preparation key and bounded P9 provenance;
+- retry reuses one proposal/draft/AI task chain;
+- `OptimizationPlan.sourceFactReferences` is accepted only as an array of allowlisted `{type,id}` references where type is one of `GROWTH_OPPORTUNITY_IDENTITY`, `GROWTH_OPPORTUNITY_SNAPSHOT`, `GROWTH_OPPORTUNITY_EVIDENCE`; unknown/ref-project mismatch fails manual/blocking;
+- P8 materializes these references as `ContentSourceReference` rows with `internalRef=true`, stable `sourceType`, and bounded identifier/title metadata only; it never copies raw P7 evidence/provider payloads into the AI packet;
+- seed slug is deterministic ASCII: `p9-${candidate.candidateKey.slice(0, 16)}`; title may remain Unicode. AI does not decide target URL/slug;
+- seed draft is never planned; existing `createContentBriefTask()` and `createArticleGenerationTask()` are reused;
+- article completion produces a newer immutable draft version before plan creation;
+- completed brief `evidenceNeeds` with `NEEDS_SOURCE` or `UNCERTAIN` becomes P8 validation `sourceGaps`; therefore `SOURCE_GAP` warning blocks automatic planning/authorization;
+- target resolution requires exactly one enabled `GITHUB_GIT / GIT_DRAFT_PR` site and exactly one enabled channel whose persisted `allowedOperationClasses` explicitly contains `CREATE_CONTENT_PAGE`; zero/multiple/unconfigured matches return `MANUAL_REQUIRED`;
+- generated draft validation has zero blocking/warning codes;
+- exact P8 operation is `CREATE_CONTENT_PAGE`, P8 risk is LOW, and exact preview is persisted;
+- preparation never calls mutation adapter `apply()`.
 
 - [ ] **Step 2: Verify RED**
 
@@ -609,21 +513,18 @@ Lock these contracts:
 npx vitest run tests/integration/autopilot.preparation.test.ts
 ```
 
-- [ ] **Step 3: Implement bounded P8 preparation**
+- [ ] **Step 3: Implement minimal P8 preparation**
 
-Use IDs as the P9->P8 boundary; reload source facts in P8. Use the existing publication AI gateway helpers rather than importing DeepSeek.
-
-Seed draft must be clearly non-authoritative and non-publishable before the generated article revision exists:
+Reload P9 IDs in P8; do not accept client-supplied body/risk/hash/URL. Seed body:
 
 ```ts
-const seedBody = `# ${title}\n\n<!-- Controlled-autopilot seed. P8 article generation is required before planning. -->`
+const seedBody = `# ${candidate.normalizedQuery}\n\n<!-- Controlled-autopilot seed; generated article revision required before planning. -->`
+const slugCandidate = `p9-${candidate.candidateKey.slice(0, 16)}`
 ```
 
-Do not call `buildPublicationPlan()` for version 1 seed. After article materialization, validate the generated revision, obtain the configured target snapshot through a P8-owned mutation-target/preview dependency, build CREATE intent, classify/assert P8 operation policy, then persist the immutable plan/preview.
+Do not call `buildPublicationPlan()` for seed version 1. After article materialization, resolve source gaps from the persisted completed brief; validate generated revision; resolve exactly one explicitly CREATE-enabled Git channel; read target snapshot through a P8-owned adapter/target port; use CREATE intent; call P8 risk/policy functions; create immutable preview.
 
-For prompt continuation, keep the AI worker authoritative transaction unchanged. After a publication brief/article task is durably completed, invoke an injected **best-effort** continuation callback that reloads the draft's P9 proposal provenance and re-enqueues its P9-C run item. Failure of this callback must not retroactively mark the completed AI task failed; daily P9-C reconciliation repairs missed continuation.
-
-Production bootstrap supplies the continuation callback; non-P9 publication tasks produce no P9-C enqueue.
+After a publication brief/article task is durably completed, the AI worker invokes an injected **best-effort** continuation callback. It reloads P9 proposal provenance and re-enqueues the run item. Continuation failure must not mark the already-completed AI task failed; daily reconciliation repairs it. Non-P9 AI tasks produce no P9-C enqueue.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -641,7 +542,7 @@ git commit -m "feat(p9-c): add P8 controlled content preparation"
 
 ---
 
-### Task 7: Add immutable P8 machine authorization with exact LOW-only bindings
+### Task 7: Immutable P8 machine authorization
 
 **Files:**
 - Create: `src/modules/publication/publication-automation-authorization.ts`
@@ -649,48 +550,16 @@ git commit -m "feat(p9-c): add P8 controlled content preparation"
 - Modify: `src/modules/publication/publication.types.ts`
 - Create: `tests/integration/autopilot.authorization.test.ts`
 
-**Interfaces:**
+**Interface:**
 
 ```ts
-export type AutomationAuthorizationRecord = {
-  id: string
-  projectId: string
-  planId: string
-  planVersion: number
-  planHash: string
-  contentVersion: number
-  contentHash: string
-  previewHash: string
-  baseSha: string
-  targetRepository: string
-  targetBranch: string
-  targetBlobHashes: unknown
-  authorizedRiskClass: 'LOW'
-  automationDecisionId: string
-  automationPolicyVersion: string
-  automationPolicyHash: string
-  automationSource: 'CONTROLLED_AUTOPILOT'
-  reservationId: string
-  expiresAt: Date
-}
-
 export async function authorizePublicationAutomation(input: AuthorizePublicationAutomationInput): Promise<AutomationAuthorizationRecord>
 export function assertAutomationAuthorizationCurrent(...): void
 ```
 
-- [ ] **Step 1: Write RED authorization tests**
+- [ ] **Step 1: Write RED tests**
 
-Prove:
-- no `approverActorId` exists on machine authorization;
-- exact project/decision/reservation/plan/preview/content/base/blob binding is frozen;
-- P8 risk must be exactly LOW;
-- exact operations must be exactly `[CREATE_CONTENT_PAGE]`;
-- any blocking/warning/unconfirmed warning rejects authorization;
-- decision must be `AUTOPILOT_READY` and bind the same exact P8 plan/preview;
-- current project/global kill switches must be OFF;
-- reservation must belong to the same project/decision and be RESERVED;
-- expired/stale authorization fails before any mutation adapter work;
-- authorization row is immutable.
+Prove machine authorization has no human approver field; freezes project/decision/reservation/plan/version/hash/content/preview/base/repository/branch/blob/policy identity; requires exact LOW + exact CREATE; requires zero warnings; requires `AUTOPILOT_READY` decision bound to same exact P8 artifacts; requires current OFF kill switches and RESERVED matching capacity; expired/stale auth fails before adapter work; row is immutable.
 
 - [ ] **Step 2: Verify RED**
 
@@ -698,11 +567,9 @@ Prove:
 npx vitest run tests/integration/autopilot.authorization.test.ts
 ```
 
-- [ ] **Step 3: Implement P8-owned authorization validator**
+- [ ] **Step 3: Implement P8 validator**
 
-Reuse the same immutable comparison semantics as human approval for plan/version/hash, content hash, preview hash, base SHA, repository, branch, and touched blobs, but do not call or weaken `approvePublicationPlan()`.
-
-Machine-specific checks are additive: LOW only, exact CREATE operation, policy/decision identity, live kill switches, reservation ownership/currentness, expiry.
+Reuse human approval's immutable binding semantics without calling or weakening `approvePublicationPlan()`. Add machine-only checks for exact LOW/CREATE, decision/policy identity, live kill switches, reservation ownership/currentness, and expiry.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -720,7 +587,7 @@ git commit -m "feat(p9-c): add P8 automation authorization"
 
 ---
 
-### Task 8: Refactor P8 execution into typed human/machine authorization paths while preserving one worker
+### Task 8: Typed human/machine P8 execution with one existing worker
 
 **Files:**
 - Create: `src/modules/publication/publication-execution.service.ts`
@@ -732,51 +599,20 @@ git commit -m "feat(p9-c): add P8 automation authorization"
 - Extend: `tests/integration/publication.execution.test.ts`
 - Create: `tests/integration/autopilot.execution.test.ts`
 
-**Typed creation surface:**
+**Creation API:**
 
 ```ts
-export class PublicationExecutionService {
+class PublicationExecutionService {
   createHumanApprovedExecution(input: { projectId: string; planId: string }): Promise<PublicationExecution>
-  createAutomationAuthorizedExecution(input: {
-    projectId: string
-    planId: string
-    automationAuthorizationId: string
-  }): Promise<PublicationExecution>
+  createAutomationAuthorizedExecution(input: { projectId: string; planId: string; automationAuthorizationId: string }): Promise<PublicationExecution>
 }
 ```
 
-Execution keys must be domain-separated by authorization source, for example:
+Execution key is domain-separated by `PUBLICATION_EXECUTION_KEY_V2`, authorization kind, plan ID, authorization ID, and plan hash.
 
-```text
-PUBLICATION_EXECUTION_KEY_V2
-HUMAN_APPROVAL | AUTOMATION_AUTHORIZATION
-planId
-authorizationId
-planHash
-```
+- [ ] **Step 1: Write RED tests**
 
-- [ ] **Step 1: Write RED dual-authorization tests**
-
-Human regression must continue to assert:
-
-```text
-APPROVED -> QUEUED -> EXECUTING -> PR_CREATED
-```
-
-Machine test must assert:
-
-```text
-AUTOMATION_AUTHORIZED -> QUEUED -> EXECUTING -> PR_CREATED
-```
-
-Also prove:
-- both use the same `processPublicationExecutionJob()`;
-- machine path validates its machine authorization before adapter resolution;
-- human path still validates `PublicationApproval` exactly as before;
-- live target base/blob drift still blocks both paths;
-- duplicate delivery after `PR_CREATED` performs zero additional adapter reads/writes;
-- route `/execute` remains human-only and selects human approval, never machine authorization;
-- there is no generic `authorizationId` creation API that can conflate sources.
+Human chain remains `APPROVED -> QUEUED -> EXECUTING -> PR_CREATED`; machine chain is `AUTOMATION_AUTHORIZED -> QUEUED -> EXECUTING -> PR_CREATED`. Both use `processPublicationExecutionJob()`. Machine validates machine auth before adapter resolution; human continues exact approval validation; live target drift blocks both; duplicate PR_CREATED delivery performs zero extra reads/writes. Existing `/execute` remains human-only. No generic untyped authorization ID API is introduced.
 
 - [ ] **Step 2: Verify RED**
 
@@ -784,9 +620,7 @@ Also prove:
 npx vitest run tests/unit/publication.execution-worker.test.ts tests/integration/publication.execution.test.ts tests/integration/autopilot.execution.test.ts
 ```
 
-- [ ] **Step 3: Implement discriminated authorization context**
-
-Refactor worker context to:
+- [ ] **Step 3: Implement discriminated authorization**
 
 ```ts
 type PublicationExecutionAuthorization =
@@ -794,9 +628,7 @@ type PublicationExecutionAuthorization =
   | { kind: 'AUTOPILOT_AUTHORIZATION'; authorization: AutomationAuthorizationRecord }
 ```
 
-Load exactly the relation selected by the execution row. A row with invalid authorization cardinality fails closed. Validate stored authorization before resolving adapter; validate live target afterward. Keep adapter selection/apply/transition/PR logic shared.
-
-Human route `executePlan()` delegates to `PublicationExecutionService.createHumanApprovedExecution()` and existing `PublicationExecutionQueue` instead of owning execution persistence itself.
+Load exactly the selected relation. Invalid cardinality fails closed. Validate stored authorization before adapter resolution and live target afterward. Keep adapter resolution/apply/transition/Draft-PR logic shared. Route delegates human execution creation to the new service.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -814,7 +646,7 @@ git commit -m "refactor(p9-c): support typed P8 machine execution authorization"
 
 ---
 
-### Task 9: Complete the P9-C worker state machine, bounded observability, and idempotent Draft-PR handoff
+### Task 9: Complete P9-C worker, observability, idempotent P8 handoff
 
 **Files:**
 - Modify: `src/modules/optimization-autopilot/autopilot.service.ts`
@@ -823,38 +655,29 @@ git commit -m "refactor(p9-c): support typed P8 machine execution authorization"
 - Create: `src/modules/optimization-autopilot/autopilot-observability.ts`
 - Create: `tests/integration/autopilot.worker.test.ts`
 
-**Worker flow:**
+**Flow:**
 
 ```text
-load run item / plan / candidate / project / policy
--> entitlement + enabled + kill-switch gates
--> freshness / verification-pause / conflict gates
--> if unsupported action: immutable MANUAL_REQUIRED decision
--> if P8 not ready: immutable P8_PREPARATION_REQUIRED decision + call P8 preparation port
--> when P8 exact plan/preview ready: re-evaluate all exact P8 gates
--> reserve quota/concurrency atomically
--> recheck project/global kill switches
--> persist immutable AUTOPILOT_READY decision bound to exact P8 artifacts
+load source/project/policy
+-> entitlement + enabled + kill switches
+-> freshness + verification pause + conflicts
+-> unsupported action => immutable MANUAL_REQUIRED
+-> missing P8 => immutable P8_PREPARATION_REQUIRED + P8 preparation
+-> exact P8 ready => exact risk/operation/validation/capability/target gates
+-> atomically reserve quota/concurrency
+-> recheck kill switches
+-> immutable AUTOPILOT_READY decision bound to exact P8 plan/preview
 -> create/reuse P8 machine authorization
 -> create/reuse AUTOMATION_AUTHORIZED execution
--> consume reservation
--> enqueue existing site-mutation-execution queue
+-> mark reservation CONSUMED
+-> enqueue existing site-mutation-execution
 ```
 
-If reservation fails, persist `DEFERRED_QUOTA` or policy-blocked concurrency reason for that immutable evaluation; do not manufacture `AUTOPILOT_READY`.
+Reservation failure yields `DEFERRED_QUOTA` or stable concurrency policy reason, never `AUTOPILOT_READY`.
 
 - [ ] **Step 1: Write RED full-worker tests**
 
-Prove:
-- policy disabled creates no P8 proposal/AI task/reservation/authorization/execution;
-- Standard entitlement block occurs before restricted persistence/AI/Git work;
-- unsupported P9 action yields `MANUAL_REQUIRED` and no P8 automation work;
-- first CONTENT_CREATION evaluation may produce `P8_PREPARATION_REQUIRED` and start/reuse P8 preparation;
-- final exact P8 LOW CREATE plan produces one AUTOPILOT_READY decision, one reservation, one machine authorization, one execution queue job;
-- retry/replay produces no duplicate decision for the same identity, no duplicate reservation, authorization, execution, AI request, or Draft PR;
-- final kill-switch recheck blocks before authorization/execution enqueue even if earlier evaluation passed;
-- MEDIUM/HIGH, warnings, stale source, conflict, verification pause, target drift, quota exhaustion all stop before adapter apply;
-- P7/P9-A/P9-B source rows are byte-for-byte/logically unchanged after worker processing.
+Prove disabled/Standard/unsupported action paths create no restricted P8 work; first valid content evaluation can prepare P8; final exact ready path creates exactly one decision/reservation/auth/execution queue job; replay creates no duplicates; final kill-switch recheck blocks before auth/enqueue; MEDIUM/HIGH/warning/stale/conflict/verification pause/quota/concurrency/target drift stop before adapter apply; P7/P9-A/P9-B source rows remain unchanged.
 
 - [ ] **Step 2: Verify RED**
 
@@ -862,11 +685,11 @@ Prove:
 npx vitest run tests/integration/autopilot.worker.test.ts
 ```
 
-- [ ] **Step 3: Implement full orchestration**
+- [ ] **Step 3: Implement worker and bounded events**
 
-Classify deterministic policy failures as non-retryable. Retry only infrastructure failures already recognized by existing DB/Redis/provider/Git boundaries. P9-C worker itself never calls Git mutation transport.
+Retry infrastructure failures only; deterministic policy results are non-retryable. P9-C never calls Git transport.
 
-Emit only bounded events:
+Events:
 
 ```text
 optimization.autopilot.decision.created
@@ -875,7 +698,7 @@ optimization.autopilot.authorization.created
 optimization.autopilot.execution.queued
 ```
 
-Allowed fields: IDs, status/reason code, policy version, P8 plan/execution IDs, risk class, operation count, UTC date. Do not emit article bodies, source query text, prompts/responses, diffs, policy JSON, credentials, tokens, or provider payloads.
+Allowlist IDs/status/reason/policyVersion/P8 IDs/risk/operationCount/utcDate only. Exclude bodies, query text, prompts/responses, diffs, policy JSON, provider payloads, tokens, credentials.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -893,29 +716,31 @@ git commit -m "feat(p9-c): complete controlled autopilot worker"
 
 ---
 
-### Task 10: Add strict project-scoped policy API and app wiring
+### Task 10: Strict project policy API and app wiring
 
 **Files:**
 - Create: `src/modules/optimization-autopilot/autopilot.routes.ts`
 - Modify: `src/app.ts`
 - Create: `tests/integration/autopilot.api.test.ts`
 
-**Routes:**
+Routes:
 
 ```text
 GET /api/v1/projects/:projectId/optimization/autopilot-policy
 PUT /api/v1/projects/:projectId/optimization/autopilot-policy
 ```
 
-Both require `CONTROLLED_AUTOPILOT` before restricted service calls. GET is persisted-read only. PUT actor is server-derived as `project-api:${projectId}`.
+Both run `requireFeature('CONTROLLED_AUTOPILOT')` before API port. GET is persisted-read only. PUT actor is `project-api:${projectId}`.
 
-**Strict PUT schema:**
+- [ ] **Step 1: Write RED API tests**
+
+Strict PUT:
 
 ```ts
-const autopilotPolicySchema = z.object({
+z.object({
   enabled: z.boolean(),
   allowedRiskClass: z.literal('LOW').optional(),
-  allowedOperationClasses: z.array(z.literal('CREATE_CONTENT_PAGE')).min(1).max(1).optional(),
+  allowedOperationClasses: z.array(z.literal('CREATE_CONTENT_PAGE')).length(1).optional(),
   dailyDraftPrLimit: z.number().int().min(1).max(10).optional(),
   maxConcurrentRuns: z.number().int().min(1).max(3).optional(),
   requireFreshEvidence: z.boolean().optional(),
@@ -925,16 +750,7 @@ const autopilotPolicySchema = z.object({
 }).strict()
 ```
 
-- [ ] **Step 1: Write RED API tests**
-
-Prove:
-- Standard GET/PUT returns 403 before API port call;
-- Advanced/Enterprise can read/write;
-- GET on missing row returns safe default projection but creates no DB row;
-- unknown/client-owned fields (`enabledBy`, `updatedBy`, policyVersion, decisionStatus, planHash, riskClass MEDIUM/HIGH) are rejected;
-- actor identity is server-derived;
-- project IDs remain scoped; cross-project policy access does not leak data;
-- GET causes zero queue/AI/provider/Git side effects.
+Prove Standard fails before port; Advanced/Enterprise succeed; missing policy GET returns safe default projection without creating a row; client fields (`enabledBy`, `updatedBy`, `policyVersion`, status/hashes, MEDIUM/HIGH) reject; actor is server-derived; cross-project isolation; GET triggers no queue/AI/provider/Git work.
 
 - [ ] **Step 2: Verify RED**
 
@@ -942,18 +758,9 @@ Prove:
 npx vitest run tests/integration/autopilot.api.test.ts
 ```
 
-- [ ] **Step 3: Implement routes/app option**
+- [ ] **Step 3: Implement routes/app injection**
 
-Add:
-
-```ts
-export interface AppOptions {
-  // existing fields...
-  optimizationAutopilotApi?: OptimizationAutopilotApiPort
-}
-```
-
-Mount under `/api/v1` next to optimization orchestration routes. Do not add an execution/evaluate public endpoint in P9-C V1.
+Add `optimizationAutopilotApi?: OptimizationAutopilotApiPort` to `AppOptions`, mount under `/api/v1`, and expose no public evaluate/execute endpoint in P9-C V1.
 
 - [ ] **Step 4: Verify GREEN**
 
@@ -971,7 +778,7 @@ git commit -m "feat(p9-c): expose controlled autopilot policy API"
 
 ---
 
-### Task 11: Add authority scans, E2E safety contract, operator docs, and exact-head release gate
+### Task 11: Authority scans, E2E, docs, and exact-head release gate
 
 **Files:**
 - Create: `tests/unit/autopilot.boundary.test.ts`
@@ -979,11 +786,11 @@ git commit -m "feat(p9-c): expose controlled autopilot policy API"
 - Create: `docs/development/p9-c-controlled-autopilot.md`
 - Review/extend: `tests/unit/queues.test.ts`
 - Review/extend: `tests/unit/worker-bootstrap.test.ts`
-- Do not modify `.github/workflows/ci.yml` unless an independently proven CI defect requires a separate reviewed change.
+- Do not modify `.github/workflows/ci.yml` unless an independently proven CI defect is handled as a separate reviewed change.
 
-- [ ] **Step 1: Write/complete authority-boundary tests**
+- [ ] **Step 1: Add static authority tests**
 
-Static scan `src/modules/optimization-autopilot/**` and reject imports/references to:
+Scan P9-C implementation and reject imports/references to:
 
 ```text
 github-mutation.adapter
@@ -992,50 +799,21 @@ growth-score
 growth-detector
 mergePullRequest
 merge_pull_request
-deploy
-force push
 forcePush
-auto rollback
 autoRollback
 ```
 
-Also assert:
-- one P9-C queue only;
-- no P9-C module writes `OptimizationCandidate`, `OptimizationPlan`, `OptimizationRun`, or `OptimizationRunItem` UPDATE/DELETE methods;
-- no automatic path calls PR merge or deployment APIs;
-- P8 machine authorization cannot store `approverActorId`;
-- human approval module remains unchanged in semantic authority.
+Also assert only one P9-C queue, no P9-C UPDATE/DELETE methods for P7/P9-A/P9-B authority tables, no PR merge/deploy path, machine auth has no approver field, and human approval semantics remain separate.
 
-- [ ] **Step 2: Add focused E2E safety contract**
+- [ ] **Step 2: Add Chromium E2E safety contract**
 
-`tests/e2e/p9c-controlled-autopilot.spec.ts` must cover persisted HTTP surfaces without requiring live Git/provider credentials:
-- Standard cannot access controlled-autopilot policy;
-- Advanced project policy is off by default;
-- GET policy page/API has zero mutation side effects;
-- enabling policy with `CREATE_CONTENT_PAGE`, quota and kill-switch settings persists exact values;
-- malformed/forbidden MEDIUM/HIGH or extra fields are rejected;
-- UI/API copy never claims automatic merge/deploy.
+`tests/e2e/p9c-controlled-autopilot.spec.ts` covers: Standard denied; Advanced policy off by default; GET no side effects; safe policy values persist; forbidden MEDIUM/HIGH/unknown fields reject; UI/API wording does not claim auto merge/deploy. Real external Git/provider writes are not used; Draft-PR behavior remains integration-tested with injected fakes.
 
-The actual Draft-PR adapter path remains covered with injected fake transports in Vitest integration tests; CI must not use real external writes.
+- [ ] **Step 3: Write operator docs**
 
-- [ ] **Step 3: Write operator/development documentation**
+`docs/development/p9-c-controlled-autopilot.md` documents OFF default, feature matrix, exact CREATE-only path, deterministic hash slug, internal source-reference projection, source-gap stop, channel explicit CREATE allowlist, global/project kill switches, policy bounds, UTC quota/concurrency, human vs machine authorization, P8 authority, queue/scheduler, reason-code triage, AI continuation, no merge/deploy/auto-rollback, and operational disable/rollback via kill switch + policy disable without deleting audit history.
 
-`docs/development/p9-c-controlled-autopilot.md` must document:
-- OFF-by-default behavior;
-- feature matrix;
-- exact V1 supported path;
-- global/project kill switches and fail-closed env parsing;
-- policy fields and bounds;
-- quota/concurrency UTC semantics;
-- machine authorization vs human approval;
-- P8 plan/preview/risk/validation authority;
-- queue/scheduler names;
-- reason-code triage;
-- AI continuation semantics;
-- no merge/deploy/rollback authority;
-- rollback path for the P9-C feature itself: kill switch ON + policy disable, without deleting history.
-
-- [ ] **Step 4: Run focused regression before full gate**
+- [ ] **Step 4: Focused release regression**
 
 ```bash
 npx prisma validate
@@ -1062,7 +840,7 @@ npm run typecheck
 npm run build
 ```
 
-- [ ] **Step 5: Run full local regression**
+- [ ] **Step 5: Full local regression**
 
 ```bash
 npm test
@@ -1070,23 +848,9 @@ npm run test:e2e
 npm run build
 ```
 
-Expected: all current tests pass; no live credentials or external writes required.
+- [ ] **Step 6: Manual final diff review**
 
-- [ ] **Step 6: Manual changed-file authority review**
-
-Review the final diff and confirm:
-- no P7 scoring/detector changes;
-- no P9-A immutable artifact mutation;
-- no P9-B state authority leak;
-- no fake human approval;
-- machine status is `AUTOMATION_AUTHORIZED`;
-- P8 is still the only exact risk/plan/preview/mutation authority;
-- automatic operation is exact CREATE only;
-- quota is transactionally serialized;
-- kill switch recheck exists immediately before machine authorization/enqueue;
-- no merge/deploy/automatic rollback path;
-- migrations are additive only;
-- no unrelated dependency/CI changes.
+Confirm no P7 score/detector changes; no P9-A/P9-B authority mutation; no fake approval; machine state `AUTOMATION_AUTHORIZED`; P8 remains exact risk/plan/preview/mutation authority; automatic path exact CREATE only; source-gap/channel/slug rules are enforced; reservation is serialized; kill switch rechecked immediately before machine auth/enqueue; no merge/deploy/auto-rollback; additive migrations only; no unrelated dependency/CI changes.
 
 - [ ] **Step 7: Commit release docs/tests**
 
@@ -1095,44 +859,39 @@ git add tests/unit/autopilot.boundary.test.ts tests/e2e/p9c-controlled-autopilot
 git commit -m "docs(p9-c): add controlled autopilot release gate"
 ```
 
-- [ ] **Step 8: Open/update Draft PR and require exact-head CI**
+- [ ] **Step 8: Open/update Draft PR**
 
-PR title:
+Title:
 
 ```text
 P9-C: add controlled autopilot policy
 ```
 
-PR remains Draft until the exact PR head has all three GitHub Actions jobs successful:
+Do not mark Ready until the exact PR head has:
 
 ```text
-verify            ✅
+verify            ✅  # Prisma validate/generate/migrate, Typecheck, full Vitest, Build
 production-audit  ✅
-e2e               ✅
+e2e               ✅  # full Chromium suite
 ```
 
-`verify` must include successful Prisma validate/generate/migrate, Typecheck, full Vitest, and Build. `e2e` must run the full Chromium suite. `production-audit` must retain the deployable runtime dependency audit.
+- [ ] **Step 9: Final exact-head review**
 
-- [ ] **Step 9: Final review gate**
-
-Before marking Ready for Review:
-- exact final head equals the head verified by all three jobs;
-- unresolved review threads = 0;
-- changed-file review is complete;
-- no release assertion relies on an earlier superseded head;
-- do not merge or deploy.
+Exact head must equal the head verified by all three jobs; unresolved review threads=0; manual changed-file authority review complete; no success claim based on superseded CI. Do not merge or deploy.
 
 ## Definition of Done
 
-P9-C is complete only when an explicitly opted-in Advanced/Enterprise project can reach the following path under fully persisted, reproducible, fail-closed gates:
+P9-C is complete only when this exact fail-closed path is proven:
 
 ```text
 P9-A CONTENT_CREATION
 -> P9-B READY_FOR_POLICY
--> P9-C deterministic policy evaluation
--> P8-owned content preparation through existing P4/P8 AI tasks
--> exact P8 CREATE_CONTENT_PAGE plan + preview
--> exact P8 LOW risk + warning-free deterministic validation
+-> P9-C persisted policy gates
+-> P8 existing content brief/article AI pipeline
+-> source gaps = none
+-> deterministic safe slug + explicitly CREATE-enabled Git channel
+-> exact P8 CREATE_CONTENT_PAGE plan/preview
+-> exact P8 LOW + zero warnings
 -> race-safe quota/concurrency reservation
 -> immutable P9 AUTOPILOT_READY decision
 -> immutable P8 PublicationAutomationAuthorization
@@ -1142,4 +901,4 @@ P9-A CONTENT_CREATION
 -> human merge / human deployment
 ```
 
-Any ambiguity, stale state, unsupported action/operation, warning, MEDIUM/HIGH risk, conflict, quota/concurrency block, verification pause, kill switch, or revision drift must stop automatic execution without a workaround.
+Any ambiguity, stale/unknown evidence, unsupported action/operation, source gap, warning, MEDIUM/HIGH risk, channel ambiguity, conflict, quota/concurrency block, verification pause, kill switch, or revision drift stops automation without workaround.
