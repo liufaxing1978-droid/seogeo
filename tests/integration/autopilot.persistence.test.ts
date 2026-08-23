@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
 import { prisma } from '../../src/db/prisma.js';
 import {
@@ -20,10 +21,26 @@ type RegclassRow = {
 };
 
 type NameRow = { name: string };
+type TestDb = typeof prisma | Prisma.TransactionClient;
 
-async function createProject() {
+const ROLLBACK_SENTINEL = 'P9_C_PERSISTENCE_TEST_ROLLBACK';
+
+async function withRollback(run: (db: Prisma.TransactionClient) => Promise<void>): Promise<void> {
+  try {
+    await prisma.$transaction(async (tx) => {
+      await run(tx);
+      throw new Error(ROLLBACK_SENTINEL);
+    });
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== ROLLBACK_SENTINEL) {
+      throw error;
+    }
+  }
+}
+
+async function createProject(db: TestDb = prisma) {
   const suffix = randomUUID();
-  return prisma.project.create({
+  return db.project.create({
     data: {
       name: `P9-C ${suffix}`,
       slug: `p9-c-${suffix}`,
@@ -33,12 +50,47 @@ async function createProject() {
   });
 }
 
-async function createDecisionFixture(projectId: string) {
-  const candidate = await prisma.optimizationCandidate.create({
+async function createDecisionFixture(db: TestDb, projectId: string) {
+  const growthIdentity = await db.growthOpportunityIdentity.create({
     data: {
       projectId,
-      growthOpportunityIdentityId: randomUUID(),
-      growthSnapshotId: randomUUID(),
+      opportunityKey: `p9-c-test:${randomUUID()}`,
+      identityVersion: 'GROWTH_OPPORTUNITY_IDENTITY_V1',
+      identityType: 'QUERY_PAGE_GROWTH',
+      normalizedQuery: 'controlled autopilot test',
+      canonicalPage: null,
+      identityPayload: {}
+    }
+  });
+
+  const growthSnapshot = await db.growthOpportunitySnapshot.create({
+    data: {
+      opportunityIdentityId: growthIdentity.id,
+      projectId,
+      snapshotVersion: 'GROWTH_OPPORTUNITY_SNAPSHOT_V1',
+      formulaVersion: 'GROWTH_SCORE_V1',
+      currentWindowStart: new Date('2026-08-01T00:00:00.000Z'),
+      currentWindowEnd: new Date('2026-08-07T00:00:00.000Z'),
+      previousWindowStart: new Date('2026-07-25T00:00:00.000Z'),
+      previousWindowEnd: new Date('2026-07-31T00:00:00.000Z'),
+      dataCutoffAt: new Date('2026-08-08T00:00:00.000Z'),
+      primaryType: 'CONTENT_GAP',
+      secondaryTypes: [],
+      score: 80,
+      priority: 'HIGH',
+      scoreState: 'KNOWN',
+      evidenceQuality: 'COMPLETE',
+      evidenceCoverage: 85,
+      rankingEligible: true,
+      sourceProvenance: {}
+    }
+  });
+
+  const candidate = await db.optimizationCandidate.create({
+    data: {
+      projectId,
+      growthOpportunityIdentityId: growthIdentity.id,
+      growthSnapshotId: growthSnapshot.id,
       candidateVersion: 'OPTIMIZATION_CANDIDATE_V1',
       candidateKey: `candidate:${randomUUID()}`,
       marketScopeMode: 'CONFIGURED_MARKET',
@@ -60,7 +112,7 @@ async function createDecisionFixture(projectId: string) {
     }
   });
 
-  const plan = await prisma.optimizationPlan.create({
+  const plan = await db.optimizationPlan.create({
     data: {
       candidateId: candidate.id,
       projectId,
@@ -77,7 +129,7 @@ async function createDecisionFixture(projectId: string) {
     }
   });
 
-  const run = await prisma.optimizationRun.create({
+  const run = await db.optimizationRun.create({
     data: {
       projectId,
       runVersion: 'OPTIMIZATION_RUN_V1',
@@ -93,7 +145,7 @@ async function createDecisionFixture(projectId: string) {
     }
   });
 
-  const runItem = await prisma.optimizationRunItem.create({
+  const runItem = await db.optimizationRunItem.create({
     data: {
       runId: run.id,
       projectId,
@@ -172,83 +224,87 @@ describe('P9-C persistence foundation', () => {
   });
 
   it('treats a missing policy as disabled without creating a row', async () => {
-    const project = await createProject();
-    const repository = new OptimizationAutopilotRepository(prisma);
+    await withRollback(async (db) => {
+      const project = await createProject(db);
+      const repository = new OptimizationAutopilotRepository(db as typeof prisma);
 
-    const before = await prisma.autopilotPolicy.count({ where: { projectId: project.id } });
-    expect(await repository.getPolicy(project.id)).toBeNull();
-    const after = await prisma.autopilotPolicy.count({ where: { projectId: project.id } });
+      const before = await db.autopilotPolicy.count({ where: { projectId: project.id } });
+      expect(await repository.getPolicy(project.id)).toBeNull();
+      const after = await db.autopilotPolicy.count({ where: { projectId: project.id } });
 
-    expect(before).toBe(0);
-    expect(after).toBe(0);
+      expect(before).toBe(0);
+      expect(after).toBe(0);
+    });
   });
 
   it('upserts policy audit state and reuses an identical immutable decision', async () => {
-    const project = await createProject();
-    const repository = new OptimizationAutopilotRepository(prisma);
-    const policyInput = normalizeAutopilotPolicy({ enabled: true });
-    const policy = await repository.upsertPolicy(project.id, policyInput, 'actor:task-2');
-    const fixture = await createDecisionFixture(project.id);
-    const policySnapshot = toAutopilotPolicySnapshot(policyInput);
-    const sourceSnapshot = {
-      optimizationPlanId: fixture.plan.id,
-      candidateId: fixture.candidate.id,
-      growthOpportunityIdentityId: fixture.candidate.growthOpportunityIdentityId,
-      growthSnapshotId: fixture.candidate.growthSnapshotId,
-      marketScopeMode: fixture.candidate.marketScopeMode,
-      marketCode: fixture.candidate.marketCode,
-      locale: fixture.candidate.locale,
-      recommendedActionType: fixture.plan.recommendedActionType,
-      growthEvidenceCoverage: fixture.candidate.growthEvidenceCoverage,
-      growthScoreState: fixture.candidate.growthScoreState,
-      growthRankingEligible: fixture.candidate.growthRankingEligible,
-      growthLifecycleStatus: fixture.candidate.growthLifecycleStatus,
-      candidateCreatedAt: fixture.candidate.createdAt.toISOString(),
-      planCreatedAt: fixture.plan.createdAt.toISOString()
-    };
-    const decisionKey = buildOptimizationAutopilotDecisionKey({
-      projectId: project.id,
-      runItemId: fixture.runItem.id,
-      optimizationPlanId: fixture.plan.id,
-      policyVersion: policy.policyVersion,
-      policySnapshot,
-      sourceSnapshot,
-      p8PlanId: null,
-      p8PreviewId: null
+    await withRollback(async (db) => {
+      const project = await createProject(db);
+      const repository = new OptimizationAutopilotRepository(db as typeof prisma);
+      const policyInput = normalizeAutopilotPolicy({ enabled: true });
+      const policy = await repository.upsertPolicy(project.id, policyInput, 'actor:task-2');
+      const fixture = await createDecisionFixture(db, project.id);
+      const policySnapshot = toAutopilotPolicySnapshot(policyInput);
+      const sourceSnapshot = {
+        optimizationPlanId: fixture.plan.id,
+        candidateId: fixture.candidate.id,
+        growthOpportunityIdentityId: fixture.candidate.growthOpportunityIdentityId,
+        growthSnapshotId: fixture.candidate.growthSnapshotId,
+        marketScopeMode: fixture.candidate.marketScopeMode,
+        marketCode: fixture.candidate.marketCode,
+        locale: fixture.candidate.locale,
+        recommendedActionType: fixture.plan.recommendedActionType,
+        growthEvidenceCoverage: fixture.candidate.growthEvidenceCoverage,
+        growthScoreState: fixture.candidate.growthScoreState,
+        growthRankingEligible: fixture.candidate.growthRankingEligible,
+        growthLifecycleStatus: fixture.candidate.growthLifecycleStatus,
+        candidateCreatedAt: fixture.candidate.createdAt.toISOString(),
+        planCreatedAt: fixture.plan.createdAt.toISOString()
+      };
+      const decisionKey = buildOptimizationAutopilotDecisionKey({
+        projectId: project.id,
+        runItemId: fixture.runItem.id,
+        optimizationPlanId: fixture.plan.id,
+        policyVersion: policy.policyVersion,
+        policySnapshot,
+        sourceSnapshot,
+        p8PlanId: null,
+        p8PreviewId: null
+      });
+      const input = {
+        projectId: project.id,
+        runId: fixture.run.id,
+        runItemId: fixture.runItem.id,
+        optimizationPlanId: fixture.plan.id,
+        policyId: policy.id,
+        policyVersion: policy.policyVersion,
+        policySnapshot,
+        sourceSnapshot,
+        status: 'P8_PREPARATION_REQUIRED' as const,
+        reasonCodes: ['AUTOPILOT_P8_PREPARATION_REQUIRED'],
+        p8PlanId: null,
+        p8PreviewId: null,
+        decisionKey
+      };
+
+      expect(policy).toMatchObject({
+        projectId: project.id,
+        enabled: true,
+        enabledBy: 'actor:task-2',
+        updatedBy: 'actor:task-2'
+      });
+      expect(policy.enabledAt).not.toBeNull();
+
+      const first = await repository.createOrGetDecision(input);
+      const second = await repository.createOrGetDecision(input);
+
+      expect(second.id).toBe(first.id);
+      expect(await db.optimizationAutopilotDecision.count({ where: { decisionKey } })).toBe(1);
+
+      await expect(repository.createOrGetDecision({
+        ...input,
+        sourceSnapshot: { ...sourceSnapshot, growthEvidenceCoverage: 99 }
+      })).rejects.toThrow('AUTOPILOT_DECISION_IDENTITY_COLLISION');
     });
-    const input = {
-      projectId: project.id,
-      runId: fixture.run.id,
-      runItemId: fixture.runItem.id,
-      optimizationPlanId: fixture.plan.id,
-      policyId: policy.id,
-      policyVersion: policy.policyVersion,
-      policySnapshot,
-      sourceSnapshot,
-      status: 'P8_PREPARATION_REQUIRED' as const,
-      reasonCodes: ['AUTOPILOT_P8_PREPARATION_REQUIRED'],
-      p8PlanId: null,
-      p8PreviewId: null,
-      decisionKey
-    };
-
-    expect(policy).toMatchObject({
-      projectId: project.id,
-      enabled: true,
-      enabledBy: 'actor:task-2',
-      updatedBy: 'actor:task-2'
-    });
-    expect(policy.enabledAt).not.toBeNull();
-
-    const first = await repository.createOrGetDecision(input);
-    const second = await repository.createOrGetDecision(input);
-
-    expect(second.id).toBe(first.id);
-    expect(await prisma.optimizationAutopilotDecision.count({ where: { decisionKey } })).toBe(1);
-
-    await expect(repository.createOrGetDecision({
-      ...input,
-      sourceSnapshot: { ...sourceSnapshot, growthEvidenceCoverage: 99 }
-    })).rejects.toThrow('AUTOPILOT_DECISION_IDENTITY_COLLISION');
   });
 });
