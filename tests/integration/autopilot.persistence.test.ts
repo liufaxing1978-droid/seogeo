@@ -12,6 +12,9 @@ import {
 import {
   OptimizationAutopilotRepository
 } from '../../src/modules/optimization-autopilot/autopilot.repository.js';
+import {
+  OptimizationAutopilotService
+} from '../../src/modules/optimization-autopilot/autopilot.service.js';
 
 type RegclassRow = {
   policy: string | null;
@@ -234,6 +237,60 @@ describe('P9-C persistence foundation', () => {
 
       expect(before).toBe(0);
       expect(after).toBe(0);
+    });
+  });
+
+  it('loads a run item only inside its owning project', async () => {
+    await withRollback(async (db) => {
+      const project = await createProject(db);
+      const fixture = await createDecisionFixture(db, project.id);
+      const repository = new OptimizationAutopilotRepository(db as typeof prisma);
+      const service = new OptimizationAutopilotService(repository);
+
+      expect(await service.loadRunItemContext(fixture.runItem.id, project.id)).toEqual({
+        runItemId: fixture.runItem.id,
+        projectId: project.id,
+        runId: fixture.run.id,
+        optimizationPlanId: fixture.plan.id
+      });
+      expect(await service.loadRunItemContext(fixture.runItem.id, randomUUID())).toBeNull();
+    });
+  });
+
+  it('lists ready run items until their current plan has an autopilot decision', async () => {
+    await withRollback(async (db) => {
+      const project = await createProject(db);
+      const repository = new OptimizationAutopilotRepository(db as typeof prisma);
+      const service = new OptimizationAutopilotService(repository);
+      const policyInput = normalizeAutopilotPolicy({ enabled: true });
+      const policy = await repository.upsertPolicy(project.id, policyInput, 'actor:task-2-reconcile');
+      const fixture = await createDecisionFixture(db, project.id);
+
+      expect(await service.listReadyItemsWithoutEffectiveDecision(100)).toContainEqual({
+        id: fixture.runItem.id,
+        projectId: project.id
+      });
+
+      await repository.createOrGetDecision({
+        projectId: project.id,
+        runId: fixture.run.id,
+        runItemId: fixture.runItem.id,
+        optimizationPlanId: fixture.plan.id,
+        policyId: policy.id,
+        policyVersion: policy.policyVersion,
+        policySnapshot: toAutopilotPolicySnapshot(policyInput),
+        sourceSnapshot: { optimizationPlanId: fixture.plan.id },
+        status: 'P8_PREPARATION_REQUIRED',
+        reasonCodes: ['AUTOPILOT_P8_PREPARATION_REQUIRED'],
+        p8PlanId: null,
+        p8PreviewId: null,
+        decisionKey: `test-decision:${randomUUID()}`
+      });
+
+      expect(await service.listReadyItemsWithoutEffectiveDecision(100)).not.toContainEqual({
+        id: fixture.runItem.id,
+        projectId: project.id
+      });
     });
   });
 
