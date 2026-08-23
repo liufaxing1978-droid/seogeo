@@ -331,8 +331,8 @@ describe('P9-C race-safe autopilot reservations', () => {
       reserveAutopilotCapacity(reserveInput(project.id, d2.id))
     ]);
 
-    expect(results.filter((result) => result.reserved)).toHaveLength(1);
-    expect(results.filter((result) => !result.reserved)).toEqual([
+    expect(results.filter((result: { reserved: boolean }) => result.reserved)).toHaveLength(1);
+    expect(results.filter((result: { reserved: boolean }) => !result.reserved)).toEqual([
       { reserved: false, reasonCode: 'AUTOPILOT_DAILY_QUOTA_EXHAUSTED' }
     ]);
   });
