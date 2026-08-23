@@ -176,7 +176,7 @@ async function createExactP8Fixture(
       metaTitle: null,
       metaDescription: null,
       canonicalCandidate: null,
-      schemaJson: null,
+      schemaJson: undefined,
       author: null,
       language: draft.language,
       contentHash,
