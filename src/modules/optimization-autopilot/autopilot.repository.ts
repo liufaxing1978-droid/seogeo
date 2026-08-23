@@ -1,5 +1,6 @@
 import {
   Prisma,
+  type AutopilotExecutionReservation,
   type AutopilotPolicy,
   type OptimizationAutopilotDecision
 } from '@prisma/client';
@@ -454,6 +455,89 @@ export class OptimizationAutopilotRepository {
       select: { id: true }
     });
     return authorization !== null;
+  }
+
+  async reserveAutopilotCapacity(input: {
+    projectId: string;
+    decisionId: string;
+    utcDate: string;
+    utcDateValue: Date;
+    dailyDraftPrLimit: number;
+    maxConcurrentRuns: number;
+  }): Promise<
+    | { reserved: true; reservation: AutopilotExecutionReservation }
+    | { reserved: false; reasonCode: 'AUTOPILOT_DAILY_QUOTA_EXHAUSTED' | 'AUTOPILOT_CONCURRENCY_LIMIT' }
+  > {
+    const lockKey = `p9c:${input.projectId}:${input.utcDate}`;
+
+    return this.db.$transaction(async (tx) => {
+      await tx.$queryRaw<Array<{ lock: string }>>(Prisma.sql`
+        SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))::text AS "lock"
+      `);
+
+      const decision = await tx.optimizationAutopilotDecision.findFirst({
+        where: {
+          id: input.decisionId,
+          projectId: input.projectId
+        },
+        select: { id: true }
+      });
+      if (!decision) throw new Error('AUTOPILOT_DECISION_NOT_FOUND');
+
+      const existing = await tx.autopilotExecutionReservation.findUnique({
+        where: { decisionId: input.decisionId }
+      });
+      if (existing) {
+        const existingDate = existing.utcDate.toISOString().slice(0, 10);
+        if (existing.projectId !== input.projectId || existingDate !== input.utcDate) {
+          throw new Error('AUTOPILOT_RESERVATION_IDENTITY_COLLISION');
+        }
+        if (existing.status === 'RELEASED') {
+          throw new Error('AUTOPILOT_RESERVATION_RELEASED');
+        }
+        return { reserved: true as const, reservation: existing };
+      }
+
+      const dailyReservations = await tx.autopilotExecutionReservation.count({
+        where: {
+          projectId: input.projectId,
+          utcDate: input.utcDateValue,
+          status: { in: ['RESERVED', 'CONSUMED'] }
+        }
+      });
+      if (dailyReservations >= input.dailyDraftPrLimit) {
+        return {
+          reserved: false as const,
+          reasonCode: 'AUTOPILOT_DAILY_QUOTA_EXHAUSTED' as const
+        };
+      }
+
+      const activeMachineExecutions = await tx.publicationExecution.count({
+        where: {
+          projectId: input.projectId,
+          automationAuthorizationId: { not: null },
+          status: { in: ['AUTOMATION_AUTHORIZED', 'QUEUED', 'EXECUTING'] }
+        }
+      });
+      if (activeMachineExecutions >= input.maxConcurrentRuns) {
+        return {
+          reserved: false as const,
+          reasonCode: 'AUTOPILOT_CONCURRENCY_LIMIT' as const
+        };
+      }
+
+      const reservation = await tx.autopilotExecutionReservation.create({
+        data: {
+          projectId: input.projectId,
+          decisionId: input.decisionId,
+          utcDate: input.utcDateValue,
+          reservationKey: `p9c:${input.projectId}:${input.utcDate}:${input.decisionId}`,
+          status: 'RESERVED'
+        }
+      });
+
+      return { reserved: true as const, reservation };
+    });
   }
 
   async createOrGetDecision(
