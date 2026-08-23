@@ -138,6 +138,58 @@ function seedContentHash(input: {
   });
 }
 
+function recordFromUnknown(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function initialBriefBindingMatches(
+  factSnapshot: Prisma.JsonValue,
+  draftId: string,
+  proposalId: string
+): boolean {
+  const facts = recordFromUnknown(factSnapshot);
+  const draft = recordFromUnknown(facts?.draft);
+  const proposal = recordFromUnknown(facts?.proposal);
+  return draft?.id === draftId
+    && draft?.currentVersion === 1
+    && proposal?.id === proposalId;
+}
+
+function initialArticleBindingMatches(
+  factSnapshot: Prisma.JsonValue,
+  draftId: string,
+  briefTaskId: string
+): boolean {
+  const facts = recordFromUnknown(factSnapshot);
+  const draft = recordFromUnknown(facts?.draft);
+  const brief = recordFromUnknown(facts?.brief);
+  return draft?.id === draftId
+    && facts?.expectedDraftVersion === 1
+    && brief?.taskId === briefTaskId;
+}
+
+function sourceGapsFromBriefOutput(structuredOutput: Prisma.JsonValue): string[] {
+  const output = recordFromUnknown(structuredOutput);
+  if (!Array.isArray(output?.evidenceNeeds)) return [];
+
+  const gaps = new Set<string>();
+  for (const item of output.evidenceNeeds) {
+    const evidenceNeed = recordFromUnknown(item);
+    const status = evidenceNeed?.status;
+    const claim = evidenceNeed?.claim;
+    if (
+      (status === 'NEEDS_SOURCE' || status === 'UNCERTAIN')
+      && typeof claim === 'string'
+      && claim.trim().length > 0
+    ) {
+      gaps.add(`${status}:${claim.trim()}`);
+    }
+  }
+  return [...gaps].sort();
+}
+
 export class PublicationAutomationPreparationService
 implements PublicationAutomationPreparationPort {
   private readonly aiTaskService: Pick<AiTaskService, 'createAndEnqueue'>;
@@ -328,6 +380,76 @@ implements PublicationAutomationPreparationPort {
 
       return { proposalId: proposal.id, draftId: draft.id };
     });
+
+    const currentDraft = await prisma.contentDraft.findFirst({
+      where: { id: prepared.draftId, projectId: input.projectId },
+      select: { id: true, currentVersion: true, generatedBy: true }
+    });
+    if (
+      currentDraft?.currentVersion === 2
+      && currentDraft.generatedBy === 'DEEPSEEK'
+    ) {
+      const initialBriefTask = await prisma.aiTask.findFirst({
+        where: {
+          projectId: input.projectId,
+          taskType: 'PUBLICATION_CONTENT_BRIEF',
+          status: 'COMPLETED',
+          requestKey: { startsWith: `publication-content-brief:${prepared.draftId}:1:` }
+        },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        include: {
+          runs: {
+            orderBy: [{ attemptNo: 'desc' }, { id: 'asc' }],
+            include: { result: true }
+          }
+        }
+      });
+      if (
+        initialBriefTask
+        && initialBriefBindingMatches(
+          initialBriefTask.factSnapshot,
+          prepared.draftId,
+          prepared.proposalId
+        )
+      ) {
+        const initialArticleTask = await prisma.aiTask.findFirst({
+          where: {
+            projectId: input.projectId,
+            taskType: 'PUBLICATION_ARTICLE_GENERATION',
+            status: 'COMPLETED',
+            requestKey: {
+              startsWith: `publication-article:${prepared.draftId}:1:${initialBriefTask.id}:`
+            }
+          },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+        });
+        if (
+          initialArticleTask
+          && initialArticleBindingMatches(
+            initialArticleTask.factSnapshot,
+            prepared.draftId,
+            initialBriefTask.id
+          )
+        ) {
+          const briefResult = initialBriefTask.runs
+            .map((run) => run.result)
+            .find((result) => result !== null) ?? null;
+          const sourceGaps = briefResult
+            ? sourceGapsFromBriefOutput(briefResult.structuredOutput)
+            : [];
+          if (sourceGaps.length > 0) {
+            return {
+              state: 'VALIDATION_BLOCKED',
+              proposalId: prepared.proposalId,
+              draftId: prepared.draftId,
+              planId: null,
+              previewId: null,
+              reasonCode: 'SOURCE_GAP'
+            };
+          }
+        }
+      }
+    }
 
     const briefTask = await createContentBriefTask(prepared.draftId, this.aiTaskService);
     if (briefTask.status !== 'COMPLETED') {
