@@ -1,7 +1,7 @@
 # P9-B Workflow Orchestrator Design
 
 Date: 2026-08-23
-Status: Approved design for implementation planning
+Status: Draft spec pending user review
 Repository: `liufaxing1978-droid/seogeo`
 Base: `main@28d1c7ee8b812579b570cf476154e266f87abed1`
 Branch: `feat/p9-b-workflow-orchestrator`
@@ -89,7 +89,7 @@ This does **not** remove or weaken P9-A bounded AI capability. It only means P9-
 
 ### 5.1 OptimizationRun
 
-Suggested fields:
+Fields:
 
 ```text
 id
@@ -103,7 +103,7 @@ status
 candidateCount
 plannedCount
 itemCount
-deferredCount
+completedCount
 failureCount
 startedAt
 completedAt
@@ -134,7 +134,7 @@ OptimizationRunStatus
 
 `triggerPayload` is bounded first-party provenance only. It must not contain raw provider responses, raw vendor Markdown, credentials, prompts, or mutable P8 payloads.
 
-Suggested bounded payloads:
+Bounded payloads:
 
 Growth event:
 
@@ -181,7 +181,7 @@ A duplicate trigger returns/reuses the existing run. It does not create a second
 
 Each row links one frozen P9-A `OptimizationPlan` to one P9-B run.
 
-Suggested fields:
+Fields:
 
 ```text
 id
@@ -207,7 +207,6 @@ OptimizationRunItemStage
 OptimizationRunItemStatus
 - PENDING
 - COMPLETED
-- DEFERRED
 - FAILED
 ```
 
@@ -218,9 +217,9 @@ PLANNED / PENDING
 → READY_FOR_POLICY / COMPLETED
 ```
 
-`READY_FOR_POLICY` is a routing checkpoint only. P9-C later decides whether a plan is blocked, manual-only, or eligible for controlled autopilot.
+`READY_FOR_POLICY` is a routing checkpoint only. P9-C later decides whether a plan is blocked, manual-only, deferred, stale, conflicting, or eligible for controlled autopilot. P9-B V1 deliberately does not pre-create those policy states without an authoritative P9-C rule.
 
-Suggested uniqueness:
+Uniqueness:
 
 ```text
 UNIQUE(runId, optimizationPlanId)
@@ -324,7 +323,7 @@ runId
 projectId
 ```
 
-BullMQ job ID is derived from the persisted run ID, so the queue cannot create duplicate planning executions for the same run.
+BullMQ job ID is derived from the persisted run ID, so duplicate enqueue attempts address the same logical planning job.
 
 Responsibilities:
 
@@ -358,8 +357,9 @@ Responsibilities:
 2. validate every item still references the same project and a real frozen P9-A plan;
 3. move valid `PLANNED/PENDING` items to `READY_FOR_POLICY/COMPLETED`;
 4. derive run counters from persisted rows rather than trusting job payload counters;
-5. mark the run `SUCCEEDED` when every item is terminal and no failure exists;
-6. produce no P8 side effects.
+5. mark the run `SUCCEEDED` when every item is `COMPLETED` and no failure exists;
+6. on a deterministic item validation failure, mark the affected item `FAILED`, mark the run `FAILED`, and persist bounded reason/error codes;
+7. produce no P8 side effects.
 
 A zero-plan run is valid and completes `SUCCEEDED` with zero items. This preserves auditable reconciliation without fabricating work.
 
@@ -446,7 +446,7 @@ This is intentional at-least-once orchestration with deterministic deduplication
 
 ## 12. Manual API
 
-P9-B V1 may expose one authenticated project-scoped mutation endpoint:
+P9-B V1 exposes one authenticated project-scoped mutation endpoint:
 
 ```text
 POST /projects/:projectId/optimization/runs
@@ -488,26 +488,25 @@ Feature gating does not delete historical run rows. If entitlement is later remo
 
 ## 14. Counters
 
-V1 `OptimizationRun` counters have exact semantics:
+V1 `OptimizationRun` counters have exact stored semantics:
 
 ```text
 candidateCount = number of P9-A candidates returned for this planning call
 plannedCount   = number of frozen P9-A plans returned
 itemCount      = number of persisted run items
 completedCount = number of run items in COMPLETED
- deferredCount = number of run items in DEFERRED
-failureCount   = number of run items in FAILED plus 1 when the run itself fails before item creation
+failureCount   = number of run items in FAILED, or 1 when the run fails before any item-level failure can be persisted
 ```
 
-If the final schema keeps `completedCount`, it must be explicitly modeled. If not, completion is derived from item rows and omitted from the stored run counters. The implementation plan must choose one representation and tests must lock it; it must not use two conflicting definitions.
+Counters default to zero. `completedCount` and `failureCount` are recomputed from persisted item rows at orchestration checkpoints, except the explicit pre-item run failure case above.
 
-V1 does not populate an `executedCount`, because P9-B does not execute P8 work.
+V1 does not store `deferredCount` or `executedCount` because P9-B V1 neither owns policy deferral nor executes P8 work.
 
 ## 15. No P8 handoff in P9-B V1
 
 The P9 master design eventually allows run items to reference P8 proposal/execution IDs, but the approved P9-B V1 boundary intentionally stops before that.
 
-Therefore V1 schema must not add speculative P8 proposal/execution foreign keys unless an existing generic relation is strictly required for referential integrity. P9-C will add the controlled policy/handoff contract in a separate reviewed migration.
+Therefore V1 schema does not add P8 proposal/execution foreign keys. P9-C will add the controlled policy/handoff contract in a separate reviewed migration.
 
 This keeps the ownership split explicit:
 
@@ -540,20 +539,20 @@ Manual routes use existing authorization/security middleware and project scope c
 
 Use one additive forward migration for P9-B V1, after all P9-A migrations.
 
-It may add:
+It adds:
 
 - trigger/status/stage enums;
 - `OptimizationRun`;
 - `OptimizationRunItem`;
 - indexes and foreign keys.
 
-Foreign-key rules should preserve audit history:
+Foreign-key rules preserve audit history:
 
 - Project → run: `ON DELETE RESTRICT`;
-- run → items: prefer `ON DELETE RESTRICT` because production code must not delete workflow history;
+- run → items: `ON DELETE RESTRICT`;
 - OptimizationPlan → run item: `ON DELETE RESTRICT`.
 
-P9-B rows are mutable state machines, so they do not use P9-A's UPDATE immutability trigger. Production repositories still expose no destructive delete API for run history.
+P9-B rows are mutable state machines, so they do not use P9-A's UPDATE immutability trigger. Production repositories expose no destructive delete API for run history.
 
 Never edit the already-applied P9-A migrations.
 
@@ -597,8 +596,9 @@ Tests must prove:
 
 - only P9-B state changes;
 - every valid item becomes `READY_FOR_POLICY/COMPLETED`;
+- deterministic invalid item becomes `FAILED` and fails the run;
 - run counters are derived from persisted rows;
-- run becomes `SUCCEEDED` only after all items are terminal;
+- run becomes `SUCCEEDED` only after all items are completed;
 - no P8/Git side effects.
 
 ### Growth handoff
