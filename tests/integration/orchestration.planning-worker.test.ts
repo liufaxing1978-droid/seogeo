@@ -29,27 +29,65 @@ async function createProject(label: string) {
   return project;
 }
 
+async function createGrowthSource(projectId: string, rank: number) {
+  const identity = await prisma.growthOpportunityIdentity.create({
+    data: {
+      projectId,
+      opportunityKey: `p9b-worker-${randomUUID()}`,
+      identityVersion: 'GROWTH_OPPORTUNITY_IDENTITY_V1',
+      identityType: 'QUERY_PAGE_GROWTH',
+      normalizedQuery: `planning-worker-${rank}`,
+      canonicalPage: `https://example.com/planning-worker-${rank}`,
+      identityPayload: { authority: 'P7_GROWTH' }
+    }
+  });
+  const snapshot = await prisma.growthOpportunitySnapshot.create({
+    data: {
+      opportunityIdentityId: identity.id,
+      projectId,
+      snapshotVersion: 'GROWTH_OPPORTUNITY_SNAPSHOT_V1',
+      formulaVersion: 'GROWTH_SCORE_V1',
+      currentWindowStart: new Date('2026-08-01T00:00:00.000Z'),
+      currentWindowEnd: new Date('2026-08-07T00:00:00.000Z'),
+      previousWindowStart: new Date('2026-07-25T00:00:00.000Z'),
+      previousWindowEnd: new Date('2026-07-31T00:00:00.000Z'),
+      dataCutoffAt: new Date('2026-08-08T00:00:00.000Z'),
+      primaryType: 'RANKING_UPSIDE',
+      secondaryTypes: [],
+      score: 80 - rank,
+      priority: 'HIGH',
+      scoreState: 'KNOWN',
+      evidenceQuality: 'COMPLETE',
+      evidenceCoverage: 1,
+      rankingEligible: true,
+      sourceProvenance: { version: 'GROWTH_SEARCH_PROVENANCE_V1' }
+    }
+  });
+  return { identity, snapshot };
+}
+
 async function createPlan(projectId: string, rank: number): Promise<{ candidate: OptimizationCandidate; plan: OptimizationPlan }> {
+  const growth = await createGrowthSource(projectId, rank);
   const candidate = await optimizationRepository.createCandidate({
     projectId,
-    growthOpportunityIdentityId: randomUUID(),
-    growthSnapshotId: randomUUID(),
+    growthOpportunityIdentityId: growth.identity.id,
+    growthSnapshotId: growth.snapshot.id,
     candidateVersion: 'OPTIMIZATION_CANDIDATE_V1',
     candidateKey: `${rank}`.padStart(64, String(rank % 10)),
     marketScopeMode: 'UNCONFIGURED_LEGACY',
     marketCode: null,
     locale: null,
     opportunityType: 'RANKING_UPSIDE',
-    normalizedQuery: `planning-worker-${rank}`,
-    canonicalPage: `https://example.com/planning-worker-${rank}`,
-    growthScore: 80 - rank,
-    growthScoreState: 'KNOWN',
-    growthPriority: 'HIGH',
-    growthEvidenceQuality: 'COMPLETE',
-    growthEvidenceCoverage: 1,
-    growthRankingEligible: true,
+    normalizedQuery: growth.identity.normalizedQuery,
+    canonicalPage: growth.identity.canonicalPage,
+    growthScore: growth.snapshot.score,
+    growthScoreState: growth.snapshot.scoreState,
+    growthPriority: growth.snapshot.priority,
+    growthEvidenceQuality: growth.snapshot.evidenceQuality,
+    growthEvidenceCoverage: growth.snapshot.evidenceCoverage,
+    growthRankingEligible: growth.snapshot.rankingEligible,
     growthLifecycleStatus: 'NEW',
-    sourceProvenance: { version: 'P9_A_SOURCE_PROVENANCE_V1' },
+    sourceProvenance: growth.snapshot.sourceProvenance,
     eligibilityState: 'ELIGIBLE',
     eligibilityReasonCodes: []
   });
@@ -110,6 +148,8 @@ async function cleanup() {
     await prisma.$executeRawUnsafe('ALTER TABLE "OptimizationCandidate" ENABLE TRIGGER "OptimizationCandidate_immutable"');
     await prisma.$executeRawUnsafe('ALTER TABLE "OptimizationPlan" ENABLE TRIGGER "OptimizationPlan_immutable"');
   }
+
+  await prisma.growthOpportunityIdentity.deleteMany({ where: { projectId: { in: projectIds } } });
 
   for (const projectId of [...projectIds].reverse()) {
     await prisma.project.delete({ where: { id: projectId } });
@@ -252,12 +292,12 @@ describe('P9-B planning worker', () => {
         advisoryRootDir: '/tmp/p9b-advisory-test',
         now: () => NOW
       }
-    )).rejects.toMatchObject({ code: 'PLAN_PROJECT_MISMATCH' });
+    )).rejects.toMatchObject({ code: 'CANDIDATE_PROJECT_MISMATCH' });
 
     expect(await orchestrationRepository.getRun(run.id)).toMatchObject({
       status: 'FAILED',
       failureCount: 1,
-      lastErrorCode: 'PLAN_PROJECT_MISMATCH'
+      lastErrorCode: 'CANDIDATE_PROJECT_MISMATCH'
     });
     expect(await orchestrationRepository.listRunItems(run.id)).toEqual([]);
     expect(enqueueRun).not.toHaveBeenCalled();
