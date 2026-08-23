@@ -3,6 +3,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../src/db/prisma.js';
 import { AiRepository } from '../../src/modules/ai/ai.repository.js';
 import { AiTaskService } from '../../src/modules/ai/ai.service.js';
+import { executeAiTask, type AiCompletionGateway } from '../../src/modules/ai/ai.worker.js';
 import { PublicationAutomationPreparationService } from '../../src/modules/publication/publication-automation-preparation.js';
 
 const AUTOMATIC_REF_TYPES = [
@@ -190,6 +191,43 @@ function serviceHarness() {
   return { queue, service };
 }
 
+function briefContent(sourceRef: string) {
+  return JSON.stringify({
+    summary: 'Controlled preparation brief grounded only in supplied P8 references.',
+    thesis: 'Generate the article conservatively and preserve evidence gaps for P8 validation.',
+    outline: [{
+      heading: 'Background',
+      purpose: 'Explain only supported background.',
+      evidenceRefs: [sourceRef]
+    }],
+    evidenceNeeds: [
+      {
+        claim: 'Historical transmission detail needs a source.',
+        status: 'NEEDS_SOURCE',
+        sourceRefs: []
+      },
+      {
+        claim: 'A regional attribution remains uncertain.',
+        status: 'UNCERTAIN',
+        sourceRefs: [sourceRef]
+      }
+    ],
+    seo: {
+      primaryKeyword: '六壬伏英舘文化源流',
+      secondaryKeywords: ['传统文化'],
+      titleIdeas: ['六壬伏英舘文化源流'],
+      metaDescriptionNotes: 'Keep claims bounded to supplied references.'
+    },
+    geo: {
+      answerTargets: ['What can the supplied references establish?'],
+      entityNotes: ['Do not invent lineage entities.'],
+      citabilityNotes: ['Preserve unresolved evidence gaps.']
+    },
+    caveats: ['Unsupported historical claims must remain unresolved.'],
+    sourceReferences: [sourceRef]
+  });
+}
+
 afterAll(async () => {
   await prisma.$executeRawUnsafe('TRUNCATE TABLE "Project" CASCADE');
 });
@@ -276,6 +314,95 @@ describe('P9-C -> P8 controlled content preparation', () => {
     expect(JSON.stringify(tasks[0]?.factSnapshot ?? null)).not.toContain('textSummary');
     expect(queue.add).toHaveBeenCalledTimes(1);
 
+    expect(await prisma.publicationPlan.count({ where: { projectId: fixture.project.id } })).toBe(0);
+    expect(await prisma.publicationPreview.count({ where: { projectId: fixture.project.id } })).toBe(0);
+  });
+
+  it('continues a completed brief into one idempotent article task while keeping the deterministic seed unplanned', async () => {
+    const fixture = await createFixture('CONTENT_CREATION');
+    const { queue, service } = serviceHarness();
+    const input = {
+      projectId: fixture.project.id,
+      runItemId: fixture.runItem.id,
+      optimizationPlanId: fixture.plan.id,
+      decisionId: fixture.decisionId
+    };
+
+    const initial = await service.prepareContentCreation(input);
+    const briefTask = await prisma.aiTask.findFirstOrThrow({
+      where: {
+        projectId: fixture.project.id,
+        taskType: 'PUBLICATION_CONTENT_BRIEF'
+      }
+    });
+    const sourceRefRow = await prisma.contentSourceReference.findFirstOrThrow({
+      where: { projectId: fixture.project.id, draftId: initial.draftId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+    });
+    const sourceRef = `CONTENT_SOURCE_REFERENCE:${sourceRefRow.id}`;
+    const briefGateway: AiCompletionGateway = {
+      complete: vi.fn(async () => ({
+        provider: 'DEEPSEEK' as const,
+        model: 'deepseek-reasoner',
+        responseId: 'p9c-brief-fixture',
+        content: briefContent(sourceRef),
+        finishReason: 'stop',
+        latencyMs: 10,
+        usage: {
+          promptTokens: 40,
+          completionTokens: 30,
+          totalTokens: 70,
+          cacheHitTokens: 0,
+          cacheMissTokens: 40,
+          reasoningTokens: 10
+        }
+      }))
+    };
+    await executeAiTask(briefTask.id, { repository: new AiRepository(), gateway: briefGateway });
+
+    const second = await service.prepareContentCreation(input);
+    const third = await service.prepareContentCreation(input);
+
+    expect(second).toMatchObject({
+      state: 'WAITING_FOR_ARTICLE',
+      proposalId: initial.proposalId,
+      draftId: initial.draftId,
+      planId: null,
+      previewId: null,
+      reasonCode: null
+    });
+    expect(third).toEqual(second);
+
+    const tasks = await prisma.aiTask.findMany({
+      where: { projectId: fixture.project.id },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+    });
+    expect(tasks).toHaveLength(2);
+    expect(tasks.map((task) => task.taskType).sort()).toEqual([
+      'PUBLICATION_ARTICLE_GENERATION',
+      'PUBLICATION_CONTENT_BRIEF'
+    ]);
+    const articleTask = tasks.find((task) => task.taskType === 'PUBLICATION_ARTICLE_GENERATION');
+    expect(articleTask).toBeDefined();
+    expect(articleTask?.requestKey).toContain(`${initial.draftId}:1:${briefTask.id}`);
+    expect(articleTask?.factSnapshot).toMatchObject({
+      draft: { id: initial.draftId, currentVersion: 1 },
+      brief: {
+        taskId: briefTask.id,
+        structuredOutput: {
+          evidenceNeeds: [
+            expect.objectContaining({ status: 'NEEDS_SOURCE' }),
+            expect.objectContaining({ status: 'UNCERTAIN' })
+          ]
+        }
+      },
+      expectedDraftVersion: 1
+    });
+    expect(JSON.stringify(articleTask?.factSnapshot ?? null)).not.toContain('must-never-enter-p8-ai');
+    expect(queue.add).toHaveBeenCalledTimes(2);
+
+    const draft = await prisma.contentDraft.findUniqueOrThrow({ where: { id: initial.draftId! } });
+    expect(draft).toMatchObject({ currentVersion: 1, generatedBy: 'DETERMINISTIC_GENERATOR' });
     expect(await prisma.publicationPlan.count({ where: { projectId: fixture.project.id } })).toBe(0);
     expect(await prisma.publicationPreview.count({ where: { projectId: fixture.project.id } })).toBe(0);
   });
