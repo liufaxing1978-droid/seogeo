@@ -64,6 +64,19 @@ describe('P9-A Growth market provenance projection', () => {
     })
   })
 
+  it('creates one auditable invalid-provenance scope for an unsupported market code', () => {
+    expect(projectGrowthMarketScopes({
+      searchFacts: {
+        version: 'GROWTH_SEARCH_PROVENANCE_V1',
+        mode: 'CONFIGURED_MARKET',
+        scoringLane: { marketProjections: [{ marketCode: 'MARS', locale: 'en' }] },
+      },
+    })).toEqual({
+      scopes: [{ marketScopeMode: 'INVALID_PROVENANCE', marketCode: null, locale: null }],
+      provenanceReasonCodes: ['INVALID_MARKET_PROVENANCE'],
+    })
+  })
+
   it('builds the same candidate key for the same stable identity regardless of object construction order', () => {
     const first = buildOptimizationCandidateKey({
       projectId: '11111111-1111-4111-8111-111111111111',
