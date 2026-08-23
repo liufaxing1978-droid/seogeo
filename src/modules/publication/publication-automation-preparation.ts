@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { aiTaskService, type AiTaskService } from '../ai/ai.service.js';
-import { createContentBriefTask } from './publication-ai.js';
+import { createArticleGenerationTask, createContentBriefTask } from './publication-ai.js';
 import { contentHashV1 } from './publication.hash.js';
 
 const AUTOMATIC_SOURCE_TYPES = new Set([
@@ -329,10 +329,27 @@ implements PublicationAutomationPreparationPort {
       return { proposalId: proposal.id, draftId: draft.id };
     });
 
-    await createContentBriefTask(prepared.draftId, this.aiTaskService);
+    const briefTask = await createContentBriefTask(prepared.draftId, this.aiTaskService);
+    if (briefTask.status !== 'COMPLETED') {
+      return {
+        state: 'WAITING_FOR_BRIEF',
+        proposalId: prepared.proposalId,
+        draftId: prepared.draftId,
+        planId: null,
+        previewId: null,
+        reasonCode: null
+      };
+    }
+
+    await createArticleGenerationTask(
+      prepared.draftId,
+      briefTask.id,
+      1,
+      this.aiTaskService
+    );
 
     return {
-      state: 'WAITING_FOR_BRIEF',
+      state: 'WAITING_FOR_ARTICLE',
       proposalId: prepared.proposalId,
       draftId: prepared.draftId,
       planId: null,
