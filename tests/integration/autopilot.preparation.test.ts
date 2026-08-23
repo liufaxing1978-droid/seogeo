@@ -15,7 +15,8 @@ async function createFixture(
   recommendedActionType:
     | 'CONTENT_CREATION'
     | 'CONTENT_REFRESH'
-    | 'ON_PAGE_OPTIMIZATION' = 'CONTENT_CREATION'
+    | 'ON_PAGE_OPTIMIZATION' = 'CONTENT_CREATION',
+  includeInvalidSourceReference = false
 ) {
   const suffix = `${Date.now()}-${Math.random()}`.replace('.', '-');
   const project = await prisma.project.create({
@@ -114,11 +115,14 @@ async function createFixture(
     }
   });
 
-  const sourceFactReferences = [
+  const sourceFactReferences: Array<{ type: string; id: string }> = [
     { type: AUTOMATIC_REF_TYPES[0], id: identity.id },
     { type: AUTOMATIC_REF_TYPES[1], id: snapshot.id },
     { type: AUTOMATIC_REF_TYPES[2], id: evidence.id }
   ];
+  if (includeInvalidSourceReference) {
+    sourceFactReferences.push({ type: 'RAW_PROVIDER_PAYLOAD', id: randomUUID() });
+  }
   const plan = await prisma.optimizationPlan.create({
     data: {
       candidateId: candidate.id,
@@ -302,16 +306,7 @@ describe('P9-C -> P8 controlled content preparation', () => {
   });
 
   it('fails closed when a persisted P9 source reference is not allowlisted for P8 preparation', async () => {
-    const fixture = await createFixture('CONTENT_CREATION');
-    await prisma.optimizationPlan.update({
-      where: { id: fixture.plan.id },
-      data: {
-        sourceFactReferences: [
-          ...fixture.sourceFactReferences,
-          { type: 'RAW_PROVIDER_PAYLOAD', id: randomUUID() }
-        ]
-      }
-    });
+    const fixture = await createFixture('CONTENT_CREATION', true);
     const { queue, service } = serviceHarness();
 
     const result = await service.prepareContentCreation({
