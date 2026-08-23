@@ -41,19 +41,36 @@ describe('P9-B orchestration identities', () => {
     expect(first).toMatch(/^[a-f0-9]{64}$/);
   });
 
-  it('keeps project and trigger dimensions inside the identity', () => {
-    expect(buildManualTriggerKey({ projectId: PROJECT_A, manualRequestId: REQUEST_ID }))
-      .not.toBe(buildManualTriggerKey({ projectId: PROJECT_B, manualRequestId: REQUEST_ID }));
+  it('reuses the same manual request identity and keeps projects isolated', () => {
+    const first = buildManualTriggerKey({ projectId: PROJECT_A, manualRequestId: REQUEST_ID });
+    const same = buildManualTriggerKey({ projectId: PROJECT_A, manualRequestId: REQUEST_ID });
+    const otherProject = buildManualTriggerKey({ projectId: PROJECT_B, manualRequestId: REQUEST_ID });
 
-    expect(buildDailyTriggerKey({
+    expect(first).toBe(same);
+    expect(first).not.toBe(otherProject);
+    expect(first).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('changes the daily identity when the UTC date changes', () => {
+    const first = buildDailyTriggerKey({
       projectId: PROJECT_A,
       utcDate: '2026-08-23',
       plannerVersion: 'OPTIMIZATION_PLAN_V1'
-    })).not.toBe(buildDailyTriggerKey({
+    });
+    const same = buildDailyTriggerKey({
+      projectId: PROJECT_A,
+      utcDate: '2026-08-23',
+      plannerVersion: 'OPTIMIZATION_PLAN_V1'
+    });
+    const nextDay = buildDailyTriggerKey({
       projectId: PROJECT_A,
       utcDate: '2026-08-24',
       plannerVersion: 'OPTIMIZATION_PLAN_V1'
-    }));
+    });
+
+    expect(first).toBe(same);
+    expect(first).not.toBe(nextDay);
+    expect(first).toMatch(/^[a-f0-9]{64}$/);
   });
 
   it('builds deterministic run item identities from run and frozen plan ids', () => {
