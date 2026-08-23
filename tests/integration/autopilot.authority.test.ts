@@ -253,7 +253,7 @@ describe('P9-C persisted authority readers', () => {
 
       await createPublicationExecution(db, project.id, {
         status: 'VERIFIED',
-        targetPublicUrl: `https://${project.primaryDomain}/articles/verified`,
+        targetPublicUrl: `https://verified-${randomUUID()}.${project.primaryDomain}/articles/verified`,
         repositoryPath: 'content/verified.md'
       });
       expect(await repository.loadLatestVerificationState(project.id)).toBe('VERIFIED');
