@@ -24,6 +24,10 @@ import { createGrowthRoutes, type GrowthRestRepository } from './modules/growth/
 import { createGrowthWebRoutes } from './modules/growth/growth.web.routes.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import { createMarketRoutes, type MarketApiPort } from './modules/market/market.routes.js';
+import {
+  createOptimizationOrchestrationRoutes,
+  type OptimizationOrchestrationApiPort
+} from './modules/optimization-orchestration/orchestration.routes.js';
 import { projectRoutes } from './modules/projects/project.routes.js';
 import {
   createPublicationRoutes,
@@ -61,6 +65,7 @@ export interface AppOptions {
   competitorService?: CompetitorService;
   searchConsoleService?: SearchConsoleService;
   growthApiRepository?: Partial<GrowthRestRepository>;
+  optimizationOrchestrationApi?: OptimizationOrchestrationApiPort;
   publicationApi?: PublicationApiPort;
   distributionApi?: DistributionApiPort;
   marketService?: MarketApiPort;
@@ -89,6 +94,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/v1', createAiRoutes(options.aiTaskService));
   app.use('/api/v1', createContentRoutes(options.contentService, options.aiTaskService));
   app.use('/api/v1', createCompetitorRoutes(options.competitorService, options.aiTaskService));
+  app.use('/api/v1', createOptimizationOrchestrationRoutes(options.optimizationOrchestrationApi));
   app.use('/api/v1', createPublicationRoutes(options.publicationApi));
   app.use('/api/v1', createDistributionRoutes(options.distributionApi));
   app.use('/api/v1', createReportRoutes(options.aiTaskService));
