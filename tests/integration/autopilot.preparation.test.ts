@@ -96,7 +96,7 @@ async function createFixture(
       candidateVersion: 'OPTIMIZATION_CANDIDATE_V1',
       candidateKey: `p9ccontentseed${suffix.replace(/[^a-zA-Z0-9]/g, '').slice(0, 20)}`,
       marketScopeMode: 'CONFIGURED_MARKET',
-      marketCode: 'US',
+      marketCode: 'GLOBAL',
       locale: 'zh-CN',
       opportunityType: 'NEW_CONTENT_OPPORTUNITY',
       normalizedQuery: '六壬伏英舘文化源流',
