@@ -199,6 +199,8 @@ async function defaultLoadContext(executionId: string): Promise<PublicationExecu
   });
   if (!project) return fail('TARGET_NOT_FOUND', 'Publication project was not found');
   if (!execution.plan.preview) return fail('VALIDATION_FAILED', 'Publication preview is missing');
+  const storedApproval = execution.approval;
+  if (!storedApproval) return fail('VALIDATION_FAILED', 'Human publication approval is missing');
 
   const targetBlobHashes = stringMap(execution.plan.targetBlobHashes);
   const operations = operationArray(execution.plan.operations);
@@ -228,22 +230,22 @@ async function defaultLoadContext(executionId: string): Promise<PublicationExecu
     diffPayload: execution.plan.preview.diffPayload
   };
   const approval: PublicationExecutionContext['approval'] = {
-    id: execution.approval.id,
-    projectId: execution.approval.projectId,
-    planId: execution.approval.planId,
-    planVersion: execution.approval.planVersion,
-    planHash: execution.approval.planHash,
-    contentVersion: execution.approval.contentVersion,
-    contentHash: execution.approval.contentHash,
-    previewHash: execution.approval.previewHash,
-    baseSha: execution.approval.baseSha,
-    targetRepository: execution.approval.targetRepository,
-    targetBranch: execution.approval.targetBranch,
-    targetBlobHashes: execution.approval.targetBlobHashes,
-    approverActorId: execution.approval.approverActorId,
-    approvedRiskClass: execution.approval.approvedRiskClass,
-    confirmedWarningCodes: execution.approval.confirmedWarningCodes,
-    expiresAt: execution.approval.expiresAt
+    id: storedApproval.id,
+    projectId: storedApproval.projectId,
+    planId: storedApproval.planId,
+    planVersion: storedApproval.planVersion,
+    planHash: storedApproval.planHash,
+    contentVersion: storedApproval.contentVersion,
+    contentHash: storedApproval.contentHash,
+    previewHash: storedApproval.previewHash,
+    baseSha: storedApproval.baseSha,
+    targetRepository: storedApproval.targetRepository,
+    targetBranch: storedApproval.targetBranch,
+    targetBlobHashes: storedApproval.targetBlobHashes,
+    approverActorId: storedApproval.approverActorId,
+    approvedRiskClass: storedApproval.approvedRiskClass,
+    confirmedWarningCodes: storedApproval.confirmedWarningCodes,
+    expiresAt: storedApproval.expiresAt
   };
 
   return {
@@ -272,7 +274,7 @@ async function defaultLoadContext(executionId: string): Promise<PublicationExecu
       planId: execution.plan.id,
       planHash: execution.plan.planHash,
       previewHash: execution.plan.preview.previewHash,
-      contentHash: execution.approval.contentHash,
+      contentHash: storedApproval.contentHash,
       repositoryIdentity: execution.plan.targetRepository,
       branch: execution.plan.targetBranch,
       baseSha: execution.plan.baseSha,
