@@ -1,9 +1,12 @@
+import { MARKET_CODES } from '../market/market.types.js'
 import type {
   OptimizationEligibilityReason,
   OptimizationMarketScope,
 } from './optimization.types.js'
 
 type UnknownRecord = Record<string, unknown>
+
+const VALID_MARKET_CODES: ReadonlySet<string> = new Set(MARKET_CODES)
 
 function asRecord(value: unknown): UnknownRecord | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -55,7 +58,9 @@ export function projectGrowthMarketScopes(sourceProvenance: unknown): {
     const projection = asRecord(rawProjection)
     const marketCode = typeof projection?.marketCode === 'string' ? projection.marketCode.trim() : ''
     const locale = typeof projection?.locale === 'string' ? projection.locale.trim() : ''
-    if (!marketCode || !locale) return invalid('INVALID_MARKET_PROVENANCE')
+    if (!marketCode || !VALID_MARKET_CODES.has(marketCode) || !locale) {
+      return invalid('INVALID_MARKET_PROVENANCE')
+    }
     const key = `${marketCode}\u0000${locale}`
     unique.set(key, { marketScopeMode: 'CONFIGURED_MARKET', marketCode, locale })
   }
