@@ -54,7 +54,7 @@ describe('P9-C persistence foundation', () => {
     ]));
   });
 
-  it('adds a unique automation preparation identity to PublicationProposal', async () => {
+  it('deduplicates P9-origin proposals by their stable source identity', async () => {
     const rows = await prisma.$queryRawUnsafe<Array<{ indexdef: string }>>(`
       SELECT indexdef
       FROM pg_indexes
@@ -63,7 +63,13 @@ describe('P9-C persistence foundation', () => {
     `);
 
     expect(rows.some((row) =>
-      row.indexdef.includes('UNIQUE') && row.indexdef.includes('automationPreparationKey')
+      row.indexdef.includes('UNIQUE')
+      && row.indexdef.includes('"projectId"')
+      && row.indexdef.includes('"sourceType"')
+      && row.indexdef.includes('"sourceReferenceId"')
+      && row.indexdef.includes('"sourceSnapshotId"')
+      && row.indexdef.includes('WHERE')
+      && row.indexdef.includes('P9_OPTIMIZATION_PLAN')
     )).toBe(true);
   });
 });
