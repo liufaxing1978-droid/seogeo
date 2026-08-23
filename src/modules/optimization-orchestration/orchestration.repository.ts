@@ -167,6 +167,13 @@ export class OptimizationOrchestrationRepository {
     return this.db.optimizationRun.findUnique({ where: { id: runId } });
   }
 
+  getPlan(planId: string): Promise<{ id: string; projectId: string } | null> {
+    return this.db.optimizationPlan.findUnique({
+      where: { id: planId },
+      select: { id: true, projectId: true }
+    });
+  }
+
   listRunsByStatus(statuses: OptimizationRunStatus[]): Promise<OptimizationRun[]> {
     return this.db.optimizationRun.findMany({
       where: { status: { in: statuses } },
