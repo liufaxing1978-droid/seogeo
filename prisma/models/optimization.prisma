@@ -69,6 +69,7 @@ model OptimizationPlan {
   createdAt                DateTime              @default(now())
 
   candidate OptimizationCandidate @relation(fields: [candidateId], references: [id], onDelete: Restrict)
+  runItems  OptimizationRunItem[]
 
   @@unique([candidateId, planVersion], map: "OptimizationPlan_candidate_version")
   @@index([projectId, finalRank, createdAt], map: "OptimizationPlan_project_rank_idx")
