@@ -9,6 +9,8 @@ export const QUEUE_NAMES = [
   'competitor',
   'search-console-sync',
   'growth-materialization',
+  'optimization-planning',
+  'optimization-orchestration',
   'visibility',
   'visibility-extraction',
   'visibility-metrics',
