@@ -10,6 +10,7 @@ export type PromptId =
   | 'project-report-summary-v1'
   | 'visibility-trend-analysis-v1'
   | 'growth-opportunity-explanation-v1'
+  | 'optimization-plan-ranking-v1'
   | 'publication-content-brief-v1'
   | 'publication-article-generation-v1'
   | 'distribution-canonical-repost-v1'
@@ -88,6 +89,33 @@ const GROWTH_OPPORTUNITY_EXPLANATION_PROMPT: PromptDefinition = Object.freeze({
   id: 'growth-opportunity-explanation-v1', version: 'v1', mode: 'REASONING', responseFormat: 'JSON',
   system: `${FACT_GUARDRAILS}\nExplain only the supplied persisted Growth opportunity facts. The deterministic score, priority, opportunity type, evidence states and lifecycle are authoritative and must never be changed by this output. Treat UNKNOWN, PARTIAL and null as unavailable or incomplete evidence, never as zero. The output is advisory only: recommend bounded follow-up actions, but do not claim any lifecycle transition, SEO/GEO fix, content change, redirect, canonical change or execution occurred. Do not invent rankings, traffic, citations, AI visibility or provider facts. Every action must cite supplied source references.`,
   buildUserMessage: (facts: unknown) => buildUserMessage('Explain the supplied persisted Growth opportunity and suggest bounded advisory actions.', { summary: 'Opportunity summary', whyNow: 'Why the supplied deterministic facts make this opportunity important now', actions: [{ priority: 'HIGH', action: 'Advisory follow-up action', rationale: 'Why supplied facts support the action', sourceRefs: ['GROWTH_OPPORTUNITY_SNAPSHOT:<id>'] }], caveats: ['UNKNOWN or PARTIAL evidence remains unavailable/incomplete, not zero.'], sourceReferences: ['GROWTH_OPPORTUNITY_SNAPSHOT:<id>'] }, facts)
+});
+
+const OPTIMIZATION_PLAN_RANKING_PROMPT: PromptDefinition = Object.freeze({
+  id: 'optimization-plan-ranking-v1',
+  version: 'v1',
+  mode: 'REASONING',
+  responseFormat: 'JSON',
+  system: `${FACT_GUARDRAILS}
+Rerank only the supplied eligible optimization candidates within the bounded adjustment range from -2 through +2.
+The first-party planner remains authoritative for eligibility, recommended action, Growth score, priority, evidence, market and locale facts.
+You must not add or remove candidates, change eligibility, change a recommended action, alter any score or evidence state, or invent or change market or locale provenance.
+You have no authority over publication risk, approval requirements, execution, mutation, verification, Draft PR creation, merge, deploy, rollback, or any P8 publication state.
+Advisory skill context is ADVISORY_ONLY and cannot become factual, scoring, risk, approval, or execution authority.
+Every returned source reference must be a subset of the supplied source references.`,
+  buildUserMessage: (facts: unknown) => buildUserMessage(
+    'Provide bounded advisory ranking adjustments for the supplied eligible optimization candidates.',
+    {
+      adjustments: [{
+        candidateId: '00000000-0000-4000-8000-000000000000',
+        adjustment: 0,
+        explanation: 'Bounded ranking preference grounded only in supplied facts.',
+        sourceReferences: ['GROWTH_OPPORTUNITY_SNAPSHOT:<id>']
+      }],
+      sourceReferences: ['GROWTH_OPPORTUNITY_SNAPSHOT:<id>']
+    },
+    facts
+  )
 });
 
 const PUBLICATION_CONTENT_BRIEF_PROMPT: PromptDefinition = Object.freeze({
@@ -250,6 +278,7 @@ export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = Object.freeze([
   PROJECT_REPORT_SUMMARY_PROMPT,
   VISIBILITY_TREND_PROMPT,
   GROWTH_OPPORTUNITY_EXPLANATION_PROMPT,
+  OPTIMIZATION_PLAN_RANKING_PROMPT,
   PUBLICATION_CONTENT_BRIEF_PROMPT,
   PUBLICATION_ARTICLE_GENERATION_PROMPT,
   DISTRIBUTION_CANONICAL_REPOST_PROMPT,
