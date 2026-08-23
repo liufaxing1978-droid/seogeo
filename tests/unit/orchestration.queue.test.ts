@@ -3,10 +3,12 @@ import { QUEUE_NAMES } from '../../src/queue/queues.js';
 import {
   OPTIMIZATION_ORCHESTRATION_QUEUE_NAME,
   OPTIMIZATION_PLANNING_QUEUE_NAME,
+  OPTIMIZATION_QUEUE_ATTEMPTS,
   OptimizationOrchestrationQueue,
   OptimizationPlanningQueue,
   buildOptimizationOrchestrationJobOptions,
-  buildOptimizationPlanningJobOptions
+  buildOptimizationPlanningJobOptions,
+  type OptimizationPlanningJobData
 } from '../../src/modules/optimization-orchestration/orchestration.queue.js';
 
 const RUN_ID = '11111111-1111-4111-8111-111111111111';
@@ -18,6 +20,14 @@ describe('P9-B orchestration queues', () => {
     expect(OPTIMIZATION_ORCHESTRATION_QUEUE_NAME).toBe('optimization-orchestration');
     expect(QUEUE_NAMES).toContain(OPTIMIZATION_PLANNING_QUEUE_NAME);
     expect(QUEUE_NAMES).toContain(OPTIMIZATION_ORCHESTRATION_QUEUE_NAME);
+  });
+
+  it('exports the bounded retry count and the date-free reconciliation payload', () => {
+    const daily: OptimizationPlanningJobData = { kind: 'RECONCILE_DAILY' };
+
+    expect(OPTIMIZATION_QUEUE_ATTEMPTS).toBe(2);
+    expect(daily).toEqual({ kind: 'RECONCILE_DAILY' });
+    expect(daily).not.toHaveProperty('utcDate');
   });
 
   it('uses deterministic bounded retry options for planning', () => {
