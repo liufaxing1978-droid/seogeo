@@ -18,6 +18,14 @@ import {
   type GrowthMaterializationJobData
 } from '../modules/growth/growth.worker.js';
 import {
+  OPTIMIZATION_AUTOPILOT_QUEUE_ATTEMPTS,
+  OPTIMIZATION_AUTOPILOT_QUEUE_NAME,
+  OptimizationAutopilotQueue,
+  type OptimizationAutopilotJobData
+} from '../modules/optimization-autopilot/autopilot.queue.js';
+import { OptimizationAutopilotRepository } from '../modules/optimization-autopilot/autopilot.repository.js';
+import { processOptimizationAutopilotJob } from '../modules/optimization-autopilot/autopilot.worker.js';
+import {
   OPTIMIZATION_ORCHESTRATION_QUEUE_NAME,
   OPTIMIZATION_PLANNING_QUEUE_NAME,
   OPTIMIZATION_QUEUE_ATTEMPTS,
@@ -89,10 +97,20 @@ import { QUEUE_NAMES } from './queues.js';
 const VISIBILITY_MONITORING_RECONCILE_EVERY_MS = 60 * 60 * 1000;
 export const OPTIMIZATION_PLANNING_WORKER_CONCURRENCY = 1;
 export const OPTIMIZATION_ORCHESTRATION_WORKER_CONCURRENCY = 2;
+export const OPTIMIZATION_AUTOPILOT_WORKER_CONCURRENCY = 2;
 export const OPTIMIZATION_DAILY_RECONCILE_EVERY_MS = 24 * 60 * 60 * 1000;
 export const OPTIMIZATION_DAILY_RECONCILE_SCHEDULER = {
   id: 'optimization-daily-reconcile',
   repeat: { every: OPTIMIZATION_DAILY_RECONCILE_EVERY_MS },
+  job: {
+    name: 'reconcile-daily',
+    data: { kind: 'RECONCILE_DAILY' as const }
+  }
+} as const;
+export const OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_EVERY_MS = 24 * 60 * 60 * 1000;
+export const OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_SCHEDULER = {
+  id: 'optimization-autopilot-daily-reconcile',
+  repeat: { every: OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_EVERY_MS },
   job: {
     name: 'reconcile-daily',
     data: { kind: 'RECONCILE_DAILY' as const }
@@ -121,6 +139,7 @@ export function workerDefinitionForQueue(
     | 'growth-materialization'
     | 'optimization-planning'
     | 'optimization-orchestration'
+    | 'optimization-autopilot'
     | 'visibility'
     | 'visibility-extraction'
     | 'visibility-metrics'
@@ -151,6 +170,12 @@ export function workerDefinitionForQueue(
     return {
       processor: processOptimizationOrchestrationJob,
       concurrency: OPTIMIZATION_ORCHESTRATION_WORKER_CONCURRENCY
+    } as const;
+  }
+  if (name === OPTIMIZATION_AUTOPILOT_QUEUE_NAME) {
+    return {
+      processor: processOptimizationAutopilotJob,
+      concurrency: OPTIMIZATION_AUTOPILOT_WORKER_CONCURRENCY
     } as const;
   }
   if (name === 'visibility') {
@@ -210,11 +235,20 @@ export async function startWorkers() {
 
   const optimizationPlanningSupportQueue = new Queue(OPTIMIZATION_PLANNING_QUEUE_NAME, { connection });
   const optimizationOrchestrationSupportQueue = new Queue(OPTIMIZATION_ORCHESTRATION_QUEUE_NAME, { connection });
-  supportQueues.push(optimizationPlanningSupportQueue, optimizationOrchestrationSupportQueue);
+  const optimizationAutopilotSupportQueue = new Queue(OPTIMIZATION_AUTOPILOT_QUEUE_NAME, { connection });
+  supportQueues.push(
+    optimizationPlanningSupportQueue,
+    optimizationOrchestrationSupportQueue,
+    optimizationAutopilotSupportQueue
+  );
   const optimizationPlanningQueue = new OptimizationPlanningQueue(optimizationPlanningSupportQueue);
   const optimizationOrchestrationQueue = new OptimizationOrchestrationQueue(
     optimizationOrchestrationSupportQueue
   );
+  const optimizationAutopilotQueue = new OptimizationAutopilotQueue(
+    optimizationAutopilotSupportQueue
+  );
+  const optimizationAutopilotRepository = new OptimizationAutopilotRepository();
   const optimizationOrchestrationService = new OptimizationOrchestrationService({
     repository: optimizationOrchestrationRepository,
     planningQueue: optimizationPlanningQueue,
@@ -276,7 +310,10 @@ export async function startWorkers() {
           try {
             await processOptimizationOrchestrationJob(
               { name: job.name, data: job.data },
-              { repository: optimizationOrchestrationRepository }
+              {
+                repository: optimizationOrchestrationRepository,
+                autopilotQueue: optimizationAutopilotQueue
+              }
             );
           } catch (error) {
             const code = optimizationOrchestrationErrorCode(error);
@@ -285,6 +322,19 @@ export async function startWorkers() {
           }
         },
         { connection, concurrency: OPTIMIZATION_ORCHESTRATION_WORKER_CONCURRENCY }
+      );
+    }
+    if (name === OPTIMIZATION_AUTOPILOT_QUEUE_NAME) {
+      return new Worker<OptimizationAutopilotJobData>(
+        name,
+        async (job) => processOptimizationAutopilotJob(
+          { name: job.name, data: job.data },
+          {
+            repository: optimizationAutopilotRepository,
+            queue: optimizationAutopilotQueue
+          }
+        ),
+        { connection, concurrency: OPTIMIZATION_AUTOPILOT_WORKER_CONCURRENCY }
       );
     }
     if (name === 'visibility') {
@@ -377,6 +427,15 @@ export async function startWorkers() {
     {
       ...OPTIMIZATION_DAILY_RECONCILE_SCHEDULER.job,
       opts: { attempts: OPTIMIZATION_QUEUE_ATTEMPTS }
+    }
+  );
+
+  await optimizationAutopilotSupportQueue.upsertJobScheduler(
+    OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_SCHEDULER.id,
+    OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_SCHEDULER.repeat,
+    {
+      ...OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_SCHEDULER.job,
+      opts: { attempts: OPTIMIZATION_AUTOPILOT_QUEUE_ATTEMPTS }
     }
   );
 
