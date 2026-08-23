@@ -145,7 +145,7 @@ describe('P9-B strict manual orchestration API', () => {
       .expect(404);
 
     await request(app)
-      .get('/health')
+      .get('/health/live')
       .expect(200);
 
     expect(fake.calls).toEqual([]);
