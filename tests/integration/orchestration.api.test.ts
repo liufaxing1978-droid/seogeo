@@ -2,6 +2,7 @@ import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app.js';
 import { prisma } from '../../src/db/prisma.js';
+import type { OptimizationOrchestrationApiPort } from '../../src/modules/optimization-orchestration/orchestration.routes.js';
 
 const projectIds: string[] = [];
 
@@ -30,7 +31,7 @@ type ManualInput = {
 
 function createFakeOptimizationOrchestrationApi() {
   const calls: ManualInput[] = [];
-  const api = {
+  const api: OptimizationOrchestrationApiPort = {
     async triggerManual(input: ManualInput) {
       calls.push(input);
       return {
@@ -44,8 +45,8 @@ function createFakeOptimizationOrchestrationApi() {
   return { api, calls };
 }
 
-function appWithOptimizationApi(api: Record<string, unknown>) {
-  return createApp({ optimizationOrchestrationApi: api } as never);
+function appWithOptimizationApi(api: OptimizationOrchestrationApiPort) {
+  return createApp({ optimizationOrchestrationApi: api });
 }
 
 function manualRunUrl(projectId: string): string {
