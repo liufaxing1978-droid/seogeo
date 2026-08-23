@@ -48,6 +48,15 @@ function assertDecisionIdentity(
   }
 }
 
+function operationPaths(value: Prisma.JsonValue): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) return [];
+    const path = (item as Record<string, Prisma.JsonValue>)['path'];
+    return typeof path === 'string' ? [path] : [];
+  });
+}
+
 export class OptimizationAutopilotRepository {
   constructor(private readonly db: typeof prisma = prisma) {}
 
@@ -150,6 +159,106 @@ export class OptimizationAutopilotRepository {
       ORDER BY item."createdAt" ASC, item."id" ASC
       LIMIT ${limit}
     `);
+  }
+
+  async loadGrowthAuthorityFacts(
+    projectId: string,
+    growthOpportunityIdentityId: string
+  ): Promise<{
+    latestGrowthSnapshotId: string;
+    growthScoreState: string;
+    growthRankingEligible: boolean;
+    growthLifecycleStatus: string | null;
+  } | null> {
+    const latest = await this.db.growthOpportunitySnapshot.findFirst({
+      where: {
+        projectId,
+        opportunityIdentityId: growthOpportunityIdentityId
+      },
+      orderBy: [
+        { currentWindowEnd: 'desc' },
+        { dataCutoffAt: 'desc' },
+        { createdAt: 'desc' },
+        { id: 'desc' }
+      ],
+      select: {
+        id: true,
+        scoreState: true,
+        rankingEligible: true
+      }
+    });
+    if (!latest) return null;
+
+    const lifecycle = await this.db.growthOpportunityLifecycle.findUnique({
+      where: { opportunityIdentityId: growthOpportunityIdentityId },
+      select: { status: true }
+    });
+
+    return {
+      latestGrowthSnapshotId: latest.id,
+      growthScoreState: latest.scoreState,
+      growthRankingEligible: latest.rankingEligible,
+      growthLifecycleStatus: lifecycle?.status ?? null
+    };
+  }
+
+  async loadLatestVerificationState(
+    projectId: string
+  ): Promise<'VERIFICATION_FAILED' | 'VERIFIED' | null> {
+    const execution = await this.db.publicationExecution.findFirst({
+      where: {
+        projectId,
+        status: { in: ['VERIFICATION_FAILED', 'VERIFIED'] }
+      },
+      orderBy: [
+        { updatedAt: 'desc' },
+        { createdAt: 'desc' },
+        { id: 'desc' }
+      ],
+      select: { status: true }
+    });
+
+    if (execution?.status === 'VERIFICATION_FAILED' || execution?.status === 'VERIFIED') {
+      return execution.status;
+    }
+    return null;
+  }
+
+  async hasActivePublicationConflict(input: {
+    projectId: string;
+    targetPublicUrl: string;
+    targetRepository: string;
+    repositoryPath: string;
+  }): Promise<boolean> {
+    const executions = await this.db.publicationExecution.findMany({
+      where: {
+        projectId: input.projectId,
+        status: {
+          in: ['APPROVED', 'AUTOMATION_AUTHORIZED', 'QUEUED', 'EXECUTING']
+        },
+        plan: {
+          OR: [
+            { targetPublicUrl: input.targetPublicUrl },
+            { targetRepository: input.targetRepository }
+          ]
+        }
+      },
+      select: {
+        plan: {
+          select: {
+            targetPublicUrl: true,
+            targetRepository: true,
+            operations: true
+          }
+        }
+      }
+    });
+
+    return executions.some(({ plan }) => {
+      if (plan.targetPublicUrl === input.targetPublicUrl) return true;
+      if (plan.targetRepository !== input.targetRepository) return false;
+      return operationPaths(plan.operations).includes(input.repositoryPath);
+    });
   }
 
   async createOrGetDecision(
