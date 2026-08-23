@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { PublicationExecutionStatus } from '@prisma/client';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../src/db/prisma.js';
 import { reserveAutopilotCapacity } from '../../src/modules/optimization-autopilot/autopilot.reservation.js';
 
@@ -317,6 +317,10 @@ function reserveInput(projectId: string, decisionId: string, utcDate = TEST_DATE
     maxConcurrentRuns: 3
   } as const;
 }
+
+afterAll(async () => {
+  await prisma.$executeRawUnsafe('TRUNCATE TABLE "Project" CASCADE');
+});
 
 describe('P9-C race-safe autopilot reservations', () => {
   it('serializes concurrent daily quota claims so only one decision reserves the final slot', async () => {
