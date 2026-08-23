@@ -7,6 +7,8 @@ const PROJECT_B = '00000000-0000-0000-0000-000000000002';
 const PROJECT_C = '00000000-0000-0000-0000-000000000003';
 const REQUEST_ID = '11111111-1111-4111-8111-111111111111';
 
+type ProjectStub = { id: string; planLevel: 'STANDARD' | 'ADVANCED' | 'ENTERPRISE' };
+
 function run(overrides: Partial<OptimizationRun> = {}): OptimizationRun {
   return {
     id: '22222222-2222-4222-8222-222222222222',
@@ -32,8 +34,9 @@ function run(overrides: Partial<OptimizationRun> = {}): OptimizationRun {
   };
 }
 
-function setup(options?: { runs?: OptimizationRun[]; projects?: Array<{ id: string; planLevel: 'STANDARD' | 'ADVANCED' | 'ENTERPRISE' }> }) {
+function setup(options?: { runs?: OptimizationRun[]; projects?: ProjectStub[] }) {
   const runs = [...(options?.runs ?? [])];
+  const projects = options?.projects ?? [];
   const createOrGetRun = vi.fn(async (input: any) => {
     const existing = runs.find((item) => item.projectId === input.projectId && item.triggerKey === input.triggerKey);
     if (existing) return existing;
@@ -50,15 +53,16 @@ function setup(options?: { runs?: OptimizationRun[]; projects?: Array<{ id: stri
   });
   const getRun = vi.fn(async (runId: string) => runs.find((item) => item.id === runId) ?? null);
   const enqueueRun = vi.fn().mockResolvedValue({ id: 'job' });
-  const list = vi.fn().mockResolvedValue(options?.projects ?? []);
+  const list = vi.fn().mockResolvedValue(projects);
+  const findById = vi.fn(async (projectId: string) => projects.find((project) => project.id === projectId) ?? null);
 
   const service = new OptimizationOrchestrationService({
     repository: { createOrGetRun, getRun },
     planningQueue: { enqueueRun },
-    projects: { list }
+    projects: { list, findById }
   });
 
-  return { service, runs, createOrGetRun, getRun, enqueueRun, list };
+  return { service, runs, createOrGetRun, getRun, enqueueRun, list, findById };
 }
 
 describe('P9-B trigger service', () => {
@@ -93,8 +97,10 @@ describe('P9-B trigger service', () => {
     expect(enqueueRun).toHaveBeenNthCalledWith(2, first.id, PROJECT_A);
   });
 
-  it('persists only bounded sorted Growth trigger facts', async () => {
-    const { service, createOrGetRun, enqueueRun } = setup();
+  it('persists only bounded sorted Growth trigger facts for entitled projects', async () => {
+    const { service, createOrGetRun, enqueueRun } = setup({
+      projects: [{ id: PROJECT_A, planLevel: 'ADVANCED' }]
+    });
 
     const created = await service.triggerGrowth({
       projectId: PROJECT_A,
@@ -120,6 +126,24 @@ describe('P9-B trigger service', () => {
       }
     }));
     expect(enqueueRun).toHaveBeenCalledWith(created.id, PROJECT_A);
+  });
+
+  it('rejects automatic Growth orchestration for feature-ineligible projects', async () => {
+    const { service, createOrGetRun, enqueueRun } = setup({
+      projects: [{ id: PROJECT_A, planLevel: 'STANDARD' }]
+    });
+
+    await expect(service.triggerGrowth({
+      projectId: PROJECT_A,
+      asOfDate: '2026-08-23T00:00:00.000Z',
+      materializationVersion: 'GROWTH_MATERIALIZATION_V1',
+      formulaVersion: 'GROWTH_SCORE_V1',
+      state: 'COMPLETED',
+      selectedGscSnapshotIds: []
+    })).rejects.toThrow(/feature|entitlement/i);
+
+    expect(createOrGetRun).not.toHaveBeenCalled();
+    expect(enqueueRun).not.toHaveBeenCalled();
   });
 
   it('validates exact UTC dates and queues only entitled daily projects', async () => {
