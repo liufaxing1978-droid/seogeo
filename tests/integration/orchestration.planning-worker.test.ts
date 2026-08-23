@@ -270,13 +270,14 @@ describe('P9-B planning worker', () => {
     expect(enqueueRun).toHaveBeenCalledWith(run.id, project.id);
   });
 
-  it('fails closed with a stable code when P9-A returns a cross-project plan', async () => {
+  it('fails closed with PLAN_PROJECT_MISMATCH when P9-A returns a cross-project plan', async () => {
     const project = await createProject('mismatch-owner');
     const other = await createProject('mismatch-plan');
-    const wrong = await createPlan(other.id, 1);
+    const correct = await createPlan(project.id, 1);
+    const wrong = await createPlan(other.id, 2);
     const run = await createQueuedRun(project.id, 'd');
     const materializeProject = vi.fn().mockResolvedValue({
-      candidates: [wrong.candidate],
+      candidates: [correct.candidate],
       plans: [wrong.plan],
       aiTaskId: null
     });
@@ -292,12 +293,12 @@ describe('P9-B planning worker', () => {
         advisoryRootDir: '/tmp/p9b-advisory-test',
         now: () => NOW
       }
-    )).rejects.toMatchObject({ code: 'CANDIDATE_PROJECT_MISMATCH' });
+    )).rejects.toMatchObject({ code: 'PLAN_PROJECT_MISMATCH' });
 
     expect(await orchestrationRepository.getRun(run.id)).toMatchObject({
       status: 'FAILED',
       failureCount: 1,
-      lastErrorCode: 'CANDIDATE_PROJECT_MISMATCH'
+      lastErrorCode: 'PLAN_PROJECT_MISMATCH'
     });
     expect(await orchestrationRepository.listRunItems(run.id)).toEqual([]);
     expect(enqueueRun).not.toHaveBeenCalled();
