@@ -19,6 +19,7 @@ export interface OptimizationOrchestrationApiPort {
   }): Promise<unknown>;
 }
 
+const projectIdSchema = z.string().uuid();
 const manualRunSchema = z.object({
   manualRequestId: z.string().uuid()
 }).strict();
@@ -57,7 +58,7 @@ export function createOptimizationOrchestrationRoutes(
     async (req, res, next) => {
       try {
         const input = manualRunSchema.parse(req.body);
-        const projectId = req.params.projectId;
+        const projectId = projectIdSchema.parse(req.params.projectId);
         const data = await api.triggerManual({
           projectId,
           manualRequestId: input.manualRequestId,
