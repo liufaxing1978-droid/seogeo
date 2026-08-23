@@ -348,6 +348,17 @@ async function createPlanInTransaction(
   tx: Prisma.TransactionClient,
   input: CreateOptimizationPlanInput,
 ): Promise<void> {
+  const candidate = await tx.optimizationCandidate.findUnique({
+    where: { id: input.candidateId },
+    select: { projectId: true },
+  })
+  if (!candidate) {
+    throw new Error('Optimization candidate does not exist')
+  }
+  if (candidate.projectId !== input.projectId) {
+    throw new Error('Optimization candidate project mismatch')
+  }
+
   const existing = await tx.optimizationPlan.findUnique({
     where: {
       candidateId_planVersion: {
