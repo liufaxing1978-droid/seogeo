@@ -11,6 +11,7 @@ export const QUEUE_NAMES = [
   'growth-materialization',
   'optimization-planning',
   'optimization-orchestration',
+  'optimization-autopilot',
   'visibility',
   'visibility-extraction',
   'visibility-metrics',
