@@ -57,6 +57,34 @@ function operationPaths(value: Prisma.JsonValue): string[] {
   });
 }
 
+function operationTypes(value: Prisma.JsonValue): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) return [];
+    const type = (item as Record<string, Prisma.JsonValue>)['type'];
+    return typeof type === 'string' ? [type] : [];
+  });
+}
+
+function validationCodes(
+  value: Prisma.JsonValue | null
+): { blockingCodes: string[]; warningCodes: string[] } | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, Prisma.JsonValue>;
+  const blockingCodes = record['blockingCodes'];
+  const warningCodes = record['warningCodes'];
+  if (!Array.isArray(blockingCodes) || !blockingCodes.every((code) => typeof code === 'string')) {
+    return null;
+  }
+  if (!Array.isArray(warningCodes) || !warningCodes.every((code) => typeof code === 'string')) {
+    return null;
+  }
+  return {
+    blockingCodes: blockingCodes as string[],
+    warningCodes: warningCodes as string[]
+  };
+}
+
 export class OptimizationAutopilotRepository {
   constructor(private readonly db: typeof prisma = prisma) {}
 
@@ -259,6 +287,173 @@ export class OptimizationAutopilotRepository {
       if (plan.targetRepository !== input.targetRepository) return false;
       return operationPaths(plan.operations).includes(input.repositoryPath);
     });
+  }
+
+  async loadExactP8AuthorityFacts(input: {
+    projectId: string;
+    optimizationPlanId: string;
+    runItemId: string;
+  }): Promise<{
+    proposalId: string;
+    p8PlanId: string;
+    p8PreviewId: string;
+    siteId: string;
+    channelId: string;
+    draftId: string;
+    draftVersion: number;
+    contentHash: string;
+    riskClass: string;
+    operationTypes: string[];
+    blockingCodes: string[];
+    warningCodes: string[];
+    gitDraftPrAvailable: boolean;
+    targetPublicUrl: string;
+    targetRepository: string;
+    targetBranch: string;
+    baseSha: string;
+    targetBlobHashes: Prisma.JsonValue | null;
+    planHash: string;
+    previewHash: string;
+  } | null> {
+    const proposal = await this.db.publicationProposal.findFirst({
+      where: {
+        projectId: input.projectId,
+        sourceType: 'P9_OPTIMIZATION_PLAN',
+        sourceReferenceId: input.optimizationPlanId,
+        sourceSnapshotId: input.runItemId
+      },
+      select: { id: true }
+    });
+    if (!proposal) return null;
+
+    const plan = await this.db.publicationPlan.findFirst({
+      where: {
+        projectId: input.projectId,
+        proposalId: proposal.id,
+        preview: { isNot: null }
+      },
+      orderBy: [
+        { version: 'desc' },
+        { createdAt: 'desc' },
+        { id: 'desc' }
+      ],
+      select: {
+        id: true,
+        siteId: true,
+        channelId: true,
+        draftId: true,
+        draftVersion: true,
+        riskClass: true,
+        operations: true,
+        targetPublicUrl: true,
+        targetRepository: true,
+        targetBranch: true,
+        baseSha: true,
+        targetBlobHashes: true,
+        planHash: true,
+        draft: {
+          select: {
+            projectId: true,
+            sourceProposalId: true
+          }
+        },
+        site: {
+          select: {
+            projectId: true,
+            enabled: true,
+            adapterType: true,
+            writeCapability: true
+          }
+        },
+        channel: {
+          select: {
+            id: true,
+            siteId: true,
+            enabled: true
+          }
+        },
+        preview: {
+          select: {
+            id: true,
+            projectId: true,
+            previewHash: true,
+            validationResult: true
+          }
+        }
+      }
+    });
+
+    if (
+      !plan
+      || !plan.preview
+      || !plan.channelId
+      || !plan.channel
+      || plan.site.projectId !== input.projectId
+      || plan.channel.siteId !== plan.siteId
+      || plan.draft.projectId !== input.projectId
+      || plan.draft.sourceProposalId !== proposal.id
+      || plan.preview.projectId !== input.projectId
+    ) {
+      return null;
+    }
+
+    const draftVersion = await this.db.contentDraftVersion.findUnique({
+      where: {
+        draftId_version: {
+          draftId: plan.draftId,
+          version: plan.draftVersion
+        }
+      },
+      select: { contentHash: true }
+    });
+    if (!draftVersion?.contentHash) return null;
+
+    const codes = validationCodes(plan.preview.validationResult);
+    if (!codes) return null;
+
+    return {
+      proposalId: proposal.id,
+      p8PlanId: plan.id,
+      p8PreviewId: plan.preview.id,
+      siteId: plan.siteId,
+      channelId: plan.channelId,
+      draftId: plan.draftId,
+      draftVersion: plan.draftVersion,
+      contentHash: draftVersion.contentHash,
+      riskClass: plan.riskClass,
+      operationTypes: operationTypes(plan.operations),
+      blockingCodes: codes.blockingCodes,
+      warningCodes: codes.warningCodes,
+      gitDraftPrAvailable: plan.site.enabled
+        && plan.channel.enabled
+        && plan.site.adapterType === 'GITHUB_GIT'
+        && plan.site.writeCapability === 'GIT_DRAFT_PR',
+      targetPublicUrl: plan.targetPublicUrl,
+      targetRepository: plan.targetRepository,
+      targetBranch: plan.targetBranch,
+      baseSha: plan.baseSha,
+      targetBlobHashes: plan.targetBlobHashes,
+      planHash: plan.planHash,
+      previewHash: plan.preview.previewHash
+    };
+  }
+
+  async hasExistingAutomaticHandoff(projectId: string, runItemId: string): Promise<boolean> {
+    const decisions = await this.db.optimizationAutopilotDecision.findMany({
+      where: { projectId, runItemId },
+      select: { id: true }
+    });
+    if (decisions.length === 0) return false;
+
+    const authorization = await this.db.publicationAutomationAuthorization.findFirst({
+      where: {
+        projectId,
+        automationSource: 'CONTROLLED_AUTOPILOT',
+        automationDecisionId: { in: decisions.map(({ id }) => id) }
+      },
+      select: { id: true }
+    });
+    return authorization !== null;
   }
 
   async createOrGetDecision(
