@@ -1,0 +1,77 @@
+enum OptimizationTriggerType {
+  EVENT
+  DAILY_RECONCILIATION
+  MANUAL
+}
+
+enum OptimizationTriggerSource {
+  GROWTH_MATERIALIZATION
+  DAILY_SCHEDULER
+  MANUAL_REQUEST
+}
+
+enum OptimizationRunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum OptimizationRunItemStage {
+  PLANNED
+  READY_FOR_POLICY
+}
+
+enum OptimizationRunItemStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model OptimizationRun {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  projectId           String                 @db.Uuid
+  runVersion          String
+  triggerType         OptimizationTriggerType
+  triggerSource       OptimizationTriggerSource
+  triggerKey          String
+  triggerPayload      Json
+  status              OptimizationRunStatus @default(QUEUED)
+  candidateCount      Int                    @default(0)
+  plannedCount        Int                    @default(0)
+  itemCount           Int                    @default(0)
+  completedCount      Int                    @default(0)
+  failureCount        Int                    @default(0)
+  startedAt           DateTime?
+  planningCompletedAt DateTime?
+  completedAt         DateTime?
+  lastErrorCode       String?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  items OptimizationRunItem[]
+
+  @@unique([projectId, triggerKey], map: "OptimizationRun_project_trigger_key")
+  @@index([projectId, status, createdAt], map: "OptimizationRun_project_status_idx")
+}
+
+model OptimizationRunItem {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  runId              String                    @db.Uuid
+  projectId          String                    @db.Uuid
+  optimizationPlanId String                    @db.Uuid
+  itemKey            String
+  currentStage       OptimizationRunItemStage  @default(PLANNED)
+  status             OptimizationRunItemStatus @default(PENDING)
+  reasonCode         String?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  completedAt        DateTime?
+
+  run              OptimizationRun  @relation(fields: [runId], references: [id], onDelete: Restrict)
+  optimizationPlan OptimizationPlan @relation(fields: [optimizationPlanId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, optimizationPlanId], map: "OptimizationRunItem_run_plan")
+  @@unique([runId, itemKey], map: "OptimizationRunItem_run_item_key")
+  @@index([projectId, status, createdAt], map: "OptimizationRunItem_project_status_idx")
+}
