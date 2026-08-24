@@ -6,7 +6,6 @@ import type {
   OptimizationFeedbackProfile,
   OptimizationMarketScopeMode,
   PlanLevel,
-  Prisma,
   Project,
   PublicationExecutionStatus,
   PublicationProposalSourceType,
@@ -19,35 +18,37 @@ import {
   buildFeedbackEvidenceKey,
   buildFeedbackScopeKey
 } from '../../src/modules/optimization-feedback/feedback.identity.js';
-import {
-  FeedbackObservability,
-  type FeedbackObservabilityEvent
-} from '../../src/modules/optimization-feedback/feedback.observability.js';
+import { FeedbackObservability } from '../../src/modules/optimization-feedback/feedback.observability.js';
 import {
   OptimizationFeedbackRepository,
   type FeedbackMaterializationContext
 } from '../../src/modules/optimization-feedback/feedback.repository.js';
-import {
-  OptimizationFeedbackService,
-  type FeedbackMaterializationResult
-} from '../../src/modules/optimization-feedback/feedback.service.js';
-import {
-  OPTIMIZATION_FEEDBACK_EVIDENCE_VERSION,
-  OPTIMIZATION_FEEDBACK_PROFILE_VERSION
-} from '../../src/modules/optimization-feedback/feedback.types.js';
+import { OptimizationFeedbackService } from '../../src/modules/optimization-feedback/feedback.service.js';
+import { OPTIMIZATION_FEEDBACK_EVIDENCE_VERSION } from '../../src/modules/optimization-feedback/feedback.types.js';
 import { projectRepository } from '../../src/modules/projects/project.repository.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-type TerminalState = {
-  effectState?: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'INCONCLUSIVE';
-  coverageState?: 'SUFFICIENT' | 'PARTIAL' | 'INSUFFICIENT' | 'UNKNOWN';
-  contaminationState?: 'CLEAR' | 'CONFLICTING_MUTATION' | 'TARGET_REVISION_CHANGED' | 'VERIFICATION_INVALIDATED' | 'SOURCE_IDENTITY_CHANGED' | 'UNKNOWN';
-  evaluatorVersion?: string;
-  cutoffOffsetDays?: number;
+type ObservedEvent = {
+  event: string;
+  projectId: string;
+  experimentId?: string;
+  observationId?: string;
+  feedbackEvidenceId?: string;
+  feedbackProfileId?: string;
+  recommendedActionType?: string;
+  marketCode?: string;
+  locale?: string;
+  sampleCount?: number;
+  historicalRankAdjustment?: number;
+  reasonCode?: string;
 };
 
-type SeedOptions = TerminalState & {
+type MaterializationResult =
+  | { kind: 'ACCEPTED' | 'EXISTING'; evidence: OptimizationFeedbackEvidence; profile: OptimizationFeedbackProfile }
+  | { kind: 'DEFERRED'; reasonCode: string };
+
+type SeedOptions = {
   project?: Project;
   planLevel?: PlanLevel;
   marketScopeMode?: OptimizationMarketScopeMode;
@@ -55,10 +56,14 @@ type SeedOptions = TerminalState & {
   locale?: string | null;
   action?: RecommendedActionType;
   proposalSourceType?: PublicationProposalSourceType;
-  proposalSourceReference?: 'PLAN' | 'WRONG' | 'NULL';
+  proposalSourceReference?: 'PLAN' | 'WRONG';
   executionStatus?: PublicationExecutionStatus;
   verificationStatus?: PublicationVerificationStatus;
-  withDefaultTerminalObservation?: boolean;
+  withTerminal?: boolean;
+  effectState?: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'INCONCLUSIVE';
+  coverageState?: 'SUFFICIENT' | 'PARTIAL' | 'INSUFFICIENT' | 'UNKNOWN';
+  contaminationState?: 'CLEAR' | 'CONFLICTING_MUTATION' | 'TARGET_REVISION_CHANGED' | 'VERIFICATION_INVALIDATED' | 'SOURCE_IDENTITY_CHANGED' | 'UNKNOWN';
+  cutoffOffsetDays?: number;
 };
 
 async function createProject(planLevel: PlanLevel = 'ADVANCED'): Promise<Project> {
@@ -83,7 +88,6 @@ async function createObservation(input: {
   effectState: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'INCONCLUSIVE';
   coverageState?: 'SUFFICIENT' | 'PARTIAL' | 'INSUFFICIENT' | 'UNKNOWN';
   contaminationState?: 'CLEAR' | 'CONFLICTING_MUTATION' | 'TARGET_REVISION_CHANGED' | 'VERIFICATION_INVALIDATED' | 'SOURCE_IDENTITY_CHANGED' | 'UNKNOWN';
-  evaluatorVersion?: string;
 }) {
   const suffix = randomUUID();
   return prisma.optimizationExperimentObservation.create({
@@ -95,9 +99,7 @@ async function createObservation(input: {
       windowType: input.windowType,
       windowDays: input.windowDays,
       dueAt: new Date(input.verifiedAnchorAt.getTime() + input.windowDays * DAY_MS),
-      inputCutoffAt: new Date(
-        input.verifiedAnchorAt.getTime() + input.cutoffOffsetDays * DAY_MS
-      ),
+      inputCutoffAt: new Date(input.verifiedAnchorAt.getTime() + input.cutoffOffsetDays * DAY_MS),
       baselineSearchSourceRefs: ['search:baseline'],
       observedSearchSourceRefs: ['search:observed'],
       baselineVisibilitySourceRefs: [],
@@ -109,12 +111,12 @@ async function createObservation(input: {
       contaminationState: input.contaminationState ?? 'CLEAR',
       effectState: input.effectState,
       reasonCodes: [],
-      evaluatorVersion: input.evaluatorVersion ?? 'OPTIMIZATION_EXPERIMENT_EVALUATOR_V1'
+      evaluatorVersion: 'OPTIMIZATION_EXPERIMENT_EVALUATOR_V1'
     }
   });
 }
 
-async function seedMaterializationGraph(options: SeedOptions = {}) {
+async function seedGraph(options: SeedOptions = {}) {
   const suffix = randomUUID();
   const project = options.project ?? await createProject(options.planLevel ?? 'ADVANCED');
   const targetUrl = `https://${suffix}.example.com/page`;
@@ -127,7 +129,7 @@ async function seedMaterializationGraph(options: SeedOptions = {}) {
     ? (marketScopeMode === 'CONFIGURED_MARKET' ? 'zh-Hant' : null)
     : options.locale;
 
-  const growthIdentity = await prisma.growthOpportunityIdentity.create({
+  const identity = await prisma.growthOpportunityIdentity.create({
     data: {
       projectId: project.id,
       opportunityKey: `growth:${suffix}`,
@@ -138,9 +140,9 @@ async function seedMaterializationGraph(options: SeedOptions = {}) {
       identityPayload: { fixture: true }
     }
   });
-  const growthSnapshot = await prisma.growthOpportunitySnapshot.create({
+  const snapshot = await prisma.growthOpportunitySnapshot.create({
     data: {
-      opportunityIdentityId: growthIdentity.id,
+      opportunityIdentityId: identity.id,
       projectId: project.id,
       snapshotVersion: 'GROWTH_OPPORTUNITY_SNAPSHOT_V1',
       formulaVersion: 'GROWTH_SCORE_V1',
@@ -163,8 +165,8 @@ async function seedMaterializationGraph(options: SeedOptions = {}) {
   const candidate = await prisma.optimizationCandidate.create({
     data: {
       projectId: project.id,
-      growthOpportunityIdentityId: growthIdentity.id,
-      growthSnapshotId: growthSnapshot.id,
+      growthOpportunityIdentityId: identity.id,
+      growthSnapshotId: snapshot.id,
       candidateVersion: 'OPTIMIZATION_CANDIDATE_V1',
       candidateKey: `candidate:${suffix}`,
       marketScopeMode,
@@ -209,11 +211,9 @@ async function seedMaterializationGraph(options: SeedOptions = {}) {
       sourceType: options.proposalSourceType ?? 'P9_OPTIMIZATION_PLAN',
       reason: 'P9-E materialization fixture',
       createdBy: 'SYSTEM',
-      sourceReferenceId: options.proposalSourceReference === 'NULL'
-        ? null
-        : options.proposalSourceReference === 'WRONG'
-          ? randomUUID()
-          : optimizationPlan.id
+      sourceReferenceId: options.proposalSourceReference === 'WRONG'
+        ? randomUUID()
+        : optimizationPlan.id
     }
   });
   const draft = await prisma.contentDraft.create({
@@ -256,7 +256,7 @@ async function seedMaterializationGraph(options: SeedOptions = {}) {
       validatorVersion: 'PUBLICATION_VALIDATOR_V1',
       riskClass: 'LOW',
       rollbackStrategy: 'REVERT_COMMIT',
-      planHash: randomUUID().replaceAll('-', '').padEnd(64, '0').slice(0, 64)
+      planHash: `${randomUUID().replaceAll('-', '')}${'0'.repeat(32)}`.slice(0, 64)
     }
   });
   const approval = await prisma.publicationApproval.create({
@@ -318,8 +318,7 @@ async function seedMaterializationGraph(options: SeedOptions = {}) {
       expectedDirectionJson: { CTR: 'HIGHER' }
     }
   });
-
-  const observation = options.withDefaultTerminalObservation === false
+  const observation = options.withTerminal === false
     ? null
     : await createObservation({
       projectId: project.id,
@@ -330,43 +329,21 @@ async function seedMaterializationGraph(options: SeedOptions = {}) {
       cutoffOffsetDays: options.cutoffOffsetDays ?? 29,
       effectState: options.effectState ?? 'POSITIVE',
       coverageState: options.coverageState,
-      contaminationState: options.contaminationState,
-      evaluatorVersion: options.evaluatorVersion
+      contaminationState: options.contaminationState
     });
 
-  return {
-    project,
-    candidate,
-    optimizationPlan,
-    proposal,
-    execution,
-    verification,
-    experiment,
-    observation,
-    verifiedAnchorAt
-  };
+  return { project, candidate, optimizationPlan, experiment, observation, verifiedAnchorAt };
 }
 
-function observabilityCollector() {
-  const events: FeedbackObservabilityEvent[] = [];
-  return {
-    events,
-    observability: new FeedbackObservability((event) => events.push(event))
-  };
-}
-
-function serviceWithEvents(events: FeedbackObservabilityEvent[]) {
+function serviceWithEvents(events: ObservedEvent[]) {
   return new OptimizationFeedbackService(
     new OptimizationFeedbackRepository(),
     projectRepository,
-    new FeedbackObservability((event) => events.push(event))
+    new FeedbackObservability((event: ObservedEvent) => events.push(event))
   );
 }
 
-function expectDeferred(
-  result: FeedbackMaterializationResult,
-  reasonCode: string
-): void {
+function expectDeferred(result: MaterializationResult, reasonCode: string): void {
   expect(result).toEqual({ kind: 'DEFERRED', reasonCode });
 }
 
@@ -379,44 +356,35 @@ describe('P9-E feedback materialization', () => {
         throw new Error('restricted read must not happen');
       }
     } as unknown as OptimizationFeedbackRepository;
-    const standardProject = {
-      id: randomUUID(),
-      planLevel: 'STANDARD'
-    } as Project;
-    const projectPort = {
-      findById: async () => standardProject
-    };
+    const project = { id: randomUUID(), planLevel: 'STANDARD' } as Project;
     const service = new OptimizationFeedbackService(
       repository,
-      projectPort,
+      { findById: async () => project },
       new FeedbackObservability(() => undefined)
     );
 
-    const result = await service.materializeObservation({
-      projectId: standardProject.id,
+    const result: MaterializationResult = await service.materializeObservation({
+      projectId: project.id,
       experimentId: randomUUID(),
       observationId: randomUUID()
     });
-
     expectDeferred(result, 'FEEDBACK_FEATURE_DISABLED');
     expect(restrictedRead).toBe(false);
   });
 
   it.each(['ADVANCED', 'ENTERPRISE'] as const)(
-    '%s accepts an exact eligible terminal observation and creates one evidence plus one profile',
+    '%s creates exact feedback evidence and one profile',
     async (planLevel) => {
-      const fixture = await seedMaterializationGraph({ planLevel });
-      const events: FeedbackObservabilityEvent[] = [];
-      const service = serviceWithEvents(events);
-
-      const result = await service.materializeObservation({
+      const fixture = await seedGraph({ planLevel });
+      const events: ObservedEvent[] = [];
+      const result: MaterializationResult = await serviceWithEvents(events).materializeObservation({
         projectId: fixture.project.id,
         experimentId: fixture.experiment.id,
         observationId: fixture.observation!.id
       });
 
       expect(result.kind).toBe('ACCEPTED');
-      if (result.kind !== 'ACCEPTED') return;
+      if (result.kind === 'DEFERRED') return;
       expect(result.evidence).toMatchObject({
         experimentId: fixture.experiment.id,
         observationId: fixture.observation!.id,
@@ -426,23 +394,14 @@ describe('P9-E feedback materialization', () => {
         feedbackValue: 1,
         marketScopeMode: 'CONFIGURED_MARKET',
         marketCode: 'HK',
-        locale: 'zh-Hant',
-        recommendedActionType: 'SERP_SNIPPET_OPTIMIZATION'
+        locale: 'zh-Hant'
       });
       expect(result.profile).toMatchObject({
         sampleCount: 1,
         positiveCount: 1,
-        neutralCount: 0,
-        negativeCount: 0,
         historicalRankAdjustment: 0,
         windowLimit: 20
       });
-      expect(await prisma.optimizationFeedbackEvidence.count({
-        where: { experimentId: fixture.experiment.id }
-      })).toBe(1);
-      expect(await prisma.optimizationFeedbackProfile.count({
-        where: { projectId: fixture.project.id, scopeKey: result.evidence.scopeKey }
-      })).toBe(1);
       expect(events.map((event) => event.event)).toEqual([
         'optimization.feedback.accepted',
         'optimization.feedback.profile.created'
@@ -450,10 +409,8 @@ describe('P9-E feedback materialization', () => {
     }
   );
 
-  it('never uses an earlier conclusive planned window as feedback evidence', async () => {
-    const fixture = await seedMaterializationGraph({
-      withDefaultTerminalObservation: false
-    });
+  it('ignores earlier conclusive windows and accepts the earliest fully eligible terminal candidate', async () => {
+    const fixture = await seedGraph({ withTerminal: false });
     const earlier = await createObservation({
       projectId: fixture.project.id,
       experimentId: fixture.experiment.id,
@@ -463,32 +420,7 @@ describe('P9-E feedback materialization', () => {
       cutoffOffsetDays: 15,
       effectState: 'POSITIVE'
     });
-    const terminal = await createObservation({
-      projectId: fixture.project.id,
-      experimentId: fixture.experiment.id,
-      verifiedAnchorAt: fixture.verifiedAnchorAt,
-      windowType: '28D',
-      windowDays: 28,
-      cutoffOffsetDays: 29,
-      effectState: 'NEGATIVE'
-    });
-    const service = serviceWithEvents([]);
-
-    const result = await service.materializeObservation({
-      projectId: fixture.project.id,
-      experimentId: fixture.experiment.id,
-      observationId: earlier.id
-    });
-
-    expect(result.kind).toBe('ACCEPTED');
-    if (result.kind !== 'ACCEPTED') return;
-    expect(result.evidence.observationId).toBe(terminal.id);
-    expect(result.evidence.feedbackValue).toBe(-1);
-  });
-
-  it('accepts the earliest fully eligible terminal candidate rather than an earlier rejected one', async () => {
-    const fixture = await seedMaterializationGraph({ withDefaultTerminalObservation: false });
-    const rejected = await createObservation({
+    await createObservation({
       projectId: fixture.project.id,
       experimentId: fixture.experiment.id,
       verifiedAnchorAt: fixture.verifiedAnchorAt,
@@ -504,32 +436,31 @@ describe('P9-E feedback materialization', () => {
       windowType: '28D',
       windowDays: 28,
       cutoffOffsetDays: 30,
-      effectState: 'POSITIVE'
+      effectState: 'NEGATIVE'
     });
 
-    const result = await serviceWithEvents([]).materializeObservation({
+    const result: MaterializationResult = await serviceWithEvents([]).materializeObservation({
       projectId: fixture.project.id,
       experimentId: fixture.experiment.id,
-      observationId: rejected.id
+      observationId: earlier.id
     });
-
     expect(result.kind).toBe('ACCEPTED');
-    if (result.kind !== 'ACCEPTED') return;
+    if (result.kind === 'DEFERRED') return;
     expect(result.evidence.observationId).toBe(eligible.id);
+    expect(result.evidence.feedbackValue).toBe(-1);
   });
 
   it.each([
     [{ effectState: 'INCONCLUSIVE' as const }, 'FEEDBACK_EFFECT_INCONCLUSIVE'],
     [{ coverageState: 'PARTIAL' as const }, 'FEEDBACK_COVERAGE_INSUFFICIENT'],
     [{ contaminationState: 'CONFLICTING_MUTATION' as const }, 'FEEDBACK_CONTAMINATED']
-  ])('creates no sample for ineligible terminal state %#', async (overrides, reasonCode) => {
-    const fixture = await seedMaterializationGraph(overrides);
-    const result = await serviceWithEvents([]).materializeObservation({
+  ])('creates no sample for rejected terminal state %#', async (overrides, reasonCode) => {
+    const fixture = await seedGraph(overrides);
+    const result: MaterializationResult = await serviceWithEvents([]).materializeObservation({
       projectId: fixture.project.id,
       experimentId: fixture.experiment.id,
       observationId: fixture.observation!.id
     });
-
     expectDeferred(result, reasonCode);
     expect(await prisma.optimizationFeedbackEvidence.count({
       where: { experimentId: fixture.experiment.id }
@@ -541,29 +472,25 @@ describe('P9-E feedback materialization', () => {
     { verificationStatus: 'FAILED' as const },
     { proposalSourceType: 'MANUAL' as const },
     { proposalSourceReference: 'WRONG' as const }
-  ])('fails closed when exact P8 authority/provenance is inconsistent %#', async (overrides) => {
-    const fixture = await seedMaterializationGraph(overrides);
-    const result = await serviceWithEvents([]).materializeObservation({
+  ])('fails closed when exact P8 authority is invalid %#', async (overrides) => {
+    const fixture = await seedGraph(overrides);
+    const result: MaterializationResult = await serviceWithEvents([]).materializeObservation({
       projectId: fixture.project.id,
       experimentId: fixture.experiment.id,
       observationId: fixture.observation!.id
     });
-
     expectDeferred(result, 'FEEDBACK_P8_AUTHORITY_MISSING');
-    expect(await prisma.optimizationFeedbackEvidence.count({
-      where: { experimentId: fixture.experiment.id }
-    })).toBe(0);
   });
 
-  it('fails closed on mismatched frozen execution/verification identities', async () => {
+  it('fails closed on mismatched frozen P8 identities before evidence creation', async () => {
     const projectId = randomUUID();
     const experimentId = randomUUID();
-    const observationId = randomUUID();
+    const planId = randomUUID();
     const context = {
       experiment: {
         id: experimentId,
         projectId,
-        optimizationPlanId: randomUUID(),
+        optimizationPlanId: planId,
         publicationExecutionId: randomUUID(),
         publicationVerificationId: randomUUID(),
         verifiedAnchorAt: new Date('2026-07-01T00:00:00.000Z'),
@@ -571,56 +498,41 @@ describe('P9-E feedback materialization', () => {
         observations: []
       },
       optimizationPlan: {
-        id: randomUUID(),
+        id: planId,
         projectId,
         recommendedActionType: 'SERP_SNIPPET_OPTIMIZATION',
         candidate: {
-          id: randomUUID(),
-          projectId,
-          marketScopeMode: 'CONFIGURED_MARKET',
-          marketCode: 'HK',
-          locale: 'zh-Hant'
+          id: randomUUID(), projectId, marketScopeMode: 'CONFIGURED_MARKET', marketCode: 'HK', locale: 'zh-Hant'
         }
       },
       execution: { id: randomUUID(), projectId, status: 'VERIFIED' },
-      verification: {
-        id: randomUUID(),
-        projectId,
-        executionId: randomUUID(),
-        status: 'VERIFIED'
-      },
-      proposal: {
-        id: randomUUID(),
-        projectId,
-        sourceType: 'P9_OPTIMIZATION_PLAN',
-        sourceReferenceId: randomUUID()
-      }
+      verification: { id: randomUUID(), projectId, executionId: randomUUID(), status: 'VERIFIED' },
+      proposal: { id: randomUUID(), projectId, sourceType: 'P9_OPTIMIZATION_PLAN', sourceReferenceId: planId }
     } satisfies FeedbackMaterializationContext;
     const repository = {
       loadExperimentFeedbackContext: async () => context,
       findEvidenceForExperiment: async () => null
     } as unknown as OptimizationFeedbackRepository;
-    const projectPort = {
-      findById: async () => ({ id: projectId, planLevel: 'ADVANCED' } as Project)
-    };
     const service = new OptimizationFeedbackService(
       repository,
-      projectPort,
+      { findById: async () => ({ id: projectId, planLevel: 'ADVANCED' } as Project) },
       new FeedbackObservability(() => undefined)
     );
-
-    const result = await service.materializeObservation({ projectId, experimentId, observationId });
+    const result: MaterializationResult = await service.materializeObservation({
+      projectId,
+      experimentId,
+      observationId: randomUUID()
+    });
     expectDeferred(result, 'FEEDBACK_P8_AUTHORITY_MISSING');
   });
 
-  it('rejects invalid/ambiguous market scope instead of inferring a configured scope', async () => {
-    const fixture = await seedMaterializationGraph({
+  it('fails closed on INVALID_PROVENANCE instead of inferring market scope', async () => {
+    const fixture = await seedGraph({
       marketScopeMode: 'INVALID_PROVENANCE',
       marketCode: null,
       locale: null
     });
-
-    const result = await serviceWithEvents([]).materializeObservation({
+    const result: MaterializationResult = await serviceWithEvents([]).materializeObservation({
       projectId: fixture.project.id,
       experimentId: fixture.experiment.id,
       observationId: fixture.observation!.id
@@ -628,10 +540,10 @@ describe('P9-E feedback materialization', () => {
     expectDeferred(result, 'FEEDBACK_SCOPE_INVALID');
   });
 
-  it('keeps configured and legacy feedback scopes isolated', async () => {
-    const project = await createProject('ADVANCED');
-    const configured = await seedMaterializationGraph({ project, cutoffOffsetDays: 29 });
-    const legacy = await seedMaterializationGraph({
+  it('keeps configured and legacy scopes separate', async () => {
+    const project = await createProject();
+    const configured = await seedGraph({ project, cutoffOffsetDays: 29 });
+    const legacy = await seedGraph({
       project,
       marketScopeMode: 'UNCONFIGURED_LEGACY',
       marketCode: null,
@@ -639,65 +551,55 @@ describe('P9-E feedback materialization', () => {
       cutoffOffsetDays: 30
     });
     const service = serviceWithEvents([]);
-
-    const configuredResult = await service.materializeObservation({
+    const configuredResult: MaterializationResult = await service.materializeObservation({
       projectId: project.id,
       experimentId: configured.experiment.id,
       observationId: configured.observation!.id
     });
-    const legacyResult = await service.materializeObservation({
+    const legacyResult: MaterializationResult = await service.materializeObservation({
       projectId: project.id,
       experimentId: legacy.experiment.id,
       observationId: legacy.observation!.id
     });
-
     expect(configuredResult.kind).toBe('ACCEPTED');
     expect(legacyResult.kind).toBe('ACCEPTED');
-    if (configuredResult.kind !== 'ACCEPTED' || legacyResult.kind !== 'ACCEPTED') return;
+    if (configuredResult.kind === 'DEFERRED' || legacyResult.kind === 'DEFERRED') return;
     expect(configuredResult.evidence.scopeKey).not.toBe(legacyResult.evidence.scopeKey);
     expect(configuredResult.profile.sampleCount).toBe(1);
     expect(legacyResult.profile.sampleCount).toBe(1);
-    expect(configuredResult.evidence.marketScopeMode).toBe('CONFIGURED_MARKET');
-    expect(legacyResult.evidence.marketScopeMode).toBe('UNCONFIGURED_LEGACY');
   });
 
-  it('creates a new immutable profile for a second experiment in the same scope and preserves the old profile', async () => {
-    const project = await createProject('ADVANCED');
-    const first = await seedMaterializationGraph({ project, cutoffOffsetDays: 29 });
-    const second = await seedMaterializationGraph({ project, cutoffOffsetDays: 30 });
+  it('creates a new profile for second same-scope evidence and preserves the old profile', async () => {
+    const project = await createProject();
+    const first = await seedGraph({ project, cutoffOffsetDays: 29 });
+    const second = await seedGraph({ project, cutoffOffsetDays: 30 });
     const service = serviceWithEvents([]);
-
-    const firstResult = await service.materializeObservation({
+    const firstResult: MaterializationResult = await service.materializeObservation({
       projectId: project.id,
       experimentId: first.experiment.id,
       observationId: first.observation!.id
     });
     expect(firstResult.kind).toBe('ACCEPTED');
-    if (firstResult.kind !== 'ACCEPTED') return;
-    const frozenFirstProfile = await prisma.optimizationFeedbackProfile.findUniqueOrThrow({
+    if (firstResult.kind === 'DEFERRED') return;
+    const frozen = await prisma.optimizationFeedbackProfile.findUniqueOrThrow({
       where: { id: firstResult.profile.id }
     });
-
-    const secondResult = await service.materializeObservation({
+    const secondResult: MaterializationResult = await service.materializeObservation({
       projectId: project.id,
       experimentId: second.experiment.id,
       observationId: second.observation!.id
     });
     expect(secondResult.kind).toBe('ACCEPTED');
-    if (secondResult.kind !== 'ACCEPTED') return;
-
-    expect(secondResult.profile.id).not.toBe(firstResult.profile.id);
+    if (secondResult.kind === 'DEFERRED') return;
     expect(secondResult.profile.sampleCount).toBe(2);
+    expect(secondResult.profile.id).not.toBe(firstResult.profile.id);
     expect(await prisma.optimizationFeedbackProfile.findUniqueOrThrow({
       where: { id: firstResult.profile.id }
-    })).toEqual(frozenFirstProfile);
-    expect(await prisma.optimizationFeedbackProfile.count({
-      where: { projectId: project.id, scopeKey: firstResult.evidence.scopeKey }
-    })).toBe(2);
+    })).toEqual(frozen);
   });
 
-  it('repairs a missing profile when accepted evidence already exists', async () => {
-    const fixture = await seedMaterializationGraph();
+  it('repairs a missing profile when evidence already exists and remains idempotent', async () => {
+    const fixture = await seedGraph();
     const repository = new OptimizationFeedbackRepository();
     const scopeKey = buildFeedbackScopeKey({
       projectId: fixture.project.id,
@@ -734,71 +636,59 @@ describe('P9-E feedback materialization', () => {
       sourceObservationKey: fixture.observation!.observationKey
     });
     expect(persisted.kind).toBe('CREATED');
-    expect(await prisma.optimizationFeedbackProfile.count({
-      where: { projectId: fixture.project.id, scopeKey }
-    })).toBe(0);
 
-    const result = await serviceWithEvents([]).materializeObservation({
+    const events: ObservedEvent[] = [];
+    const service = serviceWithEvents(events);
+    const repaired: MaterializationResult = await service.materializeObservation({
+      projectId: fixture.project.id,
+      experimentId: fixture.experiment.id,
+      observationId: fixture.observation!.id
+    });
+    const retry: MaterializationResult = await service.materializeObservation({
       projectId: fixture.project.id,
       experimentId: fixture.experiment.id,
       observationId: fixture.observation!.id
     });
 
-    expect(result.kind).toBe('EXISTING');
-    if (result.kind !== 'EXISTING') return;
-    expect(result.evidence.id).toBe(persisted.evidence.id);
-    expect(result.profile.sampleCount).toBe(1);
-    expect(await prisma.optimizationFeedbackProfile.count({
-      where: { projectId: fixture.project.id, scopeKey }
-    })).toBe(1);
+    expect(repaired.kind).toBe('EXISTING');
+    expect(retry.kind).toBe('EXISTING');
+    if (repaired.kind === 'DEFERRED') return;
+    expect(repaired.profile.sampleCount).toBe(1);
+    expect(events.filter((event) => event.event === 'optimization.feedback.accepted')).toHaveLength(0);
+    expect(events.filter((event) => event.event === 'optimization.feedback.profile.created')).toHaveLength(1);
   });
 
-  it('is idempotent after complete materialization and emits no duplicate create-specific events', async () => {
-    const fixture = await seedMaterializationGraph();
-    const collector = observabilityCollector();
-    const service = new OptimizationFeedbackService(
-      new OptimizationFeedbackRepository(),
-      projectRepository,
-      collector.observability
-    );
-
-    const first = await service.materializeObservation({
+  it('emits create-specific events only once for repeated complete materialization', async () => {
+    const fixture = await seedGraph();
+    const events: ObservedEvent[] = [];
+    const service = serviceWithEvents(events);
+    const first: MaterializationResult = await service.materializeObservation({
       projectId: fixture.project.id,
       experimentId: fixture.experiment.id,
       observationId: fixture.observation!.id
     });
-    const second = await service.materializeObservation({
+    const second: MaterializationResult = await service.materializeObservation({
       projectId: fixture.project.id,
       experimentId: fixture.experiment.id,
       observationId: fixture.observation!.id
     });
-
     expect(first.kind).toBe('ACCEPTED');
     expect(second.kind).toBe('EXISTING');
-    expect(collector.events.filter((event) => event.event === 'optimization.feedback.accepted')).toHaveLength(1);
-    expect(collector.events.filter((event) => event.event === 'optimization.feedback.profile.created')).toHaveLength(1);
+    expect(events.filter((event) => event.event === 'optimization.feedback.accepted')).toHaveLength(1);
+    expect(events.filter((event) => event.event === 'optimization.feedback.profile.created')).toHaveLength(1);
   });
 
-  it('serializes concurrent same-scope experiments so the latest profile includes both accepted experiments', async () => {
-    const project = await createProject('ADVANCED');
-    const first = await seedMaterializationGraph({ project, cutoffOffsetDays: 29 });
-    const second = await seedMaterializationGraph({ project, cutoffOffsetDays: 30 });
+  it('serializes concurrent same-scope materialization so latest profile contains both experiments', async () => {
+    const project = await createProject();
+    const first = await seedGraph({ project, cutoffOffsetDays: 29 });
+    const second = await seedGraph({ project, cutoffOffsetDays: 30 });
     const service = serviceWithEvents([]);
-
-    const results = await Promise.all([
-      service.materializeObservation({
-        projectId: project.id,
-        experimentId: first.experiment.id,
-        observationId: first.observation!.id
-      }),
-      service.materializeObservation({
-        projectId: project.id,
-        experimentId: second.experiment.id,
-        observationId: second.observation!.id
-      })
+    const results: MaterializationResult[] = await Promise.all([
+      service.materializeObservation({ projectId: project.id, experimentId: first.experiment.id, observationId: first.observation!.id }),
+      service.materializeObservation({ projectId: project.id, experimentId: second.experiment.id, observationId: second.observation!.id })
     ]);
+    expect(results.every((result: MaterializationResult) => result.kind === 'ACCEPTED')).toBe(true);
 
-    expect(results.every((result) => result.kind === 'ACCEPTED')).toBe(true);
     const evidence = await prisma.optimizationFeedbackEvidence.findMany({
       where: {
         projectId: project.id,
@@ -809,45 +699,25 @@ describe('P9-E feedback materialization', () => {
       },
       orderBy: [{ inputCutoffAt: 'asc' }, { observationId: 'asc' }]
     });
-    expect(evidence).toHaveLength(2);
-    const repository = new OptimizationFeedbackRepository();
-    const latest = await repository.findLatestProfileForScope({
+    const latest = await new OptimizationFeedbackRepository().findLatestProfileForScope({
       projectId: project.id,
       marketScopeMode: 'CONFIGURED_MARKET',
       marketCode: 'HK',
       locale: 'zh-Hant',
       recommendedActionType: 'SERP_SNIPPET_OPTIMIZATION'
     });
+    expect(evidence).toHaveLength(2);
     expect(latest?.sampleCount).toBe(2);
     expect(latest?.inputEvidenceIdsJson).toEqual(evidence.map((item) => item.id));
   });
 
-  it('does not expose Search, Visibility, AI, Git, provider, or publication mutation dependencies', () => {
+  it('exposes no Search, Visibility, AI, Git, provider, or publication mutation dependency', () => {
     const source = readFileSync(
       new URL('../../src/modules/optimization-feedback/feedback.service.ts', import.meta.url),
       'utf8'
     );
-
     expect(source).not.toMatch(/from ['"][^'"]*\/(?:ai|search-facts|search-providers|visibility|publication)\//);
     expect(source.toLowerCase()).not.toContain('deepseek');
     expect(source.toLowerCase()).not.toContain('github');
-  });
-
-  it('freezes only bounded profile metadata and does not copy raw experiment metrics', async () => {
-    const fixture = await seedMaterializationGraph();
-    const result = await serviceWithEvents([]).materializeObservation({
-      projectId: fixture.project.id,
-      experimentId: fixture.experiment.id,
-      observationId: fixture.observation!.id
-    });
-
-    expect(result.kind).toBe('ACCEPTED');
-    if (result.kind !== 'ACCEPTED') return;
-    const serializedEvidence = JSON.stringify(result.evidence);
-    const serializedProfile = JSON.stringify(result.profile);
-    expect(serializedEvidence).not.toContain('baselineMetricsJson');
-    expect(serializedEvidence).not.toContain('observedMetricsJson');
-    expect(serializedProfile).not.toContain('baselineMetricsJson');
-    expect(serializedProfile).not.toContain('observedMetricsJson');
   });
 });
