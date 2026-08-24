@@ -1,5 +1,8 @@
 import type { MarketCode, Prisma, RecommendedActionType } from '@prisma/client';
-import type { ExperimentMeasurementScope } from './experiment.types.js';
+import type {
+  ExperimentMeasurementScope,
+  VisibilityExperimentMeasurementScope
+} from './experiment.types.js';
 
 export type ExperimentScopeCandidate = {
   id: string;
@@ -13,11 +16,50 @@ export type ExperimentScopeCandidate = {
   sourceProvenance: Prisma.JsonValue;
 };
 
+export type VisibilityExperimentScopeFact = {
+  evidence: {
+    snapshotId: string;
+    projectId: string;
+    sourceModule: string;
+    sourceType: string;
+    sourceId: string;
+    sourceFactVersion: string;
+    ruleKey: string;
+  };
+  row: {
+    id: string;
+    projectId: string;
+    visibilityMetricSnapshotId: string;
+    metricType: string;
+    dimensionType: string;
+    dimensionKey: string;
+    actorType: string;
+    actorKey: string;
+  };
+  snapshot: {
+    id: string;
+    projectId: string;
+    status: string;
+    formulaVersion: string;
+    extractorVersion: string;
+    subjectSetHash: string;
+    scopeHash: string;
+  };
+};
+
+export interface VisibilityExperimentScopeSourcePort {
+  listVisibilityScopeFacts(input: {
+    projectId: string;
+    growthSnapshotId: string;
+  }): Promise<readonly VisibilityExperimentScopeFact[]>;
+}
+
 export type ResolveExperimentMeasurementScopeInput = {
   projectId: string;
   interventionType: RecommendedActionType;
   targetUrl: string;
   candidate: ExperimentScopeCandidate;
+  visibilitySource?: VisibilityExperimentScopeSourcePort;
 };
 
 const QUERY_PAGE_INTERVENTIONS = new Set<RecommendedActionType>([
@@ -35,6 +77,10 @@ function nonEmptyString(value: Prisma.JsonValue | undefined): string | null {
   if (typeof value !== 'string') return null;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
+}
+
+function hasText(value: string): boolean {
+  return value.trim().length > 0;
 }
 
 export function normalizeExperimentHttpUrl(value: string): string {
@@ -120,6 +166,99 @@ function resolveConfiguredSearchScope(
   };
 }
 
+function isExactVisibilityFact(
+  fact: VisibilityExperimentScopeFact,
+  input: ResolveExperimentMeasurementScopeInput
+): boolean {
+  const { evidence, row, snapshot } = fact;
+  if (
+    input.candidate.projectId !== input.projectId
+    || !hasText(input.candidate.growthSnapshotId)
+    || evidence.snapshotId !== input.candidate.growthSnapshotId
+    || evidence.projectId !== input.projectId
+    || evidence.sourceModule !== 'P6_VISIBILITY'
+    || evidence.sourceType !== 'VISIBILITY_METRIC_ROW'
+    || evidence.sourceId !== row.id
+    || row.projectId !== input.projectId
+    || snapshot.projectId !== input.projectId
+    || row.visibilityMetricSnapshotId !== snapshot.id
+    || snapshot.status !== 'COMPLETED'
+    || evidence.sourceFactVersion !== `${snapshot.formulaVersion}:${snapshot.id}`
+    || row.dimensionType !== 'OVERALL'
+    || row.actorType !== 'OWNED_ROLLUP'
+    || !hasText(snapshot.formulaVersion)
+    || !hasText(snapshot.extractorVersion)
+    || !hasText(snapshot.subjectSetHash)
+    || !hasText(snapshot.scopeHash)
+    || !hasText(row.dimensionKey)
+    || !hasText(row.actorKey)
+  ) {
+    return false;
+  }
+
+  if (row.metricType === 'MENTION_RATE') {
+    return evidence.ruleKey === 'P6_MENTION_RATE';
+  }
+  if (row.metricType === 'CITATION_RATE') {
+    return evidence.ruleKey === 'P6_CITATION_RATE';
+  }
+  return false;
+}
+
+function freezeVisibilityScope(
+  fact: VisibilityExperimentScopeFact
+): VisibilityExperimentMeasurementScope | null {
+  if (fact.row.metricType !== 'MENTION_RATE' && fact.row.metricType !== 'CITATION_RATE') {
+    return null;
+  }
+  return {
+    kind: 'VISIBILITY',
+    metricType: fact.row.metricType,
+    subjectSetHash: fact.snapshot.subjectSetHash,
+    scopeHash: fact.snapshot.scopeHash,
+    formulaVersion: fact.snapshot.formulaVersion,
+    extractorVersion: fact.snapshot.extractorVersion,
+    dimensionType: fact.row.dimensionType,
+    dimensionKey: fact.row.dimensionKey,
+    actorType: fact.row.actorType,
+    actorKey: fact.row.actorKey
+  };
+}
+
+async function resolveVisibilityScope(
+  input: ResolveExperimentMeasurementScopeInput
+): Promise<VisibilityExperimentMeasurementScope | null> {
+  if (
+    input.visibilitySource === undefined
+    || input.candidate.projectId !== input.projectId
+    || !hasText(input.candidate.growthSnapshotId)
+  ) {
+    return null;
+  }
+
+  const facts = await input.visibilitySource.listVisibilityScopeFacts({
+    projectId: input.projectId,
+    growthSnapshotId: input.candidate.growthSnapshotId
+  });
+  const exactFacts = facts.filter((fact) => isExactVisibilityFact(fact, input));
+
+  if (input.interventionType === 'GEO_CITABILITY_IMPROVEMENT') {
+    const citations = exactFacts.filter((fact) => fact.row.metricType === 'CITATION_RATE');
+    return citations.length === 1 ? freezeVisibilityScope(citations[0]!) : null;
+  }
+
+  if (input.interventionType === 'AI_VISIBILITY_IMPROVEMENT') {
+    const mentions = exactFacts.filter((fact) => fact.row.metricType === 'MENTION_RATE');
+    if (mentions.length > 1) return null;
+    if (mentions.length === 1) return freezeVisibilityScope(mentions[0]!);
+
+    const citations = exactFacts.filter((fact) => fact.row.metricType === 'CITATION_RATE');
+    return citations.length === 1 ? freezeVisibilityScope(citations[0]!) : null;
+  }
+
+  return null;
+}
+
 export async function resolveExperimentMeasurementScope(
   input: ResolveExperimentMeasurementScopeInput
 ): Promise<ExperimentMeasurementScope | null> {
@@ -128,6 +267,12 @@ export async function resolveExperimentMeasurementScope(
   }
   if (input.interventionType === 'CONTENT_CREATION') {
     return resolveConfiguredSearchScope(input, 'QUERY');
+  }
+  if (
+    input.interventionType === 'GEO_CITABILITY_IMPROVEMENT'
+    || input.interventionType === 'AI_VISIBILITY_IMPROVEMENT'
+  ) {
+    return resolveVisibilityScope(input);
   }
   return null;
 }
