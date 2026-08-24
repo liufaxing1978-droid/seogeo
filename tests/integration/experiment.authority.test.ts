@@ -25,6 +25,21 @@ async function withRollback(
   }
 }
 
+function bindTransactionalReadPorts(
+  service: OptimizationExperimentService,
+  tx: Prisma.TransactionClient
+): void {
+  (service as unknown as { evaluationSource: unknown }).evaluationSource = {
+    findExperimentForEvaluation: async (input: { projectId: string; experimentId: string }) =>
+      tx.optimizationExperiment.findFirst({
+        where: { id: input.experimentId, projectId: input.projectId }
+      })
+  };
+  (service as unknown as { contaminationSource: unknown }).contaminationSource = {
+    listPublicationEvents: async () => []
+  };
+}
+
 async function seedAuthorityGraph(
   tx: Prisma.TransactionClient,
   recommendedActionType: RecommendedActionType
@@ -515,6 +530,7 @@ describe('P9-D authority write boundary', () => {
       const fixture = await seedAuthorityGraph(tx, 'SERP_SNIPPET_OPTIMIZATION');
       const repository = new OptimizationExperimentRepository(tx);
       const service = new OptimizationExperimentService(repository);
+      bindTransactionalReadPorts(service, tx);
       const facts = fakeCompleteSearchFacts({
         projectId: fixture.project.id,
         propertyRef: fixture.propertyRef,
@@ -558,6 +574,7 @@ describe('P9-D authority write boundary', () => {
       const fixture = await seedAuthorityGraph(tx, 'CONTENT_CREATION');
       const repository = new OptimizationExperimentRepository(tx);
       const service = new OptimizationExperimentService(repository);
+      bindTransactionalReadPorts(service, tx);
       (service as unknown as { searchSource: unknown }).searchSource = {
         listCompletedFacts: async () => []
       };
