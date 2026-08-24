@@ -61,9 +61,9 @@ describe('P9-D deterministic experiment evaluator', () => {
   });
 
   it.each([
-    ['CLICKS', 100, 101.9],
-    ['IMPRESSIONS', 1000, 1019]
-  ] as const)('treats sub-2%% relative %s movement as NEUTRAL', (metricKey, baselineValue, observedValue) => {
+    ['CLICKS', 100, 104.9],
+    ['IMPRESSIONS', 1000, 1049]
+  ] as const)('treats sub-5%% relative %s movement as NEUTRAL', (metricKey, baselineValue, observedValue) => {
     const result = evaluateExperimentEffect({
       resolution: resolution({ comparisons: [comparison({ metricKey, baselineValue, observedValue })] }),
       contaminationState: 'CLEAR',
@@ -116,26 +116,34 @@ describe('P9-D deterministic experiment evaluator', () => {
     expect(result.effectState).toBe('INCONCLUSIVE');
   });
 
-  it('uses a 0.02 absolute threshold for CTR', () => {
-    const result = evaluateExperimentEffect({
+  it('uses a 0.005 absolute neutral band for CTR', () => {
+    const neutral = evaluateExperimentEffect({
       resolution: resolution({
-        comparisons: [comparison({ metricKey: 'CTR', baselineValue: 0.30, observedValue: 0.319 })]
+        comparisons: [comparison({ metricKey: 'CTR', baselineValue: 0.30, observedValue: 0.3049 })]
+      }),
+      contaminationState: 'CLEAR',
+      contaminationReasonCodes: []
+    });
+    const positive = evaluateExperimentEffect({
+      resolution: resolution({
+        comparisons: [comparison({ metricKey: 'CTR', baselineValue: 0.30, observedValue: 0.3051 })]
       }),
       contaminationState: 'CLEAR',
       contaminationReasonCodes: []
     });
 
-    expect(result.effectState).toBe('NEUTRAL');
+    expect(neutral.effectState).toBe('NEUTRAL');
+    expect(positive.effectState).toBe('POSITIVE');
   });
 
-  it('uses a 1.0 absolute threshold for position and treats lower as favorable', () => {
+  it('uses a 0.5 absolute neutral band for position and treats lower as favorable', () => {
     const neutral = evaluateExperimentEffect({
       resolution: resolution({
         comparisons: [comparison({
           metricKey: 'GOOGLE_SEARCH_CONSOLE_POSITION',
           direction: 'LOWER',
           baselineValue: 10,
-          observedValue: 9.1
+          observedValue: 9.51
         })]
       }),
       contaminationState: 'CLEAR',
@@ -147,7 +155,7 @@ describe('P9-D deterministic experiment evaluator', () => {
           metricKey: 'GOOGLE_SEARCH_CONSOLE_POSITION',
           direction: 'LOWER',
           baselineValue: 10,
-          observedValue: 8.9
+          observedValue: 9.49
         })]
       }),
       contaminationState: 'CLEAR',
@@ -158,7 +166,7 @@ describe('P9-D deterministic experiment evaluator', () => {
     expect(positive.effectState).toBe('POSITIVE');
   });
 
-  it('uses a 0.05 absolute threshold for visibility rates', () => {
+  it('uses a 0.05 absolute neutral band for visibility rates', () => {
     const result = evaluateExperimentEffect({
       resolution: resolution({
         comparisons: [comparison({
@@ -175,12 +183,12 @@ describe('P9-D deterministic experiment evaluator', () => {
     expect(result.effectState).toBe('NEUTRAL');
   });
 
-  it('reports POSITIVE when the primary metric improves and secondary metrics are not significantly adverse', () => {
+  it('reports POSITIVE when the primary metric improves beyond 5% and secondary metrics stay within their neutral bands', () => {
     const result = evaluateExperimentEffect({
       resolution: resolution({
         comparisons: [
           comparison({ metricKey: 'CLICKS', role: 'PRIMARY', baselineValue: 100, observedValue: 110 }),
-          comparison({ metricKey: 'CTR', role: 'SECONDARY', baselineValue: 0.30, observedValue: 0.291 })
+          comparison({ metricKey: 'CTR', role: 'SECONDARY', baselineValue: 0.30, observedValue: 0.296 })
         ]
       }),
       contaminationState: 'CLEAR',
@@ -190,12 +198,12 @@ describe('P9-D deterministic experiment evaluator', () => {
     expect(result.effectState).toBe('POSITIVE');
   });
 
-  it('reports NEGATIVE when the primary metric worsens and secondary metrics are not significantly favorable', () => {
+  it('reports NEGATIVE when the primary metric worsens beyond 5% and secondary metrics stay within their neutral bands', () => {
     const result = evaluateExperimentEffect({
       resolution: resolution({
         comparisons: [
           comparison({ metricKey: 'CLICKS', role: 'PRIMARY', baselineValue: 100, observedValue: 90 }),
-          comparison({ metricKey: 'CTR', role: 'SECONDARY', baselineValue: 0.30, observedValue: 0.305 })
+          comparison({ metricKey: 'CTR', role: 'SECONDARY', baselineValue: 0.30, observedValue: 0.303 })
         ]
       }),
       contaminationState: 'CLEAR',
