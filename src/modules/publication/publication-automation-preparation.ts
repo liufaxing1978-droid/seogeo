@@ -2,6 +2,10 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { aiTaskService, type AiTaskService } from '../ai/ai.service.js';
 import { createArticleGenerationTask, createContentBriefTask } from './publication-ai.js';
+import {
+  prepareGeneratedArticleForPublication,
+  type PublicationAutomationTargetPort
+} from './publication-automation-planning.js';
 import { contentHashV1 } from './publication.hash.js';
 
 const AUTOMATIC_SOURCE_TYPES = new Set([
@@ -41,6 +45,7 @@ export interface PublicationAutomationPreparationPort {
 
 export interface PublicationAutomationPreparationDeps {
   aiTaskService: Pick<AiTaskService, 'createAndEnqueue'>;
+  targetPort: PublicationAutomationTargetPort | null;
 }
 
 type AutomaticSourceReference = {
@@ -193,9 +198,11 @@ function sourceGapsFromBriefOutput(structuredOutput: Prisma.JsonValue): string[]
 export class PublicationAutomationPreparationService
 implements PublicationAutomationPreparationPort {
   private readonly aiTaskService: Pick<AiTaskService, 'createAndEnqueue'>;
+  private readonly targetPort: PublicationAutomationTargetPort | null;
 
   constructor(deps: Partial<PublicationAutomationPreparationDeps> = {}) {
     this.aiTaskService = deps.aiTaskService ?? aiTaskService;
+    this.targetPort = deps.targetPort ?? null;
   }
 
   async prepareContentCreation(
@@ -434,9 +441,17 @@ implements PublicationAutomationPreparationPort {
           const briefResult = initialBriefTask.runs
             .map((run) => run.result)
             .find((result) => result !== null) ?? null;
-          const sourceGaps = briefResult
-            ? sourceGapsFromBriefOutput(briefResult.structuredOutput)
-            : [];
+          if (!briefResult) {
+            return {
+              state: 'VALIDATION_BLOCKED',
+              proposalId: prepared.proposalId,
+              draftId: prepared.draftId,
+              planId: null,
+              previewId: null,
+              reasonCode: 'P8_BRIEF_RESULT_MISSING'
+            };
+          }
+          const sourceGaps = sourceGapsFromBriefOutput(briefResult.structuredOutput);
           if (sourceGaps.length > 0) {
             return {
               state: 'VALIDATION_BLOCKED',
@@ -447,6 +462,22 @@ implements PublicationAutomationPreparationPort {
               reasonCode: 'SOURCE_GAP'
             };
           }
+
+          const planning = await prepareGeneratedArticleForPublication({
+            projectId: input.projectId,
+            proposalId: prepared.proposalId,
+            draftId: prepared.draftId,
+            lockKey,
+            targetPort: this.targetPort
+          });
+          return {
+            state: planning.state,
+            proposalId: prepared.proposalId,
+            draftId: prepared.draftId,
+            planId: planning.planId,
+            previewId: planning.previewId,
+            reasonCode: planning.reasonCode
+          };
         }
       }
     }
