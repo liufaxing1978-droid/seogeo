@@ -59,6 +59,7 @@ import { visibilityHistoryWebRoutes } from './modules/visibility/visibility-hist
 import { webRoutes } from './web/routes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const assetsDir = path.join(here, 'public');
 
 export interface AppOptions {
   crawlService?: CrawlService;
@@ -86,7 +87,7 @@ export function createApp(options: AppOptions = {}) {
   app.set('views', path.join(here, 'views'));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
-  app.use('/assets', express.static(path.join(here, 'public'));
+  app.use('/assets', express.static(assetsDir));
   app.use('/health', healthRoutes);
   app.use('/api/projects', projectRoutes);
   app.use('/api', createMarketRoutes(options.marketService));
