@@ -173,8 +173,23 @@ function metricsJson(
     direction: comparison.direction,
     value: side === 'baseline' ? comparison.baselineValue : comparison.observedValue,
     ...(side === 'baseline'
-      ? { zeroIsExplicit: comparison.baselineZeroIsExplicit }
-      : {})
+      ? {
+        zeroIsExplicit: comparison.baselineZeroIsExplicit,
+        ...(comparison.baselineNumerator !== undefined
+          ? { numerator: comparison.baselineNumerator }
+          : {}),
+        ...(comparison.baselineDenominator !== undefined
+          ? { denominator: comparison.baselineDenominator }
+          : {})
+      }
+      : {
+        ...(comparison.observedNumerator !== undefined
+          ? { numerator: comparison.observedNumerator }
+          : {}),
+        ...(comparison.observedDenominator !== undefined
+          ? { denominator: comparison.observedDenominator }
+          : {})
+      })
   }));
 }
 
