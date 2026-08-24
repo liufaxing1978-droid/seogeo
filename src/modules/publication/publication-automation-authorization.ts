@@ -191,11 +191,15 @@ function reservationIsCurrent(
   reservation: AutopilotExecutionReservation,
   projectId: string,
   decisionId: string,
-  now: Date
+  now: Date,
+  allowConsumed = false
 ): boolean {
   return reservation.projectId === projectId
     && reservation.decisionId === decisionId
-    && reservation.status === 'RESERVED'
+    && (
+      reservation.status === 'RESERVED'
+      || (allowConsumed && reservation.status === 'CONSUMED')
+    )
     && reservation.releasedAt === null
     && utcDateKey(reservation.utcDate) === utcDateKey(now);
 }
@@ -404,7 +408,7 @@ export function assertAutomationAuthorizationCurrent(
   if (authorization.expiresAt === null || authorization.expiresAt.getTime() <= now.getTime()) {
     fail('AUTOMATION_AUTHORIZATION_STALE', 'Machine authorization has expired');
   }
-  if (!reservationIsCurrent(reservation, authorization.projectId, decision.id, now)) {
+  if (!reservationIsCurrent(reservation, authorization.projectId, decision.id, now, true)) {
     fail('AUTOMATION_RESERVATION_STALE', 'Autopilot reservation is no longer current');
   }
 
