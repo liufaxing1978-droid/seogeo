@@ -7,8 +7,17 @@ import {
   buildOptimizationFeedbackObservationJobId,
   buildOptimizationFeedbackObservationJobOptions
 } from '../../src/modules/optimization-feedback/feedback.queue.js';
-import { canonicalFeedbackJson } from '../../src/modules/optimization-feedback/feedback.identity.js';
 import { OPTIMIZATION_FEEDBACK_EVIDENCE_VERSION } from '../../src/modules/optimization-feedback/feedback.types.js';
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => [key, canonicalize(child)])
+  );
+}
 
 describe('P9-E feedback queue', () => {
   it('uses the exact bounded materialization queue contract', async () => {
@@ -23,12 +32,12 @@ describe('P9-E feedback queue', () => {
       experimentId: 'experiment-1',
       observationId: 'observation-1'
     };
-    const hash = createHash('sha256').update(canonicalFeedbackJson({
+    const hash = createHash('sha256').update(JSON.stringify(canonicalize({
       projectId: 'project-1',
       experimentId: 'experiment-1',
       observationId: 'observation-1',
       feedbackEvidenceVersion: OPTIMIZATION_FEEDBACK_EVIDENCE_VERSION
-    })).digest('hex');
+    }))).digest('hex');
 
     expect(OPTIMIZATION_FEEDBACK_QUEUE_NAME).toBe('optimization-feedback-materialization');
     expect(OPTIMIZATION_FEEDBACK_QUEUE_ATTEMPTS).toBe(2);
