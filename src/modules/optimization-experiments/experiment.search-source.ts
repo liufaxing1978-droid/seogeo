@@ -236,6 +236,7 @@ export async function resolveSearchWindowComparison(input: {
   const baselineStart = addUtcDays(anchorDay, -input.windowDays);
   const observedEnd = addUtcDays(anchorDay, input.windowDays - 1);
   const dueAt = new Date(input.verifiedAnchorAt.getTime() + input.windowDays * DAY_MS);
+  const expectedFactKind = input.scope.aggregationScope === 'QUERY_PAGE' ? 'QUERY_PAGE' : 'QUERY';
 
   const facts = await input.source.listCompletedFacts({
     projectId: input.projectId,
@@ -243,7 +244,7 @@ export async function resolveSearchWindowComparison(input: {
     marketCode: input.scope.marketCode as never,
     locale: input.scope.locale,
     propertyRef: input.scope.propertyRef,
-    factKind: input.scope.aggregationScope === 'QUERY_PAGE' ? 'QUERY_PAGE' : undefined,
+    factKind: expectedFactKind,
     normalizedQuery: input.scope.normalizedQuery,
     ...(input.scope.aggregationScope === 'QUERY_PAGE' && input.scope.canonicalPage
       ? { canonicalPage: input.scope.canonicalPage }
@@ -258,6 +259,7 @@ export async function resolveSearchWindowComparison(input: {
     && fact.marketCode === input.scope.marketCode
     && fact.locale === input.scope.locale
     && fact.propertyRef === input.scope.propertyRef
+    && fact.factKind === expectedFactKind
     && fact.normalizedQuery === input.scope.normalizedQuery
     && (input.scope.aggregationScope === 'QUERY'
       || fact.canonicalPage === input.scope.canonicalPage)
@@ -282,7 +284,13 @@ export async function resolveSearchWindowComparison(input: {
     'CTR',
     'GOOGLE_SEARCH_CONSOLE_POSITION'
   ];
-  const reasonCodes = [...new Set([...baseline.reasonCodes, ...observed.reasonCodes])];
+  const reasonCodes = [...new Set([
+    ...baseline.reasonCodes,
+    ...observed.reasonCodes,
+    ...(input.scope.aggregationScope === 'QUERY' && !baseline.sufficient
+      ? ['NO_COMPARABLE_BASELINE']
+      : [])
+  ])];
   const cutoffs = [baseline.inputCutoffAt, observed.inputCutoffAt]
     .filter((value): value is Date => value !== null)
     .map((value) => value.getTime());
