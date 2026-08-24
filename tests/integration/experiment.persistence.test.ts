@@ -33,6 +33,7 @@ async function withRollback(
 
 async function seedAuthorityGraph(tx: Prisma.TransactionClient) {
   const suffix = randomUUID();
+  const targetUrl = `https://${suffix}.example.com/page`;
   const project = await tx.project.create({
     data: {
       name: `P9-D ${suffix}`,
@@ -42,11 +43,46 @@ async function seedAuthorityGraph(tx: Prisma.TransactionClient) {
     }
   });
 
+  const growthIdentity = await tx.growthOpportunityIdentity.create({
+    data: {
+      projectId: project.id,
+      opportunityKey: `growth:${suffix}`,
+      identityVersion: 'GROWTH_OPPORTUNITY_IDENTITY_V1',
+      identityType: 'QUERY_PAGE_GROWTH',
+      normalizedQuery: 'p9 d experiment',
+      canonicalPage: targetUrl,
+      identityPayload: { fixture: true }
+    }
+  });
+
+  const growthSnapshot = await tx.growthOpportunitySnapshot.create({
+    data: {
+      opportunityIdentityId: growthIdentity.id,
+      projectId: project.id,
+      snapshotVersion: 'GROWTH_OPPORTUNITY_SNAPSHOT_V1',
+      formulaVersion: 'GROWTH_SCORE_V1',
+      currentWindowStart: new Date('2026-08-01T00:00:00.000Z'),
+      currentWindowEnd: new Date('2026-08-07T00:00:00.000Z'),
+      previousWindowStart: new Date('2026-07-25T00:00:00.000Z'),
+      previousWindowEnd: new Date('2026-07-31T00:00:00.000Z'),
+      dataCutoffAt: new Date('2026-08-08T00:00:00.000Z'),
+      primaryType: 'CTR_UNDERPERFORMANCE',
+      secondaryTypes: [],
+      score: 80,
+      priority: 'HIGH',
+      scoreState: 'KNOWN',
+      evidenceQuality: 'COMPLETE',
+      evidenceCoverage: 1,
+      rankingEligible: true,
+      sourceProvenance: { fixture: true }
+    }
+  });
+
   const candidate = await tx.optimizationCandidate.create({
     data: {
       projectId: project.id,
-      growthOpportunityIdentityId: randomUUID(),
-      growthSnapshotId: randomUUID(),
+      growthOpportunityIdentityId: growthIdentity.id,
+      growthSnapshotId: growthSnapshot.id,
       candidateVersion: 'OPTIMIZATION_CANDIDATE_V1',
       candidateKey: `candidate:${suffix}`,
       marketScopeMode: 'CONFIGURED_MARKET',
@@ -54,7 +90,7 @@ async function seedAuthorityGraph(tx: Prisma.TransactionClient) {
       locale: 'zh-Hant',
       opportunityType: 'CTR_UNDERPERFORMANCE',
       normalizedQuery: 'p9 d experiment',
-      canonicalPage: `https://${suffix}.example.com/page`,
+      canonicalPage: targetUrl,
       growthScore: 80,
       growthScoreState: 'KNOWN',
       growthPriority: 'HIGH',
@@ -133,7 +169,7 @@ async function seedAuthorityGraph(tx: Prisma.TransactionClient) {
       siteId: site.id,
       channelId: channel.id,
       version: 1,
-      targetPublicUrl: `https://${suffix}.example.com/page`,
+      targetPublicUrl: targetUrl,
       targetRepository: 'fixture/repository',
       targetBranch: 'main',
       baseSha: 'a'.repeat(40),
