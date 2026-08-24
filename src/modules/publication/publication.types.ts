@@ -157,10 +157,9 @@ export interface CreatePublicationAutomationAuthorizationInput {
   expiresAt: Date;
 }
 
-export interface CreatePublicationExecutionInput {
+type PublicationExecutionCommonInput = {
   projectId: string;
   planId: string;
-  approvalId: string;
   executionKey: string;
   status?: PublicationExecutionStatus;
   branchName?: string | null;
@@ -168,7 +167,18 @@ export interface CreatePublicationExecutionInput {
   pullRequestNo?: number | null;
   pullRequestUrl?: string | null;
   errorCode?: string | null;
-}
+};
+
+export type CreatePublicationExecutionInput = PublicationExecutionCommonInput & (
+  | {
+      approvalId: string;
+      automationAuthorizationId?: never;
+    }
+  | {
+      approvalId?: never;
+      automationAuthorizationId: string;
+    }
+);
 
 export interface AppendPublicationExecutionEventInput {
   eventType: PublicationExecutionEventType;
