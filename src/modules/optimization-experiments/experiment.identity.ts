@@ -22,7 +22,7 @@ function canonicalize(value: unknown): unknown {
   );
 }
 
-function canonicalJson(value: unknown): string {
+export function canonicalJson(value: unknown): string {
   const serialized = JSON.stringify(canonicalize(value));
   if (serialized === undefined) throw new Error('P9-D identity payload is invalid');
   return serialized;
