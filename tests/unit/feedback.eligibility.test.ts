@@ -202,7 +202,7 @@ describe('P9-E feedback terminal eligibility', () => {
     });
   });
 
-  it.each(['PARTIAL', 'INSUFFICIENT', 'UNKNOWN']) (
+  it.each(['PARTIAL', 'INSUFFICIENT', 'UNKNOWN'])(
     'rejects %s coverage without converting it to a sample',
     (coverageState) => {
       expect(select({ observations: [candidate({ coverageState })] })).toEqual({
@@ -249,11 +249,17 @@ describe('P9-E feedback terminal eligibility', () => {
   });
 
   it.each([
-    [],
-    [{ windowType: '56D', windowDays: 28 }],
-    [{ windowType: 'BOGUS', windowDays: 56 }],
-    [{ windowType: '56D', windowDays: 56 }, { windowType: '56D', windowDays: 56 }]
-  ])('fails closed for malformed frozen schedule %#', (observationScheduleJson) => {
+    { label: 'empty', observationScheduleJson: [] },
+    { label: 'wrong day count', observationScheduleJson: [{ windowType: '56D', windowDays: 28 }] },
+    { label: 'unknown window', observationScheduleJson: [{ windowType: 'BOGUS', windowDays: 56 }] },
+    {
+      label: 'duplicate window',
+      observationScheduleJson: [
+        { windowType: '56D', windowDays: 56 },
+        { windowType: '56D', windowDays: 56 }
+      ]
+    }
+  ])('fails closed for malformed frozen schedule: $label', ({ observationScheduleJson }) => {
     expect(select({ observationScheduleJson })).toEqual({
       kind: 'DEFER',
       reasonCode: 'FEEDBACK_TERMINAL_OBSERVATION_PENDING'
