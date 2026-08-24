@@ -235,6 +235,7 @@ export async function resolveSearchWindowComparison(input: {
   const anchorDay = utcDayStart(input.verifiedAnchorAt);
   const baselineStart = addUtcDays(anchorDay, -input.windowDays);
   const observedEnd = addUtcDays(anchorDay, input.windowDays - 1);
+  const dueAt = new Date(input.verifiedAnchorAt.getTime() + input.windowDays * DAY_MS);
 
   const facts = await input.source.listCompletedFacts({
     projectId: input.projectId,
@@ -294,6 +295,6 @@ export async function resolveSearchWindowComparison(input: {
     observedVisibilitySourceRefs: [],
     coverageState: baseline.sufficient && observed.sufficient ? 'SUFFICIENT' : 'INSUFFICIENT',
     reasonCodes,
-    inputCutoffAt: cutoffs.length > 0 ? new Date(Math.max(...cutoffs)) : observedEnd
+    inputCutoffAt: cutoffs.length > 0 ? new Date(Math.max(...cutoffs)) : dueAt
   };
 }
