@@ -244,6 +244,10 @@ export async function resolveVisibilityWindowComparison(input: {
       baselineValue,
       observedValue,
       baselineZeroIsExplicit: baseline.row.numerator === 0,
+      baselineNumerator: baseline.row.numerator,
+      baselineDenominator: baseline.row.denominator,
+      observedNumerator: observed.row.numerator,
+      observedDenominator: observed.row.denominator,
       baselineSourceRefs: [baselineRef],
       observedSourceRefs: [observedRef],
       reasonCodes: []
