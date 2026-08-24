@@ -70,6 +70,7 @@ export interface PublicationVerificationWorkerDeps {
     result: PublicationVerificationResult,
     observedAt: Date
   ) => Promise<boolean>;
+  onVerified?: (input: { executionId: string; projectId: string }) => Promise<void>;
   emit?: (event: Record<string, unknown>) => void;
   now?: () => Date;
 }
@@ -325,7 +326,7 @@ export async function processPublicationVerificationJob(
   const observedAt = now();
 
   if (result.status === 'VERIFIED') {
-    await persistFinal(
+    const persisted = await persistFinal(
       context,
       'VERIFYING',
       'VERIFIED',
@@ -335,6 +336,19 @@ export async function processPublicationVerificationJob(
       result,
       observedAt
     );
+    if (!persisted) return;
+    try {
+      await deps.onVerified?.({
+        executionId: context.execution.id,
+        projectId: context.execution.projectId
+      });
+    } catch {
+      emit({
+        event: 'optimization.experiment.handoff.failed',
+        executionId: context.execution.id,
+        projectId: context.execution.projectId
+      });
+    }
     return;
   }
 
