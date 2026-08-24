@@ -7,7 +7,13 @@ export type PublicationExecutionJobData = {
   executionId: string;
 };
 
-export type PublicationExecutionQueuePort = Pick<Queue<PublicationExecutionJobData>, 'add'>;
+export interface PublicationExecutionQueuePort {
+  add(
+    name: string,
+    data: PublicationExecutionJobData,
+    options: JobsOptions
+  ): Promise<unknown>;
+}
 
 function safeExecutionKey(executionKey: string): string {
   const value = executionKey.trim();
