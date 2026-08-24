@@ -36,6 +36,10 @@ function addUtcDays(value: Date, days: number): Date {
   return new Date(value.getTime() + days * DAY_MS);
 }
 
+function utcDayEnd(value: Date): Date {
+  return new Date(utcDayStart(value).getTime() + DAY_MS - 1);
+}
+
 function dayKey(value: Date): string {
   return utcDayStart(value).toISOString().slice(0, 10);
 }
@@ -244,7 +248,7 @@ export async function resolveSearchWindowComparison(input: {
       ? { canonicalPage: input.scope.canonicalPage }
       : {}),
     sourceDateFrom: baselineStart,
-    sourceDateTo: observedEnd
+    sourceDateTo: utcDayEnd(observedEnd)
   });
 
   const exactFacts = facts.filter((fact) => (
