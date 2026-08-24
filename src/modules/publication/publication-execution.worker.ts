@@ -1,19 +1,25 @@
 import {
   Prisma,
+  type AutopilotExecutionReservation,
+  type AutopilotPolicy,
+  type OptimizationAutopilotDecision,
   type PlanLevel,
   type PublicationAdapterType,
+  type PublicationAutomationAuthorization,
   type PublicationExecutionEventType,
   type PublicationExecutionStatus,
   type PublicationRiskClass,
   type PublicationWriteCapability
 } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
+import { parseControlledAutopilotGlobalKillSwitch } from '../optimization-autopilot/autopilot.config.js';
 import {
   assertApprovalCurrent,
   type ApprovalPlanRecord,
   type ApprovalPreviewRecord,
   type ApprovalRecord
 } from './publication-approval.js';
+import { assertAutomationAuthorizationCurrent } from './publication-automation-authorization.js';
 import { ExportMutationAdapter } from './export-mutation.adapter.js';
 import type {
   ApprovedPlanInput,
@@ -74,7 +80,12 @@ export interface PublicationExecutionContext {
   preview: ApprovalPreviewRecord & {
     diffPayload: unknown;
   };
-  approval: ApprovalRecord;
+  approval: ApprovalRecord | null;
+  automationAuthorization?: PublicationAutomationAuthorization | null;
+  automationDecision?: OptimizationAutopilotDecision | null;
+  automationPolicy?: AutopilotPolicy | null;
+  automationReservation?: AutopilotExecutionReservation | null;
+  authorizationKind?: 'HUMAN' | 'MACHINE';
   approvedPlan: ApprovedPlanInput;
 }
 
@@ -188,7 +199,8 @@ async function defaultLoadContext(executionId: string): Promise<PublicationExecu
           preview: true
         }
       },
-      approval: true
+      approval: true,
+      automationAuthorization: true
     }
   });
   if (!execution) return fail('TARGET_NOT_FOUND', 'Publication execution was not found');
@@ -199,6 +211,40 @@ async function defaultLoadContext(executionId: string): Promise<PublicationExecu
   });
   if (!project) return fail('TARGET_NOT_FOUND', 'Publication project was not found');
   if (!execution.plan.preview) return fail('VALIDATION_FAILED', 'Publication preview is missing');
+
+  const storedApproval = execution.approval;
+  const storedAutomationAuthorization = execution.automationAuthorization;
+  if ((storedApproval === null) === (storedAutomationAuthorization === null)) {
+    return fail('VALIDATION_FAILED', 'Publication execution must have exactly one authorization source');
+  }
+
+  let automationDecision: OptimizationAutopilotDecision | null = null;
+  let automationPolicy: AutopilotPolicy | null = null;
+  let automationReservation: AutopilotExecutionReservation | null = null;
+  if (storedAutomationAuthorization) {
+    automationDecision = await prisma.optimizationAutopilotDecision.findUnique({
+      where: { id: storedAutomationAuthorization.automationDecisionId }
+    });
+    if (!automationDecision) {
+      return fail('VALIDATION_FAILED', 'Machine publication decision is missing');
+    }
+    automationPolicy = await prisma.autopilotPolicy.findUnique({
+      where: { id: automationDecision.policyId }
+    });
+    if (!automationPolicy) {
+      return fail('VALIDATION_FAILED', 'Machine publication policy is missing');
+    }
+    automationReservation = await prisma.autopilotExecutionReservation.findFirst({
+      where: {
+        projectId: execution.projectId,
+        decisionId: automationDecision.id
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }]
+    });
+    if (!automationReservation) {
+      return fail('VALIDATION_FAILED', 'Machine publication reservation is missing');
+    }
+  }
 
   const targetBlobHashes = stringMap(execution.plan.targetBlobHashes);
   const operations = operationArray(execution.plan.operations);
@@ -227,24 +273,30 @@ async function defaultLoadContext(executionId: string): Promise<PublicationExecu
     validationResult: execution.plan.preview.validationResult,
     diffPayload: execution.plan.preview.diffPayload
   };
-  const approval: PublicationExecutionContext['approval'] = {
-    id: execution.approval.id,
-    projectId: execution.approval.projectId,
-    planId: execution.approval.planId,
-    planVersion: execution.approval.planVersion,
-    planHash: execution.approval.planHash,
-    contentVersion: execution.approval.contentVersion,
-    contentHash: execution.approval.contentHash,
-    previewHash: execution.approval.previewHash,
-    baseSha: execution.approval.baseSha,
-    targetRepository: execution.approval.targetRepository,
-    targetBranch: execution.approval.targetBranch,
-    targetBlobHashes: execution.approval.targetBlobHashes,
-    approverActorId: execution.approval.approverActorId,
-    approvedRiskClass: execution.approval.approvedRiskClass,
-    confirmedWarningCodes: execution.approval.confirmedWarningCodes,
-    expiresAt: execution.approval.expiresAt
-  };
+  const approval: PublicationExecutionContext['approval'] = storedApproval
+    ? {
+        id: storedApproval.id,
+        projectId: storedApproval.projectId,
+        planId: storedApproval.planId,
+        planVersion: storedApproval.planVersion,
+        planHash: storedApproval.planHash,
+        contentVersion: storedApproval.contentVersion,
+        contentHash: storedApproval.contentHash,
+        previewHash: storedApproval.previewHash,
+        baseSha: storedApproval.baseSha,
+        targetRepository: storedApproval.targetRepository,
+        targetBranch: storedApproval.targetBranch,
+        targetBlobHashes: storedApproval.targetBlobHashes,
+        approverActorId: storedApproval.approverActorId,
+        approvedRiskClass: storedApproval.approvedRiskClass,
+        confirmedWarningCodes: storedApproval.confirmedWarningCodes,
+        expiresAt: storedApproval.expiresAt
+      }
+    : null;
+  const authorizationContentHash = approval?.contentHash ?? storedAutomationAuthorization?.contentHash;
+  if (!authorizationContentHash) {
+    return fail('VALIDATION_FAILED', 'Publication authorization content hash is missing');
+  }
 
   return {
     execution: {
@@ -267,12 +319,17 @@ async function defaultLoadContext(executionId: string): Promise<PublicationExecu
     plan,
     preview,
     approval,
+    automationAuthorization: storedAutomationAuthorization,
+    automationDecision,
+    automationPolicy,
+    automationReservation,
+    authorizationKind: storedApproval ? 'HUMAN' : 'MACHINE',
     approvedPlan: {
       publicationId: execution.id,
       planId: execution.plan.id,
       planHash: execution.plan.planHash,
       previewHash: execution.plan.preview.previewHash,
-      contentHash: execution.approval.contentHash,
+      contentHash: authorizationContentHash,
       repositoryIdentity: execution.plan.targetRepository,
       branch: execution.plan.targetBranch,
       baseSha: execution.plan.baseSha,
@@ -342,19 +399,59 @@ function assertFeatureAndConfiguration(context: PublicationExecutionContext): vo
   }
 }
 
-function assertStoredApproval(context: PublicationExecutionContext, now: Date): void {
-  assertApprovalCurrent(
-    context.plan,
-    context.preview,
-    context.approval,
-    {
+function isMachineAuthorization(context: PublicationExecutionContext): boolean {
+  if (context.authorizationKind === 'MACHINE') return true;
+  if (context.authorizationKind === 'HUMAN') return false;
+  return context.approval === null && context.automationAuthorization !== null && context.automationAuthorization !== undefined;
+}
+
+function assertStoredAuthorization(context: PublicationExecutionContext, now: Date): void {
+  if (!isMachineAuthorization(context)) {
+    if (!context.approval || context.automationAuthorization) {
+      fail('VALIDATION_FAILED', 'Human publication execution authorization cardinality is invalid');
+    }
+    assertApprovalCurrent(
+      context.plan,
+      context.preview,
+      context.approval,
+      {
+        repositoryIdentity: context.plan.targetRepository,
+        branch: context.plan.targetBranch,
+        headSha: context.plan.baseSha,
+        files: stringMap(context.plan.targetBlobHashes)
+      },
+      now
+    );
+    return;
+  }
+
+  if (
+    context.approval
+    || !context.automationAuthorization
+    || !context.automationDecision
+    || !context.automationPolicy
+    || !context.automationReservation
+  ) {
+    fail('VALIDATION_FAILED', 'Machine publication execution authorization context is incomplete');
+  }
+  assertAutomationAuthorizationCurrent({
+    authorization: context.automationAuthorization,
+    plan: context.plan,
+    preview: context.preview,
+    decision: context.automationDecision,
+    policy: context.automationPolicy,
+    reservation: context.automationReservation,
+    liveTarget: {
       repositoryIdentity: context.plan.targetRepository,
       branch: context.plan.targetBranch,
       headSha: context.plan.baseSha,
       files: stringMap(context.plan.targetBlobHashes)
     },
+    globalKillSwitch: parseControlledAutopilotGlobalKillSwitch(
+      process.env.CONTROLLED_AUTOPILOT_GLOBAL_KILL_SWITCH
+    ),
     now
-  );
+  });
 }
 
 function assertLiveTarget(
@@ -362,18 +459,51 @@ function assertLiveTarget(
   target: TargetSnapshot,
   now: Date
 ): void {
-  assertApprovalCurrent(
-    context.plan,
-    context.preview,
-    context.approval,
-    {
+  if (!isMachineAuthorization(context)) {
+    if (!context.approval) {
+      fail('VALIDATION_FAILED', 'Human publication approval is missing');
+    }
+    assertApprovalCurrent(
+      context.plan,
+      context.preview,
+      context.approval,
+      {
+        repositoryIdentity: target.repositoryIdentity,
+        branch: target.branch,
+        headSha: target.headSha,
+        files: target.touchedBlobShas
+      },
+      now
+    );
+    return;
+  }
+
+  if (
+    !context.automationAuthorization
+    || !context.automationDecision
+    || !context.automationPolicy
+    || !context.automationReservation
+  ) {
+    fail('VALIDATION_FAILED', 'Machine publication execution authorization context is incomplete');
+  }
+  assertAutomationAuthorizationCurrent({
+    authorization: context.automationAuthorization,
+    plan: context.plan,
+    preview: context.preview,
+    decision: context.automationDecision,
+    policy: context.automationPolicy,
+    reservation: context.automationReservation,
+    liveTarget: {
       repositoryIdentity: target.repositoryIdentity,
       branch: target.branch,
       headSha: target.headSha,
       files: target.touchedBlobShas
     },
+    globalKillSwitch: parseControlledAutopilotGlobalKillSwitch(
+      process.env.CONTROLLED_AUTOPILOT_GLOBAL_KILL_SWITCH
+    ),
     now
-  );
+  });
 }
 
 function failureState(code: string): {
@@ -432,7 +562,7 @@ export async function processPublicationExecutionJob(
   const startedAt = now();
   try {
     assertFeatureAndConfiguration(context);
-    assertStoredApproval(context, startedAt);
+    assertStoredAuthorization(context, startedAt);
 
     const adapter = resolveAdapter(context);
     if (!adapter) fail('MUTATION_NOT_CONFIGURED', 'Publication mutation adapter is not configured');
@@ -448,10 +578,11 @@ export async function processPublicationExecutionJob(
     });
     assertLiveTarget(context, target, startedAt);
 
-    if (context.execution.status === 'APPROVED') {
+    if (context.execution.status === 'APPROVED' || context.execution.status === 'AUTOMATION_AUTHORIZED') {
+      const fromStatus = context.execution.status;
       const queued = await transition({
         executionId: context.execution.id,
-        fromStatus: 'APPROVED',
+        fromStatus,
         toStatus: 'QUEUED',
         eventType: 'QUEUED',
         reasonCode: 'EXECUTION_QUEUED',

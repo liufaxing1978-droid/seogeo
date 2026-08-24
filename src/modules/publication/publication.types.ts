@@ -137,10 +137,29 @@ export interface CreatePublicationApprovalInput {
   expiresAt?: Date | null;
 }
 
-export interface CreatePublicationExecutionInput {
+export interface CreatePublicationAutomationAuthorizationInput {
   projectId: string;
   planId: string;
-  approvalId: string;
+  planVersion: number;
+  planHash: string;
+  contentVersion: number;
+  contentHash: string;
+  previewHash: string;
+  baseSha: string;
+  targetRepository: string;
+  targetBranch: string;
+  targetBlobHashes: Prisma.InputJsonValue;
+  authorizedRiskClass: 'LOW';
+  automationDecisionId: string;
+  automationPolicyVersion: string;
+  automationPolicyHash: string;
+  automationSource: 'CONTROLLED_AUTOPILOT';
+  expiresAt: Date;
+}
+
+type PublicationExecutionCommonInput = {
+  projectId: string;
+  planId: string;
   executionKey: string;
   status?: PublicationExecutionStatus;
   branchName?: string | null;
@@ -148,7 +167,18 @@ export interface CreatePublicationExecutionInput {
   pullRequestNo?: number | null;
   pullRequestUrl?: string | null;
   errorCode?: string | null;
-}
+};
+
+export type CreatePublicationExecutionInput = PublicationExecutionCommonInput & (
+  | {
+      approvalId: string;
+      automationAuthorizationId?: never;
+    }
+  | {
+      approvalId?: never;
+      automationAuthorizationId: string;
+    }
+);
 
 export interface AppendPublicationExecutionEventInput {
   eventType: PublicationExecutionEventType;

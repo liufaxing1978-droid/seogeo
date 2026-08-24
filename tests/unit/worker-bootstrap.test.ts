@@ -1,17 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { processDistributionPreparationJob } from '../../src/modules/distribution/distribution.worker.js';
 import { processGrowthMaterializationJob } from '../../src/modules/growth/growth.worker.js';
+import { processOptimizationAutopilotJob } from '../../src/modules/optimization-autopilot/autopilot.worker.js';
 import {
   processOptimizationOrchestrationJob,
   processOptimizationPlanningJob
 } from '../../src/modules/optimization-orchestration/orchestration.worker.js';
+import { PUBLICATION_EXECUTION_QUEUE_NAME } from '../../src/modules/publication/publication-execution.queue.js';
 import { processVisibilityJob } from '../../src/modules/visibility/visibility.worker.js';
 import { processVisibilityMetricsJob } from '../../src/modules/visibility/visibility-metrics.worker.js';
 import {
+  OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_EVERY_MS,
+  OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_SCHEDULER,
+  OPTIMIZATION_AUTOPILOT_WORKER_CONCURRENCY,
   OPTIMIZATION_DAILY_RECONCILE_EVERY_MS,
   OPTIMIZATION_DAILY_RECONCILE_SCHEDULER,
   OPTIMIZATION_ORCHESTRATION_WORKER_CONCURRENCY,
   OPTIMIZATION_PLANNING_WORKER_CONCURRENCY,
+  buildOptimizationAutopilotRuntimeDeps,
   workerDefinitionForQueue
 } from '../../src/queue/worker-bootstrap.js';
 
@@ -66,6 +72,31 @@ describe('worker bootstrap', () => {
     });
   });
 
+  it('activates the single P9-C autopilot worker with bounded concurrency', () => {
+    expect(OPTIMIZATION_AUTOPILOT_WORKER_CONCURRENCY).toBe(2);
+    expect(workerDefinitionForQueue('optimization-autopilot')).toMatchObject({
+      processor: processOptimizationAutopilotJob,
+      concurrency: 2
+    });
+  });
+
+  it('wires P9-C to the existing P8 site-mutation-execution producer instead of a second execution queue', () => {
+    const repository = { listReadyItemsWithoutEffectiveDecision: async () => [] };
+    const autopilotQueue = { enqueueRunItem: async () => undefined };
+    const executionQueue = { add: async () => undefined };
+
+    const deps = buildOptimizationAutopilotRuntimeDeps({
+      repository: repository as never,
+      queue: autopilotQueue,
+      executionQueue
+    });
+
+    expect(deps.repository).toBe(repository);
+    expect(deps.queue).toBe(autopilotQueue);
+    expect(deps.executionQueue).toBe(executionQueue);
+    expect(PUBLICATION_EXECUTION_QUEUE_NAME).toBe('site-mutation-execution');
+  });
+
   it('defines one daily reconciliation scheduler without embedding a date in the job payload', () => {
     expect(OPTIMIZATION_DAILY_RECONCILE_EVERY_MS).toBe(24 * 60 * 60 * 1000);
     expect(OPTIMIZATION_DAILY_RECONCILE_SCHEDULER).toEqual({
@@ -78,5 +109,19 @@ describe('worker bootstrap', () => {
     });
     expect(OPTIMIZATION_DAILY_RECONCILE_SCHEDULER.job.data).not.toHaveProperty('utcDate');
     expect(OPTIMIZATION_DAILY_RECONCILE_SCHEDULER.job.data).not.toHaveProperty('date');
+  });
+
+  it('defines one P9-C daily repair scheduler on the same autopilot queue with a date-free payload', () => {
+    expect(OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_EVERY_MS).toBe(24 * 60 * 60 * 1000);
+    expect(OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_SCHEDULER).toEqual({
+      id: 'optimization-autopilot-daily-reconcile',
+      repeat: { every: 24 * 60 * 60 * 1000 },
+      job: {
+        name: 'reconcile-daily',
+        data: { kind: 'RECONCILE_DAILY' }
+      }
+    });
+    expect(OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_SCHEDULER.job.data).not.toHaveProperty('utcDate');
+    expect(OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_SCHEDULER.job.data).not.toHaveProperty('date');
   });
 });

@@ -7,7 +7,13 @@ export type PublicationExecutionJobData = {
   executionId: string;
 };
 
-export type PublicationExecutionQueuePort = Pick<Queue<PublicationExecutionJobData>, 'add'>;
+export interface PublicationExecutionQueuePort {
+  add(
+    name: string,
+    data: PublicationExecutionJobData,
+    options: JobsOptions
+  ): Promise<unknown>;
+}
 
 function safeExecutionKey(executionKey: string): string {
   const value = executionKey.trim();
@@ -32,12 +38,16 @@ export function buildPublicationExecutionJobOptions(executionKey: string): JobsO
   };
 }
 
-export class PublicationExecutionQueue {
+export class PublicationExecutionQueue implements PublicationExecutionQueuePort {
   constructor(private readonly queue: PublicationExecutionQueuePort) {}
+
+  add(name: string, data: PublicationExecutionJobData, options: JobsOptions) {
+    return this.queue.add(name, data, options);
+  }
 
   enqueue(executionId: string, executionKey: string) {
     if (!executionId.trim()) throw new Error('Publication execution id is required');
-    return this.queue.add(
+    return this.add(
       'execute',
       { executionId },
       buildPublicationExecutionJobOptions(executionKey)

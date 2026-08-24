@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { Queue, type JobsOptions } from 'bullmq';
 import { Router } from 'express';
@@ -12,6 +11,10 @@ import {
   buildPublicationExecutionJobOptions,
   PUBLICATION_EXECUTION_QUEUE_NAME
 } from './publication-execution.queue.js';
+import {
+  PublicationExecutionServiceError,
+  publicationExecutionService
+} from './publication-execution.service.js';
 import { publicationService } from './publication.service.js';
 import {
   buildPublicationVerificationJobOptions,
@@ -152,15 +155,21 @@ function actorId(projectId: string): string {
   return `project-api:${projectId}`;
 }
 
-function executionKey(planId: string, approvalId: string, planHash: string): string {
-  return createHash('sha256')
-    .update('PUBLICATION_EXECUTION_KEY_V1\0', 'utf8')
-    .update(planId, 'utf8')
-    .update('\0', 'utf8')
-    .update(approvalId, 'utf8')
-    .update('\0', 'utf8')
-    .update(planHash, 'utf8')
-    .digest('hex');
+function mapHumanExecutionServiceError(error: unknown): never {
+  if (!(error instanceof PublicationExecutionServiceError)) throw error;
+  if (error.code === 'PUBLICATION_PLAN_NOT_FOUND') {
+    throw new NotFoundError('Publication plan not found', 'PUBLICATION_PLAN_NOT_FOUND');
+  }
+  if (error.code === 'APPROVAL_REQUIRED') {
+    throw new AppError('Publication plan requires approval before execution', 409, 'APPROVAL_REQUIRED');
+  }
+  if (error.code === 'APPROVAL_STALE') {
+    throw new AppError('Publication approval no longer matches the current plan', 409, 'APPROVAL_STALE');
+  }
+  if (error.code === 'PUBLICATION_EXECUTION_IDENTITY_COLLISION') {
+    throw new AppError('Publication execution identity collision', 409, error.code);
+  }
+  throw error;
 }
 
 async function attachSourceReferences(
@@ -308,42 +317,22 @@ const defaultPublicationApi: PublicationApiPort = {
   },
 
   async executePlan(projectId, planId) {
-    const plan = await prisma.publicationPlan.findFirst({
-      where: { id: planId, projectId },
-      select: { id: true, planHash: true }
-    });
-    if (!plan) throw new NotFoundError('Publication plan not found', 'PUBLICATION_PLAN_NOT_FOUND');
-
-    const approval = await prisma.publicationApproval.findFirst({
-      where: { projectId, planId },
-      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }]
-    });
-    if (!approval) {
-      throw new AppError('Publication plan requires approval before execution', 409, 'APPROVAL_REQUIRED');
-    }
-
-    const key = executionKey(plan.id, approval.id, plan.planHash);
-    let execution = await prisma.publicationExecution.findUnique({ where: { executionKey: key } });
-    if (!execution) {
-      execution = await prisma.publicationExecution.create({
-        data: {
-          projectId,
-          planId,
-          approvalId: approval.id,
-          executionKey: key,
-          status: 'APPROVED'
-        }
+    try {
+      const execution = await publicationExecutionService.createHumanApprovedExecution({
+        projectId,
+        planId
       });
+      if (!['PR_CREATED', 'DEPLOYED', 'VERIFYING', 'VERIFIED', 'VERIFICATION_FAILED'].includes(execution.status)) {
+        await executionQueue.add(
+          'execute',
+          { executionId: execution.id },
+          buildPublicationExecutionJobOptions(execution.executionKey)
+        );
+      }
+      return execution;
+    } catch (error) {
+      mapHumanExecutionServiceError(error);
     }
-
-    if (!['PR_CREATED', 'DEPLOYED', 'VERIFYING', 'VERIFIED', 'VERIFICATION_FAILED'].includes(execution.status)) {
-      await executionQueue.add(
-        'execute',
-        { executionId: execution.id },
-        buildPublicationExecutionJobOptions(key)
-      );
-    }
-    return execution;
   },
 
   getExecution(projectId, executionId) {

@@ -13,6 +13,7 @@ describe('queue registry', () => {
       'growth-materialization',
       'optimization-planning',
       'optimization-orchestration',
+      'optimization-autopilot',
       'visibility',
       'visibility-extraction',
       'visibility-metrics',

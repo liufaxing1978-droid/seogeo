@@ -1,0 +1,73 @@
+enum OptimizationAutopilotDecisionStatus {
+  AUTOPILOT_READY
+  P8_PREPARATION_REQUIRED
+  MANUAL_REQUIRED
+  POLICY_BLOCKED
+  DEFERRED_QUOTA
+  DEFERRED_CONFLICT
+  STALE
+  P8_VALIDATION_BLOCKED
+}
+
+enum AutopilotReservationStatus {
+  RESERVED
+  CONSUMED
+  RELEASED
+}
+
+model AutopilotPolicy {
+  id                      String               @id @default(uuid()) @db.Uuid
+  projectId               String               @unique @db.Uuid
+  enabled                 Boolean              @default(false)
+  policyVersion           String               @default("CONTROLLED_AUTOPILOT_POLICY_V1")
+  allowedRiskClass        PublicationRiskClass @default(LOW)
+  allowedOperationClasses Json                 @default("[\"CREATE_CONTENT_PAGE\"]")
+  dailyDraftPrLimit       Int                  @default(3)
+  maxConcurrentRuns       Int                  @default(1)
+  requireFreshEvidence    Boolean              @default(true)
+  minimumEvidenceCoverage Int                  @default(70)
+  pauseOnVerificationFailure Boolean           @default(true)
+  killSwitch              Boolean              @default(false)
+  enabledBy               String?
+  enabledAt               DateTime?
+  updatedBy               String?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  @@index([projectId, enabled], map: "AutopilotPolicy_project_enabled_idx")
+}
+
+model OptimizationAutopilotDecision {
+  id                 String                              @id @default(uuid()) @db.Uuid
+  projectId          String                              @db.Uuid
+  runId              String                              @db.Uuid
+  runItemId          String                              @db.Uuid
+  optimizationPlanId String                              @db.Uuid
+  policyId           String                              @db.Uuid
+  policyVersion      String
+  policySnapshot     Json
+  sourceSnapshot     Json
+  status             OptimizationAutopilotDecisionStatus
+  reasonCodes        Json
+  p8PlanId           String?                             @db.Uuid
+  p8PreviewId        String?                             @db.Uuid
+  decisionKey        String                              @unique
+  createdAt          DateTime                            @default(now())
+
+  @@index([projectId, status, createdAt], map: "OptimizationAutopilotDecision_project_status_created_idx")
+  @@index([runItemId, createdAt], map: "OptimizationAutopilotDecision_run_item_created_idx")
+}
+
+model AutopilotExecutionReservation {
+  id             String                     @id @default(uuid()) @db.Uuid
+  projectId      String                     @db.Uuid
+  decisionId     String                     @unique @db.Uuid
+  utcDate        DateTime                   @db.Date
+  reservationKey String
+  status         AutopilotReservationStatus @default(RESERVED)
+  createdAt      DateTime                   @default(now())
+  releasedAt     DateTime?
+
+  @@unique([projectId, reservationKey], map: "AutopilotExecutionReservation_project_key_key")
+  @@index([projectId, utcDate, status], map: "AutopilotExecutionReservation_project_date_status_idx")
+}

@@ -1,5 +1,6 @@
 enum PublicationProposalSourceType {
   P7_GROWTH_OPPORTUNITY
+  P9_OPTIMIZATION_PLAN
   MANUAL
   SEO_ISSUE
   GEO_GAP
@@ -40,6 +41,7 @@ enum PublicationExecutionStatus {
   PLANNED
   PREVIEW_READY
   APPROVED
+  AUTOMATION_AUTHORIZED
   QUEUED
   EXECUTING
   PR_CREATED
@@ -61,6 +63,7 @@ enum PublicationExecutionEventType {
   PLANNED
   PREVIEW_READY
   APPROVED
+  AUTOMATION_AUTHORIZED
   QUEUED
   STARTED
   PR_CREATED
@@ -300,31 +303,61 @@ model PublicationApproval {
   @@index([planId, createdAt], map: "PublicationApproval_plan_created_idx")
 }
 
-model PublicationExecution {
-  id             String                     @id @default(uuid()) @db.Uuid
-  projectId      String                     @db.Uuid
-  planId         String                     @db.Uuid
-  approvalId     String                     @db.Uuid
-  executionKey   String                     @unique
-  status         PublicationExecutionStatus @default(PENDING)
-  branchName     String?
-  commitSha      String?
-  pullRequestNo  Int?
-  pullRequestUrl String?
-  errorCode      String?
-  startedAt      DateTime?
-  completedAt    DateTime?
-  createdAt      DateTime                   @default(now())
-  updatedAt      DateTime                   @updatedAt
+model PublicationAutomationAuthorization {
+  id                      String               @id @default(uuid()) @db.Uuid
+  projectId               String               @db.Uuid
+  planId                  String               @db.Uuid
+  planVersion             Int
+  planHash                String
+  contentVersion          Int
+  contentHash             String
+  previewHash             String
+  baseSha                 String
+  targetRepository        String
+  targetBranch            String
+  targetBlobHashes        Json
+  authorizedRiskClass     PublicationRiskClass
+  automationDecisionId    String               @unique @db.Uuid
+  automationPolicyVersion String
+  automationPolicyHash    String
+  automationSource        String
+  expiresAt               DateTime?
+  createdAt               DateTime             @default(now())
 
-  plan              PublicationPlan               @relation(fields: [planId], references: [id], onDelete: Restrict)
-  approval          PublicationApproval           @relation(fields: [approvalId], references: [id], onDelete: Restrict)
-  events            PublicationExecutionEvent[]
-  verifications     PublicationVerification[]
-  rollbackProposals PublicationRollbackProposal[]
+  executions PublicationExecution[]
+
+  @@index([projectId, createdAt], map: "PublicationAutomationAuthorization_project_created_idx")
+  @@index([planId, createdAt], map: "PublicationAutomationAuthorization_plan_created_idx")
+}
+
+model PublicationExecution {
+  id                        String                     @id @default(uuid()) @db.Uuid
+  projectId                 String                     @db.Uuid
+  planId                    String                     @db.Uuid
+  approvalId                String?                    @db.Uuid
+  automationAuthorizationId String?                    @db.Uuid
+  executionKey              String                     @unique
+  status                    PublicationExecutionStatus @default(PENDING)
+  branchName                String?
+  commitSha                 String?
+  pullRequestNo             Int?
+  pullRequestUrl            String?
+  errorCode                 String?
+  startedAt                 DateTime?
+  completedAt               DateTime?
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+
+  plan                    PublicationPlan                     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  approval                PublicationApproval?                @relation(fields: [approvalId], references: [id], onDelete: Restrict)
+  automationAuthorization PublicationAutomationAuthorization? @relation(fields: [automationAuthorizationId], references: [id], onDelete: Restrict)
+  events                  PublicationExecutionEvent[]
+  verifications           PublicationVerification[]
+  rollbackProposals       PublicationRollbackProposal[]
 
   @@index([projectId, createdAt], map: "PublicationExecution_project_created_idx")
   @@index([planId, status], map: "PublicationExecution_plan_status_idx")
+  @@index([automationAuthorizationId], map: "PublicationExecution_automation_authorization_idx")
 }
 
 model PublicationExecutionEvent {

@@ -76,6 +76,9 @@ export type AdvanceWorkerRepositoryPort = Pick<
 
 export type AdvanceWorkerDeps = {
   repository: AdvanceWorkerRepositoryPort;
+  autopilotQueue?: {
+    enqueueRunItem(runItemId: string, projectId: string): Promise<unknown>;
+  };
   now?: () => Date;
 };
 
@@ -393,6 +396,9 @@ export async function processOptimizationOrchestrationJob(
         });
         throw workerError('RUN_ITEM_INVALID_STATE', 'Completed run item is not at policy checkpoint');
       }
+      if (resolved.autopilotQueue) {
+        await resolved.autopilotQueue.enqueueRunItem(item.id, item.projectId);
+      }
       continue;
     }
 
@@ -406,6 +412,9 @@ export async function processOptimizationOrchestrationJob(
         completedAt
       }
     });
+    if (resolved.autopilotQueue) {
+      await resolved.autopilotQueue.enqueueRunItem(item.id, item.projectId);
+    }
   }
 
   const refreshed = await resolved.repository.refreshRunCounters(run.id);
