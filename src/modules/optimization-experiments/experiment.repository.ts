@@ -60,6 +60,10 @@ export type CreateExperimentObservationInput = {
   evaluatorVersion: string;
 };
 
+export type CreateOrGetExperimentObservationResult =
+  | { kind: 'CREATED'; observation: OptimizationExperimentObservation }
+  | { kind: 'EXISTING'; observation: OptimizationExperimentObservation };
+
 export type VerifiedExperimentStartContext = {
   project: { id: string; planLevel: PlanLevel };
   optimizationPlan: {
@@ -730,9 +734,9 @@ export class OptimizationExperimentRepository {
     }
   }
 
-  async createOrGetObservation(
+  async createOrGetObservationWithOutcome(
     input: CreateExperimentObservationInput
-  ): Promise<OptimizationExperimentObservation> {
+  ): Promise<CreateOrGetExperimentObservationResult> {
     const existing = await this.db.optimizationExperimentObservation.findUnique({
       where: {
         experimentId_observationKey: {
@@ -743,11 +747,11 @@ export class OptimizationExperimentRepository {
     });
     if (existing) {
       assertObservationIdentity(existing, input);
-      return existing;
+      return { kind: 'EXISTING', observation: existing };
     }
 
     try {
-      return await this.db.optimizationExperimentObservation.create({
+      const observation = await this.db.optimizationExperimentObservation.create({
         data: {
           projectId: input.projectId,
           experimentId: input.experimentId,
@@ -771,6 +775,7 @@ export class OptimizationExperimentRepository {
           evaluatorVersion: input.evaluatorVersion
         }
       });
+      return { kind: 'CREATED', observation };
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
       const collided = await this.db.optimizationExperimentObservation.findUnique({
@@ -783,8 +788,14 @@ export class OptimizationExperimentRepository {
       });
       if (!collided) throw error;
       assertObservationIdentity(collided, input);
-      return collided;
+      return { kind: 'EXISTING', observation: collided };
     }
+  }
+
+  async createOrGetObservation(
+    input: CreateExperimentObservationInput
+  ): Promise<OptimizationExperimentObservation> {
+    return (await this.createOrGetObservationWithOutcome(input)).observation;
   }
 }
 
