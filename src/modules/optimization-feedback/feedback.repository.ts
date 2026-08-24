@@ -556,7 +556,7 @@ export class OptimizationFeedbackRepository {
     const advisoryKey = signedAdvisoryKey(scopeKey);
     return prisma.$transaction(async (tx) => {
       await tx.$queryRawUnsafe(
-        'SELECT pg_advisory_xact_lock($1::bigint)',
+        'WITH lock_result AS MATERIALIZED (SELECT pg_advisory_xact_lock($1::bigint)) SELECT 1::int AS locked FROM lock_result',
         advisoryKey.toString()
       );
       return run(new OptimizationFeedbackRepository(tx));
