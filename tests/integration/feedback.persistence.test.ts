@@ -3,6 +3,10 @@ import type { Prisma } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
 import { prisma } from '../../src/db/prisma.js';
 import {
+  buildFeedbackProfileIdentity,
+  buildFeedbackScopeKey
+} from '../../src/modules/optimization-feedback/feedback.identity.js';
+import {
   OptimizationFeedbackRepository,
   type CreateFeedbackEvidenceInput,
   type CreateFeedbackProfileInput
@@ -479,28 +483,34 @@ describe('P9-E feedback persistence', () => {
     });
   });
 
-  it('selects the latest exact-scope profile deterministically', async () => {
+  it('selects the exact current evidence-derived profile deterministically', async () => {
     await withRollback(async (tx) => {
       const fixture = await seedFeedbackAuthorityGraph(tx);
       const repository = new OptimizationFeedbackRepository(tx);
-      const evidence = await repository.createOrGetEvidence(evidenceInput(fixture));
-      const first = await repository.createOrGetProfile(profileInput(fixture, evidence.evidence.id));
-      const newerCutoff = new Date(fixture.observation.inputCutoffAt.getTime() + DAY_MS);
-      const second = await repository.createOrGetProfile(profileInput(fixture, evidence.evidence.id, {
-        profileKey: `profile:newer:${fixture.experiment.id}`,
-        inputFingerprint: 'b'.repeat(64),
-        newestEvidenceCutoffAt: newerCutoff
+      const scope = {
+        projectId: fixture.project.id,
+        marketScopeMode: 'CONFIGURED_MARKET' as const,
+        marketCode: 'HK' as const,
+        locale: 'zh-Hant',
+        recommendedActionType: 'SERP_SNIPPET_OPTIMIZATION' as const
+      };
+      const scopeKey = buildFeedbackScopeKey(scope);
+      const evidence = await repository.createOrGetEvidence(evidenceInput(fixture, { scopeKey }));
+      const identity = buildFeedbackProfileIdentity({
+        projectId: fixture.project.id,
+        scopeKey,
+        orderedEvidenceIds: [evidence.evidence.id]
+      });
+      const current = await repository.createOrGetProfile(profileInput(fixture, evidence.evidence.id, {
+        scopeKey,
+        profileKey: identity.profileKey,
+        inputFingerprint: identity.inputFingerprint
       }));
 
-      const latest = await repository.findLatestProfileForScope({
-        projectId: fixture.project.id,
-        marketScopeMode: 'CONFIGURED_MARKET',
-        marketCode: 'HK',
-        locale: 'zh-Hant',
-        recommendedActionType: 'SERP_SNIPPET_OPTIMIZATION'
-      });
-      expect(latest?.id).toBe(second.profile.id);
-      expect(latest?.id).not.toBe(first.profile.id);
+      const latest = await repository.findLatestProfileForScope(scope);
+      expect(latest?.id).toBe(current.profile.id);
+      expect(latest?.inputFingerprint).toBe(identity.inputFingerprint);
+      expect(latest?.inputEvidenceIdsJson).toEqual([evidence.evidence.id]);
     });
   });
 
