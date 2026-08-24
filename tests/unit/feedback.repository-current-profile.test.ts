@@ -72,13 +72,14 @@ describe('P9-E current feedback profile lookup', () => {
       optimizationFeedbackProfile: { findFirst: profileFindFirst }
     } as never);
 
-    await expect(repository.findLatestProfileForScope({
+    const result = await repository.findLatestProfileForScope({
       projectId: '00000000-0000-4000-8000-000000000001',
       marketScopeMode: 'INVALID_PROVENANCE',
       marketCode: null,
       locale: null,
       recommendedActionType: 'SERP_SNIPPET_OPTIMIZATION'
-    })).resolves.toBeNull();
+    });
+    expect(result).toBeNull();
 
     expect(evidenceFindMany).not.toHaveBeenCalled();
     expect(profileFindFirst).not.toHaveBeenCalled();
