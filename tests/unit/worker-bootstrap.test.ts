@@ -15,6 +15,9 @@ import {
   OPTIMIZATION_AUTOPILOT_WORKER_CONCURRENCY,
   OPTIMIZATION_DAILY_RECONCILE_EVERY_MS,
   OPTIMIZATION_DAILY_RECONCILE_SCHEDULER,
+  OPTIMIZATION_EXPERIMENT_DAILY_RECONCILE_EVERY_MS,
+  OPTIMIZATION_EXPERIMENT_DAILY_RECONCILE_SCHEDULER,
+  OPTIMIZATION_EXPERIMENT_WORKER_CONCURRENCY,
   OPTIMIZATION_ORCHESTRATION_WORKER_CONCURRENCY,
   OPTIMIZATION_PLANNING_WORKER_CONCURRENCY,
   buildOptimizationAutopilotRuntimeDeps,
@@ -80,6 +83,10 @@ describe('worker bootstrap', () => {
     });
   });
 
+  it('reserves one P9-D experiment worker at concurrency 2', () => {
+    expect(OPTIMIZATION_EXPERIMENT_WORKER_CONCURRENCY).toBe(2);
+  });
+
   it('wires P9-C to the existing P8 site-mutation-execution producer instead of a second execution queue', () => {
     const repository = { listReadyItemsWithoutEffectiveDecision: async () => [] };
     const autopilotQueue = { enqueueRunItem: async () => undefined };
@@ -123,5 +130,19 @@ describe('worker bootstrap', () => {
     });
     expect(OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_SCHEDULER.job.data).not.toHaveProperty('utcDate');
     expect(OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_SCHEDULER.job.data).not.toHaveProperty('date');
+  });
+
+  it('defines one P9-D daily experiment reconciliation scheduler with a date-free payload', () => {
+    expect(OPTIMIZATION_EXPERIMENT_DAILY_RECONCILE_EVERY_MS).toBe(24 * 60 * 60 * 1000);
+    expect(OPTIMIZATION_EXPERIMENT_DAILY_RECONCILE_SCHEDULER).toEqual({
+      id: 'optimization-experiment-daily-reconcile',
+      repeat: { every: 24 * 60 * 60 * 1000 },
+      job: {
+        name: 'reconcile-daily',
+        data: { kind: 'RECONCILE_DAILY' }
+      }
+    });
+    expect(OPTIMIZATION_EXPERIMENT_DAILY_RECONCILE_SCHEDULER.job.data).not.toHaveProperty('utcDate');
+    expect(OPTIMIZATION_EXPERIMENT_DAILY_RECONCILE_SCHEDULER.job.data).not.toHaveProperty('date');
   });
 });
