@@ -113,7 +113,7 @@ export class OptimizationExperimentService {
       interventionType: context.optimizationPlan.recommendedActionType,
       targetUrl,
       candidate: context.optimizationPlan.candidate,
-      visibilitySource: this.visibilitySource
+      visibilitySource: this.visibilitySource ?? this.repository
     });
     if (measurementScope === null) {
       return { kind: 'DEFERRED', reasonCode: 'EXPERIMENT_MEASUREMENT_SCOPE_UNRESOLVED' };
