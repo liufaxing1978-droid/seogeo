@@ -3,6 +3,10 @@ import {
   type MarketCode,
   type OptimizationExperiment,
   type OptimizationExperimentObservation,
+  type PlanLevel,
+  type PublicationExecutionStatus,
+  type PublicationProposalSourceType,
+  type PublicationVerificationStatus,
   type RecommendedActionType
 } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
@@ -54,9 +58,59 @@ export type CreateExperimentObservationInput = {
   evaluatorVersion: string;
 };
 
+export type VerifiedExperimentStartContext = {
+  project: { id: string; planLevel: PlanLevel };
+  optimizationPlan: {
+    id: string;
+    projectId: string;
+    recommendedActionType: RecommendedActionType;
+    sourceFactReferences: Prisma.JsonValue;
+    candidate: {
+      id: string;
+      projectId: string;
+      growthSnapshotId: string;
+      marketScopeMode: string;
+      marketCode: MarketCode | null;
+      locale: string | null;
+      normalizedQuery: string;
+      canonicalPage: string | null;
+      sourceProvenance: Prisma.JsonValue;
+    };
+  };
+  proposal: {
+    id: string;
+    projectId: string;
+    sourceType: PublicationProposalSourceType;
+    sourceReferenceId: string | null;
+  };
+  publicationPlan: {
+    id: string;
+    projectId: string;
+    targetPublicUrl: string;
+  };
+  execution: {
+    id: string;
+    projectId: string;
+    status: PublicationExecutionStatus;
+  };
+  verification: {
+    id: string;
+    projectId: string;
+    status: PublicationVerificationStatus;
+    observedUrl: string;
+    observedAt: Date;
+  };
+};
+
 type ExperimentDb = Pick<
   Prisma.TransactionClient,
-  'optimizationExperiment' | 'optimizationExperimentObservation'
+  | 'optimizationExperiment'
+  | 'optimizationExperimentObservation'
+  | 'optimizationPlan'
+  | 'growthOpportunitySnapshot'
+  | 'project'
+  | 'publicationExecution'
+  | 'publicationVerification'
 >;
 
 function isUniqueViolation(error: unknown): boolean {
@@ -132,6 +186,139 @@ function assertObservationIdentity(
 
 export class OptimizationExperimentRepository {
   constructor(private readonly db: ExperimentDb = prisma) {}
+
+  async loadVerifiedStartContext(input: {
+    projectId: string;
+    publicationExecutionId: string;
+  }): Promise<VerifiedExperimentStartContext | null> {
+    const execution = await this.db.publicationExecution.findFirst({
+      where: {
+        id: input.publicationExecutionId,
+        projectId: input.projectId
+      },
+      select: {
+        id: true,
+        projectId: true,
+        status: true,
+        plan: {
+          select: {
+            id: true,
+            projectId: true,
+            targetPublicUrl: true,
+            proposal: {
+              select: {
+                id: true,
+                projectId: true,
+                sourceType: true,
+                sourceReferenceId: true
+              }
+            }
+          }
+        }
+      }
+    });
+    if (!execution) return null;
+
+    const project = await this.db.project.findUnique({
+      where: { id: input.projectId },
+      select: { id: true, planLevel: true }
+    });
+    if (!project) return null;
+
+    const sourceReferenceId = execution.plan.proposal.sourceReferenceId;
+    if (!sourceReferenceId) return null;
+
+    const optimizationPlan = await this.db.optimizationPlan.findFirst({
+      where: {
+        id: sourceReferenceId,
+        projectId: input.projectId
+      },
+      select: {
+        id: true,
+        projectId: true,
+        recommendedActionType: true,
+        sourceFactReferences: true,
+        candidate: {
+          select: {
+            id: true,
+            projectId: true,
+            growthSnapshotId: true,
+            marketScopeMode: true,
+            marketCode: true,
+            locale: true,
+            normalizedQuery: true,
+            canonicalPage: true
+          }
+        }
+      }
+    });
+    if (!optimizationPlan || optimizationPlan.candidate.projectId !== input.projectId) return null;
+
+    const growthSnapshot = await this.db.growthOpportunitySnapshot.findFirst({
+      where: {
+        id: optimizationPlan.candidate.growthSnapshotId,
+        projectId: input.projectId
+      },
+      select: { sourceProvenance: true }
+    });
+    if (!growthSnapshot) return null;
+
+    const verification = await this.db.publicationVerification.findFirst({
+      where: {
+        projectId: input.projectId,
+        executionId: execution.id,
+        status: 'VERIFIED',
+        observedAt: { not: null },
+        observedUrl: { not: null }
+      },
+      orderBy: [
+        { observedAt: 'asc' },
+        { createdAt: 'asc' },
+        { id: 'asc' }
+      ],
+      select: {
+        id: true,
+        projectId: true,
+        status: true,
+        observedUrl: true,
+        observedAt: true
+      }
+    });
+    if (!verification?.observedUrl || !verification.observedAt) return null;
+
+    return {
+      project,
+      optimizationPlan: {
+        id: optimizationPlan.id,
+        projectId: optimizationPlan.projectId,
+        recommendedActionType: optimizationPlan.recommendedActionType,
+        sourceFactReferences: optimizationPlan.sourceFactReferences,
+        candidate: {
+          ...optimizationPlan.candidate,
+          marketScopeMode: optimizationPlan.candidate.marketScopeMode,
+          sourceProvenance: growthSnapshot.sourceProvenance
+        }
+      },
+      proposal: execution.plan.proposal,
+      publicationPlan: {
+        id: execution.plan.id,
+        projectId: execution.plan.projectId,
+        targetPublicUrl: execution.plan.targetPublicUrl
+      },
+      execution: {
+        id: execution.id,
+        projectId: execution.projectId,
+        status: execution.status
+      },
+      verification: {
+        id: verification.id,
+        projectId: verification.projectId,
+        status: verification.status,
+        observedUrl: verification.observedUrl,
+        observedAt: verification.observedAt
+      }
+    };
+  }
 
   async createOrGetExperiment(input: CreateExperimentInput): Promise<OptimizationExperiment> {
     const existing = await this.db.optimizationExperiment.findUnique({
