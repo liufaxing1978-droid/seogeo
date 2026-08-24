@@ -1,7 +1,7 @@
 # P9-E Feedback Learning Design
 
 Date: 2026-08-25
-Status: Approved design, implementation not started
+Status: Approved design, implementation in progress
 Repository: `liufaxing1978-droid/seogeo`
 Base dependency: P9-D exact head `d5b9b8fe42b926e42854e956d06fb45a6079c48a`
 Branch: `feat/p9-e-feedback-learning`
@@ -294,7 +294,7 @@ Profile requirements:
 - `inputFingerprint` is SHA-256 over canonical profile version/scope and ordered evidence identities;
 - same evidence set produces the same profile identity;
 - newer accepted evidence creates a new profile snapshot instead of mutating the previous one;
-- latest profile is selected by `newestEvidenceCutoffAt DESC`, then `inputFingerprint DESC` as a stable deterministic tie breaker;
+- current-profile lookup resolves the exact profile identity derived from the scope's current deterministic last-20 evidence set; it never infers recency from SHA-256 lexical order;
 - profile history remains queryable for audit/P9-F.
 
 Enforced uniqueness/indexes:
@@ -357,6 +357,23 @@ Profile input evidence is selected as follows:
 Canonical JSON uses sorted object keys and explicit nulls.
 
 This makes retries and daily reconciliation converge on the same profile rather than generating duplicate semantic snapshots.
+
+### 8.4 Current-profile lookup
+
+Current-profile lookup is identity-derived, not timestamp/hash-ranked.
+
+For an exact valid scope, P9-E:
+
+1. derives the exact `scopeKey`;
+2. reads accepted evidence for that project/scope ordered by `inputCutoffAt DESC`, then `observationId DESC`;
+3. takes at most 20 rows;
+4. reverses those IDs back to the canonical ascending order used by profile creation;
+5. recomputes the exact current `inputFingerprint` with `buildFeedbackProfileIdentity`;
+6. reads the immutable profile by exact `projectId + feedbackProfileVersion + scopeKey + inputFingerprint`.
+
+If the scope is invalid, there is no evidence, or the exact current profile snapshot does not exist, lookup returns no compatible profile and planner consumption falls back to historical adjustment `0`.
+
+`newestEvidenceCutoffAt` remains useful audit metadata/indexing but is not sufficient to determine the current profile. SHA-256 `inputFingerprint` lexical order MUST NOT be interpreted as recency. This remains correct after the rolling window reaches 20 samples, where multiple historical profile snapshots can have the same sample count and newest cutoff.
 
 ## 9. Rolling aggregation and weighting
 
@@ -638,6 +655,8 @@ Cover:
 - legacy scope remains isolated;
 - rolling last-20 selection is deterministic;
 - same input set produces same fingerprint/profile key;
+- current profile is resolved from the current deterministic last-20 evidence fingerprint, not SHA-256 lexical order;
+- invalid scope or missing exact current profile fails closed;
 - fewer than 3 samples produces 0;
 - positive history yields negative rank adjustment;
 - negative history yields positive rank adjustment;
@@ -653,6 +672,8 @@ Use real Prisma to prove:
 - duplicate observation/experiment cannot double count;
 - retry creates/reuses the same rows;
 - new accepted evidence creates a new profile snapshot and leaves old profile unchanged;
+- exact current profile lookup matches the profile fingerprint derived from persisted current evidence;
+- concurrent same-scope materialization converges to the profile containing the complete current evidence set;
 - exact market scopes do not contaminate each other;
 - P9-D experiment/observation rows remain unchanged;
 - P8 execution/verification rows remain unchanged;
@@ -743,6 +764,7 @@ P9-E is complete only when the exact PR head proves:
 - immutable evidence/profile persistence and idempotency;
 - strict project/market/locale/action isolation;
 - deterministic rolling-20 profile identity;
+- exact current-profile lookup from the persisted current last-20 evidence identity;
 - deterministic bounded [-10,+10] weighting;
 - P9-A V1 historical rows remain untouched;
 - P9-A V2 freezes historical feedback only into newly created plans;
