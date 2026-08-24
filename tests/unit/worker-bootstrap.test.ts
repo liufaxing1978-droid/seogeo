@@ -6,6 +6,7 @@ import {
   processOptimizationOrchestrationJob,
   processOptimizationPlanningJob
 } from '../../src/modules/optimization-orchestration/orchestration.worker.js';
+import { PUBLICATION_EXECUTION_QUEUE_NAME } from '../../src/modules/publication/publication-execution.queue.js';
 import { processVisibilityJob } from '../../src/modules/visibility/visibility.worker.js';
 import { processVisibilityMetricsJob } from '../../src/modules/visibility/visibility-metrics.worker.js';
 import {
@@ -16,6 +17,7 @@ import {
   OPTIMIZATION_DAILY_RECONCILE_SCHEDULER,
   OPTIMIZATION_ORCHESTRATION_WORKER_CONCURRENCY,
   OPTIMIZATION_PLANNING_WORKER_CONCURRENCY,
+  buildOptimizationAutopilotRuntimeDeps,
   workerDefinitionForQueue
 } from '../../src/queue/worker-bootstrap.js';
 
@@ -76,6 +78,23 @@ describe('worker bootstrap', () => {
       processor: processOptimizationAutopilotJob,
       concurrency: 2
     });
+  });
+
+  it('wires P9-C to the existing P8 site-mutation-execution producer instead of a second execution queue', () => {
+    const repository = { listReadyItemsWithoutEffectiveDecision: async () => [] };
+    const autopilotQueue = { enqueueRunItem: async () => undefined };
+    const executionQueue = { add: async () => undefined };
+
+    const deps = buildOptimizationAutopilotRuntimeDeps({
+      repository: repository as never,
+      queue: autopilotQueue,
+      executionQueue
+    });
+
+    expect(deps.repository).toBe(repository);
+    expect(deps.queue).toBe(autopilotQueue);
+    expect(deps.executionQueue).toBe(executionQueue);
+    expect(PUBLICATION_EXECUTION_QUEUE_NAME).toBe('site-mutation-execution');
   });
 
   it('defines one daily reconciliation scheduler without embedding a date in the job payload', () => {
