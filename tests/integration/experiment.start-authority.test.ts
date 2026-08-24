@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
 import { prisma } from '../../src/db/prisma.js';
 import { OptimizationExperimentRepository } from '../../src/modules/optimization-experiments/experiment.repository.js';
+import { OptimizationExperimentService } from '../../src/modules/optimization-experiments/experiment.service.js';
 
 const ROLLBACK_SENTINEL = 'P9_D_START_AUTHORITY_ROLLBACK';
 
@@ -222,12 +223,33 @@ async function seedVerifiedStartGraph(tx: Prisma.TransactionClient) {
     project,
     otherProject,
     growthProvenance,
+    growthSnapshot,
+    candidate,
     optimizationPlan,
     proposal,
     publicationPlan,
     execution,
     verification
   };
+}
+
+async function upstreamSnapshot(
+  tx: Prisma.TransactionClient,
+  fixture: Awaited<ReturnType<typeof seedVerifiedStartGraph>>
+) {
+  return {
+    project: await tx.project.findUnique({ where: { id: fixture.project.id } }),
+    candidate: await tx.optimizationCandidate.findUnique({ where: { id: fixture.candidate.id } }),
+    optimizationPlan: await tx.optimizationPlan.findUnique({ where: { id: fixture.optimizationPlan.id } }),
+    proposal: await tx.publicationProposal.findUnique({ where: { id: fixture.proposal.id } }),
+    publicationPlan: await tx.publicationPlan.findUnique({ where: { id: fixture.publicationPlan.id } }),
+    execution: await tx.publicationExecution.findUnique({ where: { id: fixture.execution.id } }),
+    verification: await tx.publicationVerification.findUnique({ where: { id: fixture.verification.id } })
+  };
+}
+
+function serviceFor(tx: Prisma.TransactionClient): OptimizationExperimentService {
+  return new OptimizationExperimentService(new OptimizationExperimentRepository(tx));
 }
 
 describe('P9-D verified start authority loading', () => {
@@ -273,6 +295,143 @@ describe('P9-D verified start authority loading', () => {
         projectId: fixture.otherProject.id,
         publicationExecutionId: fixture.execution.id
       })).resolves.toBeNull();
+    });
+  });
+});
+
+describe('P9-D experiment start service', () => {
+  it('starts once from an exact Advanced VERIFIED P9 binding and then reuses the immutable experiment', async () => {
+    await withRollback(async (tx) => {
+      const fixture = await seedVerifiedStartGraph(tx);
+      const service = serviceFor(tx);
+      const before = await upstreamSnapshot(tx, fixture);
+
+      const first = await service.startFromVerifiedExecution({
+        projectId: fixture.project.id,
+        publicationExecutionId: fixture.execution.id
+      });
+      expect(first.kind).toBe('STARTED');
+      if (first.kind !== 'STARTED') throw new Error('expected STARTED');
+      expect(first.experiment).toMatchObject({
+        projectId: fixture.project.id,
+        optimizationPlanId: fixture.optimizationPlan.id,
+        publicationExecutionId: fixture.execution.id,
+        publicationVerificationId: fixture.verification.id,
+        interventionType: 'SERP_SNIPPET_OPTIMIZATION',
+        targetUrl: fixture.publicationPlan.targetPublicUrl,
+        marketCode: 'HK',
+        locale: 'zh-Hant'
+      });
+
+      const second = await service.startFromVerifiedExecution({
+        projectId: fixture.project.id,
+        publicationExecutionId: fixture.execution.id
+      });
+      expect(second.kind).toBe('EXISTING');
+      if (second.kind !== 'EXISTING') throw new Error('expected EXISTING');
+      expect(second.experiment.id).toBe(first.experiment.id);
+      await expect(tx.optimizationExperiment.count({ where: { projectId: fixture.project.id } }))
+        .resolves.toBe(1);
+      expect(await upstreamSnapshot(tx, fixture)).toEqual(before);
+    });
+  });
+
+  it('defers Standard plans before creating an experiment', async () => {
+    await withRollback(async (tx) => {
+      const fixture = await seedVerifiedStartGraph(tx);
+      await tx.project.update({ where: { id: fixture.project.id }, data: { planLevel: 'STANDARD' } });
+      const before = await upstreamSnapshot(tx, fixture);
+
+      await expect(serviceFor(tx).startFromVerifiedExecution({
+        projectId: fixture.project.id,
+        publicationExecutionId: fixture.execution.id
+      })).resolves.toEqual({
+        kind: 'DEFERRED',
+        reasonCode: 'EXPERIMENT_FEATURE_NOT_AVAILABLE'
+      });
+      await expect(tx.optimizationExperiment.count({ where: { projectId: fixture.project.id } }))
+        .resolves.toBe(0);
+      expect(await upstreamSnapshot(tx, fixture)).toEqual(before);
+    });
+  });
+
+  it('defers when the execution itself is not VERIFIED', async () => {
+    await withRollback(async (tx) => {
+      const fixture = await seedVerifiedStartGraph(tx);
+      await tx.publicationExecution.update({
+        where: { id: fixture.execution.id },
+        data: { status: 'DEPLOYED' }
+      });
+
+      await expect(serviceFor(tx).startFromVerifiedExecution({
+        projectId: fixture.project.id,
+        publicationExecutionId: fixture.execution.id
+      })).resolves.toEqual({
+        kind: 'DEFERRED',
+        reasonCode: 'EXPERIMENT_EXECUTION_NOT_VERIFIED'
+      });
+    });
+  });
+
+  it('distinguishes a non-VERIFIED verification from other authority failures', async () => {
+    await withRollback(async (tx) => {
+      const fixture = await seedVerifiedStartGraph(tx);
+      await tx.publicationVerification.update({
+        where: { id: fixture.verification.id },
+        data: { status: 'FAILED' }
+      });
+
+      await expect(serviceFor(tx).startFromVerifiedExecution({
+        projectId: fixture.project.id,
+        publicationExecutionId: fixture.execution.id
+      })).resolves.toEqual({
+        kind: 'DEFERRED',
+        reasonCode: 'EXPERIMENT_VERIFICATION_NOT_VERIFIED'
+      });
+    });
+  });
+
+  it('defers source, URL, unsupported intervention, and unresolved measurement scope independently', async () => {
+    await withRollback(async (tx) => {
+      const sourceFixture = await seedVerifiedStartGraph(tx);
+      await tx.publicationProposal.update({
+        where: { id: sourceFixture.proposal.id },
+        data: { sourceType: 'MANUAL' }
+      });
+      await expect(serviceFor(tx).startFromVerifiedExecution({
+        projectId: sourceFixture.project.id,
+        publicationExecutionId: sourceFixture.execution.id
+      })).resolves.toEqual({ kind: 'DEFERRED', reasonCode: 'EXPERIMENT_P9_SOURCE_MISMATCH' });
+
+      const urlFixture = await seedVerifiedStartGraph(tx);
+      await tx.publicationVerification.update({
+        where: { id: urlFixture.verification.id },
+        data: { observedUrl: `${urlFixture.publicationPlan.targetPublicUrl}?drift=1` }
+      });
+      await expect(serviceFor(tx).startFromVerifiedExecution({
+        projectId: urlFixture.project.id,
+        publicationExecutionId: urlFixture.execution.id
+      })).resolves.toEqual({ kind: 'DEFERRED', reasonCode: 'EXPERIMENT_VERIFICATION_URL_MISMATCH' });
+
+      const unsupportedFixture = await seedVerifiedStartGraph(tx);
+      await tx.optimizationPlan.update({
+        where: { id: unsupportedFixture.optimizationPlan.id },
+        data: { recommendedActionType: 'TECHNICAL_SEO_REMEDIATION' }
+      });
+      await expect(serviceFor(tx).startFromVerifiedExecution({
+        projectId: unsupportedFixture.project.id,
+        publicationExecutionId: unsupportedFixture.execution.id
+      })).resolves.toEqual({ kind: 'DEFERRED', reasonCode: 'EXPERIMENT_INTERVENTION_NOT_SUPPORTED' });
+
+      const scopeFixture = await seedVerifiedStartGraph(tx);
+      await tx.growthOpportunitySnapshot.update({
+        where: { id: scopeFixture.growthSnapshot.id },
+        data: { sourceProvenance: { version: 'LEGACY' } }
+      });
+      await expect(serviceFor(tx).startFromVerifiedExecution({
+        projectId: scopeFixture.project.id,
+        publicationExecutionId: scopeFixture.execution.id
+      })).resolves.toEqual({ kind: 'DEFERRED', reasonCode: 'EXPERIMENT_MEASUREMENT_SCOPE_UNRESOLVED' });
     });
   });
 });
