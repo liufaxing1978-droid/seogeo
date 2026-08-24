@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { FeedbackObservability } from '../../src/modules/optimization-feedback/feedback.observability.js';
+import {
+  FeedbackObservability,
+  type FeedbackObservabilityEvent
+} from '../../src/modules/optimization-feedback/feedback.observability.js';
 
 type ObservedEvent = {
   event: string;
@@ -53,7 +56,7 @@ describe('P9-E feedback observability', () => {
       prompt: 'secret prompt',
       body: 'secret body',
       providerPayload: { token: 'secret' }
-    } as ObservedEvent & Record<string, unknown>);
+    } as FeedbackObservabilityEvent & Record<string, unknown>);
 
     expect(events).toHaveLength(1);
     expect(Object.keys(events[0]!).every((key) => ALLOWED_KEYS.has(key))).toBe(true);
