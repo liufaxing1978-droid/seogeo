@@ -67,7 +67,7 @@ describe('P9-D visibility observation persistence', () => {
   it('persists numerator and denominator beside baseline/observed visibility rates', async () => {
     const verifiedAnchorAt = new Date('2026-08-08T12:00:00.000Z');
     const dueAt = new Date(verifiedAnchorAt.getTime() + 14 * DAY_MS);
-    let persistedInput: Record<string, unknown> | null = null;
+    const captured: { persistedInput?: Record<string, unknown> } = {};
 
     const repository = {
       findExperimentForEvaluation: async () => frozenVisibilityExperiment(verifiedAnchorAt),
@@ -91,7 +91,7 @@ describe('P9-D visibility observation persistence', () => {
         })
       ],
       createOrGetObservation: async (input: Record<string, unknown>) => {
-        persistedInput = input;
+        captured.persistedInput = input;
         return {
           id: 'visibility-observation-1',
           createdAt: new Date('2026-08-22T13:01:00.000Z'),
@@ -115,7 +115,11 @@ describe('P9-D visibility observation persistence', () => {
       windowType: '14D'
     });
 
-    expect(persistedInput).not.toBeNull();
+    const persistedInput = captured.persistedInput;
+    expect(persistedInput).toBeDefined();
+    if (!persistedInput) {
+      throw new Error('EXPECTED_VISIBILITY_OBSERVATION_PERSISTENCE');
+    }
     expect(persistedInput).toMatchObject({
       coverageState: 'SUFFICIENT',
       contaminationState: 'CLEAR',
@@ -123,7 +127,7 @@ describe('P9-D visibility observation persistence', () => {
     });
     expect(persistedInput).toHaveProperty('baselineMetricsJson');
     expect(persistedInput).toHaveProperty('observedMetricsJson');
-    expect(persistedInput?.baselineMetricsJson).toEqual(expect.arrayContaining([
+    expect(persistedInput.baselineMetricsJson).toEqual(expect.arrayContaining([
       expect.objectContaining({
         family: 'VISIBILITY',
         metricKey: 'CITATION_RATE',
@@ -132,7 +136,7 @@ describe('P9-D visibility observation persistence', () => {
         denominator: 20
       })
     ]));
-    expect(persistedInput?.observedMetricsJson).toEqual(expect.arrayContaining([
+    expect(persistedInput.observedMetricsJson).toEqual(expect.arrayContaining([
       expect.objectContaining({
         family: 'VISIBILITY',
         metricKey: 'CITATION_RATE',
