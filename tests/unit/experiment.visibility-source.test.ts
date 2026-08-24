@@ -114,7 +114,11 @@ describe('P9-D visibility metric window resolver', () => {
         direction: 'HIGHER',
         baselineValue: 0.1,
         observedValue: 0.2,
-        baselineZeroIsExplicit: false
+        baselineZeroIsExplicit: false,
+        baselineNumerator: 2,
+        baselineDenominator: 20,
+        observedNumerator: 4,
+        observedDenominator: 20
       })
     ]);
     expect(result.baselineVisibilitySourceRefs).toEqual([
