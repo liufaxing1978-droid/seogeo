@@ -14,6 +14,12 @@ const scope: SearchExperimentMeasurementScope = {
   aggregationScope: 'QUERY_PAGE'
 };
 
+const queryScope: SearchExperimentMeasurementScope = {
+  ...scope,
+  canonicalPage: null,
+  aggregationScope: 'QUERY'
+};
+
 function utcDay(day: number): Date {
   return new Date(Date.UTC(2026, 7, day, 0, 0, 0));
 }
@@ -145,5 +151,47 @@ describe('P9-D search fact window resolver', () => {
 
     expect(result.coverageState).toBe('SUFFICIENT');
     expect(result.observedSearchSourceRefs).toHaveLength(7);
+  });
+
+  it('requires exact QUERY facts for a content-creation baseline and never promotes QUERY_PAGE history', async () => {
+    const queryPageFacts = Array.from({ length: 28 }, (_, index) => makeFact({
+      day: index + 1,
+      snapshotId: `query-page-${index + 1}`,
+      clicks: index < 14 ? 1 : 2,
+      impressions: 10,
+      position: 4
+    }));
+    let receivedFilter: SearchFactReadFilter | null = null;
+    const source = {
+      async listCompletedFacts(filter: SearchFactReadFilter): Promise<SearchFactView[]> {
+        receivedFilter = filter;
+        return queryPageFacts;
+      }
+    };
+
+    const result = await resolveSearchWindowComparison({
+      projectId: 'project-1',
+      scope: queryScope,
+      verifiedAnchorAt: new Date('2026-08-15T12:00:00.000Z'),
+      windowType: '14D',
+      windowDays: 14,
+      source
+    });
+
+    expect(receivedFilter).toMatchObject({
+      projectId: 'project-1',
+      provider: 'GOOGLE_SEARCH_CONSOLE',
+      marketCode: 'HK',
+      locale: 'zh-Hant',
+      propertyRef: 'gsc:property:1',
+      factKind: 'QUERY',
+      normalizedQuery: '興善堂'
+    });
+    expect(result.coverageState).toBe('INSUFFICIENT');
+    expect(result.reasonCodes).toContain('NO_COMPARABLE_BASELINE');
+    expect(result.baselineSearchSourceRefs).toEqual([]);
+    expect(result.comparisons).toEqual(expect.arrayContaining([
+      expect.objectContaining({ metricKey: 'IMPRESSIONS', baselineValue: null, baselineZeroIsExplicit: false })
+    ]));
   });
 });
