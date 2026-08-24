@@ -11,6 +11,7 @@ import {
 } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
 import { canonicalJson } from './experiment.identity.js';
+import type { VisibilityExperimentScopeFact } from './experiment.scope.js';
 import type {
   ExperimentContaminationState,
   ExperimentCoverageState,
@@ -149,6 +150,9 @@ type ExperimentDb = Pick<
   | 'optimizationExperimentObservation'
   | 'optimizationPlan'
   | 'growthOpportunitySnapshot'
+  | 'growthOpportunityEvidence'
+  | 'visibilityMetricRow'
+  | 'visibilityMetricSnapshot'
   | 'project'
   | 'publicationExecution'
   | 'publicationVerification'
@@ -227,6 +231,81 @@ function assertObservationIdentity(
 
 export class OptimizationExperimentRepository {
   constructor(private readonly db: ExperimentDb = prisma) {}
+
+  async listVisibilityScopeFacts(input: {
+    projectId: string;
+    growthSnapshotId: string;
+  }): Promise<readonly VisibilityExperimentScopeFact[]> {
+    const evidence = await this.db.growthOpportunityEvidence.findMany({
+      where: {
+        projectId: input.projectId,
+        snapshotId: input.growthSnapshotId,
+        sourceModule: 'P6_VISIBILITY',
+        sourceType: 'VISIBILITY_METRIC_ROW'
+      },
+      orderBy: [
+        { createdAt: 'asc' },
+        { id: 'asc' }
+      ],
+      select: {
+        snapshotId: true,
+        projectId: true,
+        sourceModule: true,
+        sourceType: true,
+        sourceId: true,
+        sourceFactVersion: true,
+        ruleKey: true
+      }
+    });
+    if (evidence.length === 0) return [];
+
+    const rows = await this.db.visibilityMetricRow.findMany({
+      where: {
+        projectId: input.projectId,
+        id: { in: evidence.map((item) => item.sourceId) }
+      },
+      select: {
+        id: true,
+        projectId: true,
+        visibilityMetricSnapshotId: true,
+        metricType: true,
+        dimensionType: true,
+        dimensionKey: true,
+        actorType: true,
+        actorKey: true
+      }
+    });
+    const rowById = new Map(rows.map((row) => [row.id, row]));
+    const snapshotIds = [...new Set(rows.map((row) => row.visibilityMetricSnapshotId))];
+    if (snapshotIds.length === 0) return [];
+
+    const snapshots = await this.db.visibilityMetricSnapshot.findMany({
+      where: {
+        projectId: input.projectId,
+        id: { in: snapshotIds }
+      },
+      select: {
+        id: true,
+        projectId: true,
+        status: true,
+        formulaVersion: true,
+        extractorVersion: true,
+        subjectSetHash: true,
+        scopeHash: true
+      }
+    });
+    const snapshotById = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot]));
+
+    const facts: VisibilityExperimentScopeFact[] = [];
+    for (const item of evidence) {
+      const row = rowById.get(item.sourceId);
+      if (!row) continue;
+      const snapshot = snapshotById.get(row.visibilityMetricSnapshotId);
+      if (!snapshot) continue;
+      facts.push({ evidence: item, row, snapshot });
+    }
+    return facts;
+  }
 
   async inspectStartAuthority(input: {
     projectId: string;
