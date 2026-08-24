@@ -4,7 +4,7 @@
 
 **Goal:** Build a bounded P9-D experiment engine that starts only from exact P8 VERIFIED publication facts, evaluates immutable search/AI-visibility observations from persisted completed snapshots, and reports conservative observed effects without changing P7, P8, P9 planning authority, Git, deployment, or feedback weights.
 
-**Architecture:** Add one isolated `optimization-experiments` module with immutable experiment/observation persistence, deterministic identities and schedules, read-only Search Facts/Visibility Metrics resolvers, a deterministic evaluator, one BullMQ queue, and persisted-read API/UI projections. P8 verification only emits an injected post-commit handoff; queue delivery failure must never reverse or fail P8 verification. P9-D writes only its own two tables and never updates `OptimizationPlan.historicalRankAdjustment`.
+**Architecture:** Add one isolated `optimization-experiments` module with immutable experiment/observation persistence, deterministic identities and schedules, read-only Search Facts/Visibility Metrics resolvers, a deterministic evaluator, one BullMQ queue, and persisted-read API/UI projections. P8 verification exposes only an injected post-commit handoff; queue delivery failure must never reverse or fail P8 verification. P9-D writes only its own two tables and never updates `OptimizationPlan.historicalRankAdjustment`.
 
 **Tech Stack:** Node.js >=22, TypeScript 5.9, Prisma 6.14/PostgreSQL 17, BullMQ 5.58/Redis 7, Express 5, Zod 3.25, EJS, Vitest 3.2, Supertest 7, Playwright 1.55/Chromium.
 
@@ -12,55 +12,53 @@
 
 ## Global Constraints
 
-- Base implementation branch: `feat/p9-d-experiment-engine`, originally branched from `main@5fac353d0e5e8c4bd5c187e4318bd1c7e4490d4e`.
+- Base branch for implementation is `feat/p9-d-experiment-engine`, originally created from `main@5fac353d0e5e8c4bd5c187e4318bd1c7e4490d4e`.
 - `OPTIMIZATION_EXPERIMENTS`: Standard=false, Advanced=true, Enterprise=true.
-- An experiment starts only from `PublicationExecution.status = VERIFIED` plus an exact persisted `PublicationVerification.status = VERIFIED` with `observedAt` and matching bounded HTTP(S) `observedUrl`.
+- Start only from `PublicationExecution.status = VERIFIED` plus an exact persisted `PublicationVerification.status = VERIFIED` with non-null `observedAt` and matching bounded HTTP(S) `observedUrl`.
 - P8 proposal provenance must be `sourceType = P9_OPTIMIZATION_PLAN` and `sourceReferenceId = OptimizationPlan.id`.
-- P9-D may read P7/P8/P9/Search Facts/Visibility Metrics, but may persist only `OptimizationExperiment` and `OptimizationExperimentObservation` plus bounded logs.
+- P9-D may read P7/P8/P9/Search Facts/Visibility Metrics, but may persist only `OptimizationExperiment` and `OptimizationExperimentObservation` plus bounded operational logs.
 - No P9-D provider calls, DeepSeek calls, Git writes, Draft-PR creation, merge, deployment, rollback, P7 scoring mutation, P8 authority mutation, or `OptimizationPlan.historicalRankAdjustment` update.
 - Missing, `UNKNOWN`, `NOT_SUPPORTED`, incompatible, or absent top-row facts never become numeric zero.
-- `CONTENT_CREATION` never uses page absence as a zero baseline; it uses exact query-level comparison only when immutable P9 provenance resolves that query scope.
+- `CONTENT_CREATION` never uses target-page absence as a zero baseline; it uses exact query-level comparison only when immutable P9 provenance resolves that query scope.
 - P9-D reports observed association only; it does not claim causal effect.
-- `OptimizationExperiment` and `OptimizationExperimentObservation` are immutable via PostgreSQL `BEFORE UPDATE OR DELETE` triggers.
-- Experiment lifecycle is derived from immutable identity + observations; no mutable experiment status column is introduced.
+- `OptimizationExperiment` and `OptimizationExperimentObservation` are immutable with PostgreSQL `BEFORE UPDATE OR DELETE` triggers.
+- Experiment lifecycle is derived from immutable identity + immutable observations; no mutable experiment status column is introduced.
 - P9-D owns exactly one new queue: `optimization-experiment-evaluation`.
 - Queue payloads contain durable IDs/window identifiers only; no content body, prompt, provider raw payload, credential, or model answer.
 - GET API/UI routes are persisted-read only: no enqueue, AI, provider, Git, mutation, or fact recalculation side effects.
-- Existing `.github/workflows/ci.yml` stays authoritative; do not weaken or bypass `verify`, `production-audit`, or `e2e`.
+- Existing `.github/workflows/ci.yml` remains authoritative; do not weaken or bypass `verify`, `production-audit`, or `e2e`.
 - No merge or deployment without a later, separate explicit human authorization.
 
 ---
 
 ## File Structure
 
-Create the P9-D module with one responsibility per file:
-
 ```text
 prisma/models/optimization-experiment.prisma
 prisma/migrations/20260824140000_add_p9d_experiment_engine/migration.sql
 src/modules/optimization-experiments/
-  experiment.types.ts            # version constants, bounded domain/read-model types
-  experiment.identity.ts         # canonical hashes and deterministic observation identity
-  experiment.schedule.ts         # intervention support, due windows, expected directions
-  experiment.repository.ts       # P9-D persistence + P8/P9 authority reads + reconciliation reads
-  experiment.scope.ts            # exact search/visibility measurement-scope derivation
-  experiment.search-source.ts    # completed Search Facts comparison resolver/aggregation
-  experiment.visibility-source.ts# completed Visibility Metrics comparison resolver
-  experiment.contamination.ts    # read-only P8 contamination checks
-  experiment.evaluator.ts        # deterministic V1 effect classification
-  experiment.queue.ts            # one BullMQ queue and durable payloads
-  experiment.worker.ts           # start/evaluate/reconcile job processor
-  experiment.service.ts          # start/evaluate orchestration over injected ports
-  experiment.observability.ts    # bounded allowlisted operational events
-  experiment.routes.ts           # read-only REST API
-  experiment.web.repository.ts   # persisted-read web projection
-  experiment.web.routes.ts       # project-scoped read-only EJS routes
+  experiment.types.ts
+  experiment.identity.ts
+  experiment.schedule.ts
+  experiment.repository.ts
+  experiment.scope.ts
+  experiment.search-source.ts
+  experiment.visibility-source.ts
+  experiment.contamination.ts
+  experiment.evaluator.ts
+  experiment.queue.ts
+  experiment.worker.ts
+  experiment.service.ts
+  experiment.observability.ts
+  experiment.routes.ts
+  experiment.web.repository.ts
+  experiment.web.routes.ts
 src/views/optimization-experiments/index.ejs
 src/views/optimization-experiments/show.ejs
 docs/development/p9-d-experiment-engine.md
 ```
 
-Modify only the shared integration surfaces needed by P9-D:
+Shared integration surfaces permitted to change:
 
 ```text
 prisma/models/optimization.prisma
@@ -73,7 +71,7 @@ src/app.ts
 src/views/partials/sidebar.ejs
 ```
 
-Tests are split by authority boundary rather than implementation layer:
+Tests:
 
 ```text
 tests/unit/experiment.feature-gate.test.ts
@@ -98,7 +96,7 @@ tests/e2e/optimization-experiments.spec.ts
 
 ---
 
-### Task 19: Experiment persistence, identity, schedule, and feature gate
+### Task 19: Persistence, identity, schedule, and feature gate
 
 **Files:**
 - Create: `prisma/models/optimization-experiment.prisma`
@@ -116,11 +114,10 @@ tests/e2e/optimization-experiments.spec.ts
 - Test: `tests/integration/experiment.persistence.test.ts`
 
 **Interfaces:**
-- Consumes: existing Prisma `RecommendedActionType`, `MarketCode`, `OptimizationPlan`, `PublicationExecution`, and `PublicationVerification` identities.
-- Produces: `OPTIMIZATION_EXPERIMENT_VERSION`, `OPTIMIZATION_EXPERIMENT_OBSERVATION_VERSION`, `OPTIMIZATION_EXPERIMENT_EVALUATOR_VERSION`, `ExperimentWindowType`, `ExperimentMeasurementScope`, `buildExperimentKey()`, `buildObservationKey()`, `scheduleForIntervention()`, and `OptimizationExperimentRepository.createOrGetExperiment/createOrGetObservation`.
-- Later tasks must treat repository create-or-get methods as collision-verifying immutable writes, not upserts.
+- Consumes existing Prisma `RecommendedActionType`, `MarketCode`, `OptimizationPlan`, `PublicationExecution`, and `PublicationVerification` identities.
+- Produces the complete shared P9-D domain contracts below. Later tasks must import these names rather than redefining local variants.
 
-- [ ] **Step 1: Write RED feature, identity, and schedule tests**
+- [ ] **Step 1: Write the RED feature/schedule tests**
 
 Create `tests/unit/experiment.feature-gate.test.ts`:
 
@@ -129,7 +126,7 @@ import { describe, expect, it } from 'vitest';
 import { hasFeature } from '../../src/auth/feature-flags.js';
 
 describe('P9-D feature gate', () => {
-  it('enables optimization experiments only for Advanced and Enterprise', () => {
+  it('is Advanced/Enterprise only', () => {
     expect(hasFeature('STANDARD', 'OPTIMIZATION_EXPERIMENTS')).toBe(false);
     expect(hasFeature('ADVANCED', 'OPTIMIZATION_EXPERIMENTS')).toBe(true);
     expect(hasFeature('ENTERPRISE', 'OPTIMIZATION_EXPERIMENTS')).toBe(true);
@@ -137,13 +134,13 @@ describe('P9-D feature gate', () => {
 });
 ```
 
-Create `tests/unit/experiment.schedule.test.ts` with exact schedules:
+Create `tests/unit/experiment.schedule.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
 import { scheduleForIntervention } from '../../src/modules/optimization-experiments/experiment.schedule.js';
 
-describe('P9-D deterministic schedule', () => {
+describe('P9-D schedule V1', () => {
   it.each([
     ['SERP_SNIPPET_OPTIMIZATION', ['7D', '14D', '28D']],
     ['ON_PAGE_OPTIMIZATION', ['14D', '28D', '56D']],
@@ -151,35 +148,28 @@ describe('P9-D deterministic schedule', () => {
     ['CONTENT_CREATION', ['14D', '28D', '56D']],
     ['GEO_CITABILITY_IMPROVEMENT', ['14D', '28D', '56D']],
     ['AI_VISIBILITY_IMPROVEMENT', ['14D', '28D', '56D']]
-  ] as const)('%s has the frozen V1 windows', (action, windows) => {
-    expect(scheduleForIntervention(action).map((item) => item.windowType)).toEqual(windows);
+  ] as const)('%s', (action, expected) => {
+    expect(scheduleForIntervention(action)?.map((item) => item.windowType)).toEqual(expected);
   });
 
   it.each(['TECHNICAL_SEO_REMEDIATION', 'CANNIBALIZATION_REMEDIATION'] as const)(
-    '%s is unsupported instead of receiving a proxy metric',
+    'does not invent a proxy for %s',
     (action) => expect(scheduleForIntervention(action)).toBeNull()
   );
 });
 ```
 
-Create `tests/unit/experiment.identity.test.ts` asserting canonical object-key order, sorted/deduped source refs, stable identical hashes, and different hashes when execution/verification/window/source identity changes.
-
-- [ ] **Step 2: Run the unit RED set and verify the failure is missing P9-D contracts**
-
 Run:
 
 ```bash
-npx vitest run \
-  tests/unit/experiment.feature-gate.test.ts \
-  tests/unit/experiment.identity.test.ts \
-  tests/unit/experiment.schedule.test.ts
+npx vitest run tests/unit/experiment.feature-gate.test.ts tests/unit/experiment.schedule.test.ts
 ```
 
-Expected: FAIL because `OPTIMIZATION_EXPERIMENTS` and `src/modules/optimization-experiments/*` do not exist. No unrelated existing test should be changed to make RED pass.
+Expected: FAIL only because the feature/module does not exist.
 
-- [ ] **Step 3: Add the immutable Prisma model and forward-only migration**
+- [ ] **Step 2: Add the exact Prisma schema and additive migration**
 
-Create `prisma/models/optimization-experiment.prisma` with these exact semantic fields:
+Create `prisma/models/optimization-experiment.prisma`:
 
 ```prisma
 enum OptimizationExperimentEffectState {
@@ -266,7 +256,7 @@ model OptimizationExperimentObservation {
 }
 ```
 
-Add only required reverse relations:
+Add only these reverse relations:
 
 ```prisma
 // OptimizationPlan
@@ -279,43 +269,48 @@ optimizationExperiments OptimizationExperiment[]
 optimizationExperiments OptimizationExperiment[]
 ```
 
-Create `prisma/migrations/20260824140000_add_p9d_experiment_engine/migration.sql` as an additive migration. In addition to Prisma-generated enum/table/FK/index SQL, install immutability triggers using a P9-D-owned function:
+Create the forward-only migration at the exact planned path. It must create the three enums, two tables, unique/index constraints, and `ON DELETE RESTRICT ON UPDATE CASCADE` FKs matching the schema. Add these immutable triggers after the generated DDL:
 
 ```sql
-CREATE OR REPLACE FUNCTION "p9d_reject_immutable_change"()
-RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION "reject_p9d_immutable_mutation"() RETURNS trigger AS $$
 BEGIN
-  RAISE EXCEPTION 'P9-D immutable record cannot be updated or deleted';
+  RAISE EXCEPTION 'P9-D immutable row % cannot be updated or deleted', TG_TABLE_NAME USING ERRCODE = '55000';
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER "OptimizationExperiment_immutable"
-BEFORE UPDATE OR DELETE ON "OptimizationExperiment"
-FOR EACH ROW EXECUTE FUNCTION "p9d_reject_immutable_change"();
+  BEFORE UPDATE OR DELETE ON "OptimizationExperiment"
+  FOR EACH ROW EXECUTE FUNCTION "reject_p9d_immutable_mutation"();
 
 CREATE TRIGGER "OptimizationExperimentObservation_immutable"
-BEFORE UPDATE OR DELETE ON "OptimizationExperimentObservation"
-FOR EACH ROW EXECUTE FUNCTION "p9d_reject_immutable_change"();
+  BEFORE UPDATE OR DELETE ON "OptimizationExperimentObservation"
+  FOR EACH ROW EXECUTE FUNCTION "reject_p9d_immutable_mutation"();
 ```
 
-Do not edit any existing applied migration.
+Do not edit any earlier migration.
 
-- [ ] **Step 4: Implement versions, identities, schedules, and collision-verifying persistence**
+- [ ] **Step 3: Define every shared P9-D type once**
 
-In `experiment.types.ts`, define exact constants and bounded types:
+Create `experiment.types.ts`:
 
 ```ts
 export const OPTIMIZATION_EXPERIMENT_VERSION = 'OPTIMIZATION_EXPERIMENT_V1' as const;
 export const OPTIMIZATION_EXPERIMENT_OBSERVATION_VERSION = 'OPTIMIZATION_EXPERIMENT_OBSERVATION_V1' as const;
 export const OPTIMIZATION_EXPERIMENT_EVALUATOR_VERSION = 'OPTIMIZATION_EXPERIMENT_EVALUATOR_V1' as const;
+
 export type ExperimentWindowType = '7D' | '14D' | '28D' | '56D';
 export type ExperimentMetricDirection = 'HIGHER' | 'LOWER';
 export type ExperimentMetricRole = 'PRIMARY' | 'SECONDARY';
-```
+export type ExperimentCoverageState = 'SUFFICIENT' | 'PARTIAL' | 'INSUFFICIENT' | 'UNKNOWN';
+export type ExperimentContaminationState =
+  | 'CLEAR'
+  | 'CONFLICTING_MUTATION'
+  | 'TARGET_REVISION_CHANGED'
+  | 'VERIFICATION_INVALIDATED'
+  | 'SOURCE_IDENTITY_CHANGED'
+  | 'UNKNOWN';
+export type ExperimentEffectState = 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'INCONCLUSIVE';
 
-Define measurement-scope unions here so Task 20 has stable names:
-
-```ts
 export type SearchExperimentMeasurementScope = {
   kind: 'SEARCH';
   provider: 'GOOGLE_SEARCH_CONSOLE';
@@ -343,9 +338,69 @@ export type VisibilityExperimentMeasurementScope = {
 export type ExperimentMeasurementScope =
   | SearchExperimentMeasurementScope
   | VisibilityExperimentMeasurementScope;
+
+export type ExperimentMetricComparison = {
+  family: 'SEARCH' | 'VISIBILITY';
+  metricKey: string;
+  role: ExperimentMetricRole;
+  direction: ExperimentMetricDirection;
+  baselineValue: number | null;
+  observedValue: number | null;
+  baselineZeroIsExplicit: boolean;
+  baselineSourceRefs: readonly string[];
+  observedSourceRefs: readonly string[];
+  reasonCodes: readonly string[];
+};
+
+export type ExperimentWindowResolution = {
+  comparisons: readonly ExperimentMetricComparison[];
+  baselineSearchSourceRefs: readonly string[];
+  observedSearchSourceRefs: readonly string[];
+  baselineVisibilitySourceRefs: readonly string[];
+  observedVisibilitySourceRefs: readonly string[];
+  coverageState: ExperimentCoverageState;
+  reasonCodes: readonly string[];
+  inputCutoffAt: Date;
+};
 ```
 
-`experiment.identity.ts` owns its canonical serializer instead of importing P9-C identity helpers. `buildExperimentKey()` hashes experiment version + all immutable bindings. `buildObservationKey()` sorts/deduplicates the four source-ref sets before hashing.
+- [ ] **Step 4: Implement deterministic identities and schedules**
+
+`experiment.identity.ts` owns a canonical JSON serializer and SHA-256 helper; it must not import P9-C identity code.
+
+Export exact signatures:
+
+```ts
+export function buildExperimentKey(input: {
+  projectId: string;
+  optimizationPlanId: string;
+  publicationExecutionId: string;
+  publicationVerificationId: string;
+  interventionType: string;
+  targetUrl: string;
+  marketCode: string | null;
+  locale: string | null;
+  verifiedAnchorAt: Date;
+  measurementScope: ExperimentMeasurementScope;
+  observationSchedule: readonly ExperimentWindow[];
+  expectedDirections: Record<string, ExperimentMetricDirection>;
+}): string;
+
+export function buildObservationKey(input: {
+  experimentId: string;
+  windowType: ExperimentWindowType;
+  windowDays: number;
+  dueAt: Date;
+  inputCutoffAt: Date;
+  baselineSearchSourceRefs: readonly string[];
+  observedSearchSourceRefs: readonly string[];
+  baselineVisibilitySourceRefs: readonly string[];
+  observedVisibilitySourceRefs: readonly string[];
+  evaluatorVersion: string;
+}): string;
+```
+
+Normalize every source-ref array with trim → reject empty → dedupe → sort before hashing.
 
 `experiment.schedule.ts` exports:
 
@@ -362,28 +417,81 @@ export function scheduleForIntervention(
 export function dueAtForWindow(anchor: Date, windowDays: number): Date;
 ```
 
-Use millisecond arithmetic from exact `verifiedAnchorAt` for `dueAt`; Search Facts calendar-day boundaries are resolved separately in Task 20.
+- [ ] **Step 5: Implement immutable repository create-or-get contracts**
 
-In `experiment.repository.ts`, implement `createOrGetExperiment()` and `createOrGetObservation()` as read-first/create/catch-P2002/read-collision flows. Compare every immutable scalar plus canonicalized JSON; on mismatch throw `EXPERIMENT_IDENTITY_COLLISION` or `EXPERIMENT_OBSERVATION_IDENTITY_COLLISION`. Never use Prisma `upsert` for immutable records.
-
-- [ ] **Step 5: Add RED/green persistence integration coverage**
-
-Create `tests/integration/experiment.persistence.test.ts` using the repository's existing rollback-sentinel transaction pattern. Prove:
+In `experiment.repository.ts` define the exact create inputs:
 
 ```ts
-expect(toRegclass.experiment).not.toBeNull();
-expect(toRegclass.observation).not.toBeNull();
+export type CreateExperimentInput = {
+  projectId: string;
+  optimizationPlanId: string;
+  publicationExecutionId: string;
+  publicationVerificationId: string;
+  experimentVersion: string;
+  experimentKey: string;
+  interventionType: RecommendedActionType;
+  targetUrl: string;
+  marketCode: MarketCode | null;
+  locale: string | null;
+  verifiedAnchorAt: Date;
+  measurementScopeJson: Prisma.InputJsonValue;
+  observationScheduleJson: Prisma.InputJsonValue;
+  expectedDirectionJson: Prisma.InputJsonValue;
+};
+
+export type CreateExperimentObservationInput = {
+  projectId: string;
+  experimentId: string;
+  observationVersion: string;
+  observationKey: string;
+  windowType: ExperimentWindowType;
+  windowDays: number;
+  dueAt: Date;
+  inputCutoffAt: Date;
+  baselineSearchSourceRefs: Prisma.InputJsonValue;
+  observedSearchSourceRefs: Prisma.InputJsonValue;
+  baselineVisibilitySourceRefs: Prisma.InputJsonValue;
+  observedVisibilitySourceRefs: Prisma.InputJsonValue;
+  baselineMetricsJson: Prisma.InputJsonValue;
+  observedMetricsJson: Prisma.InputJsonValue;
+  deltaMetricsJson: Prisma.InputJsonValue;
+  coverageState: ExperimentCoverageState;
+  contaminationState: ExperimentContaminationState;
+  effectState: ExperimentEffectState;
+  reasonCodes: Prisma.InputJsonValue;
+  evaluatorVersion: string;
+};
+```
+
+Export:
+
+```ts
+createOrGetExperiment(input: CreateExperimentInput): Promise<OptimizationExperiment>;
+createOrGetObservation(input: CreateExperimentObservationInput): Promise<OptimizationExperimentObservation>;
+```
+
+Use read-first/create/catch-`P2002`/read-collision. Compare every immutable scalar and canonicalized JSON. Throw `EXPERIMENT_IDENTITY_COLLISION` or `EXPERIMENT_OBSERVATION_IDENTITY_COLLISION`; never use an upsert update branch.
+
+- [ ] **Step 6: Add identity/persistence integration coverage**
+
+`tests/unit/experiment.identity.test.ts` proves object-key ordering and source-ref ordering cannot change a hash, while changing execution/verification/window/source identity changes it.
+
+`tests/integration/experiment.persistence.test.ts` uses the existing transaction rollback-sentinel pattern and proves:
+
+```ts
+expect(tableNames).toEqual(expect.arrayContaining([
+  'OptimizationExperiment',
+  'OptimizationExperimentObservation'
+]));
 expect(triggerNames).toEqual(expect.arrayContaining([
   'OptimizationExperiment_immutable',
   'OptimizationExperimentObservation_immutable'
 ]));
 ```
 
-Inside a rollback transaction, create the minimum P9/P8 fixture, call `createOrGetExperiment()` twice with identical input and assert one row/id; then alter `targetUrl` while reusing the same key and assert `EXPERIMENT_IDENTITY_COLLISION`. Create an observation twice and prove identical reuse; change one source ref with the same key and assert observation collision.
+It also proves identical create-or-get reuse and collision rejection for both records.
 
-- [ ] **Step 6: Run Task 19 GREEN verification**
-
-Run:
+- [ ] **Step 7: Run Task 19 GREEN**
 
 ```bash
 npx prisma validate
@@ -399,23 +507,13 @@ npm run typecheck
 
 Expected: all commands exit 0.
 
-- [ ] **Step 7: Commit Task 19**
+- [ ] **Step 8: Commit Task 19**
 
 ```bash
-git add \
-  prisma/models/optimization-experiment.prisma \
-  prisma/models/optimization.prisma \
-  prisma/models/publication.prisma \
-  prisma/migrations/20260824140000_add_p9d_experiment_engine/migration.sql \
-  src/auth/feature-flags.ts \
-  src/modules/optimization-experiments/experiment.types.ts \
-  src/modules/optimization-experiments/experiment.identity.ts \
-  src/modules/optimization-experiments/experiment.schedule.ts \
-  src/modules/optimization-experiments/experiment.repository.ts \
-  tests/unit/experiment.feature-gate.test.ts \
-  tests/unit/experiment.identity.test.ts \
-  tests/unit/experiment.schedule.test.ts \
-  tests/integration/experiment.persistence.test.ts
+git add prisma/models prisma/migrations/20260824140000_add_p9d_experiment_engine \
+  src/auth/feature-flags.ts src/modules/optimization-experiments \
+  tests/unit/experiment.feature-gate.test.ts tests/unit/experiment.identity.test.ts \
+  tests/unit/experiment.schedule.test.ts tests/integration/experiment.persistence.test.ts
 git commit -m "feat: add P9-D experiment persistence"
 ```
 
@@ -435,33 +533,74 @@ git commit -m "feat: add P9-D experiment persistence"
 - Test: `tests/integration/experiment.start-authority.test.ts`
 
 **Interfaces:**
-- Consumes: Task 19 `ExperimentMeasurementScope`, immutable repository APIs, P9 candidate/plan fields, P8 proposal/execution/verification facts, `SearchFactRepository.listCompletedFacts()`, and persisted P6 Growth evidence pointing to `VisibilityMetricRow`.
-- Produces: `OptimizationExperimentService.startFromVerifiedExecution()`, `resolveExperimentMeasurementScope()`, `resolveSearchWindowComparison()`, `resolveVisibilityWindowComparison()`, and `ExperimentWindowResolution` for Task 21.
-- Start result is a closed union: `{ kind:'STARTED'; experiment } | { kind:'EXISTING'; experiment } | { kind:'DEFERRED'; reasonCode }`.
+- Consumes Task 19 types/repository plus exact P8/P9 facts, `SearchFactRepository.listCompletedFacts()`, and P6 Growth evidence pointing to `VisibilityMetricRow`.
+- Produces `VerifiedExperimentStartContext`, `ExperimentStartResult`, `resolveExperimentMeasurementScope()`, `resolveSearchWindowComparison()`, `resolveVisibilityWindowComparison()`, and `OptimizationExperimentService.startFromVerifiedExecution()`.
 
-- [ ] **Step 1: Write RED authority and scope tests before service implementation**
+- [ ] **Step 1: Define exact start-context and result contracts before writing service logic**
 
-Create `tests/integration/experiment.start-authority.test.ts` with fixtures for these exact cases:
+Add to `experiment.repository.ts`:
 
-```text
-ADVANCED + P9 proposal + execution VERIFIED + verification VERIFIED + exact URL => STARTED
-ENTERPRISE same bindings => STARTED
-STANDARD => DEFERRED / EXPERIMENT_FEATURE_NOT_AVAILABLE
-execution PR_CREATED/DEPLOYED/VERIFYING => DEFERRED / EXPERIMENT_EXECUTION_NOT_VERIFIED
-verification FAILED/UNKNOWN/missing observedAt => DEFERRED / EXPERIMENT_VERIFICATION_NOT_VERIFIED
-proposal sourceType != P9_OPTIMIZATION_PLAN => DEFERRED / EXPERIMENT_P9_SOURCE_MISMATCH
-proposal sourceReferenceId != plan.id => DEFERRED / EXPERIMENT_P9_SOURCE_MISMATCH
-observedUrl mismatches targetPublicUrl => DEFERRED / EXPERIMENT_VERIFICATION_URL_MISMATCH
-TECHNICAL_SEO_REMEDIATION => DEFERRED / EXPERIMENT_INTERVENTION_NOT_SUPPORTED
-CANNIBALIZATION_REMEDIATION => DEFERRED / EXPERIMENT_INTERVENTION_NOT_SUPPORTED
-cross-project execution/plan/verification => no experiment row
+```ts
+export type VerifiedExperimentStartContext = {
+  project: { id: string; planLevel: 'STANDARD' | 'ADVANCED' | 'ENTERPRISE' };
+  optimizationPlan: {
+    id: string;
+    projectId: string;
+    recommendedActionType: RecommendedActionType;
+    sourceFactReferences: Prisma.JsonValue;
+    candidate: {
+      id: string;
+      projectId: string;
+      growthSnapshotId: string;
+      marketScopeMode: string;
+      marketCode: MarketCode | null;
+      locale: string | null;
+      normalizedQuery: string;
+      canonicalPage: string | null;
+      sourceProvenance: Prisma.JsonValue;
+    };
+  };
+  proposal: {
+    id: string;
+    projectId: string;
+    sourceType: PublicationProposalSourceType;
+    sourceReferenceId: string | null;
+  };
+  publicationPlan: {
+    id: string;
+    projectId: string;
+    targetPublicUrl: string;
+  };
+  execution: {
+    id: string;
+    projectId: string;
+    status: PublicationExecutionStatus;
+  };
+  verification: {
+    id: string;
+    projectId: string;
+    status: PublicationVerificationStatus;
+    observedUrl: string;
+    observedAt: Date;
+  };
+};
+
+export type ExperimentStartReasonCode =
+  | 'EXPERIMENT_FEATURE_NOT_AVAILABLE'
+  | 'EXPERIMENT_EXECUTION_NOT_VERIFIED'
+  | 'EXPERIMENT_VERIFICATION_NOT_VERIFIED'
+  | 'EXPERIMENT_P9_SOURCE_MISMATCH'
+  | 'EXPERIMENT_VERIFICATION_URL_MISMATCH'
+  | 'EXPERIMENT_INTERVENTION_NOT_SUPPORTED'
+  | 'EXPERIMENT_MEASUREMENT_SCOPE_UNRESOLVED';
+
+export type ExperimentStartResult =
+  | { kind: 'STARTED'; experiment: OptimizationExperiment }
+  | { kind: 'EXISTING'; experiment: OptimizationExperiment }
+  | { kind: 'DEFERRED'; reasonCode: ExperimentStartReasonCode };
 ```
 
-Assert the service never updates the source plan, candidate, execution, or verification rows.
-
-- [ ] **Step 2: Implement exact URL and P8/P9 authority loading**
-
-Extend `experiment.repository.ts` with a read-only authority method:
+Repository signature:
 
 ```ts
 loadVerifiedStartContext(input: {
@@ -470,21 +609,29 @@ loadVerifiedStartContext(input: {
 }): Promise<VerifiedExperimentStartContext | null>;
 ```
 
-The Prisma query must bind through:
+- [ ] **Step 2: Write the RED start-authority matrix**
+
+In `tests/integration/experiment.start-authority.test.ts` create exact fixtures and assert:
 
 ```text
-PublicationExecution.projectId
-→ PublicationPlan.projectId
-→ PublicationProposal.projectId
-→ PublicationProposal.sourceType = P9_OPTIMIZATION_PLAN
-→ PublicationProposal.sourceReferenceId = OptimizationPlan.id
-→ OptimizationPlan.projectId
-→ OptimizationCandidate.projectId
+Advanced valid P9/VERIFIED binding => STARTED
+Enterprise valid binding => STARTED
+Standard => EXPERIMENT_FEATURE_NOT_AVAILABLE
+execution PR_CREATED/DEPLOYED/VERIFYING => EXPERIMENT_EXECUTION_NOT_VERIFIED
+verification FAILED/UNKNOWN/missing observedAt => EXPERIMENT_VERIFICATION_NOT_VERIFIED
+proposal source type/reference mismatch => EXPERIMENT_P9_SOURCE_MISMATCH
+observed URL mismatch => EXPERIMENT_VERIFICATION_URL_MISMATCH
+TECHNICAL_SEO_REMEDIATION / CANNIBALIZATION_REMEDIATION => EXPERIMENT_INTERVENTION_NOT_SUPPORTED
+cross-project binding => no experiment
 ```
 
-Select VERIFIED verification rows with non-null `observedAt`/`observedUrl`, ordered deterministically by `observedAt ASC, createdAt ASC, id ASC`; use the first exact valid row.
+Take before/after snapshots of the plan/candidate/execution/verification and assert unchanged.
 
-In `experiment.scope.ts`, use a strict bounded URL normalizer:
+- [ ] **Step 3: Implement exact P8/P9 authority loading and URL binding**
+
+Select the execution by exact `id + projectId`; bind through `PublicationPlan → PublicationProposal → OptimizationPlan → OptimizationCandidate`. Select VERIFIED verification rows with non-null `observedAt`/`observedUrl`, ordered `observedAt ASC, createdAt ASC, id ASC`.
+
+In `experiment.scope.ts`:
 
 ```ts
 export function normalizeExperimentHttpUrl(value: string): string {
@@ -498,34 +645,31 @@ export function normalizeExperimentHttpUrl(value: string): string {
 }
 ```
 
-Normalized `observedUrl` and `targetPublicUrl` must be equal.
+Normalized verification URL must equal normalized publication target URL.
 
-- [ ] **Step 3: Derive search measurement scope only from immutable configured-market provenance**
+- [ ] **Step 4: Resolve search measurement scope only from immutable configured-market Growth provenance**
 
-For `SERP_SNIPPET_OPTIMIZATION`, `ON_PAGE_OPTIMIZATION`, and `CONTENT_REFRESH`, require:
+For `SERP_SNIPPET_OPTIMIZATION`, `ON_PAGE_OPTIMIZATION`, `CONTENT_REFRESH` require:
 
 ```text
 candidate.marketScopeMode = CONFIGURED_MARKET
-candidate.marketCode != null
-candidate.locale != null
-candidate.normalizedQuery non-empty
-candidate.canonicalPage normalized URL == verified target URL
-candidate.sourceProvenance.version = GROWTH_SEARCH_PROVENANCE_V1
-candidate.sourceProvenance.mode = CONFIGURED_MARKET
+marketCode + locale non-null
+normalizedQuery non-empty
+canonicalPage normalized URL == verified target URL
+sourceProvenance.version = GROWTH_SEARCH_PROVENANCE_V1
+sourceProvenance.mode = CONFIGURED_MARKET
 scoringLane.provider = GOOGLE_SEARCH_CONSOLE
-one scoringLane.marketProjections entry exactly matches marketCode + locale
-matching projection.propertyRef non-empty
+exactly one scoringLane.marketProjections entry matching marketCode + locale
+matching propertyRef non-empty
 ```
 
-Return a search scope with `aggregationScope:'QUERY_PAGE'`.
+Return `SearchExperimentMeasurementScope` with `aggregationScope:'QUERY_PAGE'`.
 
-For `CONTENT_CREATION`, require the same configured-market/query/provider/property provenance, but set `aggregationScope:'QUERY'` and `canonicalPage:null`. Do not infer a pre-existing target-page zero.
+For `CONTENT_CREATION`, require the same provider/market/query/property identity but return `aggregationScope:'QUERY'` and `canonicalPage:null`. Legacy/unconfigured/ambiguous provenance defers with `EXPERIMENT_MEASUREMENT_SCOPE_UNRESOLVED`.
 
-Legacy/unconfigured or ambiguous provenance returns `EXPERIMENT_MEASUREMENT_SCOPE_UNRESOLVED` rather than guessing a property/market.
+- [ ] **Step 5: Resolve visibility scope from the exact P6 evidence row**
 
-- [ ] **Step 4: Derive visibility scope from the exact P6 evidence row referenced by the candidate Growth snapshot**
-
-For `GEO_CITABILITY_IMPROVEMENT`, load a candidate Growth evidence row with:
+For `GEO_CITABILITY_IMPROVEMENT`, require Growth evidence:
 
 ```text
 snapshotId = candidate.growthSnapshotId
@@ -534,9 +678,9 @@ sourceType = VISIBILITY_METRIC_ROW
 ruleKey = P6_CITATION_RATE
 ```
 
-For `AI_VISIBILITY_IMPROVEMENT`, prefer `P6_MENTION_RATE`; use `P6_CITATION_RATE` only when the immutable candidate source/evidence explicitly identifies citation as the target root cause.
+For `AI_VISIBILITY_IMPROVEMENT`, use `P6_MENTION_RATE` unless immutable source/evidence explicitly targets citation.
 
-Resolve `GrowthOpportunityEvidence.sourceId` to the exact `VisibilityMetricRow` and parent snapshot. Validate:
+Resolve `GrowthOpportunityEvidence.sourceId` to the exact `VisibilityMetricRow` and parent completed snapshot, and require:
 
 ```text
 row.projectId == projectId
@@ -547,96 +691,109 @@ row.dimensionType == OVERALL
 row.actorType == OWNED_ROLLUP
 ```
 
-Freeze `subjectSetHash`, `scopeHash`, `formulaVersion`, `extractorVersion`, metric, dimension, and actor identity into `VisibilityExperimentMeasurementScope`. If any binding is missing or ambiguous, defer with `EXPERIMENT_MEASUREMENT_SCOPE_UNRESOLVED`.
+Freeze metric/subject/scope/formula/extractor/dimension/actor identity in `VisibilityExperimentMeasurementScope`.
 
-- [ ] **Step 5: Implement exact Search Facts window resolution and aggregation**
+- [ ] **Step 6: Implement exact Search Facts window resolver**
 
-`experiment.search-source.ts` consumes an injected port compatible with `SearchFactRepository.listCompletedFacts()`.
-
-For an N-day window anchored at the UTC calendar date containing `verifiedAnchorAt`:
+Export:
 
 ```ts
-baseline = [anchorDay - N days, anchorDay - 1 day]
-observed = [anchorDay, anchorDay + (N - 1) days]
+export async function resolveSearchWindowComparison(input: {
+  scope: SearchExperimentMeasurementScope;
+  verifiedAnchorAt: Date;
+  windowType: ExperimentWindowType;
+  windowDays: number;
+  source: Pick<SearchFactRepository, 'listCompletedFacts'>;
+}): Promise<ExperimentWindowResolution>;
 ```
 
-Selection rules:
+UTC date windows:
 
-- query-page scope filters exact provider/market/locale/property/query/page;
-- query scope filters exact provider/market/locale/property/query and aggregates the query across its returned query-page rows;
-- `COMPLETE` is conclusive-compatible;
-- `TOP_ROWS_ONLY` is accepted only for exact query-page scope when the exact target fact exists in both windows for every required date;
-- query aggregation for `CONTENT_CREATION` requires `COMPLETE`; a truncated top-row snapshot is insufficient;
+```text
+baseline = anchor calendar day - N through anchor day - 1
+observed = anchor calendar day through anchor day + N - 1
+```
+
+Rules:
+
+- exact provider/market/locale/property/query filtering;
+- query-page scope also filters canonical page;
+- query scope aggregates all exact-query rows only from `COMPLETE` snapshots;
+- query-page may use `TOP_ROWS_ONLY` only when the exact target fact exists for every required date in both windows;
 - `PROVIDER_UNSPECIFIED`/`UNKNOWN` completeness is insufficient;
-- if multiple compatible snapshots represent the same logical date/fact, deterministically select highest `sourceCutoffAt`, then lexicographically smallest `snapshotId`; never select by metric value;
-- every required UTC source date must be represented for a conclusive result; absence is not zero.
+- missing date/fact is not zero;
+- duplicate logical facts choose greatest `sourceCutoffAt`, tie-break lexicographically smallest `snapshotId`, never by metric value.
 
-Aggregate exact known metrics as follows:
-
-```text
-CLICKS = sum daily clicks
-IMPRESSIONS = sum daily impressions
-CTR = total clicks / total impressions (never mean daily CTR)
-GOOGLE_SEARCH_CONSOLE_POSITION = impression-weighted mean position
-BING_AVG_CLICK_POSITION = click-weighted mean position
-BING_AVG_IMPRESSION_POSITION = impression-weighted mean position
-```
-
-If a required weight/metric is unknown or missing, mark that metric insufficient. Preserve bounded source snapshot IDs and max source cutoff.
-
-- [ ] **Step 6: Implement exact Visibility Metrics baseline/observation pairing**
-
-`experiment.visibility-source.ts` reads only `VisibilityMetricSnapshot.status='COMPLETED'` and the exact frozen metric/dimension/actor identity.
-
-For each due window:
+Aggregation:
 
 ```text
-baseline = latest compatible snapshot with windowEnd <= verifiedAnchorAt
-observation = earliest compatible snapshot with windowEnd >= dueAt
+CLICKS = sum
+IMPRESSIONS = sum
+CTR = total clicks / total impressions
+GOOGLE_SEARCH_CONSOLE_POSITION = impression-weighted mean
+BING_AVG_CLICK_POSITION = click-weighted mean
+BING_AVG_IMPRESSION_POSITION = impression-weighted mean
 ```
 
-Require equal source-window durations and identical:
+Required unknown/missing metric or weight marks that comparison insufficient.
 
-```text
-subjectSetHash
-scopeHash
-formulaVersion
-extractorVersion
-metricType
-dimensionType + dimensionKey
-actorType + actorKey
+- [ ] **Step 7: Implement exact Visibility Metrics resolver**
+
+Export:
+
+```ts
+export async function resolveVisibilityWindowComparison(input: {
+  projectId: string;
+  scope: VisibilityExperimentMeasurementScope;
+  verifiedAnchorAt: Date;
+  dueAt: Date;
+  windowType: ExperimentWindowType;
+  source: VisibilityExperimentSourcePort;
+}): Promise<ExperimentWindowResolution>;
 ```
 
-Reject `UNKNOWN`, `NO_DATA`, `NOT_ELIGIBLE` for a conclusive result. Require both baseline and observation `eligibleObservationCount >= 10` and denominator > 0. Compute rates from numerator/denominator, not persisted display rounding.
+`VisibilityExperimentSourcePort` is defined in the same file:
 
-- [ ] **Step 7: Implement `startFromVerifiedExecution()` and immutable experiment creation**
+```ts
+export interface VisibilityExperimentSourcePort {
+  listCompatibleSnapshots(input: {
+    projectId: string;
+    scope: VisibilityExperimentMeasurementScope;
+  }): Promise<readonly VisibilityExperimentSnapshotView[]>;
+}
+```
 
-`OptimizationExperimentService.startFromVerifiedExecution()` must:
+`VisibilityExperimentSnapshotView` includes snapshot id/window/inputCutoff/formula/extractor/subject/scope plus the exact metric row status/numerator/denominator/eligible counts/dimension/actor fields.
 
-1. load exact context;
-2. verify feature entitlement with `hasFeature(planLevel, 'OPTIMIZATION_EXPERIMENTS')`;
-3. verify execution + verification + P9 proposal bindings;
-4. reject unsupported interventions;
-5. resolve exact measurement scope;
-6. derive deterministic schedule and expected-direction map;
-7. build the exact experiment key;
-8. call `createOrGetExperiment()`;
-9. return `STARTED` or `EXISTING` without mutating any upstream row.
+Select baseline = latest compatible completed snapshot ending `<= verifiedAnchorAt`; observation = earliest compatible completed snapshot ending `>= dueAt`; durations must match. Require exact frozen identities, denominator > 0, eligible count >=10 on both sides, and reject `UNKNOWN`, `NO_DATA`, `NOT_ELIGIBLE` for a conclusive comparison.
 
-Expected primary directions:
+- [ ] **Step 8: Implement start service with no upstream mutation**
+
+Export:
+
+```ts
+export class OptimizationExperimentService {
+  async startFromVerifiedExecution(input: {
+    projectId: string;
+    publicationExecutionId: string;
+  }): Promise<ExperimentStartResult>;
+}
+```
+
+Order: load context → feature gate → exact P8/P9 binding → URL match → supported intervention → resolve measurement scope → schedule/expected directions → build key → `createOrGetExperiment()`.
+
+Primary direction map:
 
 ```text
 SERP_SNIPPET_OPTIMIZATION: CTR HIGHER
 ON_PAGE_OPTIMIZATION: CLICKS HIGHER
 CONTENT_REFRESH: CLICKS HIGHER
-CONTENT_CREATION: IMPRESSIONS HIGHER (query scope)
+CONTENT_CREATION: IMPRESSIONS HIGHER
 GEO_CITABILITY_IMPROVEMENT: CITATION_RATE HIGHER
-AI_VISIBILITY_IMPROVEMENT: frozen primary visibility metric HIGHER
+AI_VISIBILITY_IMPROVEMENT: frozen primary metric HIGHER
 ```
 
-- [ ] **Step 8: Run Task 20 GREEN verification**
-
-Run:
+- [ ] **Step 9: Run Task 20 GREEN and commit**
 
 ```bash
 npx vitest run \
@@ -645,29 +802,13 @@ npx vitest run \
   tests/unit/experiment.visibility-source.test.ts \
   tests/integration/experiment.start-authority.test.ts
 npm run typecheck
-```
-
-Expected: all pass; inspect the integration fixture before commit to confirm no test relies on synthetic zero baselines.
-
-- [ ] **Step 9: Commit Task 20**
-
-```bash
-git add \
-  src/modules/optimization-experiments/experiment.repository.ts \
-  src/modules/optimization-experiments/experiment.scope.ts \
-  src/modules/optimization-experiments/experiment.search-source.ts \
-  src/modules/optimization-experiments/experiment.visibility-source.ts \
-  src/modules/optimization-experiments/experiment.service.ts \
-  tests/unit/experiment.scope.test.ts \
-  tests/unit/experiment.search-source.test.ts \
-  tests/unit/experiment.visibility-source.test.ts \
-  tests/integration/experiment.start-authority.test.ts
+git add src/modules/optimization-experiments tests/unit/experiment.* tests/integration/experiment.start-authority.test.ts
 git commit -m "feat: resolve verified P9-D experiment facts"
 ```
 
 ---
 
-### Task 21: Deterministic evaluator, contamination guards, queue, reconciliation, and P8 VERIFIED handoff
+### Task 21: Evaluator, contamination, queue, reconciliation, and P8 VERIFIED handoff
 
 **Files:**
 - Create: `src/modules/optimization-experiments/experiment.contamination.ts`
@@ -689,161 +830,168 @@ git commit -m "feat: resolve verified P9-D experiment facts"
 - Test: `tests/integration/experiment.contamination.test.ts`
 
 **Interfaces:**
-- Consumes: Task 20 `ExperimentWindowResolution` and start service; P8 execution events are read-only contamination evidence.
-- Produces: `evaluateExperimentWindow()`, `detectExperimentContamination()`, `OptimizationExperimentQueue`, `processOptimizationExperimentJob()`, and a post-P8-verification injected callback signature `{ executionId:string; projectId:string }`.
-- P8 remains independent: `publication-verification.worker.ts` accepts an optional callback and must not import the P9-D module.
+- Consumes Task 20 `ExperimentWindowResolution` and `OptimizationExperimentService.startFromVerifiedExecution()`.
+- Produces `detectExperimentContamination()`, `evaluateExperimentEffect()`, `OptimizationExperimentService.evaluateWindow()`, `OptimizationExperimentQueue`, and `processOptimizationExperimentJob()`.
+- P8 worker accepts only an injected callback; it does not import P9-D.
 
-- [ ] **Step 1: Write RED evaluator tests that lock conservative V1 semantics**
+- [ ] **Step 1: Define evaluator result and write RED classification tests**
 
-In `tests/unit/experiment.evaluator.test.ts`, cover these exact rules:
-
-```text
-any authority/coverage/source blocker => INCONCLUSIVE
-any material contamination != CLEAR => INCONCLUSIVE
-click/impression count metric: |relative delta| < 0.02 => NEUTRAL when baseline > 0
-count baseline=0 and observed=0 => NEUTRAL
-count baseline=0 and observed>0 => POSITIVE only when zero is an explicit KNOWN_PRESENT numeric fact, never an inferred absence
-CTR absolute delta < 0.02 => NEUTRAL
-provider position absolute numeric delta < 1.0 => NEUTRAL; lower is favorable
-visibility rate absolute delta < 0.05 => NEUTRAL
-primary favorable + no significant adverse secondary => POSITIVE
-primary adverse + no significant favorable secondary => NEGATIVE
-significant primary/secondary directional conflict => INCONCLUSIVE
-all sufficient metrics neutral => NEUTRAL
-```
-
-Use table-driven tests with explicit baseline/observed values and expected direction.
-
-- [ ] **Step 2: Implement deterministic contamination detection**
-
-`experiment.contamination.ts` checks only persisted P8 facts over `(verifiedAnchorAt, observedWindowEnd]`.
-
-Return priorities in this order:
-
-1. `VERIFICATION_INVALIDATED` when original execution has a persisted `ROLLED_BACK` or equivalent rollback completion event after the anchor;
-2. `CONFLICTING_MUTATION` when another execution for the same normalized target URL has a persisted `DEPLOYED`, `VERIFIED`, or `ROLLED_BACK` event inside the observation interval;
-3. `TARGET_REVISION_CHANGED` when another same-target execution records `TARGET_REVISION_CHANGED` inside the interval;
-4. `SOURCE_IDENTITY_CHANGED` when Task 20 source resolution reports incompatible provider/property/market/locale/query/page/formula/extractor identity;
-5. `UNKNOWN` when required contamination authority cannot be resolved safely;
-6. otherwise `CLEAR`.
-
-Do not inspect Git directly and do not attempt semantic adjustment for concurrent changes.
-
-- [ ] **Step 3: Implement evaluator and stable observation cutoff semantics**
-
-`experiment.evaluator.ts` exports:
+In `experiment.evaluator.ts`:
 
 ```ts
-export function evaluateExperimentEffect(input: {
-  comparisons: readonly ExperimentMetricComparison[];
-  coverageState: 'SUFFICIENT' | 'PARTIAL' | 'INSUFFICIENT' | 'UNKNOWN';
+export type ExperimentEvaluationResult = {
+  effectState: ExperimentEffectState;
+  coverageState: ExperimentCoverageState;
   contaminationState: ExperimentContaminationState;
   reasonCodes: readonly string[];
+  deltaMetrics: readonly {
+    metricKey: string;
+    absoluteDelta: number | null;
+    relativeDelta: number | null;
+  }[];
+};
+
+export function evaluateExperimentEffect(input: {
+  resolution: ExperimentWindowResolution;
+  contaminationState: ExperimentContaminationState;
+  contaminationReasonCodes: readonly string[];
 }): ExperimentEvaluationResult;
 ```
 
-The service must derive `inputCutoffAt` from the selected persisted source identities, not blindly from wall-clock time:
+RED tests lock:
 
 ```text
-if one or more source snapshots selected: max(SearchFact.sourceCutoffAt, VisibilityMetricSnapshot.inputCutoffAt)
-if no comparable source exists yet: dueAt
+coverage/source blocker => INCONCLUSIVE
+contamination != CLEAR => INCONCLUSIVE
+click/impression baseline>0 and |relative delta|<0.02 => NEUTRAL
+explicit known baseline=0, observed=0 => NEUTRAL
+explicit known baseline=0, observed>0 => POSITIVE
+inferred/missing zero never reaches that branch
+CTR |absolute delta|<0.02 => NEUTRAL
+position |absolute delta|<1.0 => NEUTRAL; lower is favorable
+visibility rate |absolute delta|<0.05 => NEUTRAL
+primary favorable with no significant adverse secondary => POSITIVE
+primary adverse with no significant favorable secondary => NEGATIVE
+significant direction conflict => INCONCLUSIVE
 ```
 
-Therefore a daily reconcile with unchanged inputs reuses the same immutable observation key instead of writing duplicate no-data observations. A newly arrived source cutoff creates a new append-only observation.
+- [ ] **Step 2: Implement conservative contamination detection**
+
+Export:
+
+```ts
+export async function detectExperimentContamination(input: {
+  experimentId: string;
+  projectId: string;
+  publicationExecutionId: string;
+  targetUrl: string;
+  verifiedAnchorAt: Date;
+  observedWindowEnd: Date;
+  repository: ExperimentContaminationReadPort;
+}): Promise<{
+  state: ExperimentContaminationState;
+  reasonCodes: readonly string[];
+}>;
+```
+
+Priority:
+
+```text
+original rollback completed => VERIFICATION_INVALIDATED
+other same-target DEPLOYED/VERIFIED/ROLLED_BACK event in interval => CONFLICTING_MUTATION
+other same-target TARGET_REVISION_CHANGED event in interval => TARGET_REVISION_CHANGED
+source resolver incompatibility => SOURCE_IDENTITY_CHANGED (applied by service)
+required authority unreadable => UNKNOWN
+otherwise CLEAR
+```
+
+No Git read or semantic subtraction.
+
+- [ ] **Step 3: Implement stable input-cutoff and `evaluateWindow()`**
+
+Extend service:
+
+```ts
+async evaluateWindow(input: {
+  projectId: string;
+  experimentId: string;
+  windowType: ExperimentWindowType;
+}): Promise<OptimizationExperimentObservation | null>;
+```
+
+Flow: load experiment/project → confirm requested frozen schedule → return null before `dueAt` → resolve source window → contamination → evaluator → stable source cutoff → observation key → immutable create-or-get → bounded emit.
+
+Stable `inputCutoffAt`:
+
+```text
+selected sources exist => max SearchFact.sourceCutoffAt / VisibilityMetricSnapshot.inputCutoffAt
+no comparable source yet => dueAt
+```
+
+This prevents daily reconciliation from creating duplicate no-data rows when source facts did not change.
 
 - [ ] **Step 4: Write RED queue/registry/bootstrap tests**
 
-Create `tests/unit/experiment.queue.test.ts` asserting:
-
-```ts
-expect(OPTIMIZATION_EXPERIMENT_QUEUE_NAME).toBe('optimization-experiment-evaluation');
-expect(OPTIMIZATION_EXPERIMENT_QUEUE_ATTEMPTS).toBe(2);
-```
-
-Lock durable payloads:
-
-```ts
-{ kind:'START_EXPERIMENT', publicationExecutionId, projectId }
-{ kind:'EVALUATE_WINDOW', experimentId, projectId, windowType:'14D' }
-{ kind:'RECONCILE_DAILY' }
-```
-
-Job IDs are deterministic and `removeOnComplete:true` so later daily reconciliation can re-enqueue the same window after new source facts arrive.
-
-Update `tests/unit/queues.test.ts` to expect `optimization-experiment-evaluation` immediately after `optimization-autopilot`.
-
-Update `tests/unit/worker-bootstrap.test.ts` to require:
-
-```text
-OPTIMIZATION_EXPERIMENT_WORKER_CONCURRENCY = 2
-one 24h date-free reconciliation scheduler
-workerDefinitionForQueue('optimization-experiment-evaluation').processor = processOptimizationExperimentJob
-```
-
-- [ ] **Step 5: Implement the one owned queue and worker jobs**
-
-`experiment.queue.ts` exports:
+`experiment.queue.ts` must expose:
 
 ```ts
 export const OPTIMIZATION_EXPERIMENT_QUEUE_NAME = 'optimization-experiment-evaluation' as const;
 export const OPTIMIZATION_EXPERIMENT_QUEUE_ATTEMPTS = 2;
 
 export type OptimizationExperimentJobData =
-  | { kind:'START_EXPERIMENT'; publicationExecutionId:string; projectId:string }
-  | { kind:'EVALUATE_WINDOW'; experimentId:string; projectId:string; windowType:ExperimentWindowType }
-  | { kind:'RECONCILE_DAILY' };
+  | { kind: 'START_EXPERIMENT'; publicationExecutionId: string; projectId: string }
+  | { kind: 'EVALUATE_WINDOW'; experimentId: string; projectId: string; windowType: ExperimentWindowType }
+  | { kind: 'RECONCILE_DAILY' };
 ```
 
-Use exponential retry with 5 seconds; `removeOnComplete:true`; `removeOnFail:200`.
+Queue methods:
 
-`experiment.worker.ts` behavior:
+```ts
+enqueueStart(publicationExecutionId: string, projectId: string): Promise<unknown>;
+enqueueWindow(experimentId: string, projectId: string, windowType: ExperimentWindowType): Promise<unknown>;
+```
+
+Use attempts=2, exponential 5s, `removeOnComplete:true`, `removeOnFail:200`. Update `QUEUE_NAMES` to insert the new queue after `optimization-autopilot`. Worker concurrency=2. Add one 24h date-free scheduler:
+
+```ts
+export const OPTIMIZATION_EXPERIMENT_DAILY_RECONCILE_SCHEDULER = {
+  id: 'optimization-experiment-daily-reconcile',
+  repeat: { every: 24 * 60 * 60 * 1000 },
+  job: { name: 'reconcile-daily', data: { kind: 'RECONCILE_DAILY' as const } }
+};
+```
+
+- [ ] **Step 5: Implement worker + bounded reconciliation**
+
+`processOptimizationExperimentJob()` handles:
 
 ```text
-start-experiment → service.startFromVerifiedExecution(); enqueue all scheduled windows only after an experiment exists
-evaluate-window → service.evaluateWindow(); no provider/sampling calls
-reconcile-daily → enqueue VERIFIED P9 executions lacking experiments, then enqueue every due experiment/window for bounded reconciliation
+start-experiment: start service; if experiment exists, enqueue its frozen windows
+evaluate-window: evaluateWindow only; never enqueue provider sampling
+reconcile-daily: enqueue VERIFIED P9 executions without an experiment, then every due experiment/window
 ```
 
-Repository reconciliation reads are bounded and deterministic:
+Repository limits/order:
 
 ```text
-verified starts limit = 100 per reconciliation pass
-experiments limit = 200 per reconciliation pass
-order = createdAt ASC, id ASC
+verified starts: 100, createdAt ASC/id ASC
+due experiments: 200, createdAt ASC/id ASC
 ```
 
-Repeated due-window evaluation is safe because immutable observation identity reuses unchanged source cutoffs/source sets.
+A daily due-window retry is safe because source identity + stable cutoff controls observation reuse.
 
-- [ ] **Step 6: Implement `evaluateWindow()` persistence flow**
+- [ ] **Step 6: Add post-commit P8 VERIFIED handoff without P8→P9 import**
 
-The service must:
-
-1. load experiment inside project;
-2. validate requested window belongs to frozen `observationScheduleJson`;
-3. return without observation if current time is before `dueAt`;
-4. resolve Search or Visibility baseline/observed facts using Task 20;
-5. run contamination detection;
-6. compute bounded projections/deltas;
-7. classify coverage/effect;
-8. derive stable `inputCutoffAt`;
-9. build observation key from exact source identities;
-10. call `createOrGetObservation()`;
-11. emit only bounded IDs/window/effect/coverage/contamination/reason codes.
-
-No step may update the experiment row.
-
-- [ ] **Step 7: Add the non-authoritative post-commit P8 VERIFIED handoff**
-
-Extend `PublicationVerificationWorkerDeps` with:
+Extend `PublicationVerificationWorkerDeps`:
 
 ```ts
 onVerified?: (input: { executionId: string; projectId: string }) => Promise<void>;
 ```
 
-On the successful verification branch:
+After successful existing `persistFinal(... VERIFIED ...)`:
 
 ```ts
-const persisted = await persistFinal(/* existing VERIFIED arguments */);
+const persisted = await persistFinal(/* existing args */);
 if (!persisted) return;
 try {
   await deps.onVerified?.({
@@ -861,26 +1009,22 @@ try {
 return;
 ```
 
-The callback runs only after the P8 final transaction has committed. A callback failure is swallowed after bounded logging; it must not change the VERIFIED result. Do not import `optimization-experiments` from this P8 worker.
-
-In `worker-bootstrap.ts`, create the P9-D queue and inject:
+`worker-bootstrap.ts` injects only:
 
 ```ts
 onVerified: ({ executionId, projectId }) =>
   optimizationExperimentQueue.enqueueStart(executionId, projectId)
 ```
 
-Register its worker and a 24h date-free `reconcile-daily` BullMQ scheduler using `upsertJobScheduler`, following the existing P9-B/P9-C scheduler pattern.
+A handoff error is swallowed after bounded logging; P8 stays VERIFIED.
 
-- [ ] **Step 8: Prove handoff failure cannot fail P8 and contamination cannot become conclusive**
+- [ ] **Step 7: Prove P8 isolation and contamination behavior**
 
-Create `tests/unit/publication-verification-experiment-handoff.test.ts` with injected `persistFinal=vi.fn().mockResolvedValue(true)` and `onVerified=vi.fn().mockRejectedValue(new Error('redis down'))`; assert `processPublicationVerificationJob()` resolves, persistFinal was called for VERIFIED, and the failure event was emitted.
+`tests/unit/publication-verification-experiment-handoff.test.ts`: injected final persistence returns true; injected handoff throws `redis down`; processor resolves and emits failure event.
 
-Create `tests/integration/experiment.contamination.test.ts` proving a second same-target P8 deployment inside the observation interval forces the stored observation to `INCONCLUSIVE / CONFLICTING_MUTATION` without modifying either publication execution.
+`tests/integration/experiment.contamination.test.ts`: a second same-target P8 deployment inside the observation interval forces stored `INCONCLUSIVE / CONFLICTING_MUTATION`, while both P8 executions remain unchanged.
 
-- [ ] **Step 9: Run Task 21 GREEN verification**
-
-Run:
+- [ ] **Step 8: Run Task 21 GREEN and commit**
 
 ```bash
 npx vitest run \
@@ -892,37 +1036,14 @@ npx vitest run \
   tests/unit/worker-bootstrap.test.ts \
   tests/integration/experiment.contamination.test.ts
 npm run typecheck
-```
-
-Expected: all pass.
-
-- [ ] **Step 10: Commit Task 21**
-
-```bash
-git add \
-  src/modules/optimization-experiments/experiment.contamination.ts \
-  src/modules/optimization-experiments/experiment.evaluator.ts \
-  src/modules/optimization-experiments/experiment.observability.ts \
-  src/modules/optimization-experiments/experiment.queue.ts \
-  src/modules/optimization-experiments/experiment.worker.ts \
-  src/modules/optimization-experiments/experiment.service.ts \
-  src/modules/optimization-experiments/experiment.repository.ts \
-  src/modules/publication/publication-verification.worker.ts \
-  src/queue/queues.ts \
-  src/queue/worker-bootstrap.ts \
-  tests/unit/experiment.evaluator.test.ts \
-  tests/unit/experiment.queue.test.ts \
-  tests/unit/experiment.worker.test.ts \
-  tests/unit/publication-verification-experiment-handoff.test.ts \
-  tests/unit/queues.test.ts \
-  tests/unit/worker-bootstrap.test.ts \
-  tests/integration/experiment.contamination.test.ts
+git add src/modules/optimization-experiments src/modules/publication/publication-verification.worker.ts \
+  src/queue/queues.ts src/queue/worker-bootstrap.ts tests/unit tests/integration/experiment.contamination.test.ts
 git commit -m "feat: evaluate P9-D experiment windows"
 ```
 
 ---
 
-### Task 22: Project-scoped persisted-read REST API and 优化实验 UI
+### Task 22: Read-only REST API and 优化实验 UI
 
 **Files:**
 - Create: `src/modules/optimization-experiments/experiment.routes.ts`
@@ -933,21 +1054,16 @@ git commit -m "feat: evaluate P9-D experiment windows"
 - Modify: `src/app.ts`
 - Modify: `src/views/partials/sidebar.ejs`
 - Test: `tests/integration/experiment.routes.test.ts`
-- Test: `tests/e2e/optimization-experiments.spec.ts` (initial RED route/render slice; final authority E2E expands in Task 23)
+- Test: `tests/e2e/optimization-experiments.spec.ts`
 
 **Interfaces:**
-- Consumes: immutable P9-D repository records only.
-- Produces REST:
-  - `GET /api/v1/projects/:projectId/optimization/experiments`
-  - `GET /api/v1/projects/:projectId/optimization/experiments/:experimentId`
-- Produces Web:
-  - `GET /projects/:id/optimization/experiments`
-  - `GET /projects/:id/optimization/experiments/:experimentId`
+- REST: `GET /api/v1/projects/:projectId/optimization/experiments` and `GET /api/v1/projects/:projectId/optimization/experiments/:experimentId`.
+- Web: `GET /projects/:id/optimization/experiments` and detail route with `/:experimentId`.
 - No POST/PUT/PATCH/DELETE experiment route exists in P9-D V1.
 
-- [ ] **Step 1: Write RED API contract tests with an injectable read port**
+- [ ] **Step 1: Define the exact injectable API port and write RED route tests**
 
-Define `OptimizationExperimentApiPort`:
+`experiment.routes.ts`:
 
 ```ts
 export interface OptimizationExperimentApiPort {
@@ -956,56 +1072,30 @@ export interface OptimizationExperimentApiPort {
 }
 ```
 
-In `tests/integration/experiment.routes.test.ts`, use `createApp({ optimizationExperimentApi: fakePort })` and prove:
+`tests/integration/experiment.routes.test.ts` uses `createApp({ optimizationExperimentApi: fakePort })` and proves Advanced/Enterprise 200, Standard 403 `FEATURE_NOT_AVAILABLE`, invalid UUID/pagination 400, missing/cross-project detail 404 `EXPERIMENT_NOT_FOUND`, and only list/get port methods are called.
+
+- [ ] **Step 2: Implement strict persisted-read REST routes**
+
+Use `requireFeature('OPTIMIZATION_EXPERIMENTS')`, UUID Zod params, and strict pagination (`limit 1..100`, `offset 0..100000`). Default reads select P9-D records only plus bounded immutable plan identity. Do not invoke start/evaluate service methods.
+
+- [ ] **Step 3: Implement derived read model without writes**
+
+`experiment.web.repository.ts` selects project/experiments/observations and derives current state:
 
 ```text
-Advanced list => 200
-Enterprise detail => 200
-Standard => 403 FEATURE_NOT_AVAILABLE
-cross-project/missing detail => 404 EXPERIMENT_NOT_FOUND
-invalid UUID/limit/offset => 400 VALIDATION_ERROR
-GET invokes only list/get read methods
+CONTAMINATED: latest applicable due observation contamination != CLEAR
+EVALUATED: all due/final scheduled windows have conclusive POSITIVE/NEUTRAL/NEGATIVE
+INCONCLUSIVE: latest applicable due/final observation is INCONCLUSIVE and no newer source-cutoff observation replaces it
+OBSERVING: future windows remain or a due window has no observation
 ```
 
-- [ ] **Step 2: Implement strict read-only REST routes**
+For one window, current display chooses `inputCutoffAt DESC, createdAt DESC, id ASC`; history remains visible on detail.
 
-`experiment.routes.ts` uses `requireFeature('OPTIMIZATION_EXPERIMENTS')`, strict Zod pagination (`limit 1..100`, `offset 0..100000`), UUID params, and the injected/default read port.
+- [ ] **Step 4: Implement EJS pages and sidebar**
 
-The default port selects only P9-D-owned experiment/observation fields plus bounded immutable plan identity needed for display. It must not invoke `OptimizationExperimentService.startFromVerifiedExecution()` or `evaluateWindow()`.
+Render with `activeNav:'optimization-experiments'`, title `优化实验`, project-scoped breadcrumbs, and no mutation form/button.
 
-- [ ] **Step 3: Implement a bounded persisted-read web projection with derived lifecycle state**
-
-`experiment.web.repository.ts` loads project, experiments, observations and derives state without writes:
-
-```text
-CONTAMINATED: latest due observation has contaminationState != CLEAR
-EVALUATED: all due/final scheduled windows have conclusive POSITIVE/NEUTRAL/NEGATIVE observations
-INCONCLUSIVE: latest due/final window has INCONCLUSIVE and no later conclusive replacement at a newer source cutoff
-OBSERVING: future windows remain due or no due observation exists yet
-```
-
-For each window, choose the latest immutable observation by `inputCutoffAt DESC, createdAt DESC, id ASC` for the current view only; historical observations remain visible in detail.
-
-Do not expose raw upstream provider payloads, prompts, article body, credentials, or full P8 mutation payloads.
-
-- [ ] **Step 4: Implement EJS routes/views and sidebar entry**
-
-`experiment.web.routes.ts` checks the project and `hasFeature(planLevel, 'OPTIMIZATION_EXPERIMENTS')`, then renders:
-
-```ts
-res.render('layout', {
-  title: `优化实验 · ${data.project.name}`,
-  activeNav: 'optimization-experiments',
-  currentProjectId: data.project.id,
-  breadcrumbs: ['项目', data.project.name, '增长', '优化实验'],
-  bodyTemplate: 'optimization-experiments/index',
-  ...data
-});
-```
-
-Detail renders `optimization-experiments/show`.
-
-Add the sidebar link inside the 增长 group after `New Content`:
+Add to 增长 after New Content:
 
 ```ejs
 <a class="<%= activeNav === 'optimization-experiments' ? 'active' : '' %>"
@@ -1014,11 +1104,9 @@ Add the sidebar link inside the 增长 group after `New Content`:
 </a>
 ```
 
-List view shows target URL, intervention type, verified anchor, market/locale, derived state, next/final window. Detail shows frozen measurement scope summary, all windows, baseline/observed bounded metrics, coverage, contamination, effect, reason codes, evaluator version, and the explicit label `观察关联，不代表因果关系`.
+Detail must show frozen scope, window, baseline/observed bounded metrics, coverage, contamination, effect, reasons, evaluator version, plus `观察关联，不代表因果关系`. Never render auto-start/evaluate/publish/merge/deploy/rollback controls.
 
-Do not render any button/form labeled start/evaluate/publish/merge/deploy/rollback.
-
-- [ ] **Step 5: Mount routes in `src/app.ts` without side-effect defaults**
+- [ ] **Step 5: Mount routes in `src/app.ts`**
 
 Add:
 
@@ -1026,115 +1114,70 @@ Add:
 optimizationExperimentApi?: OptimizationExperimentApiPort;
 ```
 
-Mount REST under `/api/v1` and Web under `/`. The web route constructor must instantiate only a persisted-read repository; it must not create Redis queues.
+Mount REST at `/api/v1` and web at `/`. Web route construction must not instantiate Redis queues.
 
-- [ ] **Step 6: Add initial browser RED/GREEN coverage**
+- [ ] **Step 6: Add browser coverage**
 
-`tests/e2e/optimization-experiments.spec.ts` seeds one Advanced project with immutable experiment/observations directly through Prisma, then asserts:
+Seed immutable rows directly. Assert sidebar/list/detail, 14D/28D/56D outcome rendering, association disclaimer, absence of mutation controls, and Standard denial.
 
-```text
-优化实验 sidebar link is visible and active
-list page renders intervention/target/derived state
-detail page renders 14D/28D/56D outcomes and source coverage
-page renders 观察关联，不代表因果关系
-no auto-merge/deploy/rollback/start/evaluate control is rendered
-```
-
-Seed a Standard project and assert the feature route is forbidden rather than exposing experiment data.
-
-- [ ] **Step 7: Run Task 22 GREEN verification**
-
-Run:
+- [ ] **Step 7: Run Task 22 GREEN and commit**
 
 ```bash
 npx vitest run tests/integration/experiment.routes.test.ts
 npm run typecheck
 npm run build
 npm run test:e2e -- tests/e2e/optimization-experiments.spec.ts
-```
-
-Expected: all pass.
-
-- [ ] **Step 8: Commit Task 22**
-
-```bash
-git add \
-  src/modules/optimization-experiments/experiment.routes.ts \
-  src/modules/optimization-experiments/experiment.web.repository.ts \
-  src/modules/optimization-experiments/experiment.web.routes.ts \
-  src/views/optimization-experiments/index.ejs \
-  src/views/optimization-experiments/show.ejs \
-  src/views/partials/sidebar.ejs \
-  src/app.ts \
-  tests/integration/experiment.routes.test.ts \
+git add src/modules/optimization-experiments src/views/optimization-experiments \
+  src/views/partials/sidebar.ejs src/app.ts tests/integration/experiment.routes.test.ts \
   tests/e2e/optimization-experiments.spec.ts
 git commit -m "feat: expose P9-D experiment results"
 ```
 
 ---
 
-### Task 23: Authority audit, full E2E, operator documentation, and exact-head release gate
+### Task 23: Authority audit, E2E hardening, docs, and exact-head release gate
 
 **Files:**
 - Create: `tests/integration/experiment.authority.test.ts`
 - Extend: `tests/e2e/optimization-experiments.spec.ts`
 - Create: `docs/development/p9-d-experiment-engine.md`
 - Review only: `.github/workflows/ci.yml`
-- Review all P9-D changed files; do not alter unrelated authority code to make release checks pass.
 
 **Interfaces:**
-- Consumes: all Task 19–22 public contracts.
-- Produces: release evidence only; no new runtime authority.
-- Completion requires exact-head GitHub CI `verify`, `production-audit`, and `e2e` success plus manual changed-file authority review and zero unresolved review threads.
+- Produces release evidence only; no new runtime authority.
+- Completion requires exact-head `verify`, `production-audit`, `e2e`, manual authority review, and zero unresolved review threads.
 
-- [ ] **Step 1: Add an authority-boundary integration test**
+- [ ] **Step 1: Add the authority-write integration test**
 
-`tests/integration/experiment.authority.test.ts` snapshots authoritative rows before start/evaluation and proves they are byte-for-byte/field-for-field unchanged afterward:
-
-```text
-GrowthOpportunityIdentity
-GrowthOpportunitySnapshot
-GrowthOpportunityLifecycle
-OptimizationCandidate
-OptimizationPlan including historicalRankAdjustment
-OptimizationRun
-OptimizationRunItem
-OptimizationAutopilotDecision
-PublicationProposal
-PublicationPlan
-PublicationApproval / PublicationAutomationAuthorization
-PublicationExecution
-PublicationVerification
-SearchFactSnapshot / SearchFact / SearchFactMetric
-VisibilityMetricSnapshot / VisibilityMetricRow
-```
-
-The only row-count increases allowed are:
+Snapshot before/after start + evaluation for:
 
 ```text
-OptimizationExperiment
-OptimizationExperimentObservation
+GrowthOpportunityIdentity/Snapshot/Lifecycle
+OptimizationCandidate/Plan/Run/RunItem/AutopilotDecision
+PublicationProposal/Plan/Approval/AutomationAuthorization/Execution/Verification
+SearchFactSnapshot/Fact/Metric
+VisibilityMetricSnapshot/Row
 ```
 
-The test must also prove `CONTENT_CREATION` with no comparable query baseline stores `INCONCLUSIVE / NO_COMPARABLE_BASELINE` and never writes a fabricated baseline value of zero.
+Only `OptimizationExperiment` and `OptimizationExperimentObservation` counts may increase. Assert `OptimizationPlan.historicalRankAdjustment` unchanged.
 
-- [ ] **Step 2: Add static import/source scans for forbidden P9-D authority**
+Also prove `CONTENT_CREATION` without comparable query baseline stores `INCONCLUSIVE` + `NO_COMPARABLE_BASELINE` and no fabricated numeric zero baseline.
 
-Within `tests/integration/experiment.authority.test.ts`, scan `src/modules/optimization-experiments/**/*.ts` and fail if P9-D imports or contains execution calls for forbidden owners, including:
+- [ ] **Step 2: Add static forbidden-authority scans**
+
+Scan `src/modules/optimization-experiments/**/*.ts` and fail on imports/calls containing:
 
 ```text
 deepseek.provider
 github-mutation.adapter
 mergePullRequest
-deploy
-rollback execution APIs
 PublicationExecutionService.createHumanApprovedExecution
 PublicationExecutionService.createAutomationAuthorizedExecution
 authorizePublicationAutomation
 publicationAutomationPreparation
 ```
 
-Also assert no P9-D source contains Prisma mutations against these delegates:
+Fail on Prisma mutations against authoritative delegates such as:
 
 ```text
 optimizationPlan.update
@@ -1147,54 +1190,31 @@ searchFact.update
 visibilityMetricSnapshot.update
 ```
 
-Repository writes must be limited to `optimizationExperiment.create` and `optimizationExperimentObservation.create`.
+P9-D repository writes are limited to experiment/observation creation.
 
-- [ ] **Step 3: Expand E2E to prove persisted-read and conservative semantics**
+- [ ] **Step 3: Harden E2E for conservative semantics and GET side effects**
 
-Extend `tests/e2e/optimization-experiments.spec.ts` with:
+Assert:
 
 ```text
 GET list/detail does not change experiment/observation/P8 row counts
-an INCONCLUSIVE missing-baseline observation is visibly labeled insufficient rather than 0%/100% lift
-a contaminated observation visibly shows CONFLICTING_MUTATION and INCONCLUSIVE
-provider position direction renders lower-is-better semantics
-visibility result renders numerator/denominator coverage, not a fabricated rank
-Standard cannot access the list or detail
-cross-project experiment id does not leak detail
+missing-baseline result is INCONCLUSIVE, never displayed as artificial lift
+CONFLICTING_MUTATION renders INCONCLUSIVE
+position metrics visibly use lower-is-better direction
+visibility shows numerator/denominator coverage rather than fabricated rank
+Standard denied
+cross-project experiment id hidden
 ```
 
-No E2E path calls external providers or real GitHub writes.
+No E2E path may call an external provider or real GitHub write.
 
-- [ ] **Step 4: Write operator/developer documentation with frozen V1 semantics**
+- [ ] **Step 4: Write `docs/development/p9-d-experiment-engine.md`**
 
-Create `docs/development/p9-d-experiment-engine.md` documenting:
+Document authority ownership, feature matrix, exact P8 prerequisite, intervention schedules/support, Search Facts aggregation, Visibility snapshot pairing, UNKNOWN/TOP_ROWS_ONLY rules, no-zero new-content rule, neutral bands, coverage thresholds, contamination, derived UI state, queue/reconciliation, P8 handoff isolation, observability allowlist, immutable migration, rollback posture, observational-not-causal limitation, and P9-E ownership of historical weighting.
 
-```text
-purpose and authority ownership
-feature-gate matrix
-P8 VERIFIED prerequisite and exact provenance binding
-supported/unsupported interventions
-7/14/28/56-day schedules
-Search Facts aggregation semantics
-Visibility Metrics pairing semantics
-UNKNOWN/NOT_SUPPORTED/TOP_ROWS_ONLY rules
-CONTENT_CREATION no-zero-baseline rule
-coverage thresholds and neutral bands
-contamination states
-derived UI lifecycle states
-queue/reconciliation behavior
-P8 handoff failure isolation
-observability allowlist
-migration/immutability triggers
-rollback procedure: disable worker scheduling/feature exposure first, retain immutable audit rows; schema rollback requires an explicitly reviewed future migration
-P9-E boundary: historicalRankAdjustment remains untouched
-```
+- [ ] **Step 5: Run the full release-equivalent verification**
 
-State explicitly that P9-D is observational and does not establish causation.
-
-- [ ] **Step 5: Run the full local release-equivalent verification**
-
-With PostgreSQL/Redis test services available, run in this exact order:
+Development tree:
 
 ```bash
 npm install
@@ -1207,7 +1227,7 @@ npm run build
 npm run test:e2e
 ```
 
-Then reproduce `production-audit` in a clean dependency tree/worktree or disposable environment:
+Separate clean runtime-only tree/environment:
 
 ```bash
 npm install --omit=dev --legacy-peer-deps
@@ -1218,11 +1238,11 @@ fi
 npm audit --omit=dev --audit-level=high --legacy-peer-deps
 ```
 
-Do not mix the runtime-only install with the development tree used for Vitest/Playwright.
+Do not replace the development dependency tree with the runtime-only tree before Vitest/Playwright.
 
-- [ ] **Step 6: Perform the manual changed-file authority review before declaring readiness**
+- [ ] **Step 6: Perform the manual authority review**
 
-Review the final diff against the spec and record evidence for all of these assertions:
+Record evidence that:
 
 ```text
 P9-D writes only its two immutable tables
@@ -1230,38 +1250,26 @@ P8 VERIFIED remains authoritative
 P8 verification survives experiment queue failure
 no provider/AI/Git/deploy/rollback path exists in P9-D
 no P7/P9-A/P9-B/P9-C authority mutation
-historicalRankAdjustment remains untouched
+historicalRankAdjustment untouched
 new-content page absence never becomes zero
 UNKNOWN/NOT_SUPPORTED never become zero
-GET routes are side-effect free
-unsupported interventions never receive proxy conclusions
+GET routes side-effect free
+unsupported interventions receive no proxy conclusion
 contamination forces INCONCLUSIVE
-all observability fields are bounded and exclude content/prompts/credentials/raw provider payloads
+observability excludes content/prompts/credentials/raw provider payloads
 ```
 
-- [ ] **Step 7: Commit Task 23 release artifacts**
+- [ ] **Step 7: Commit Task 23**
 
 ```bash
-git add \
-  tests/integration/experiment.authority.test.ts \
-  tests/e2e/optimization-experiments.spec.ts \
+git add tests/integration/experiment.authority.test.ts tests/e2e/optimization-experiments.spec.ts \
   docs/development/p9-d-experiment-engine.md
 git commit -m "test: gate P9-D experiment authority"
 ```
 
 - [ ] **Step 8: Open/update the P9-D PR as Draft and require exact-head CI**
 
-The PR body must state the exact feature head SHA and these hard boundaries:
-
-```text
-P9-D consumes only persisted P8/Search Facts/Visibility Metrics authority
-no causal claim
-no feedback weight mutation
-no Git/merge/deploy/rollback authority
-CONTENT_CREATION never fabricates a page zero baseline
-```
-
-Wait for GitHub Actions on that exact head. Required conclusions:
+PR body includes exact head SHA, no-causality/no-feedback/no-Git/no-merge/no-deploy/no-zero-baseline boundaries. Required GitHub Actions on that exact SHA:
 
 ```text
 verify = success
@@ -1269,18 +1277,18 @@ production-audit = success
 e2e = success
 ```
 
-If any code/doc commit lands after the green run, treat the prior CI as stale and run the exact-head gate again.
+Any later code/doc commit invalidates the prior exact-head evidence and requires a fresh three-job run.
 
-- [ ] **Step 9: Final release review gate**
+- [ ] **Step 9: Final review gate**
 
-Before marking the PR Ready for review, verify:
+Before Ready for review:
 
 ```text
-PR head SHA == SHA verified by all three required jobs
+PR head == exact SHA verified by all three jobs
 manual authority review complete
-unresolved review threads == 0
-PR is not merged
-no deployment was triggered
+unresolved review threads = 0
+PR not merged
+deployment not triggered
 ```
 
-Only then mark the PR Ready for review. Stop there. Merge requires a separate explicit human `合并`; deployment requires a separate explicit authorization.
+Only then mark Ready for review and stop. Merge requires a separate explicit human `合并`; deployment requires a separate explicit authorization.
