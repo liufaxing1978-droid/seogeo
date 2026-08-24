@@ -58,6 +58,29 @@ function searchFact(input: {
   } as const;
 }
 
+function frozenSearchExperiment(verifiedAnchorAt: Date) {
+  return {
+    id: 'experiment-1',
+    projectId: 'project-1',
+    publicationExecutionId: 'execution-1',
+    interventionType: 'SERP_SNIPPET_OPTIMIZATION',
+    targetUrl: 'https://example.com/page',
+    verifiedAnchorAt,
+    measurementScopeJson: {
+      kind: 'SEARCH',
+      provider: 'GOOGLE_SEARCH_CONSOLE',
+      marketCode: 'HK',
+      locale: 'zh-Hant',
+      propertyRef: 'gsc:property:1',
+      normalizedQuery: '興善堂',
+      canonicalPage: 'https://example.com/page',
+      aggregationScope: 'QUERY_PAGE'
+    },
+    observationScheduleJson: [{ windowType: '7D', windowDays: 7 }],
+    expectedDirectionJson: { CTR: 'HIGHER' }
+  };
+}
+
 describe('P9-D evaluateWindow orchestration', () => {
   it('evaluates a due frozen search window, promotes the expected metric to PRIMARY, and persists a stable-cutoff observation', async () => {
     const verifiedAnchorAt = new Date('2026-08-01T00:00:00.000Z');
@@ -65,7 +88,7 @@ describe('P9-D evaluateWindow orchestration', () => {
     const sourceCutoffAt = new Date('2026-08-08T12:00:00.000Z');
     const facts = Array.from({ length: 14 }, (_, index) => {
       const baseline = index < 7;
-      const dayOffset = baseline ? index - 7 : index - 7;
+      const dayOffset = index - 7;
       const sourceDate = new Date(verifiedAnchorAt.getTime() + dayOffset * DAY_MS);
       return searchFact({
         snapshotId: `snapshot-${index}`,
@@ -81,28 +104,8 @@ describe('P9-D evaluateWindow orchestration', () => {
     });
 
     let persistedInput: Record<string, unknown> | null = null;
-    const experiment = {
-      id: 'experiment-1',
-      projectId: 'project-1',
-      publicationExecutionId: 'execution-1',
-      interventionType: 'SERP_SNIPPET_OPTIMIZATION',
-      targetUrl: 'https://example.com/page',
-      verifiedAnchorAt,
-      measurementScopeJson: {
-        kind: 'SEARCH',
-        provider: 'GOOGLE_SEARCH_CONSOLE',
-        marketCode: 'HK',
-        locale: 'zh-Hant',
-        propertyRef: 'gsc:property:1',
-        normalizedQuery: '興善堂',
-        canonicalPage: 'https://example.com/page',
-        aggregationScope: 'QUERY_PAGE'
-      },
-      observationScheduleJson: [{ windowType: '7D', windowDays: 7 }],
-      expectedDirectionJson: { CTR: 'HIGHER' }
-    };
     const repository = {
-      findExperimentForEvaluation: async () => experiment,
+      findExperimentForEvaluation: async () => frozenSearchExperiment(verifiedAnchorAt),
       listPublicationEvents: async () => [],
       createOrGetObservation: async (input: Record<string, unknown>) => {
         persistedInput = input;
@@ -159,26 +162,7 @@ describe('P9-D evaluateWindow orchestration', () => {
     const verifiedAnchorAt = new Date('2026-08-01T00:00:00.000Z');
     let persisted = false;
     const repository = {
-      findExperimentForEvaluation: async () => ({
-        id: 'experiment-1',
-        projectId: 'project-1',
-        publicationExecutionId: 'execution-1',
-        interventionType: 'SERP_SNIPPET_OPTIMIZATION',
-        targetUrl: 'https://example.com/page',
-        verifiedAnchorAt,
-        measurementScopeJson: {
-          kind: 'SEARCH',
-          provider: 'GOOGLE_SEARCH_CONSOLE',
-          marketCode: 'HK',
-          locale: 'zh-Hant',
-          propertyRef: 'gsc:property:1',
-          normalizedQuery: '興善堂',
-          canonicalPage: 'https://example.com/page',
-          aggregationScope: 'QUERY_PAGE'
-        },
-        observationScheduleJson: [{ windowType: '7D', windowDays: 7 }],
-        expectedDirectionJson: { CTR: 'HIGHER' }
-      }),
+      findExperimentForEvaluation: async () => frozenSearchExperiment(verifiedAnchorAt),
       listPublicationEvents: async () => [],
       createOrGetObservation: async () => {
         persisted = true;
@@ -201,5 +185,50 @@ describe('P9-D evaluateWindow orchestration', () => {
       windowType: '7D'
     })).resolves.toBeNull();
     expect(persisted).toBe(false);
+  });
+
+  it('uses dueAt as the stable cutoff when no comparable source exists so reconciliation reuses one no-data identity', async () => {
+    const verifiedAnchorAt = new Date('2026-08-01T00:00:00.000Z');
+    const dueAt = new Date(verifiedAnchorAt.getTime() + 7 * DAY_MS);
+    const persisted: Record<string, unknown>[] = [];
+    const repository = {
+      findExperimentForEvaluation: async () => frozenSearchExperiment(verifiedAnchorAt),
+      listPublicationEvents: async () => [],
+      createOrGetObservation: async (input: Record<string, unknown>) => {
+        persisted.push(input);
+        return {
+          id: `observation-${persisted.length}`,
+          createdAt: new Date('2026-08-09T00:00:00.000Z'),
+          ...input
+        };
+      }
+    };
+    const service = new OptimizationExperimentService(repository as never);
+    (service as unknown as { searchSource: unknown }).searchSource = {
+      listCompletedFacts: async () => []
+    };
+    (service as unknown as { now: () => Date }).now = () => new Date('2026-08-10T00:00:00.000Z');
+
+    const request = {
+      projectId: 'project-1',
+      experimentId: 'experiment-1',
+      windowType: '7D' as const
+    };
+    await (service as unknown as {
+      evaluateWindow(input: typeof request): Promise<Record<string, unknown> | null>;
+    }).evaluateWindow(request);
+    await (service as unknown as {
+      evaluateWindow(input: typeof request): Promise<Record<string, unknown> | null>;
+    }).evaluateWindow(request);
+
+    expect(persisted).toHaveLength(2);
+    expect(persisted[0]).toMatchObject({
+      inputCutoffAt: dueAt,
+      coverageState: 'INSUFFICIENT',
+      contaminationState: 'CLEAR',
+      effectState: 'INCONCLUSIVE'
+    });
+    expect(persisted[1]).toMatchObject({ inputCutoffAt: dueAt });
+    expect(persisted[1]?.observationKey).toBe(persisted[0]?.observationKey);
   });
 });
