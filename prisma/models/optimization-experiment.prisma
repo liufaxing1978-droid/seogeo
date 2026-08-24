@@ -1,0 +1,82 @@
+enum OptimizationExperimentEffectState {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+  INCONCLUSIVE
+}
+
+enum OptimizationExperimentCoverageState {
+  SUFFICIENT
+  PARTIAL
+  INSUFFICIENT
+  UNKNOWN
+}
+
+enum OptimizationExperimentContaminationState {
+  CLEAR
+  CONFLICTING_MUTATION
+  TARGET_REVISION_CHANGED
+  VERIFICATION_INVALIDATED
+  SOURCE_IDENTITY_CHANGED
+  UNKNOWN
+}
+
+model OptimizationExperiment {
+  id                        String                @id @default(uuid()) @db.Uuid
+  projectId                 String                @db.Uuid
+  optimizationPlanId        String                @db.Uuid
+  publicationExecutionId    String                @db.Uuid
+  publicationVerificationId String                @db.Uuid
+  experimentVersion         String
+  experimentKey             String
+  interventionType          RecommendedActionType
+  targetUrl                 String
+  marketCode                MarketCode?
+  locale                    String?
+  verifiedAnchorAt          DateTime
+  measurementScopeJson      Json
+  observationScheduleJson   Json
+  expectedDirectionJson     Json
+  createdAt                 DateTime              @default(now())
+
+  optimizationPlan        OptimizationPlan        @relation(fields: [optimizationPlanId], references: [id], onDelete: Restrict)
+  publicationExecution    PublicationExecution    @relation(fields: [publicationExecutionId], references: [id], onDelete: Restrict)
+  publicationVerification PublicationVerification @relation(fields: [publicationVerificationId], references: [id], onDelete: Restrict)
+  observations            OptimizationExperimentObservation[]
+
+  @@unique([projectId, experimentKey], map: "OptimizationExperiment_project_key")
+  @@unique([optimizationPlanId, publicationExecutionId, experimentVersion], map: "OptimizationExperiment_plan_execution_version")
+  @@index([projectId, createdAt], map: "OptimizationExperiment_project_created_idx")
+  @@index([publicationExecutionId], map: "OptimizationExperiment_execution_idx")
+}
+
+model OptimizationExperimentObservation {
+  id                           String                                   @id @default(uuid()) @db.Uuid
+  projectId                    String                                   @db.Uuid
+  experimentId                 String                                   @db.Uuid
+  observationVersion           String
+  observationKey               String
+  windowType                   String
+  windowDays                   Int
+  dueAt                        DateTime
+  inputCutoffAt                DateTime
+  baselineSearchSourceRefs     Json
+  observedSearchSourceRefs     Json
+  baselineVisibilitySourceRefs Json
+  observedVisibilitySourceRefs Json
+  baselineMetricsJson          Json
+  observedMetricsJson          Json
+  deltaMetricsJson             Json
+  coverageState                OptimizationExperimentCoverageState
+  contaminationState           OptimizationExperimentContaminationState
+  effectState                  OptimizationExperimentEffectState
+  reasonCodes                  Json
+  evaluatorVersion             String
+  createdAt                    DateTime                                 @default(now())
+
+  experiment OptimizationExperiment @relation(fields: [experimentId], references: [id], onDelete: Restrict)
+
+  @@unique([experimentId, observationKey], map: "OptimizationExperimentObservation_experiment_key")
+  @@index([projectId, createdAt], map: "OptimizationExperimentObservation_project_created_idx")
+  @@index([experimentId, windowType, createdAt], map: "OptimizationExperimentObservation_window_idx")
+}
