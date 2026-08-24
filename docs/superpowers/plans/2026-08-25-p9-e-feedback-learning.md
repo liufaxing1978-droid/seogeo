@@ -4,7 +4,7 @@
 
 **Goal:** Build a bounded, deterministic P9-E feedback-learning layer that accepts at most one qualified terminal P9-D observation per experiment, materializes immutable rolling feedback profiles, and lets only new P9-A V2 plans freeze a small historical ranking adjustment without changing P7, P8, P9-D, or controlled-autopilot authority.
 
-**Architecture:** Add one isolated `optimization-feedback` module with immutable evidence/profile persistence, deterministic scope/evidence/profile identities, terminal-observation eligibility, rolling-20 aggregation, one BullMQ queue with 90-day reconciliation, bounded observability, and persisted-read project APIs. P9-D hands persisted observations to P9-E only after durable observation persistence and treats queue delivery as best-effort. P9-A V1 remains byte-for-behavior compatible; P9-A V2 is explicit opt-in and freezes the exact feedback profile into deterministic or AI-backed new plans. AI remains limited to its existing ±2 advisory adjustment and cannot create, change, or reinterpret feedback.
+**Architecture:** Add one isolated `optimization-feedback` module with immutable evidence/profile persistence, deterministic scope/evidence/profile identities, terminal-observation eligibility, rolling-20 aggregation, scope-serialized profile materialization, one BullMQ queue with 90-day reconciliation, bounded observability, and persisted-read project APIs. P9-D hands persisted observations to P9-E only after durable observation persistence and treats queue delivery as best-effort. P9-A V1 remains behaviorally unchanged; P9-A V2 is explicit opt-in and freezes the exact feedback profile into deterministic or AI-backed new plans. AI remains limited to its existing ±2 advisory adjustment and cannot create, change, see, or reinterpret the historical feedback signal used by the V2 rank compositor.
 
 **Tech Stack:** Node.js >=22, TypeScript 5.9, Prisma 6.14/PostgreSQL 17, BullMQ 5.58/Redis 7, Express 5, Zod 3.25, Vitest 3.2, Supertest 7, Playwright 1.55/Chromium.
 
@@ -20,16 +20,16 @@
 - `OptimizationFeedbackEvidence` and `OptimizationFeedbackProfile` are immutable with PostgreSQL `BEFORE UPDATE OR DELETE` triggers.
 - One P9-D experiment contributes at most one accepted feedback evidence row for all time.
 - Earlier planned experiment windows never contribute. For the terminal schedule, evaluate candidate observations by `inputCutoffAt ASC`, then `observationId ASC`; accept the first one satisfying every feedback gate.
-- `INCONCLUSIVE`, `PARTIAL`, `INSUFFICIENT`, `UNKNOWN`, contamination, missing baseline, unsupported evaluator, invalid P8 authority, or ambiguous scope produce no sample. They are never zero/negative samples.
+- `INCONCLUSIVE`, `PARTIAL`, `INSUFFICIENT`, `UNKNOWN`, contamination, missing baseline, unsupported evaluator, missing/inconsistent P8 authority, or ambiguous scope produce no sample. They are never zero/negative samples.
 - Feedback scope is exact `(projectId, marketScopeMode, marketCode, locale, recommendedActionType)`. No project or configured-market pooling.
 - P9-E V1 rolling window is exactly 20 accepted experiments per scope. Fewer than 3 samples produces historical adjustment 0.
 - Historical adjustment is deterministic, integer, clamped to `[-10,+10]`.
 - Existing `OPTIMIZATION_PLAN_V1` rows and V1 planner behavior remain unchanged; they continue to freeze `historicalRankAdjustment = 0`.
 - `OPTIMIZATION_PLAN_V2` is explicit opt-in. It may freeze a compatible latest feedback profile into a new immutable plan only.
-- Existing AI adjustment authority remains integer `[-2,+2]`; historical feedback cannot change AI output validation and AI cannot edit feedback.
+- Existing AI adjustment authority remains integer `[-2,+2]`; AI output cannot edit feedback. V2 hides feedback fields from the DeepSeek prompt projection to prevent double-counting.
 - V2 final ordering displacement from deterministic rank is bounded to 10. If historical feedback causes any candidate to exceed the bound, zero all historical adjustments for that materialization while preserving already-valid AI adjustments.
 - P9-E owns exactly one queue: `optimization-feedback-materialization`, with attempts=2.
-- Daily reconciliation scans at most the previous 90 days, at most 100 candidate observations per project per run, and provides no unlimited/public historical backfill.
+- Daily reconciliation scans only the previous 90 days, enqueues at most 100 terminal candidate observations per project per run, and provides no unlimited/public historical backfill.
 - Public P9-E V1 API is GET-only and persisted-read only. No GET may enqueue work or recalculate profiles.
 - Existing `.github/workflows/ci.yml` remains authoritative. Do not weaken `verify`, `production-audit`, or `e2e`.
 - No merge or deployment without a later separate explicit human authorization.
@@ -111,7 +111,7 @@ tests/integration/optimization.ai-ranking.test.ts
 - Create: `tests/unit/feedback.feature-gate.test.ts`
 - Create: `tests/unit/feedback.identity.test.ts`
 
-**Interfaces produced:**
+**Shared P9-E constants/types:**
 
 ```ts
 export const OPTIMIZATION_FEEDBACK_SCOPE_VERSION = 'OPTIMIZATION_FEEDBACK_SCOPE_V1' as const;
@@ -127,7 +127,7 @@ export type FeedbackEffect = 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE';
 
 - [ ] **Step 1: Write RED feature and identity tests**
 
-`tests/unit/feedback.feature-gate.test.ts` must assert:
+`tests/unit/feedback.feature-gate.test.ts`:
 
 ```ts
 expect(hasFeature('STANDARD', 'OPTIMIZATION_FEEDBACK')).toBe(false);
@@ -135,13 +135,13 @@ expect(hasFeature('ADVANCED', 'OPTIMIZATION_FEEDBACK')).toBe(true);
 expect(hasFeature('ENTERPRISE', 'OPTIMIZATION_FEEDBACK')).toBe(true);
 ```
 
-`tests/unit/feedback.identity.test.ts` must prove:
+`tests/unit/feedback.identity.test.ts` proves:
 - scope identity is stable under object-key ordering;
 - `null` market/locale is explicit and distinct from configured scope;
 - different project, market, locale, or action changes `scopeKey`;
 - evidence key changes when observation changes;
-- profile fingerprint is invariant to the caller's unsorted evidence input because the builder sorts by the supplied deterministic order contract before hashing;
-- profile key changes when the rolling evidence set changes.
+- the same already-deterministically-ordered evidence-id sequence produces the same fingerprint/profile key;
+- changing the ordered evidence-id sequence changes the fingerprint, so profile identity binds the exact frozen order rather than silently resorting IDs.
 
 Run:
 
@@ -149,11 +149,11 @@ Run:
 npx vitest run tests/unit/feedback.feature-gate.test.ts tests/unit/feedback.identity.test.ts
 ```
 
-Expected RED: missing `OPTIMIZATION_FEEDBACK` and missing feedback identity module only.
+Expected RED: missing `OPTIMIZATION_FEEDBACK` and feedback identity module only.
 
-- [ ] **Step 2: Add exact Prisma models and forward migration**
+- [ ] **Step 2: Add exact Prisma models and additive migration**
 
-Create `optimization-feedback.prisma` with:
+Create `prisma/models/optimization-feedback.prisma`:
 
 ```prisma
 enum OptimizationFeedbackEffect {
@@ -223,7 +223,7 @@ model OptimizationFeedbackProfile {
 }
 ```
 
-Add reverse arrays only where Prisma requires them:
+Add Prisma reverse arrays:
 
 ```prisma
 // OptimizationCandidate
@@ -239,7 +239,7 @@ feedbackEvidence OptimizationFeedbackEvidence[]
 feedbackEvidence OptimizationFeedbackEvidence[]
 ```
 
-The additive migration creates both tables, enum, exact indexes/FKs, plus:
+Create migration `20260825010000_add_p9e_feedback_learning/migration.sql` with the enum/tables/indexes/FKs plus:
 
 ```sql
 CREATE OR REPLACE FUNCTION "reject_p9e_immutable_mutation"() RETURNS trigger AS $$
@@ -261,7 +261,7 @@ Do not edit any earlier migration.
 
 - [ ] **Step 3: Implement canonical identities**
 
-`feedback.identity.ts` owns its own canonical JSON/hash functions and exports:
+`feedback.identity.ts` exports:
 
 ```ts
 export function buildFeedbackScopeKey(input: {
@@ -286,13 +286,17 @@ export function buildFeedbackProfileIdentity(input: {
 }): { inputFingerprint: string; profileKey: string };
 ```
 
-Hash exactly the version fields from the design; sorted object keys and explicit `null` are mandatory.
+Hash exactly:
+- scope: feedbackScopeVersion + project + market mode + market + locale + action;
+- evidence: feedbackEvidenceVersion + project + experiment + observation + scopeKey;
+- inputFingerprint: feedbackProfileVersion + scopeKey + caller-supplied deterministic evidence-id order;
+- profileKey: feedbackProfileVersion + projectId + scopeKey + inputFingerprint.
 
-- [ ] **Step 4: Add feature matrix entry and verify**
+Canonical JSON sorts object keys and preserves explicit nulls. `buildFeedbackProfileIdentity` must not independently sort evidence IDs; `calculateFeedbackProfile` owns chronological ordering.
+
+- [ ] **Step 4: Add feature matrix and verify**
 
 Add `'OPTIMIZATION_FEEDBACK'` to `Feature` and `advancedFeatures`; Enterprise inherits it, Standard does not.
-
-Run:
 
 ```bash
 npx prisma validate
@@ -318,7 +322,7 @@ git commit -m "feat: add P9-E feedback persistence foundation"
 - Create: `src/modules/optimization-feedback/feedback.eligibility.ts`
 - Create: `tests/unit/feedback.eligibility.test.ts`
 
-**Interfaces:**
+**Stable reason-code contract:**
 
 ```ts
 export type FeedbackEligibilityReasonCode =
@@ -326,11 +330,18 @@ export type FeedbackEligibilityReasonCode =
   | 'FEEDBACK_EFFECT_INCONCLUSIVE'
   | 'FEEDBACK_COVERAGE_INSUFFICIENT'
   | 'FEEDBACK_CONTAMINATED'
-  | 'FEEDBACK_P8_AUTHORITY_INVALID'
+  | 'FEEDBACK_P8_AUTHORITY_MISSING'
   | 'FEEDBACK_SCOPE_INVALID'
   | 'FEEDBACK_EVALUATOR_UNSUPPORTED'
-  | 'FEEDBACK_ALREADY_ACCEPTED';
+  | 'FEEDBACK_ALREADY_ACCEPTED'
+  | 'FEEDBACK_FEATURE_DISABLED';
+```
 
+`FEEDBACK_FEATURE_DISABLED` is emitted by the service gate; the pure selector uses the other codes.
+
+**Selector interface:**
+
+```ts
 export type FeedbackTerminalCandidate = {
   id: string;
   experimentId: string;
@@ -358,22 +369,24 @@ export function selectFeedbackObservation(input: {
   | { kind: 'DEFER'; reasonCode: FeedbackEligibilityReasonCode };
 ```
 
-- [ ] **Step 1: Write RED selection tests**
+- [ ] **Step 1: Write RED selector tests**
 
 Cover exactly:
 1. 7/14/28 schedule only permits 28D.
 2. 14/28/56 schedule only permits 56D.
-3. `dueAt` must equal `verifiedAnchorAt + windowDays` exactly.
-4. Earlier window with POSITIVE can never contribute.
-5. Two terminal observations are sorted by `inputCutoffAt ASC`, then id ASC.
-6. Earliest terminal `INCONCLUSIVE` is skipped; later SUFFICIENT+CLEAR+POSITIVE may qualify.
-7. Earliest terminal contaminated is skipped; later clean conclusive may qualify.
-8. Once `acceptedExperimentId` exists, every candidate defers `FEEDBACK_ALREADY_ACCEPTED`.
-9. `PARTIAL`, `INSUFFICIENT`, `UNKNOWN` never contribute.
+3. `dueAt` equals `verifiedAnchorAt + windowDays` exactly.
+4. Earlier window POSITIVE never contributes.
+5. Terminal candidates order by `inputCutoffAt ASC`, then id ASC.
+6. Earliest terminal INCONCLUSIVE may be skipped and a later fully eligible terminal candidate may qualify.
+7. Earliest contaminated terminal candidate may be skipped and a later fully eligible terminal candidate may qualify.
+8. Existing accepted evidence always returns `FEEDBACK_ALREADY_ACCEPTED`.
+9. PARTIAL/INSUFFICIENT/UNKNOWN never contribute.
 10. Any contamination other than CLEAR never contributes.
-11. Unsupported evaluator never contributes; accepted evaluator is exactly `OPTIMIZATION_EXPERIMENT_EVALUATOR_V1` for P9-E V1.
-12. Invalid P8 authority and invalid scope defer with exact stable codes.
-13. Malformed/empty frozen schedule fails closed with `FEEDBACK_TERMINAL_OBSERVATION_PENDING` rather than inventing a terminal window.
+11. Only `OPTIMIZATION_EXPERIMENT_EVALUATOR_V1` is supported in P9-E V1.
+12. Missing/inconsistent P8 authority returns `FEEDBACK_P8_AUTHORITY_MISSING`.
+13. Invalid scope returns `FEEDBACK_SCOPE_INVALID`.
+14. Malformed/empty schedule or no exact terminal candidate returns `FEEDBACK_TERMINAL_OBSERVATION_PENDING`.
+15. If terminal candidates exist but none qualify, return the first candidate's deterministic rejection reason after scanning all candidates; per-candidate rejection precedence is evaluator -> effect -> coverage -> contamination.
 
 Run:
 
@@ -381,19 +394,24 @@ Run:
 npx vitest run tests/unit/feedback.eligibility.test.ts
 ```
 
-Expected RED: missing module.
+Expected RED: module missing.
 
-- [ ] **Step 2: Implement pure deterministic eligibility**
+- [ ] **Step 2: Implement deterministic selector**
 
-Use a fixed day map `{7D:7,14D:14,28D:28,56D:56}`. Parse every frozen schedule entry, require known window type, matching days, no duplicates, and non-empty list. The terminal item is the last frozen item; do not call `scheduleForIntervention()` to reconstruct history.
+Use fixed day map `{7D:7,14D:14,28D:28,56D:56}`. Parse the frozen schedule; require known type, matching day count, no duplicates, non-empty list. The terminal item is the last frozen item. Do not call `scheduleForIntervention()` to reconstruct history.
 
-For matching terminal observations:
-- require exact experiment id/window type/window days/dueAt;
-- sort `inputCutoffAt`, then `id`;
-- walk in order until the first fully eligible observation;
-- never translate an ineligible observation into a numeric sample.
+Selector algorithm:
+1. acceptedExperimentId -> ALREADY_ACCEPTED;
+2. invalid P8 -> P8_AUTHORITY_MISSING;
+3. invalid scope -> SCOPE_INVALID;
+4. derive exact terminal window/dueAt from frozen schedule;
+5. filter exact matching terminal observations;
+6. sort cutoff/id;
+7. evaluate each candidate with the fixed rejection precedence;
+8. accept the first fully eligible candidate;
+9. if none qualifies, return the rejection reason captured from the first sorted candidate.
 
-Effect-to-feedback mapping is owned here:
+Effect mapping:
 
 ```ts
 export function feedbackValueForEffect(effect: FeedbackEffect): -1 | 0 | 1 {
@@ -403,7 +421,7 @@ export function feedbackValueForEffect(effect: FeedbackEffect): -1 | 0 | 1 {
 }
 ```
 
-- [ ] **Step 3: Run focused tests and commit**
+- [ ] **Step 3: Verify and commit**
 
 ```bash
 npx vitest run tests/unit/feedback.eligibility.test.ts tests/unit/feedback.identity.test.ts
@@ -416,17 +434,58 @@ Expected GREEN.
 
 ---
 
-### Task 26: Repository persistence, authority reads, and database immutability
+### Task 26: Repository persistence, exact authority reads, concurrency serialization, and DB immutability
 
 **Files:**
 - Create: `src/modules/optimization-feedback/feedback.repository.ts`
 - Create: `tests/integration/feedback.persistence.test.ts`
 
-**Repository API:**
+**Exact input types:**
 
 ```ts
-export type CreateFeedbackEvidenceInput = { /* every persisted evidence field except id/createdAt */ };
-export type CreateFeedbackProfileInput = { /* every persisted profile field except id/createdAt */ };
+export type CreateFeedbackEvidenceInput = {
+  projectId: string;
+  experimentId: string;
+  observationId: string;
+  optimizationPlanId: string;
+  candidateId: string;
+  feedbackEvidenceVersion: string;
+  evidenceKey: string;
+  scopeKey: string;
+  marketScopeMode: OptimizationMarketScopeMode;
+  marketCode: MarketCode | null;
+  locale: string | null;
+  recommendedActionType: RecommendedActionType;
+  effectState: OptimizationFeedbackEffect;
+  feedbackValue: number;
+  terminalWindowType: string;
+  terminalWindowDays: number;
+  inputCutoffAt: Date;
+  sourceEvaluatorVersion: string;
+  sourceObservationKey: string;
+};
+
+export type CreateFeedbackProfileInput = {
+  projectId: string;
+  feedbackProfileVersion: string;
+  profileKey: string;
+  scopeKey: string;
+  marketScopeMode: OptimizationMarketScopeMode;
+  marketCode: MarketCode | null;
+  locale: string | null;
+  recommendedActionType: RecommendedActionType;
+  sampleCount: number;
+  positiveCount: number;
+  neutralCount: number;
+  negativeCount: number;
+  rollingEffectBalance: number;
+  historicalRankAdjustment: number;
+  windowLimit: number;
+  oldestEvidenceCutoffAt: Date;
+  newestEvidenceCutoffAt: Date;
+  inputEvidenceIdsJson: Prisma.InputJsonValue;
+  inputFingerprint: string;
+};
 
 export type CreateOrGetFeedbackEvidenceResult =
   | { kind: 'CREATED'; evidence: OptimizationFeedbackEvidence }
@@ -435,7 +494,11 @@ export type CreateOrGetFeedbackEvidenceResult =
 export type CreateOrGetFeedbackProfileResult =
   | { kind: 'CREATED'; profile: OptimizationFeedbackProfile }
   | { kind: 'EXISTING'; profile: OptimizationFeedbackProfile };
+```
 
+**Repository API:**
+
+```ts
 export class OptimizationFeedbackRepository {
   loadExperimentFeedbackContext(input: { projectId: string; experimentId: string }): Promise<FeedbackMaterializationContext | null>;
   findEvidenceForExperiment(experimentId: string): Promise<OptimizationFeedbackEvidence | null>;
@@ -445,30 +508,30 @@ export class OptimizationFeedbackRepository {
   findLatestProfileForScope(input: FeedbackScopeLookup): Promise<OptimizationFeedbackProfile | null>;
   listRecentTerminalCandidates(input: { projectId: string; createdAtGte: Date; limit: number }): Promise<readonly FeedbackReconcileCandidate[]>;
   listFeedbackEnabledProjectIds(): Promise<readonly string[]>;
+  withScopeLock<T>(scopeKey: string, run: (repository: OptimizationFeedbackRepository) => Promise<T>): Promise<T>;
 }
 ```
 
-`FeedbackMaterializationContext` must fetch in one bounded authority graph:
-- exact experiment + all observations ordered by cutoff/id;
-- experiment plan + candidate market scope/action;
-- frozen publication execution id/status/project;
-- frozen publication verification id/status/execution/project;
-- publication proposal provenance through execution plan proposal, requiring `P9_OPTIMIZATION_PLAN` and exact `OptimizationPlan.id`.
+`FeedbackMaterializationContext` selects only:
+- exact experiment + observations ordered cutoff/id;
+- optimization plan + candidate market scope/action;
+- frozen execution id/status/project;
+- frozen verification id/status/execution/project;
+- execution's publication proposal provenance requiring `P9_OPTIMIZATION_PLAN` and exact OptimizationPlan id.
 
 Do not select Search/Visibility raw metrics or content bodies.
 
 - [ ] **Step 1: Write real-Prisma RED persistence tests**
 
-Use the existing transaction-rollback fixture pattern. Seed an Advanced project with one OptimizationCandidate/Plan, exact VERIFIED P8 execution+verification, one P9-D experiment, and terminal observation.
-
-Assert:
+Using transaction rollback fixtures, assert:
 - evidence insert persists exact source IDs/value/scope;
-- retry returns EXISTING without a second row;
-- a conflicting same identity payload throws a collision error;
-- two different observations for the same experiment cannot create two evidence rows;
-- profile retry is idempotent; conflicting payload fails closed;
-- `UPDATE` and `DELETE` on both feedback tables fail with PostgreSQL immutable trigger error;
-- source OptimizationPlan, experiment, observation, P8 execution and verification rows are byte-for-field unchanged after feedback writes.
+- retry returns EXISTING without duplicate row;
+- conflicting immutable payload fails `FEEDBACK_EVIDENCE_IDENTITY_COLLISION`;
+- second observation for same experiment cannot become a second evidence row;
+- profile retry is idempotent; conflict fails `FEEDBACK_PROFILE_IDENTITY_COLLISION`;
+- update/delete on both feedback tables are rejected by DB triggers;
+- OptimizationPlan, experiment, observation, P8 execution/verification source rows remain unchanged;
+- two concurrent `withScopeLock` operations for one scope serialize rather than calculate overlapping profile snapshots concurrently.
 
 Run:
 
@@ -478,19 +541,19 @@ npx vitest run tests/integration/feedback.persistence.test.ts
 
 Expected RED: repository missing.
 
-- [ ] **Step 2: Implement create-or-get collision-safe persistence**
+- [ ] **Step 2: Implement collision-safe repository**
 
-Follow P9-D repository semantics:
+Create-or-get sequence:
 1. exact identity lookup;
-2. full immutable payload comparison using canonical JSON for JSON fields and millisecond equality for dates;
+2. compare every immutable scalar/date/JSON field;
 3. create;
-4. on Prisma P2002, re-read exact identity;
-5. return EXISTING only when full payload matches;
-6. otherwise throw `FEEDBACK_EVIDENCE_IDENTITY_COLLISION` or `FEEDBACK_PROFILE_IDENTITY_COLLISION`.
+4. on P2002, re-read exact identity;
+5. return EXISTING only on full match;
+6. otherwise throw the exact collision error.
 
 No update/delete methods.
 
-`findLatestProfileForScope()` must order:
+`findLatestProfileForScope()` matches project + market mode + market + locale + action + exact profile version and orders:
 
 ```ts
 orderBy: [
@@ -499,18 +562,19 @@ orderBy: [
 ]
 ```
 
-and match every scope component plus exact P9-E profile version.
+`withScopeLock()` uses one PostgreSQL transaction and a transaction-scoped advisory lock derived from the 64-char SHA-256 `scopeKey`. Use a deterministic 64-bit integer derived from the first 16 hex characters and `pg_advisory_xact_lock`; create the callback repository bound to that transaction. This lock protects only P9-E evidence/profile materialization for the same scope and performs no source mutation.
 
-`listFeedbackEnabledProjectIds()` selects only projects with planLevel `ADVANCED` or `ENTERPRISE`, ordered id ASC.
+`listFeedbackEnabledProjectIds()` returns only Advanced/Enterprise ids sorted ASC.
 
-`listRecentTerminalCandidates()` must:
-- constrain `projectId`;
-- constrain observation `createdAt >= createdAtGte`;
-- exclude experiments already having feedback evidence;
-- return at most caller limit;
-- return durable ids only; the service revalidates all eligibility.
+`listRecentTerminalCandidates()` remains bounded:
+- DB query filters project, observation `createdAt >= createdAtGte`, and experiments with no accepted evidence;
+- order observation createdAt/id ASC;
+- read at most 500 recent observation rows per project;
+- include only experiment id/project/verifiedAnchorAt/frozen schedule and observation id/window/dueAt/cutoff needed to test terminal identity;
+- filter exact terminal candidates in process using the frozen schedule contract;
+- return at most caller `limit` (100 in worker).
 
-- [ ] **Step 3: Verify Prisma behavior and commit**
+- [ ] **Step 3: Verify and commit**
 
 ```bash
 npx prisma validate
@@ -554,41 +618,38 @@ export function calculateFeedbackProfile(
 
 - [ ] **Step 1: Write RED profile tests**
 
-Assert exact formula and ordering:
+Assert:
 - 1 or 2 samples => balance=0, adjustment=0;
-- 3 positive => `-4`;
-- 5 positive => `-5`;
-- 10 positive => `-7` using JavaScript `Math.round` on the exact raw value;
-- 20 positive => `-8`;
-- symmetric negative history creates positive adjustment;
-- equal positive/negative history gives 0;
+- 3 positive => -4;
+- 5 positive => -5;
+- 10 positive => -7 under JavaScript `Math.round`;
+- 20 positive => -8;
+- symmetric negative history produces positive adjustment;
+- equal positive/negative gives 0;
 - neutral rows count toward sample/shrinkage but not numerator;
-- >20 rows retains last 20 after `(inputCutoffAt ASC, observationId ASC)` ordering;
-- duplicate evidence id or observation id throws instead of double counting;
-- result adjustment is always integer and within [-10,+10].
+- >20 rows retains last 20 after `(inputCutoffAt ASC, observationId ASC)`;
+- duplicate evidence id or observation id throws;
+- output adjustment is integer within [-10,+10];
+- returned orderedEvidenceIds are exactly the chronological rolling set consumed by `buildFeedbackProfileIdentity`.
 
-Run:
-
-```bash
-npx vitest run tests/unit/feedback.profile.test.ts
-```
-
-Expected RED: module missing.
-
-- [ ] **Step 2: Implement exact first-party formula**
+- [ ] **Step 2: Implement exact formula**
 
 ```ts
 const sampleCount = p + u + n;
-if (sampleCount < 3) return balance=0/adjustment=0;
-const balance = (p - n) / sampleCount;
-const shrinkage = sampleCount / (sampleCount + 5);
-const raw = -10 * balance * shrinkage;
-const adjustment = Math.max(-10, Math.min(10, Math.round(raw)));
+if (sampleCount < 3) {
+  rollingEffectBalance = 0;
+  historicalRankAdjustment = 0;
+} else {
+  rollingEffectBalance = (p - n) / sampleCount;
+  const shrinkage = sampleCount / (sampleCount + 5);
+  const raw = -10 * rollingEffectBalance * shrinkage;
+  historicalRankAdjustment = Math.max(-10, Math.min(10, Math.round(raw)));
+}
 ```
 
-Do not introduce time decay, provider weighting, confidence multipliers, AI, or cross-scope pooling.
+No time decay, provider weighting, AI, confidence multiplier, or cross-scope pooling.
 
-- [ ] **Step 3: Run and commit**
+- [ ] **Step 3: Verify and commit**
 
 ```bash
 npx vitest run tests/unit/feedback.profile.test.ts tests/unit/feedback.identity.test.ts
@@ -601,7 +662,7 @@ Expected GREEN.
 
 ---
 
-### Task 28: Feedback materialization service and observability
+### Task 28: Feedback materialization service and bounded observability
 
 **Files:**
 - Create: `src/modules/optimization-feedback/feedback.service.ts`
@@ -614,28 +675,32 @@ Expected GREEN.
 ```ts
 export type FeedbackMaterializationResult =
   | { kind: 'ACCEPTED'; evidence: OptimizationFeedbackEvidence; profile: OptimizationFeedbackProfile }
-  | { kind: 'EXISTING'; evidence: OptimizationFeedbackEvidence; profile: OptimizationFeedbackProfile | null }
+  | { kind: 'EXISTING'; evidence: OptimizationFeedbackEvidence; profile: OptimizationFeedbackProfile }
   | { kind: 'DEFERRED'; reasonCode: FeedbackEligibilityReasonCode };
 ```
 
-- [ ] **Step 1: Write RED materialization tests**
+An existing evidence row must still ensure the corresponding current profile snapshot exists; a prior profile-write failure cannot leave feedback permanently unaggregated.
+
+- [ ] **Step 1: Write RED materialization/observability tests**
 
 Cover:
-- Standard project is rejected before loading feedback authority context;
+- Standard returns `FEEDBACK_FEATURE_DISABLED` before loading experiment/P8 context;
 - Advanced/Enterprise proceed;
-- exact terminal observation becomes one evidence row and one profile snapshot;
-- earlier conclusive window does not materialize;
-- earliest eligible terminal observation wins deterministically;
-- inconclusive/insufficient/contaminated terminal candidates create no evidence/profile;
-- broken P8 execution/verification/proposal provenance creates no evidence/profile;
-- CONFIGURED_MARKET and UNCONFIGURED_LEGACY produce separate scope keys;
-- second accepted experiment in same scope creates a new immutable profile while preserving old profile;
-- repeated materialization returns existing evidence/profile and does not emit create-only events;
-- service makes no Search/Visibility/AI/Git/provider calls.
+- exact terminal observation creates one evidence + one profile;
+- earlier conclusive window does not contribute;
+- earliest eligible terminal candidate wins;
+- inconclusive/insufficient/contaminated candidates create no sample;
+- missing/inconsistent P8 execution/verification/proposal provenance returns `FEEDBACK_P8_AUTHORITY_MISSING`;
+- configured and legacy scopes remain separate;
+- second experiment in same scope creates new immutable profile while preserving old profile;
+- retry with existing evidence still creates a missing profile if the earlier attempt stopped after evidence persistence;
+- repeated complete materialization emits no duplicate create events;
+- concurrent same-scope materialization produces a final latest profile whose evidence set contains both accepted experiments, proving the scope lock closes the race;
+- no Search/Visibility/AI/Git/provider calls are available in service deps.
 
-- [ ] **Step 2: Implement bounded observability first**
+- [ ] **Step 2: Implement observability**
 
-Event union exactly:
+Events:
 
 ```text
 optimization.feedback.accepted
@@ -660,25 +725,27 @@ historicalRankAdjustment
 reasonCode
 ```
 
-Rebuild a fresh allowlisted event object; never spread arbitrary input. Strip CR/LF/tab and truncate strings to 160 chars. `accepted` emits only for CREATED evidence; `profile.created` only for CREATED profile.
+Reconstruct a fresh allowlisted payload, strip CR/LF/tab, truncate strings to 160 chars. `accepted` only after CREATED evidence. `profile.created` only after CREATED profile. Existing rows are silent for create-specific events.
 
 - [ ] **Step 3: Implement service flow**
 
 Exact order:
-1. `projectRepository.findById(projectId)` and `hasFeature(planLevel, 'OPTIMIZATION_FEEDBACK')`; Standard/missing project returns DEFERRED before feedback authority/context reads.
-2. Load exact experiment context and any already-accepted evidence.
-3. Validate market mode; `INVALID_PROVENANCE` or unsupported scope returns `FEEDBACK_SCOPE_INVALID`.
-4. Validate exact P8 frozen authority/provenance.
-5. Run pure terminal selector.
-6. Build scope/evidence identities and immutable evidence input.
-7. Persist evidence with CREATED/EXISTING outcome.
-8. Load exact-scope accepted evidence, calculate rolling-20 profile, build profile identity.
-9. Persist immutable profile with CREATED/EXISTING outcome.
-10. Emit bounded events only after durable persistence.
+1. `projectRepository.findById(projectId)`; missing/feature-disabled => `FEEDBACK_FEATURE_DISABLED` without restricted feedback context read;
+2. load experiment context and existing accepted evidence;
+3. derive exact candidate scope; INVALID_PROVENANCE/ambiguous => SCOPE_INVALID;
+4. validate frozen P8 execution, exact verification, project, proposal type/source id;
+5. run terminal selector;
+6. build scope key and selected evidence input;
+7. enter `repository.withScopeLock(scopeKey, ...)`;
+8. re-read accepted evidence inside lock to close races; if none, create selected evidence;
+9. list exact-scope accepted evidence, calculate rolling-20, build identity;
+10. create-or-get immutable profile inside same lock;
+11. emit create events only after transaction commits;
+12. return ACCEPTED when evidence was newly created, otherwise EXISTING.
 
-If evidence is EXISTING, do not switch the accepted observation even if a later observation looks better.
+If evidence already exists, never switch to a later observation; recalculate/ensure profile from the already-frozen evidence set.
 
-- [ ] **Step 4: Run focused suite and commit**
+- [ ] **Step 4: Verify and commit**
 
 ```bash
 npx vitest run \
@@ -695,7 +762,7 @@ Expected GREEN.
 
 ---
 
-### Task 29: Queue, worker, 90-day reconciliation, and best-effort P9-D handoff
+### Task 29: Queue, worker, reconciliation, and best-effort P9-D handoff
 
 **Files:**
 - Create: `src/modules/optimization-feedback/feedback.queue.ts`
@@ -722,24 +789,24 @@ export type OptimizationFeedbackJobData =
 
 - [ ] **Step 1: Write RED queue/worker tests**
 
-Queue tests assert:
-- materialize job name `materialize-observation`;
-- deterministic SHA-256 job id over exact project/experiment/observation/evidence-version input;
-- attempts=2, exponential backoff 5s, removeOnComplete=true, bounded removeOnFail;
-- reconciliation payload contains no date/content/provider data.
+Queue tests:
+- name `materialize-observation`;
+- job id is SHA-256 of canonical `{projectId,experimentId,observationId,feedbackEvidenceVersion}` with a fixed `optimization-feedback-` prefix;
+- attempts=2, exponential 5s, removeOnComplete=true, bounded removeOnFail;
+- reconciliation payload has no prompt/content/provider/date payload.
 
-Worker tests assert:
-- materialize job calls service once using durable ids;
-- daily reconcile calculates `createdAtGte = now - 90 days`;
-- gets enabled projects in stable order;
-- requests limit=100 for each project;
-- enqueues each candidate observation, not direct materialization in reconciliation path;
-- emits bounded reconciled count only after enqueue loop;
-- no external services exist in worker deps.
+Worker tests:
+- materialize job calls service once with durable ids;
+- daily reconciliation computes cutoff exactly now-90 days;
+- enabled project ids are processed stable ASC;
+- repository receives limit=100 and returns at most 100 terminal candidates per project;
+- reconciliation enqueues candidates instead of materializing inline;
+- bounded reconciled event occurs after enqueue loop;
+- worker deps expose no external provider/AI/Git service.
 
-- [ ] **Step 2: Add P9-D post-persistence handoff RED tests**
+- [ ] **Step 2: Add P9-D handoff RED tests**
 
-Extend `OptimizationExperimentWorkerDeps` with optional:
+Extend `OptimizationExperimentWorkerDeps`:
 
 ```ts
 feedbackHandoff?: {
@@ -751,28 +818,26 @@ feedbackHandoff?: {
 };
 ```
 
-Test EVALUATE_WINDOW behavior:
-- if `evaluateWindow()` returns null, no handoff;
-- if it returns persisted observation, call handoff after evaluation resolves;
-- if handoff rejects, `processOptimizationExperimentJob()` still resolves successfully so a feedback queue outage cannot reclassify P9-D evaluation as failed;
-- existing P9-D start/reconcile behavior remains unchanged.
+Assert:
+- evaluateWindow null => no handoff;
+- returned persisted observation => handoff after evaluation resolves;
+- handoff rejection is swallowed by the experiment worker so durable P9-D evaluation stays successful;
+- existing start/reconcile behavior is unchanged.
 
-- [ ] **Step 3: Implement feedback queue and worker**
-
-Worker constants:
+- [ ] **Step 3: Implement feedback queue/worker**
 
 ```ts
 export const OPTIMIZATION_FEEDBACK_RECONCILE_DAYS = 90;
 export const OPTIMIZATION_FEEDBACK_PROJECT_RECONCILE_LIMIT = 100;
 ```
 
-Use repository only to enumerate enabled projects/recent durable ids. Call `OptimizationFeedbackService.materializeObservation()` for MATERIALIZE jobs.
+MATERIALIZE calls `OptimizationFeedbackService.materializeObservation`. RECONCILE enumerates only feedback-enabled projects, asks repository for terminal candidates in the finite cutoff, and enqueues each durable id.
 
-- [ ] **Step 4: Wire registry/bootstrap**
+- [ ] **Step 4: Wire queue registry and worker bootstrap**
 
 Insert `optimization-feedback-materialization` immediately after `optimization-experiment-evaluation` in `QUEUE_NAMES`.
 
-In worker bootstrap add:
+Add:
 
 ```ts
 export const OPTIMIZATION_FEEDBACK_WORKER_CONCURRENCY = 2;
@@ -784,7 +849,7 @@ export const OPTIMIZATION_FEEDBACK_DAILY_RECONCILE_SCHEDULER = {
 } as const;
 ```
 
-Create one support queue and one `OptimizationFeedbackQueue`. Inject a handoff into the P9-D experiment worker:
+Create one support Queue and one `OptimizationFeedbackQueue`. Inject into the P9-D worker:
 
 ```ts
 const experimentFeedbackHandoff = {
@@ -793,7 +858,7 @@ const experimentFeedbackHandoff = {
 };
 ```
 
-Do not couple Feedback into `OptimizationExperimentService`; the worker boundary keeps durable observation persistence authoritative.
+Do not put Feedback into `OptimizationExperimentService`.
 
 - [ ] **Step 5: Verify and commit**
 
@@ -813,7 +878,7 @@ Expected GREEN.
 
 ---
 
-### Task 30: P9-A V2 feedback-aware deterministic and AI ranking, with V1 unchanged
+### Task 30: P9-A V2 feedback-aware deterministic and AI ranking, V1 unchanged
 
 **Files:**
 - Modify: `src/modules/optimization/optimization.types.ts`
@@ -842,7 +907,7 @@ export type OptimizationPlanVersion =
   | typeof OPTIMIZATION_PLAN_V2;
 ```
 
-Default materialization stays V1:
+Default remains V1:
 
 ```ts
 export type MaterializeOptimizationOptions = {
@@ -852,11 +917,20 @@ export type MaterializeOptimizationOptions = {
 };
 ```
 
-- [ ] **Step 1: Write RED feedback-aware ranking tests**
+- [ ] **Step 1: Write RED feedback-aware rank tests**
 
-Add a new helper rather than changing existing `applyBoundedRankAdjustments()`:
+Do not change current `applyBoundedRankAdjustments()`. Add:
 
 ```ts
+export type FeedbackAwareRankResult = {
+  candidateId: string;
+  deterministicRank: number;
+  aiRankAdjustment: number;
+  historicalRankAdjustment: number;
+  finalRank: number;
+  historicalFallback: boolean;
+};
+
 export function applyFeedbackAwareRankAdjustments(
   ranked: readonly BoundedRankSeed[],
   aiAdjustments: readonly { candidateId: string; adjustment: number }[],
@@ -865,63 +939,43 @@ export function applyFeedbackAwareRankAdjustments(
 ```
 
 Tests prove:
-- current `applyBoundedRankAdjustments` still accepts only AI [-2,+2] and still enforces its existing ±2 displacement behavior;
-- historical inputs must be integer [-10,+10];
-- composed signal = deterministic + valid AI + historical;
-- tie order = signal, deterministicRank, candidateKey;
-- if composed final displacement <=10, historical values are preserved;
-- if any displacement >10, all historical values become 0, valid AI adjustments remain, and ranks are recomputed from deterministic+AI;
-- fallback marks `historicalFallback=true` for the materialization;
-- unknown/duplicate candidate IDs fail closed.
+- old helper remains AI-only [-2,+2] with old ±2 displacement fallback;
+- historical input integer [-10,+10];
+- signal = deterministic + valid AI + historical;
+- tie = signal, deterministicRank, candidateKey;
+- <=10 displacement keeps historical;
+- >10 on any candidate recomputes with all historical=0 while preserving the valid AI result from the old helper;
+- all rows mark historicalFallback consistently for a fallback materialization;
+- duplicate/unknown ids fail closed.
 
-Run:
-
-```bash
-npx vitest run tests/unit/optimization.ranking.test.ts tests/unit/optimization.feedback-ranking.test.ts
-```
-
-Expected RED only for missing V2 helper.
-
-- [ ] **Step 2: Add V2 profile read adapter to planner**
-
-Inject a narrow read port into `OptimizationService`:
+- [ ] **Step 2: Add exact profile read port to OptimizationService**
 
 ```ts
 export type OptimizationFeedbackProfileReadPort = {
   findLatestProfileForScope(input: {
     projectId: string;
-    marketScopeMode: string;
-    marketCode: string | null;
+    marketScopeMode: OptimizationMarketScopeMode;
+    marketCode: MarketCode | null;
     locale: string | null;
     recommendedActionType: RecommendedActionType;
   }): Promise<OptimizationFeedbackProfile | null>;
 };
 ```
 
-For V1:
-- never call this port;
-- `historicalRankAdjustment=0`;
-- existing explanation shape and AI task V1 identity stay unchanged.
+V1:
+- never invokes this port;
+- historical=0;
+- existing explanation and V1 AI fact/request identity unchanged.
 
-For V2:
-- read one exact-scope latest profile per ranked candidate/action;
-- freeze bounded provenance:
+V2:
+- read exact compatible profile per candidate/action;
+- freeze profile id/version/fingerprint/sample count/adjustment;
+- no profile => null provenance + 0;
+- run whole-set feedback-aware ranking before deterministic V2 plan persistence.
 
-```text
-feedbackProfileId
-feedbackProfileVersion
-feedbackInputFingerprint
-feedbackSampleCount
-historicalRankAdjustment
-historicalFallback
-```
+- [ ] **Step 3: Freeze feedback in V2 AI task facts but hide it from the prompt**
 
-- if no compatible profile: historical=0 and null profile provenance;
-- use feedback-aware rank helper across the whole materialization before persisting deterministic V2 plans.
-
-- [ ] **Step 3: Freeze feedback inside V2 AI task facts**
-
-Extend `OptimizationPlanRankingSeed` with:
+Extend ranking seed:
 
 ```ts
 feedback: {
@@ -933,62 +987,62 @@ feedback: {
 } | null;
 ```
 
-Change builder signature:
+Builder:
 
 ```ts
 buildOptimizationPlanRankingTaskInput(
-  projectId,
-  seeds,
+  projectId: string,
+  seeds: readonly OptimizationPlanRankingSeed[],
   options?: { planVersion?: OptimizationPlanVersion }
-)
+): CreateAiTaskInput;
 ```
 
 Rules:
-- omitted/V1 option returns the exact current `OPTIMIZATION_PLAN_RANKING_FACTS_V1` shape and request-key behavior;
-- V2 uses strict `OPTIMIZATION_PLAN_RANKING_FACTS_V2`, includes `planVersion:'OPTIMIZATION_PLAN_V2'` and frozen feedback per candidate;
-- AI output schema stays unchanged: candidateId, integer adjustment [-2,+2], explanation, supplied source refs only;
-- V2 materialization must use the frozen task feedback. It must not query a newer profile when the async AI job completes.
+- omitted/V1 returns exact existing `OPTIMIZATION_PLAN_RANKING_FACTS_V1` shape and request-key behavior;
+- V2 uses strict `OPTIMIZATION_PLAN_RANKING_FACTS_V2`, `planVersion:'OPTIMIZATION_PLAN_V2'`, frozen feedback per candidate;
+- AI output schema remains exactly candidate id + [-2,+2] adjustment + explanation + supplied refs;
+- async V2 completion reads frozen task facts only, never current profile state.
 
-Prevent double-counting by keeping feedback out of the text shown to DeepSeek. Export a prompt projection helper that strips each V2 candidate's `feedback` object before `prompt.buildUserMessage(...)`. `ai.worker.ts` uses this projection only for `OPTIMIZATION_PLAN_RANKING`; task persistence/requestHash still includes the full frozen V2 fact snapshot so the durable request identity remains feedback-bound.
+Export `projectOptimizationRankingPromptFacts(factSnapshot)` that removes V2 `feedback` fields before the prompt message is built. `ai.worker.ts` uses this projection only for OPTIMIZATION_PLAN_RANKING. `requestHash()` still hashes the full persisted fact snapshot, keeping request identity feedback-bound.
 
-- [ ] **Step 4: Implement AI success and failure contracts**
+- [ ] **Step 4: Implement V2 success/fallback**
 
-AI success V2:
-1. parse V2 frozen facts;
-2. validate AI output exactly as V1;
-3. call feedback-aware ranking with AI output + frozen historical values;
-4. create immutable `OPTIMIZATION_PLAN_V2` rows;
-5. explanation records AI adjustment plus frozen feedback provenance/fallback.
+V2 AI success:
+1. parse strict V2 facts;
+2. validate output under existing AI rules;
+3. compose valid AI + frozen historical;
+4. enforce <=10 displacement;
+5. create immutable V2 plans with bounded feedback provenance.
 
-AI failure V2:
-1. AI run/task is durably FAILED under existing worker semantics;
-2. call V2 fallback materializer;
-3. set AI adjustment to 0;
-4. retain frozen historical adjustments subject to the <=10 displacement guard;
-5. create no P8 artifacts and do not read a newer feedback profile.
+V2 AI failure:
+1. existing AI task/run failure persists first;
+2. V2 fallback uses AI=0;
+3. frozen historical remains subject to <=10 guard;
+4. no newer profile read;
+5. no P8 artifacts.
 
-V1 success/failure functions must remain behaviorally identical: historical=0, planVersion V1, existing fact schema/request identity.
+V1 success/fallback remain historical=0 and behaviorally unchanged.
 
-- [ ] **Step 5: Write integration tests**
+- [ ] **Step 5: Integration tests**
 
-`optimization.feedback-v2.test.ts` covers deterministic V2:
-- V1 default never queries feedback and persists historical=0;
-- V2 exact market/action reads matching profile and freezes it;
-- different market/action profile is ignored;
+`optimization.feedback-v2.test.ts`:
+- V1 default never reads feedback and historical=0;
+- V2 reads exact scope/action profile;
+- other market/action ignored;
 - no profile => 0;
-- V1 row stays unchanged after V2 plan creation;
-- displacement fallback zeros all historical but not deterministic authority.
+- existing V1 row unchanged after V2 plan;
+- deterministic displacement fallback zeros historical across set.
 
 Extend `optimization.ai-ranking.test.ts`:
-- V1 requestKey/fact shape snapshot remains current;
-- V2 task has strict V2 facts and frozen feedback;
-- DeepSeek prompt projection does not contain `historicalRankAdjustment`, profile id/fingerprint, or feedback object;
-- AI output still cannot exceed ±2 or edit feedback;
-- V2 success uses frozen historical values;
-- V2 provider/validation failure fallback retains frozen historical values with AI=0;
-- newer profile created after task enqueue cannot affect V2 completion.
+- exact V1 fact shape/request identity regression;
+- V2 strict frozen feedback facts;
+- prompt projection contains no profile id/fingerprint/sample/history adjustment/feedback object;
+- AI still cannot exceed ±2 or alter feedback;
+- V2 success uses frozen values;
+- V2 provider/validation failure uses frozen values with AI=0;
+- a profile created after enqueue cannot affect completion.
 
-- [ ] **Step 6: Run full planner/AI regression and commit**
+- [ ] **Step 6: Verify and commit**
 
 ```bash
 npx vitest run \
@@ -1002,7 +1056,7 @@ git add src/modules/optimization src/modules/ai tests/unit/optimization.feedback
 git commit -m "feat: add feedback-aware P9-A V2 ranking"
 ```
 
-Expected GREEN with V1 regression assertions intact.
+Expected GREEN with V1 regressions intact.
 
 ---
 
@@ -1021,28 +1075,19 @@ GET /api/projects/:projectId/optimization-feedback/profiles/:profileId
 GET /api/projects/:projectId/optimization-feedback/evidence
 ```
 
-No POST route exists in V1.
+No public POST/PUT/PATCH/DELETE P9-E route in V1.
 
 - [ ] **Step 1: Write RED route tests**
 
-Use an injected API port and Supertest. Assert:
-- Standard project gets 403 before API-port method call;
-- Advanced and Enterprise can list profiles/evidence;
-- pagination defaults limit=50 offset=0;
-- limit 1..100, offset 0..100000; invalid values return validation error;
-- profile lookup uses both projectId and profileId; foreign-project profile returns 404 without leaking its payload;
-- responses expose bounded feedback/profile fields only and no Search/Visibility raw metrics, article content, prompt/answer, provider payload, credentials, P8 mutation state, or reasoning;
-- no GET invokes queue/service/AI/provider/Git dependencies because none are present on the route port.
+Assert:
+- Standard 403 before injected API-port call;
+- Advanced/Enterprise list profiles/evidence;
+- limit default=50, range 1..100; offset default=0, range 0..100000;
+- foreign profile id under another project returns 404 and no payload leak;
+- response contains bounded feedback fields only, no raw observation metric JSON/content/prompts/answers/provider payload/credentials/reasoning;
+- GET has no queue/service/provider/Git dependency.
 
-Run:
-
-```bash
-npx vitest run tests/integration/feedback.routes.test.ts
-```
-
-Expected RED: route module/app injection missing.
-
-- [ ] **Step 2: Implement route port and default persisted-read adapter**
+- [ ] **Step 2: Implement API port/routes**
 
 ```ts
 export interface OptimizationFeedbackApiPort {
@@ -1052,21 +1097,19 @@ export interface OptimizationFeedbackApiPort {
 }
 ```
 
-Every route order:
-1. validate UUID project id;
+Route order:
+1. validate project UUID;
 2. `requireFeature('OPTIMIZATION_FEEDBACK')`;
-3. validate remaining params/query;
-4. call project-scoped read port.
+3. validate profile UUID/pagination;
+4. project-scoped persisted read.
 
-Default Prisma selects only feedback audit fields and bounded source IDs. Do not include raw observation metric JSON.
+Default Prisma selects feedback audit fields/source IDs only; never raw P9-D metric JSON.
 
-In `AppOptions` add `optimizationFeedbackApi?: OptimizationFeedbackApiPort`. Mount:
+Add `optimizationFeedbackApi?: OptimizationFeedbackApiPort` to AppOptions and mount:
 
 ```ts
 app.use('/api', createOptimizationFeedbackRoutes(options.optimizationFeedbackApi));
 ```
-
-Do not mount under `/api/v1`; the approved P9-E route contract is `/api/projects/...`.
 
 - [ ] **Step 3: Verify and commit**
 
@@ -1081,77 +1124,73 @@ Expected GREEN.
 
 ---
 
-### Task 32: Authority hardening, end-to-end persisted chain, documentation, and release gate
+### Task 32: Authority hardening, persisted-chain integration, docs, and release gate
 
 **Files:**
 - Create: `tests/integration/feedback.authority.test.ts`
-- Extend where required: `tests/integration/feedback.materialization.test.ts`
+- Extend: `tests/integration/feedback.materialization.test.ts`
 - Create: `docs/development/p9-e-feedback-learning.md`
 
-- [ ] **Step 1: Add static forbidden-authority test**
+- [ ] **Step 1: Static forbidden-authority test**
 
-Following `experiment.authority.test.ts`, recursively scan `src/modules/optimization-feedback` and fail if production files contain imports/references that create direct authority over:
+Recursively scan `src/modules/optimization-feedback` and reject imports/references that create direct authority over:
 - DeepSeek/AiGateway/provider adapters;
-- GitHub/Git mutation adapters;
+- Git/GitHub mutation adapters;
 - publication execution/mutation/rollback services;
 - Search/Visibility sampling/enqueue APIs;
-- Prisma `.update`, `.updateMany`, `.delete`, `.deleteMany` on non-feedback facts;
-- direct writes to `optimizationPlan`, `optimizationExperiment`, `optimizationExperimentObservation`, publication execution/verification, Growth, Search Facts, or Visibility tables.
+- update/delete writes to non-feedback facts;
+- direct writes to OptimizationPlan, OptimizationExperiment/Observation, publication execution/verification, Growth, Search Facts, Visibility.
 
-Allow feedback repository creates and persisted reads only.
+Allow only feedback creates and persisted reads. Also assert `feedback.routes.ts` registers no post/put/patch/delete route.
 
-Also assert public route source contains no `.post(`, `.put(`, `.patch(`, or `.delete(` registration.
+- [ ] **Step 2: Real authority-chain integration**
 
-- [ ] **Step 2: Add real persisted authority-chain integration**
-
-Inside transaction rollback seed:
+Seed in rollback transaction:
 - Advanced project;
-- P7-derived candidate and immutable `OPTIMIZATION_PLAN_V1`;
-- exact P8 proposal with `sourceType=P9_OPTIMIZATION_PLAN` and sourceReferenceId exact plan id;
-- VERIFIED execution and exact VERIFIED verification;
-- P9-D experiment with frozen terminal schedule;
-- earlier terminal observation that is INCONCLUSIVE or contaminated;
-- later terminal observation that is SUFFICIENT+CLEAR+conclusive.
+- P7 candidate + immutable V1 optimization plan;
+- exact P8 proposal source=P9_OPTIMIZATION_PLAN/reference exact plan;
+- VERIFIED execution + exact VERIFIED verification;
+- P9-D experiment/frozen terminal schedule;
+- earlier terminal observation ineligible;
+- later terminal observation SUFFICIENT+CLEAR+conclusive.
 
-Run P9-E materialization and assert:
-- later eligible terminal observation is accepted only because earlier candidate is ineligible, not because outcome is preferred;
-- exactly one evidence row for the experiment;
-- exact scope/profile counts and adjustment;
-- retry stays one evidence/profile identity;
-- all P7/P8/P9-A/P9-D source rows unchanged before/after.
+Assert:
+- later observation accepted because earlier fails policy, never because result is more favorable;
+- one evidence row per experiment;
+- exact scope/profile counts/adjustment;
+- retry identity stable;
+- all source P7/P8/P9-A/P9-D rows unchanged;
+- second project/market evidence cannot enter first profile.
 
-Add a second project/market fixture and prove its evidence cannot enter the first project's profile.
+- [ ] **Step 3: P9-D handoff resilience**
 
-- [ ] **Step 3: Prove queue handoff does not reverse P9-D**
+Prove:
+- P9-D observation persists;
+- feedback enqueue throws;
+- experiment worker still resolves;
+- observation remains durable;
+- later 90-day reconciliation discovers/enqueues the missing candidate.
 
-Integration or worker-level final assertion:
-- P9-D observation persists successfully;
-- injected P9-E enqueue throws;
-- experiment job still resolves;
-- observation remains persisted;
-- subsequent P9-E reconciliation can discover and enqueue the missing feedback candidate.
+- [ ] **Step 4: Write `docs/development/p9-e-feedback-learning.md`**
 
-- [ ] **Step 4: Write operational documentation**
-
-`docs/development/p9-e-feedback-learning.md` must document:
-- authority chain P9-D -> P9-E -> future/new P9-A V2 only;
-- one-experiment-one-sample rule;
-- terminal observation deterministic selection;
-- exact eligibility/defer codes;
-- project/market/locale/action isolation;
-- rolling 20 and minimum 3 samples;
-- exact shrinkage formula and [-10,+10] bound;
-- V1 planner immutability and V2 opt-in behavior;
-- AI ±2 boundary and feedback-hidden AI prompt projection;
-- V2 <=10 displacement fallback preserving valid AI;
+Document:
+- P9-D -> P9-E -> new P9-A V2 authority chain;
+- one-experiment-one-sample and deterministic terminal selection;
+- exact reason codes including FEATURE_DISABLED and P8_AUTHORITY_MISSING;
+- scope isolation;
+- rolling 20/minimum 3/formula/[-10,+10];
+- scope serialization/concurrency behavior;
+- V1 immutable/unchanged and V2 opt-in;
+- AI ±2 + feedback-hidden prompt projection;
+- <=10 historical displacement fallback preserving valid AI;
 - immutable persistence/idempotency;
-- queue attempts=2, best-effort P9-D handoff, 90-day/100-per-project reconciliation;
-- GET-only API and Standard denial/cross-project hiding;
+- queue attempts=2, best-effort P9-D handoff, 90-day/100-candidate reconciliation;
+- GET-only API, Standard denial, cross-project hiding;
 - observability allowlist;
-- rollout/rollback: application rollback never deletes/rewrites feedback history; DB rollback requires a separately reviewed forward migration;
-- no provider/DeepSeek/Git/deploy/rollback side effects.
+- rollout/rollback: app rollback never rewrites feedback history; DB removal only by separate reviewed forward migration;
+- zero provider/DeepSeek/Git/deploy/rollback side effects.
 
-- [ ] **Step 5: Run focused P9-E regression**
+- [ ] **Step 5: Focused P9-E regression**
 
 ```bash
 npx vitest run \
@@ -1174,9 +1213,9 @@ npx vitest run \
   tests/integration/optimization.ai-ranking.test.ts
 ```
 
-Expected: all focused tests GREEN.
+Expected all GREEN.
 
-- [ ] **Step 6: Run local release verification**
+- [ ] **Step 6: Local release verification**
 
 ```bash
 npx prisma validate
@@ -1189,20 +1228,20 @@ npm run test:e2e
 npm audit --omit=dev --audit-level=high --legacy-peer-deps
 ```
 
-All commands must succeed before implementation is called complete. Expected negative-test database error logs are acceptable only when the test itself passes and asserts the fail-closed behavior.
+All commands must succeed before completion. Negative-test DB logs are acceptable only when the corresponding passing test explicitly asserts fail-closed behavior.
 
-- [ ] **Step 7: Commit documentation/final hardening**
+- [ ] **Step 7: Commit final hardening/docs**
 
 ```bash
 git add tests/integration/feedback.authority.test.ts tests/integration/feedback.materialization.test.ts docs/development/p9-e-feedback-learning.md
 git commit -m "docs: complete P9-E feedback learning release guidance"
 ```
 
-- [ ] **Step 8: Open/update P9-E Draft PR and require exact-head CI**
+- [ ] **Step 8: Separate Draft PR and exact-head CI**
 
-Create a separate Draft PR for `feat/p9-e-feedback-learning`. Do not retarget or modify PR #158.
+Create a separate Draft PR for `feat/p9-e-feedback-learning`. Never retarget/modify PR #158.
 
-The exact P9-E PR head must pass GitHub Actions:
+Exact P9-E PR head requires:
 
 ```text
 verify = success
@@ -1210,7 +1249,7 @@ e2e = success
 production-audit = success
 ```
 
-Within `verify`, require:
+Within verify:
 
 ```text
 Prisma validate = success
@@ -1221,34 +1260,33 @@ Full Vitest = success
 Build = success
 ```
 
-Do not mark the P9-E PR Ready, merge it, or deploy it without later separate authorization.
+Do not mark Ready, merge, or deploy without later separate authorization.
 
 ---
 
 ## Release Rejection Conditions
 
-Reject P9-E completion if the final diff introduces any of the following:
-
-- any mutation of existing P9-D experiment/observation rows;
-- any mutation of existing `OPTIMIZATION_PLAN_V1` rows;
-- any non-zero V1 `historicalRankAdjustment`;
-- any P7 score/formula/evidence/lifecycle mutation;
-- any P8 risk/approval/execution/verification/rollback mutation;
-- any P9-C autopilot policy/kill-switch/quota mutation;
-- feedback from non-terminal experiment windows;
-- more than one feedback sample per experiment;
-- conversion of INCONCLUSIVE/UNKNOWN/insufficient/contaminated/missing facts into zero or negative samples;
-- cross-project or configured-market profile pooling;
-- runtime DeepSeek/provider/Search/Visibility/Git/deployment calls from `optimization-feedback`;
-- AI output authority over historical feedback;
-- V2 AI completion reading a newer profile than the one frozen at task creation;
-- historical ranking displacement over 10 without deterministic historical-zero fallback;
-- public feedback POST/PUT/PATCH/DELETE routes;
+Reject completion if final diff introduces:
+- mutation of P9-D experiment/observation;
+- mutation of existing V1 OptimizationPlan;
+- non-zero V1 historical adjustment;
+- P7 score/evidence/lifecycle mutation;
+- P8 risk/approval/execution/verification/rollback mutation;
+- P9-C autopilot policy/kill-switch/quota mutation;
+- feedback from non-terminal windows;
+- >1 sample per experiment;
+- INCONCLUSIVE/UNKNOWN/insufficient/contaminated/missing fact converted to numeric sample;
+- cross-project or configured-market pooling;
+- runtime DeepSeek/provider/Search/Visibility/Git/deployment calls from optimization-feedback;
+- AI authority over feedback or feedback exposed to ranking prompt;
+- V2 AI completion reading newer feedback than frozen task facts;
+- >10 historical rank displacement without historical-zero fallback;
+- public feedback mutation route;
 - unbounded reconciliation/history scan;
-- observability containing raw metrics, article/prompt/answer/provider payloads, credentials, or reasoning;
-- weakened CI/release gates;
-- merge/deployment activity without separate authorization.
+- raw metrics/content/prompts/answers/provider payload/credentials/reasoning in feedback observability;
+- weakened CI gates;
+- merge/deployment without separate authorization.
 
 ## Completion Definition
 
-P9-E implementation is complete only when Tasks 24-32 are checked off, the separate P9-E Draft PR exact head passes all three CI jobs, final diff authority review is clean, and `docs/development/p9-e-feedback-learning.md` matches the shipped contracts. Completion does not authorize Ready-for-review, merge, or deployment.
+P9-E implementation is complete only when Tasks 24-32 are checked off, the separate P9-E Draft PR exact head passes all three CI jobs, final authority review is clean, and `docs/development/p9-e-feedback-learning.md` matches shipped contracts. Completion does not authorize Ready-for-review, merge, or deployment.
