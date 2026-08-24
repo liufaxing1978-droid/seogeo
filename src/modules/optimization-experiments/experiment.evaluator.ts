@@ -6,6 +6,11 @@ import type {
   ExperimentWindowResolution
 } from './experiment.types.js';
 
+export const SEARCH_COUNT_RATE_RELATIVE_NEUTRAL_BAND = 0.05;
+export const CTR_ABSOLUTE_NEUTRAL_BAND = 0.005;
+export const POSITION_ABSOLUTE_NEUTRAL_BAND = 0.5;
+export const VISIBILITY_RATE_ABSOLUTE_NEUTRAL_BAND = 0.05;
+
 export type ExperimentEvaluationResult = {
   effectState: ExperimentEffectState;
   coverageState: ExperimentCoverageState;
@@ -54,16 +59,16 @@ function thresholdKind(comparison: ExperimentMetricComparison):
   | { kind: 'RELATIVE'; threshold: number }
   | null {
   if (comparison.family === 'VISIBILITY') {
-    return { kind: 'ABSOLUTE', threshold: 0.05 };
+    return { kind: 'ABSOLUTE', threshold: VISIBILITY_RATE_ABSOLUTE_NEUTRAL_BAND };
   }
   if (comparison.metricKey === 'CTR') {
-    return { kind: 'ABSOLUTE', threshold: 0.02 };
+    return { kind: 'ABSOLUTE', threshold: CTR_ABSOLUTE_NEUTRAL_BAND };
   }
   if (comparison.metricKey.includes('POSITION')) {
-    return { kind: 'ABSOLUTE', threshold: 1.0 };
+    return { kind: 'ABSOLUTE', threshold: POSITION_ABSOLUTE_NEUTRAL_BAND };
   }
   if (comparison.metricKey === 'CLICKS' || comparison.metricKey === 'IMPRESSIONS') {
-    return { kind: 'RELATIVE', threshold: 0.02 };
+    return { kind: 'RELATIVE', threshold: SEARCH_COUNT_RATE_RELATIVE_NEUTRAL_BAND };
   }
   return null;
 }
