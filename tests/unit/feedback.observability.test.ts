@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import {
-  FeedbackObservability,
-  type FeedbackObservabilityEvent
-} from '../../src/modules/optimization-feedback/feedback.observability.js';
+import { FeedbackObservability } from '../../src/modules/optimization-feedback/feedback.observability.js';
+
+type ObservedEvent = {
+  event: string;
+  projectId: string;
+  experimentId?: string;
+  observationId?: string;
+  feedbackEvidenceId?: string;
+  feedbackProfileId?: string;
+  recommendedActionType?: string;
+  marketCode?: string;
+  locale?: string;
+  sampleCount?: number;
+  historicalRankAdjustment?: number;
+  reasonCode?: string;
+};
 
 const ALLOWED_KEYS = new Set([
   'event',
@@ -21,8 +33,8 @@ const ALLOWED_KEYS = new Set([
 
 describe('P9-E feedback observability', () => {
   it('rebuilds an allowlisted payload and drops unsafe/raw fields', () => {
-    const events: FeedbackObservabilityEvent[] = [];
-    const observability = new FeedbackObservability((event) => events.push(event));
+    const events: ObservedEvent[] = [];
+    const observability = new FeedbackObservability((event: ObservedEvent) => events.push(event));
 
     observability.emit({
       event: 'optimization.feedback.accepted',
@@ -41,7 +53,7 @@ describe('P9-E feedback observability', () => {
       prompt: 'secret prompt',
       body: 'secret body',
       providerPayload: { token: 'secret' }
-    } as FeedbackObservabilityEvent & Record<string, unknown>);
+    } as ObservedEvent & Record<string, unknown>);
 
     expect(events).toHaveLength(1);
     expect(Object.keys(events[0]!).every((key) => ALLOWED_KEYS.has(key))).toBe(true);
@@ -62,8 +74,8 @@ describe('P9-E feedback observability', () => {
   });
 
   it('strips control whitespace and truncates every emitted string to 160 characters', () => {
-    const events: FeedbackObservabilityEvent[] = [];
-    const observability = new FeedbackObservability((event) => events.push(event));
+    const events: ObservedEvent[] = [];
+    const observability = new FeedbackObservability((event: ObservedEvent) => events.push(event));
     const dirty = `${'x'.repeat(170)}\r\n\tend`;
 
     observability.emit({
@@ -88,8 +100,8 @@ describe('P9-E feedback observability', () => {
   });
 
   it('supports only the bounded P9-E event catalog', () => {
-    const events: FeedbackObservabilityEvent[] = [];
-    const observability = new FeedbackObservability((event) => events.push(event));
+    const events: ObservedEvent[] = [];
+    const observability = new FeedbackObservability((event: ObservedEvent) => events.push(event));
 
     for (const event of [
       'optimization.feedback.accepted',
