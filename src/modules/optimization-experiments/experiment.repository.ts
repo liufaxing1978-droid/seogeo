@@ -12,11 +12,12 @@ import {
 import { prisma } from '../../db/prisma.js';
 import { canonicalJson } from './experiment.identity.js';
 import type { VisibilityExperimentScopeFact } from './experiment.scope.js';
-import type {
-  ExperimentContaminationState,
-  ExperimentCoverageState,
-  ExperimentEffectState,
-  ExperimentWindowType
+import {
+  OPTIMIZATION_EXPERIMENT_VERSION,
+  type ExperimentContaminationState,
+  type ExperimentCoverageState,
+  type ExperimentEffectState,
+  type ExperimentWindowType
 } from './experiment.types.js';
 
 export type CreateExperimentInput = {
@@ -175,6 +176,42 @@ function sameDate(left: Date, right: Date): boolean {
   return left.getTime() === right.getTime();
 }
 
+const experimentWindowDays: Readonly<Record<ExperimentWindowType, number>> = {
+  '7D': 7,
+  '14D': 14,
+  '28D': 28,
+  '56D': 56
+};
+
+function parseFrozenSchedule(value: Prisma.JsonValue): readonly {
+  windowType: ExperimentWindowType;
+  windowDays: number;
+}[] {
+  if (!Array.isArray(value)) throw new Error('EXPERIMENT_FROZEN_SCHEDULE_INVALID');
+  const seen = new Set<ExperimentWindowType>();
+  return value.map((item) => {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error('EXPERIMENT_FROZEN_SCHEDULE_INVALID');
+    }
+    const windowType = (item as Record<string, unknown>).windowType;
+    const windowDays = (item as Record<string, unknown>).windowDays;
+    if (
+      typeof windowType !== 'string'
+      || !(windowType in experimentWindowDays)
+      || typeof windowDays !== 'number'
+      || experimentWindowDays[windowType as ExperimentWindowType] !== windowDays
+      || seen.has(windowType as ExperimentWindowType)
+    ) {
+      throw new Error('EXPERIMENT_FROZEN_SCHEDULE_INVALID');
+    }
+    seen.add(windowType as ExperimentWindowType);
+    return {
+      windowType: windowType as ExperimentWindowType,
+      windowDays
+    };
+  });
+}
+
 function assertExperimentIdentity(
   existing: OptimizationExperiment,
   input: CreateExperimentInput
@@ -231,6 +268,82 @@ function assertObservationIdentity(
 
 export class OptimizationExperimentRepository {
   constructor(private readonly db: ExperimentDb = prisma) {}
+
+  async listVerifiedP9ExecutionsWithoutExperiment(input: {
+    limit: number;
+  }): Promise<readonly { publicationExecutionId: string; projectId: string }[]> {
+    const rows = await this.db.publicationExecution.findMany({
+      where: {
+        status: 'VERIFIED',
+        plan: {
+          is: {
+            proposal: {
+              is: {
+                sourceType: 'P9_OPTIMIZATION_PLAN',
+                sourceReferenceId: { not: null }
+              }
+            }
+          }
+        },
+        verifications: {
+          some: {
+            status: 'VERIFIED',
+            observedAt: { not: null },
+            observedUrl: { not: null }
+          }
+        },
+        optimizationExperiments: {
+          none: { experimentVersion: OPTIMIZATION_EXPERIMENT_VERSION }
+        }
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: input.limit,
+      select: { id: true, projectId: true }
+    });
+    return rows.map((row) => ({
+      publicationExecutionId: row.id,
+      projectId: row.projectId
+    }));
+  }
+
+  async listDueExperimentWindows(input: {
+    now: Date;
+    limit: number;
+  }): Promise<readonly {
+    experimentId: string;
+    projectId: string;
+    windowType: ExperimentWindowType;
+  }[]> {
+    const experiments = await this.db.optimizationExperiment.findMany({
+      where: {
+        experimentVersion: OPTIMIZATION_EXPERIMENT_VERSION,
+        verifiedAnchorAt: { lte: input.now }
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: input.limit,
+      select: {
+        id: true,
+        projectId: true,
+        verifiedAnchorAt: true,
+        observationScheduleJson: true
+      }
+    });
+
+    return experiments.flatMap((experiment) => {
+      const schedule = parseFrozenSchedule(experiment.observationScheduleJson);
+      return schedule.flatMap((window) => {
+        const dueAt = new Date(
+          experiment.verifiedAnchorAt.getTime() + window.windowDays * 24 * 60 * 60 * 1000
+        );
+        if (dueAt.getTime() > input.now.getTime()) return [];
+        return [{
+          experimentId: experiment.id,
+          projectId: experiment.projectId,
+          windowType: window.windowType
+        }];
+      });
+    });
+  }
 
   async listVisibilityScopeFacts(input: {
     projectId: string;
