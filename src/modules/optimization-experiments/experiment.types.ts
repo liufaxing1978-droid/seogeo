@@ -51,6 +51,10 @@ export type ExperimentMetricComparison = {
   baselineValue: number | null;
   observedValue: number | null;
   baselineZeroIsExplicit: boolean;
+  baselineNumerator?: number;
+  baselineDenominator?: number;
+  observedNumerator?: number;
+  observedDenominator?: number;
   baselineSourceRefs: readonly string[];
   observedSourceRefs: readonly string[];
   reasonCodes: readonly string[];
