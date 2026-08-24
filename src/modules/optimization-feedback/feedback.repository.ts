@@ -12,7 +12,15 @@ import {
   type RecommendedActionType
 } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
-import { OPTIMIZATION_FEEDBACK_PROFILE_VERSION } from './feedback.types.js';
+import {
+  buildFeedbackProfileIdentity,
+  buildFeedbackScopeKey
+} from './feedback.identity.js';
+import {
+  OPTIMIZATION_FEEDBACK_PROFILE_VERSION,
+  OPTIMIZATION_FEEDBACK_WINDOW_LIMIT,
+  type FeedbackMarketScopeMode
+} from './feedback.types.js';
 
 export type CreateFeedbackEvidenceInput = {
   projectId: string;
@@ -278,6 +286,25 @@ function terminalSchedule(value: Prisma.JsonValue): { windowType: string; window
   return terminal;
 }
 
+function validFeedbackScopeMode(input: FeedbackScopeLookup): FeedbackMarketScopeMode | null {
+  if (
+    input.marketScopeMode === 'CONFIGURED_MARKET'
+    && input.marketCode !== null
+    && input.locale !== null
+    && input.locale.trim().length > 0
+  ) {
+    return 'CONFIGURED_MARKET';
+  }
+  if (
+    input.marketScopeMode === 'UNCONFIGURED_LEGACY'
+    && input.marketCode === null
+    && input.locale === null
+  ) {
+    return 'UNCONFIGURED_LEGACY';
+  }
+  return null;
+}
+
 export class OptimizationFeedbackRepository {
   constructor(private readonly db: FeedbackDb = prisma) {}
 
@@ -469,20 +496,39 @@ export class OptimizationFeedbackRepository {
     }
   }
 
-  findLatestProfileForScope(input: FeedbackScopeLookup): Promise<OptimizationFeedbackProfile | null> {
+  async findLatestProfileForScope(input: FeedbackScopeLookup): Promise<OptimizationFeedbackProfile | null> {
+    const marketScopeMode = validFeedbackScopeMode(input);
+    if (!marketScopeMode) return null;
+
+    const scopeKey = buildFeedbackScopeKey({
+      projectId: input.projectId,
+      marketScopeMode,
+      marketCode: input.marketCode,
+      locale: input.locale,
+      recommendedActionType: input.recommendedActionType
+    });
+    const latestEvidence = await this.db.optimizationFeedbackEvidence.findMany({
+      where: { projectId: input.projectId, scopeKey },
+      orderBy: [{ inputCutoffAt: 'desc' }, { observationId: 'desc' }],
+      take: OPTIMIZATION_FEEDBACK_WINDOW_LIMIT,
+      select: { id: true }
+    });
+    if (latestEvidence.length === 0) return null;
+
+    const orderedEvidenceIds = latestEvidence.map((evidence) => evidence.id).reverse();
+    const { inputFingerprint } = buildFeedbackProfileIdentity({
+      projectId: input.projectId,
+      scopeKey,
+      orderedEvidenceIds
+    });
+
     return this.db.optimizationFeedbackProfile.findFirst({
       where: {
         projectId: input.projectId,
         feedbackProfileVersion: OPTIMIZATION_FEEDBACK_PROFILE_VERSION,
-        marketScopeMode: input.marketScopeMode,
-        marketCode: input.marketCode,
-        locale: input.locale,
-        recommendedActionType: input.recommendedActionType
-      },
-      orderBy: [
-        { newestEvidenceCutoffAt: 'desc' },
-        { inputFingerprint: 'desc' }
-      ]
+        scopeKey,
+        inputFingerprint
+      }
     });
   }
 
