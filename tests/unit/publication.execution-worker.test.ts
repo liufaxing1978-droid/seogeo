@@ -240,7 +240,8 @@ describe('P8-A execution worker fail-before-side-effect', () => {
   it('rejects stale stored approval before resolving target state', async () => {
     const adapter = new FakeAdapter();
     const workerContext = context();
-    workerContext.approval.planHash = 'stale-plan-hash';
+    expect(workerContext.approval).not.toBeNull();
+    workerContext.approval!.planHash = 'stale-plan-hash';
     const { deps, transitions } = depsFor(workerContext, adapter);
 
     await expectCode(
