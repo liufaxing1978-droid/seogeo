@@ -48,6 +48,130 @@ async function createFixture(options: FixtureOptions = {}) {
       targetCountry: 'US'
     }
   });
+
+  const identity = await prisma.growthOpportunityIdentity.create({
+    data: {
+      projectId: project.id,
+      opportunityKey: `auth-identity-${suffix}`,
+      identityVersion: 'GROWTH_IDENTITY_V1',
+      identityType: 'NEW_CONTENT_OPPORTUNITY',
+      normalizedQuery: '六壬伏英舘文化源流',
+      canonicalPage: null,
+      identityPayload: { normalizedQuery: '六壬伏英舘文化源流' }
+    }
+  });
+  const growthSnapshot = await prisma.growthOpportunitySnapshot.create({
+    data: {
+      opportunityIdentityId: identity.id,
+      projectId: project.id,
+      snapshotVersion: 'GROWTH_SNAPSHOT_V1',
+      formulaVersion: 'GROWTH_FORMULA_V1',
+      currentWindowStart: new Date('2026-07-01T00:00:00.000Z'),
+      currentWindowEnd: new Date('2026-07-31T00:00:00.000Z'),
+      previousWindowStart: new Date('2026-06-01T00:00:00.000Z'),
+      previousWindowEnd: new Date('2026-06-30T00:00:00.000Z'),
+      dataCutoffAt: new Date('2026-08-01T00:00:00.000Z'),
+      primaryType: 'NEW_CONTENT_OPPORTUNITY',
+      secondaryTypes: [],
+      score: 82,
+      priority: 'HIGH',
+      scoreState: 'KNOWN',
+      evidenceQuality: 'COMPLETE',
+      evidenceCoverage: 100,
+      rankingEligible: true,
+      sourceProvenance: { provider: 'fixture' }
+    }
+  });
+  const growthEvidence = await prisma.growthOpportunityEvidence.create({
+    data: {
+      snapshotId: growthSnapshot.id,
+      projectId: project.id,
+      sourceModule: 'P5_CONTENT',
+      sourceType: 'FIXTURE_FACT',
+      sourceId: `auth-source-${suffix}`,
+      sourceFactVersion: 'FACT_V1',
+      ruleKey: 'new-content-gap',
+      rootCauseKey: 'content-gap',
+      evidenceState: 'PASS',
+      severity: 'MEDIUM',
+      textSummary: 'bounded authorization fixture evidence',
+      fingerprint: `auth-fingerprint-${suffix}`
+    }
+  });
+  const candidate = await prisma.optimizationCandidate.create({
+    data: {
+      projectId: project.id,
+      growthOpportunityIdentityId: identity.id,
+      growthSnapshotId: growthSnapshot.id,
+      candidateVersion: 'OPTIMIZATION_CANDIDATE_V1',
+      candidateKey: `p9cauth${suffix.replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)}`,
+      marketScopeMode: 'CONFIGURED_MARKET',
+      marketCode: 'GLOBAL',
+      locale: 'zh-CN',
+      opportunityType: 'NEW_CONTENT_OPPORTUNITY',
+      normalizedQuery: '六壬伏英舘文化源流',
+      canonicalPage: null,
+      growthScore: 82,
+      growthScoreState: 'KNOWN',
+      growthPriority: 'HIGH',
+      growthEvidenceQuality: 'COMPLETE',
+      growthEvidenceCoverage: 100,
+      growthRankingEligible: true,
+      growthLifecycleStatus: 'PLANNED',
+      sourceProvenance: { source: 'fixture' },
+      eligibilityState: 'ELIGIBLE',
+      eligibilityReasonCodes: []
+    }
+  });
+  const optimizationPlan = await prisma.optimizationPlan.create({
+    data: {
+      candidateId: candidate.id,
+      projectId: project.id,
+      planVersion: 'OPTIMIZATION_PLAN_V1',
+      recommendedActionType: 'CONTENT_CREATION',
+      sourceFactReferences: [
+        { type: 'GROWTH_OPPORTUNITY_IDENTITY', id: identity.id },
+        { type: 'GROWTH_OPPORTUNITY_SNAPSHOT', id: growthSnapshot.id },
+        { type: 'GROWTH_OPPORTUNITY_EVIDENCE', id: growthEvidence.id }
+      ],
+      deterministicRank: 10,
+      aiRankAdjustment: 0,
+      historicalRankAdjustment: 0,
+      finalRank: 10,
+      advisoryContext: {},
+      automationEligibility: true,
+      explanation: { summary: 'bounded authorization fixture plan' }
+    }
+  });
+  const run = await prisma.optimizationRun.create({
+    data: {
+      projectId: project.id,
+      runVersion: 'OPTIMIZATION_RUN_V1',
+      triggerType: 'EVENT',
+      triggerSource: 'GROWTH_MATERIALIZATION',
+      triggerKey: `auth-run-${suffix}`,
+      triggerPayload: { source: 'fixture' },
+      status: 'SUCCEEDED',
+      candidateCount: 1,
+      plannedCount: 1,
+      itemCount: 1,
+      completedCount: 1,
+      planningCompletedAt: new Date('2026-08-24T00:00:00.000Z'),
+      completedAt: new Date('2026-08-24T00:01:00.000Z')
+    }
+  });
+  const runItem = await prisma.optimizationRunItem.create({
+    data: {
+      runId: run.id,
+      projectId: project.id,
+      optimizationPlanId: optimizationPlan.id,
+      itemKey: `auth-item-${suffix}`,
+      currentStage: 'READY_FOR_POLICY',
+      status: 'COMPLETED',
+      completedAt: new Date('2026-08-24T00:01:00.000Z')
+    }
+  });
+
   const site = await prisma.publicationSite.create({
     data: {
       projectId: project.id,
@@ -78,8 +202,8 @@ async function createFixture(options: FixtureOptions = {}) {
       sourceType: 'P9_OPTIMIZATION_PLAN',
       reason: 'authorization fixture',
       createdBy: 'CONTROLLED_AUTOPILOT',
-      sourceReferenceId: randomUUID(),
-      sourceSnapshotId: randomUUID()
+      sourceReferenceId: optimizationPlan.id,
+      sourceSnapshotId: runItem.id
     }
   });
   const draft = await prisma.contentDraft.create({
@@ -211,9 +335,9 @@ async function createFixture(options: FixtureOptions = {}) {
   const decision = await prisma.optimizationAutopilotDecision.create({
     data: {
       projectId: project.id,
-      runId: randomUUID(),
-      runItemId: randomUUID(),
-      optimizationPlanId: randomUUID(),
+      runId: run.id,
+      runItemId: runItem.id,
+      optimizationPlanId: optimizationPlan.id,
       policyId: policy.id,
       policyVersion: 'CONTROLLED_AUTOPILOT_POLICY_V1',
       policySnapshot,
@@ -249,6 +373,13 @@ async function createFixture(options: FixtureOptions = {}) {
 
   return {
     project,
+    identity,
+    growthSnapshot,
+    growthEvidence,
+    candidate,
+    optimizationPlan,
+    run,
+    runItem,
     site,
     channel,
     proposal,
