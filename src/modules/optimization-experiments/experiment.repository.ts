@@ -102,6 +102,47 @@ export type VerifiedExperimentStartContext = {
   };
 };
 
+export type ExperimentStartAuthorityInspection = {
+  project: { id: string; planLevel: PlanLevel };
+  proposal: {
+    id: string;
+    projectId: string;
+    sourceType: PublicationProposalSourceType;
+    sourceReferenceId: string | null;
+  };
+  publicationPlan: {
+    id: string;
+    projectId: string;
+    targetPublicUrl: string;
+  };
+  execution: {
+    id: string;
+    projectId: string;
+    status: PublicationExecutionStatus;
+  };
+  verification: {
+    id: string;
+    projectId: string;
+    status: PublicationVerificationStatus;
+    observedUrl: string | null;
+    observedAt: Date | null;
+  } | null;
+};
+
+export type ExperimentStartReasonCode =
+  | 'EXPERIMENT_FEATURE_NOT_AVAILABLE'
+  | 'EXPERIMENT_EXECUTION_NOT_VERIFIED'
+  | 'EXPERIMENT_VERIFICATION_NOT_VERIFIED'
+  | 'EXPERIMENT_P9_SOURCE_MISMATCH'
+  | 'EXPERIMENT_VERIFICATION_URL_MISMATCH'
+  | 'EXPERIMENT_INTERVENTION_NOT_SUPPORTED'
+  | 'EXPERIMENT_MEASUREMENT_SCOPE_UNRESOLVED';
+
+export type ExperimentStartResult =
+  | { kind: 'STARTED'; experiment: OptimizationExperiment }
+  | { kind: 'EXISTING'; experiment: OptimizationExperiment }
+  | { kind: 'DEFERRED'; reasonCode: ExperimentStartReasonCode };
+
 type ExperimentDb = Pick<
   Prisma.TransactionClient,
   | 'optimizationExperiment'
@@ -186,6 +227,101 @@ function assertObservationIdentity(
 
 export class OptimizationExperimentRepository {
   constructor(private readonly db: ExperimentDb = prisma) {}
+
+  async inspectStartAuthority(input: {
+    projectId: string;
+    publicationExecutionId: string;
+  }): Promise<ExperimentStartAuthorityInspection | null> {
+    const execution = await this.db.publicationExecution.findFirst({
+      where: {
+        id: input.publicationExecutionId,
+        projectId: input.projectId
+      },
+      select: {
+        id: true,
+        projectId: true,
+        status: true,
+        plan: {
+          select: {
+            id: true,
+            projectId: true,
+            targetPublicUrl: true,
+            proposal: {
+              select: {
+                id: true,
+                projectId: true,
+                sourceType: true,
+                sourceReferenceId: true
+              }
+            }
+          }
+        }
+      }
+    });
+    if (!execution) return null;
+
+    const project = await this.db.project.findUnique({
+      where: { id: input.projectId },
+      select: { id: true, planLevel: true }
+    });
+    if (!project) return null;
+
+    const exactVerified = await this.db.publicationVerification.findFirst({
+      where: {
+        projectId: input.projectId,
+        executionId: execution.id,
+        status: 'VERIFIED',
+        observedAt: { not: null },
+        observedUrl: { not: null }
+      },
+      orderBy: [
+        { observedAt: 'asc' },
+        { createdAt: 'asc' },
+        { id: 'asc' }
+      ],
+      select: {
+        id: true,
+        projectId: true,
+        status: true,
+        observedUrl: true,
+        observedAt: true
+      }
+    });
+
+    const verification = exactVerified ?? await this.db.publicationVerification.findFirst({
+      where: {
+        projectId: input.projectId,
+        executionId: execution.id
+      },
+      orderBy: [
+        { createdAt: 'asc' },
+        { id: 'asc' }
+      ],
+      select: {
+        id: true,
+        projectId: true,
+        status: true,
+        observedUrl: true,
+        observedAt: true
+      }
+    });
+
+    return {
+      project,
+      proposal: execution.plan.proposal,
+      publicationPlan: {
+        id: execution.plan.id,
+        projectId: execution.plan.projectId,
+        targetPublicUrl: execution.plan.targetPublicUrl
+      },
+      execution: {
+        id: execution.id,
+        projectId: execution.projectId,
+        status: execution.status
+      },
+      verification
+    };
+  }
 
   async loadVerifiedStartContext(input: {
     projectId: string;
@@ -295,7 +431,6 @@ export class OptimizationExperimentRepository {
         sourceFactReferences: optimizationPlan.sourceFactReferences,
         candidate: {
           ...optimizationPlan.candidate,
-          marketScopeMode: optimizationPlan.candidate.marketScopeMode,
           sourceProvenance: growthSnapshot.sourceProvenance
         }
       },
@@ -318,6 +453,22 @@ export class OptimizationExperimentRepository {
         observedAt: verification.observedAt
       }
     };
+  }
+
+  async findExperimentForStart(input: {
+    optimizationPlanId: string;
+    publicationExecutionId: string;
+    experimentVersion: string;
+  }): Promise<OptimizationExperiment | null> {
+    return this.db.optimizationExperiment.findUnique({
+      where: {
+        optimizationPlanId_publicationExecutionId_experimentVersion: {
+          optimizationPlanId: input.optimizationPlanId,
+          publicationExecutionId: input.publicationExecutionId,
+          experimentVersion: input.experimentVersion
+        }
+      }
+    });
   }
 
   async createOrGetExperiment(input: CreateExperimentInput): Promise<OptimizationExperiment> {
