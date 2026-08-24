@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 import { requireFeature } from '../../auth/require-feature.js';
 import { NotFoundError } from '../../core/errors.js';
@@ -15,6 +15,15 @@ const paginationSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).max(100_000).default(0)
 }).strict();
+
+const validateProjectId: RequestHandler = (req, _res, next) => {
+  try {
+    projectIdSchema.parse(req.params.projectId);
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
 
 function createDefaultOptimizationExperimentApi(): OptimizationExperimentApiPort {
   return {
@@ -119,6 +128,7 @@ export function createOptimizationExperimentRoutes(
 
   router.get(
     '/projects/:projectId/optimization/experiments',
+    validateProjectId,
     requireFeature('OPTIMIZATION_EXPERIMENTS'),
     async (req, res, next) => {
       try {
@@ -134,6 +144,7 @@ export function createOptimizationExperimentRoutes(
 
   router.get(
     '/projects/:projectId/optimization/experiments/:experimentId',
+    validateProjectId,
     requireFeature('OPTIMIZATION_EXPERIMENTS'),
     async (req, res, next) => {
       try {
