@@ -354,6 +354,7 @@ model PublicationExecution {
   events                  PublicationExecutionEvent[]
   verifications           PublicationVerification[]
   rollbackProposals       PublicationRollbackProposal[]
+  optimizationExperiments OptimizationExperiment[]
 
   @@index([projectId, createdAt], map: "PublicationExecution_project_created_idx")
   @@index([planId, status], map: "PublicationExecution_plan_status_idx")
@@ -395,7 +396,8 @@ model PublicationVerification {
   reasonCode           String?
   createdAt            DateTime                      @default(now())
 
-  execution PublicationExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  execution               PublicationExecution     @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  optimizationExperiments OptimizationExperiment[]
 
   @@index([projectId, createdAt], map: "PublicationVerification_project_created_idx")
   @@index([executionId, createdAt], map: "PublicationVerification_execution_created_idx")
