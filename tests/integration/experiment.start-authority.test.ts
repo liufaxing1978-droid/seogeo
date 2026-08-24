@@ -21,7 +21,15 @@ async function withRollback(
   }
 }
 
-async function seedVerifiedStartGraph(tx: Prisma.TransactionClient) {
+type SeedVerifiedStartGraphOptions = {
+  recommendedActionType?: 'SERP_SNIPPET_OPTIMIZATION' | 'TECHNICAL_SEO_REMEDIATION';
+  growthProvenance?: Prisma.InputJsonValue;
+};
+
+async function seedVerifiedStartGraph(
+  tx: Prisma.TransactionClient,
+  options: SeedVerifiedStartGraphOptions = {}
+) {
   const suffix = randomUUID();
   const targetUrl = `https://${suffix}.example.com/page`;
   const project = await tx.project.create({
@@ -53,7 +61,7 @@ async function seedVerifiedStartGraph(tx: Prisma.TransactionClient) {
     }
   });
 
-  const growthProvenance = {
+  const growthProvenance = options.growthProvenance ?? {
     version: 'GROWTH_SEARCH_PROVENANCE_V1',
     mode: 'CONFIGURED_MARKET',
     scoringLane: {
@@ -63,7 +71,7 @@ async function seedVerifiedStartGraph(tx: Prisma.TransactionClient) {
       ]
     },
     corroboratingLanes: []
-  } as const;
+  };
 
   const growthSnapshot = await tx.growthOpportunitySnapshot.create({
     data: {
@@ -122,7 +130,7 @@ async function seedVerifiedStartGraph(tx: Prisma.TransactionClient) {
       candidateId: candidate.id,
       projectId: project.id,
       planVersion: 'OPTIMIZATION_PLAN_V1',
-      recommendedActionType: 'SERP_SNIPPET_OPTIMIZATION',
+      recommendedActionType: options.recommendedActionType ?? 'SERP_SNIPPET_OPTIMIZATION',
       sourceFactReferences: ['source:one'],
       deterministicRank: 1,
       aiRankAdjustment: 0,
@@ -413,20 +421,16 @@ describe('P9-D experiment start service', () => {
         publicationExecutionId: urlFixture.execution.id
       })).resolves.toEqual({ kind: 'DEFERRED', reasonCode: 'EXPERIMENT_VERIFICATION_URL_MISMATCH' });
 
-      const unsupportedFixture = await seedVerifiedStartGraph(tx);
-      await tx.optimizationPlan.update({
-        where: { id: unsupportedFixture.optimizationPlan.id },
-        data: { recommendedActionType: 'TECHNICAL_SEO_REMEDIATION' }
+      const unsupportedFixture = await seedVerifiedStartGraph(tx, {
+        recommendedActionType: 'TECHNICAL_SEO_REMEDIATION'
       });
       await expect(serviceFor(tx).startFromVerifiedExecution({
         projectId: unsupportedFixture.project.id,
         publicationExecutionId: unsupportedFixture.execution.id
       })).resolves.toEqual({ kind: 'DEFERRED', reasonCode: 'EXPERIMENT_INTERVENTION_NOT_SUPPORTED' });
 
-      const scopeFixture = await seedVerifiedStartGraph(tx);
-      await tx.growthOpportunitySnapshot.update({
-        where: { id: scopeFixture.growthSnapshot.id },
-        data: { sourceProvenance: { version: 'LEGACY' } }
+      const scopeFixture = await seedVerifiedStartGraph(tx, {
+        growthProvenance: { version: 'LEGACY' }
       });
       await expect(serviceFor(tx).startFromVerifiedExecution({
         projectId: scopeFixture.project.id,
