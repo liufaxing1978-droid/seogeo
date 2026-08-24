@@ -475,7 +475,7 @@ export class OptimizationExperimentService {
       evaluatorVersion: OPTIMIZATION_EXPERIMENT_EVALUATOR_VERSION
     });
 
-    return this.repository.createOrGetObservation({
+    const observation = await this.repository.createOrGetObservation({
       projectId: input.projectId,
       experimentId: experiment.id,
       observationVersion: OPTIMIZATION_EXPERIMENT_OBSERVATION_VERSION,
@@ -500,5 +500,30 @@ export class OptimizationExperimentService {
       reasonCodes: asInputJson(evaluation.reasonCodes),
       evaluatorVersion: OPTIMIZATION_EXPERIMENT_EVALUATOR_VERSION
     });
+
+    const terminalReasonCode = evaluation.reasonCodes.at(-1);
+    this.observability.emit({
+      event: evaluation.effectState === 'INCONCLUSIVE'
+        ? 'optimization.experiment.inconclusive'
+        : 'optimization.experiment.evaluated',
+      projectId: input.projectId,
+      experimentId: experiment.id,
+      observationId: observation.id,
+      windowType: window.windowType,
+      effectState: evaluation.effectState,
+      coverageState: evaluation.coverageState,
+      contaminationState: evaluation.contaminationState,
+      ...(evaluation.effectState === 'INCONCLUSIVE' && terminalReasonCode
+        ? { reasonCode: terminalReasonCode }
+        : {}),
+      ...(scope.kind === 'SEARCH'
+        ? {
+          marketCode: scope.marketCode,
+          provider: scope.provider
+        }
+        : {})
+    });
+
+    return observation;
   }
 }
