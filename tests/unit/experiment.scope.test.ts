@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   normalizeExperimentHttpUrl,
-  resolveExperimentMeasurementScope
+  resolveExperimentMeasurementScope,
+  type ExperimentScopeCandidate
 } from '../../src/modules/optimization-experiments/experiment.scope.js';
 
 const targetUrl = 'https://example.com/page';
 
-function candidate(overrides: Record<string, unknown> = {}) {
+function candidate(overrides: Partial<ExperimentScopeCandidate> = {}): ExperimentScopeCandidate {
   return {
     id: 'candidate-1',
     projectId: 'project-1',
@@ -111,7 +112,7 @@ describe('P9-D experiment measurement scope', () => {
       projectId: 'project-1',
       interventionType: 'SERP_SNIPPET_OPTIMIZATION',
       targetUrl,
-      candidate: candidate(overrides as Record<string, unknown>)
+      candidate: candidate(overrides as Partial<ExperimentScopeCandidate>)
     })).resolves.toBeNull();
   });
 
