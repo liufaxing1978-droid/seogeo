@@ -74,7 +74,7 @@ describe('P9-D evaluateWindow orchestration', () => {
         sourceCutoffAt: baseline
           ? new Date('2026-07-31T23:00:00.000Z')
           : sourceCutoffAt,
-        clicks: baseline ? 10 : 12,
+        clicks: baseline ? 10 : 15,
         impressions: baseline ? 100 : 120,
         position: 5
       });
