@@ -17,7 +17,12 @@ import {
   canonicalJson
 } from './experiment.identity.js';
 import {
+  experimentObservability,
+  type ExperimentObservabilityEvent
+} from './experiment.observability.js';
+import {
   OptimizationExperimentRepository,
+  type ExperimentStartReasonCode,
   type ExperimentStartResult
 } from './experiment.repository.js';
 import { scheduleForIntervention } from './experiment.schedule.js';
@@ -43,6 +48,10 @@ import {
 } from './experiment.visibility-source.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+type ExperimentObservabilityPort = {
+  emit(event: ExperimentObservabilityEvent): void;
+};
 
 function asInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(canonicalJson(value)) as Prisma.InputJsonValue;
@@ -224,10 +233,12 @@ export class OptimizationExperimentService {
   private readonly visibilityMetricSource: VisibilityExperimentSourcePort;
   private searchSource: Pick<SearchFactRepository, 'listCompletedFacts'>;
   private now: () => Date;
+  private observability: ExperimentObservabilityPort;
 
   constructor(
     private readonly repository = new OptimizationExperimentRepository(),
-    private readonly visibilitySource?: VisibilityExperimentScopeSourcePort
+    private readonly visibilitySource?: VisibilityExperimentScopeSourcePort,
+    observability: ExperimentObservabilityPort = experimentObservability
   ) {
     const defaultEvaluationSource = new PrismaExperimentEvaluationSource();
     this.evaluationSource = hasMethod(repository, 'findExperimentForEvaluation')
@@ -241,6 +252,20 @@ export class OptimizationExperimentService {
       : defaultEvaluationSource;
     this.searchSource = new SearchFactRepository(prisma);
     this.now = () => new Date();
+    this.observability = observability;
+  }
+
+  private deferredStart(
+    input: { projectId: string; publicationExecutionId: string },
+    reasonCode: ExperimentStartReasonCode
+  ): ExperimentStartResult {
+    this.observability.emit({
+      event: 'optimization.experiment.deferred',
+      projectId: input.projectId,
+      publicationExecutionId: input.publicationExecutionId,
+      reasonCode
+    });
+    return { kind: 'DEFERRED', reasonCode };
   }
 
   async startFromVerifiedExecution(input: {
@@ -249,14 +274,14 @@ export class OptimizationExperimentService {
   }): Promise<ExperimentStartResult> {
     const authority = await this.repository.inspectStartAuthority(input);
     if (!authority) {
-      return { kind: 'DEFERRED', reasonCode: 'EXPERIMENT_P9_SOURCE_MISMATCH' };
+      return this.deferredStart(input, 'EXPERIMENT_P9_SOURCE_MISMATCH');
     }
 
     if (!hasFeature(authority.project.planLevel, 'OPTIMIZATION_EXPERIMENTS')) {
-      return { kind: 'DEFERRED', reasonCode: 'EXPERIMENT_FEATURE_NOT_AVAILABLE' };
+      return this.deferredStart(input, 'EXPERIMENT_FEATURE_NOT_AVAILABLE');
     }
     if (authority.execution.status !== 'VERIFIED') {
-      return { kind: 'DEFERRED', reasonCode: 'EXPERIMENT_EXECUTION_NOT_VERIFIED' };
+      return this.deferredStart(input, 'EXPERIMENT_EXECUTION_NOT_VERIFIED');
     }
     if (
       authority.verification === null
@@ -264,13 +289,13 @@ export class OptimizationExperimentService {
       || authority.verification.observedAt === null
       || authority.verification.observedUrl === null
     ) {
-      return { kind: 'DEFERRED', reasonCode: 'EXPERIMENT_VERIFICATION_NOT_VERIFIED' };
+      return this.deferredStart(input, 'EXPERIMENT_VERIFICATION_NOT_VERIFIED');
     }
     if (
       authority.proposal.sourceType !== 'P9_OPTIMIZATION_PLAN'
       || authority.proposal.sourceReferenceId === null
     ) {
-      return { kind: 'DEFERRED', reasonCode: 'EXPERIMENT_P9_SOURCE_MISMATCH' };
+      return this.deferredStart(input, 'EXPERIMENT_P9_SOURCE_MISMATCH');
     }
 
     let targetUrl: string;
@@ -279,10 +304,10 @@ export class OptimizationExperimentService {
       targetUrl = normalizeExperimentHttpUrl(authority.publicationPlan.targetPublicUrl);
       observedUrl = normalizeExperimentHttpUrl(authority.verification.observedUrl);
     } catch {
-      return { kind: 'DEFERRED', reasonCode: 'EXPERIMENT_VERIFICATION_URL_MISMATCH' };
+      return this.deferredStart(input, 'EXPERIMENT_VERIFICATION_URL_MISMATCH');
     }
     if (targetUrl !== observedUrl) {
-      return { kind: 'DEFERRED', reasonCode: 'EXPERIMENT_VERIFICATION_URL_MISMATCH' };
+      return this.deferredStart(input, 'EXPERIMENT_VERIFICATION_URL_MISMATCH');
     }
 
     const context = await this.repository.loadVerifiedStartContext(input);
@@ -291,12 +316,12 @@ export class OptimizationExperimentService {
       || context.proposal.sourceType !== 'P9_OPTIMIZATION_PLAN'
       || context.proposal.sourceReferenceId !== context.optimizationPlan.id
     ) {
-      return { kind: 'DEFERRED', reasonCode: 'EXPERIMENT_P9_SOURCE_MISMATCH' };
+      return this.deferredStart(input, 'EXPERIMENT_P9_SOURCE_MISMATCH');
     }
 
     const schedule = scheduleForIntervention(context.optimizationPlan.recommendedActionType);
     if (schedule === null) {
-      return { kind: 'DEFERRED', reasonCode: 'EXPERIMENT_INTERVENTION_NOT_SUPPORTED' };
+      return this.deferredStart(input, 'EXPERIMENT_INTERVENTION_NOT_SUPPORTED');
     }
 
     const measurementScope = await resolveExperimentMeasurementScope({
@@ -307,7 +332,7 @@ export class OptimizationExperimentService {
       visibilitySource: this.visibilitySource ?? this.repository
     });
     if (measurementScope === null) {
-      return { kind: 'DEFERRED', reasonCode: 'EXPERIMENT_MEASUREMENT_SCOPE_UNRESOLVED' };
+      return this.deferredStart(input, 'EXPERIMENT_MEASUREMENT_SCOPE_UNRESOLVED');
     }
 
     const expectedDirections = expectedDirectionsFor(
@@ -315,7 +340,7 @@ export class OptimizationExperimentService {
       measurementScope
     );
     if (expectedDirections === null) {
-      return { kind: 'DEFERRED', reasonCode: 'EXPERIMENT_MEASUREMENT_SCOPE_UNRESOLVED' };
+      return this.deferredStart(input, 'EXPERIMENT_MEASUREMENT_SCOPE_UNRESOLVED');
     }
 
     const experimentKey = buildExperimentKey({
@@ -356,9 +381,24 @@ export class OptimizationExperimentService {
       expectedDirectionJson: asInputJson(expectedDirections)
     });
 
-    return existing === null
-      ? { kind: 'STARTED', experiment }
-      : { kind: 'EXISTING', experiment };
+    if (existing === null) {
+      this.observability.emit({
+        event: 'optimization.experiment.started',
+        projectId: input.projectId,
+        optimizationPlanId: context.optimizationPlan.id,
+        publicationExecutionId: context.execution.id,
+        experimentId: experiment.id,
+        ...(context.optimizationPlan.candidate.marketCode
+          ? { marketCode: context.optimizationPlan.candidate.marketCode }
+          : {}),
+        ...(measurementScope.kind === 'SEARCH'
+          ? { provider: measurementScope.provider }
+          : {})
+      });
+      return { kind: 'STARTED', experiment };
+    }
+
+    return { kind: 'EXISTING', experiment };
   }
 
   async evaluateWindow(input: {
