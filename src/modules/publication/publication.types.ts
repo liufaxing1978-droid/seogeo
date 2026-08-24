@@ -137,6 +137,26 @@ export interface CreatePublicationApprovalInput {
   expiresAt?: Date | null;
 }
 
+export interface CreatePublicationAutomationAuthorizationInput {
+  projectId: string;
+  planId: string;
+  planVersion: number;
+  planHash: string;
+  contentVersion: number;
+  contentHash: string;
+  previewHash: string;
+  baseSha: string;
+  targetRepository: string;
+  targetBranch: string;
+  targetBlobHashes: Prisma.InputJsonValue;
+  authorizedRiskClass: 'LOW';
+  automationDecisionId: string;
+  automationPolicyVersion: string;
+  automationPolicyHash: string;
+  automationSource: 'CONTROLLED_AUTOPILOT';
+  expiresAt: Date;
+}
+
 export interface CreatePublicationExecutionInput {
   projectId: string;
   planId: string;
