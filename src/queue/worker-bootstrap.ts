@@ -100,6 +100,7 @@ const VISIBILITY_MONITORING_RECONCILE_EVERY_MS = 60 * 60 * 1000;
 export const OPTIMIZATION_PLANNING_WORKER_CONCURRENCY = 1;
 export const OPTIMIZATION_ORCHESTRATION_WORKER_CONCURRENCY = 2;
 export const OPTIMIZATION_AUTOPILOT_WORKER_CONCURRENCY = 2;
+export const OPTIMIZATION_EXPERIMENT_WORKER_CONCURRENCY = 2;
 export const OPTIMIZATION_DAILY_RECONCILE_EVERY_MS = 24 * 60 * 60 * 1000;
 export const OPTIMIZATION_DAILY_RECONCILE_SCHEDULER = {
   id: 'optimization-daily-reconcile',
@@ -113,6 +114,15 @@ export const OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_EVERY_MS = 24 * 60 * 60 * 10
 export const OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_SCHEDULER = {
   id: 'optimization-autopilot-daily-reconcile',
   repeat: { every: OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_EVERY_MS },
+  job: {
+    name: 'reconcile-daily',
+    data: { kind: 'RECONCILE_DAILY' as const }
+  }
+} as const;
+export const OPTIMIZATION_EXPERIMENT_DAILY_RECONCILE_EVERY_MS = 24 * 60 * 60 * 1000;
+export const OPTIMIZATION_EXPERIMENT_DAILY_RECONCILE_SCHEDULER = {
+  id: 'optimization-experiment-daily-reconcile',
+  repeat: { every: OPTIMIZATION_EXPERIMENT_DAILY_RECONCILE_EVERY_MS },
   job: {
     name: 'reconcile-daily',
     data: { kind: 'RECONCILE_DAILY' as const }
