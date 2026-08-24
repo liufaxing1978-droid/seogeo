@@ -71,7 +71,10 @@ export function calculateFeedbackProfile(
     rollingEffectBalance = (positiveCount - negativeCount) / sampleCount;
     const shrinkage = sampleCount / (sampleCount + 5);
     const raw = -10 * rollingEffectBalance * shrinkage;
-    historicalRankAdjustment = Math.max(-10, Math.min(10, Math.round(raw)));
+    const rounded = Math.round(raw);
+    historicalRankAdjustment = rounded === 0
+      ? 0
+      : Math.max(-10, Math.min(10, rounded));
   }
 
   const oldest = ordered[0]!;
