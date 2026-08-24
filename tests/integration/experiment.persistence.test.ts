@@ -182,10 +182,30 @@ async function seedAuthorityGraph(tx: Prisma.TransactionClient) {
     }
   });
 
+  const approval = await tx.publicationApproval.create({
+    data: {
+      projectId: project.id,
+      planId: publicationPlan.id,
+      planVersion: publicationPlan.version,
+      planHash: publicationPlan.planHash,
+      contentVersion: 1,
+      contentHash: 'c'.repeat(64),
+      previewHash: 'd'.repeat(64),
+      baseSha: publicationPlan.baseSha,
+      targetRepository: publicationPlan.targetRepository,
+      targetBranch: publicationPlan.targetBranch,
+      targetBlobHashes: {},
+      approverActorId: 'p9-d-test',
+      approvedRiskClass: 'LOW',
+      confirmedWarningCodes: []
+    }
+  });
+
   const execution = await tx.publicationExecution.create({
     data: {
       projectId: project.id,
       planId: publicationPlan.id,
+      approvalId: approval.id,
       executionKey: `execution:${suffix}`,
       status: 'VERIFIED'
     }
