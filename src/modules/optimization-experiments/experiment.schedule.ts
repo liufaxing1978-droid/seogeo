@@ -1,13 +1,12 @@
 import type { RecommendedActionType } from '@prisma/client';
+import type { ExperimentWindowType } from './experiment.types.js';
 
-export type ExperimentWindowType = '7D' | '14D' | '28D' | '56D';
-
-export type ExperimentScheduleItem = {
+export type ExperimentWindow = {
   windowType: ExperimentWindowType;
   windowDays: 7 | 14 | 28 | 56;
 };
 
-const schedules: Partial<Record<RecommendedActionType, readonly ExperimentScheduleItem[]>> = {
+const schedules: Partial<Record<RecommendedActionType, readonly ExperimentWindow[]>> = {
   SERP_SNIPPET_OPTIMIZATION: [
     { windowType: '7D', windowDays: 7 },
     { windowType: '14D', windowDays: 14 },
@@ -42,6 +41,6 @@ const schedules: Partial<Record<RecommendedActionType, readonly ExperimentSchedu
 
 export function scheduleForIntervention(
   action: RecommendedActionType
-): readonly ExperimentScheduleItem[] | null {
+): readonly ExperimentWindow[] | null {
   return schedules[action] ?? null;
 }
