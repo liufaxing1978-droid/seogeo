@@ -23,6 +23,7 @@
 - `INCONCLUSIVE`, `PARTIAL`, `INSUFFICIENT`, `UNKNOWN`, contamination, missing baseline, unsupported evaluator, missing/inconsistent P8 authority, or ambiguous scope produce no sample. They are never zero/negative samples.
 - Feedback scope is exact `(projectId, marketScopeMode, marketCode, locale, recommendedActionType)`. No project or configured-market pooling.
 - P9-E V1 rolling window is exactly 20 accepted experiments per scope. Fewer than 3 samples produces historical adjustment 0.
+- Current feedback profile is resolved from the exact current deterministic last-20 evidence identity; SHA-256 lexical order is never treated as recency.
 - Historical adjustment is deterministic, integer, clamped to `[-10,+10]`.
 - Existing `OPTIMIZATION_PLAN_V1` rows and V1 planner behavior remain unchanged; they continue to freeze `historicalRankAdjustment = 0`.
 - `OPTIMIZATION_PLAN_V2` is explicit opt-in. It may freeze a compatible latest feedback profile into a new immutable plan only.
@@ -529,6 +530,8 @@ Using transaction rollback fixtures, assert:
 - conflicting immutable payload fails `FEEDBACK_EVIDENCE_IDENTITY_COLLISION`;
 - second observation for same experiment cannot become a second evidence row;
 - profile retry is idempotent; conflict fails `FEEDBACK_PROFILE_IDENTITY_COLLISION`;
+- current-profile lookup derives the exact current fingerprint from persisted scope evidence rather than profile-row ordering;
+- invalid scope, no evidence, or a missing exact current profile snapshot fails closed;
 - update/delete on both feedback tables are rejected by DB triggers;
 - OptimizationPlan, experiment, observation, P8 execution/verification source rows remain unchanged;
 - two concurrent `withScopeLock` operations for one scope serialize rather than calculate overlapping profile snapshots concurrently.
@@ -553,14 +556,28 @@ Create-or-get sequence:
 
 No update/delete methods.
 
-`findLatestProfileForScope()` matches project + market mode + market + locale + action + exact profile version and orders:
+`findLatestProfileForScope()` does not infer “latest” from profile-row ordering or SHA lexical order. It:
 
-```ts
-orderBy: [
-  { newestEvidenceCutoffAt: 'desc' },
-  { inputFingerprint: 'desc' }
-]
-```
+1. validates exact scope:
+   - `CONFIGURED_MARKET` requires non-null `marketCode` and nonblank `locale`;
+   - `UNCONFIGURED_LEGACY` requires `marketCode = null` and `locale = null`;
+   - any other/ambiguous scope returns `null`;
+2. derives the exact `scopeKey` from project + market mode + market + locale + action;
+3. reads accepted evidence for `{ projectId, scopeKey }` ordered by:
+   - `inputCutoffAt DESC`;
+   - `observationId DESC`;
+4. takes exactly `OPTIMIZATION_FEEDBACK_WINDOW_LIMIT` rows (20 in V1);
+5. returns `null` when there is no evidence;
+6. reverses the selected evidence IDs back to the canonical chronological ASC order used by profile creation;
+7. recomputes the exact current `inputFingerprint` with `buildFeedbackProfileIdentity`;
+8. reads the immutable profile by exact:
+   - `projectId`;
+   - `feedbackProfileVersion`;
+   - `scopeKey`;
+   - `inputFingerprint`;
+9. returns `null` if the exact current immutable profile snapshot is missing.
+
+Never use `inputFingerprint DESC` as a recency proxy. SHA-256 lexical order has no temporal meaning, and this exact-identity lookup remains correct when the rolling window reaches 20 rows and multiple historical profiles share the same sample count/newest cutoff.
 
 `withScopeLock()` uses one PostgreSQL transaction and a transaction-scoped advisory lock derived from the 64-char SHA-256 `scopeKey`. Use a deterministic 64-bit integer derived from the first 16 hex characters and `pg_advisory_xact_lock`; create the callback repository bound to that transaction. This lock protects only P9-E evidence/profile materialization for the same scope and performs no source mutation.
 
@@ -1179,6 +1196,7 @@ Document:
 - exact reason codes including FEATURE_DISABLED and P8_AUTHORITY_MISSING;
 - scope isolation;
 - rolling 20/minimum 3/formula/[-10,+10];
+- exact current-profile lookup from persisted last-20 evidence identity, never hash lexical order;
 - scope serialization/concurrency behavior;
 - V1 immutable/unchanged and V2 opt-in;
 - AI ±2 + feedback-hidden prompt projection;
@@ -1280,6 +1298,7 @@ Reject completion if final diff introduces:
 - runtime DeepSeek/provider/Search/Visibility/Git/deployment calls from optimization-feedback;
 - AI authority over feedback or feedback exposed to ranking prompt;
 - V2 AI completion reading newer feedback than frozen task facts;
+- profile selection that treats SHA-256 lexical order as recency instead of exact current evidence identity;
 - >10 historical rank displacement without historical-zero fallback;
 - public feedback mutation route;
 - unbounded reconciliation/history scan;
