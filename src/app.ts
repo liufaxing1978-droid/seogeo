@@ -28,6 +28,7 @@ import {
   createOptimizationExperimentRoutes,
   type OptimizationExperimentApiPort
 } from './modules/optimization-experiments/experiment.routes.js';
+import { optimizationExperimentWebRoutes } from './modules/optimization-experiments/experiment.web.routes.js';
 import {
   createOptimizationOrchestrationRoutes,
   type OptimizationOrchestrationApiPort
@@ -120,6 +121,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/', visibilityHistoryWebRoutes);
   app.use('/', searchConsoleWebRoutes);
   app.use('/', createGrowthWebRoutes(options.growthApiRepository));
+  app.use('/', optimizationExperimentWebRoutes);
   app.use('/', webRoutes);
   app.use(errorHandler);
   return app;
