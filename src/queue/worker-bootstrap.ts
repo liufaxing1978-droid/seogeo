@@ -45,7 +45,9 @@ import { optimizationService } from '../modules/optimization/optimization.servic
 import { projectRepository } from '../modules/projects/project.repository.js';
 import {
   PUBLICATION_EXECUTION_QUEUE_NAME,
-  type PublicationExecutionJobData
+  PublicationExecutionQueue,
+  type PublicationExecutionJobData,
+  type PublicationExecutionQueuePort
 } from '../modules/publication/publication-execution.queue.js';
 import {
   PUBLICATION_EXECUTION_WORKER_CONCURRENCY,
@@ -116,6 +118,14 @@ export const OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_SCHEDULER = {
     data: { kind: 'RECONCILE_DAILY' as const }
   }
 } as const;
+
+export function buildOptimizationAutopilotRuntimeDeps(input: {
+  repository: OptimizationAutopilotRepository;
+  queue: Pick<OptimizationAutopilotQueue, 'enqueueRunItem'>;
+  executionQueue: PublicationExecutionQueuePort;
+}) {
+  return input;
+}
 
 function publicationExecutionErrorCode(error: unknown): string {
   if (error && typeof error === 'object' && 'code' in error) {
@@ -236,10 +246,15 @@ export async function startWorkers() {
   const optimizationPlanningSupportQueue = new Queue(OPTIMIZATION_PLANNING_QUEUE_NAME, { connection });
   const optimizationOrchestrationSupportQueue = new Queue(OPTIMIZATION_ORCHESTRATION_QUEUE_NAME, { connection });
   const optimizationAutopilotSupportQueue = new Queue(OPTIMIZATION_AUTOPILOT_QUEUE_NAME, { connection });
+  const publicationExecutionSupportQueue = new Queue<PublicationExecutionJobData>(
+    PUBLICATION_EXECUTION_QUEUE_NAME,
+    { connection }
+  );
   supportQueues.push(
     optimizationPlanningSupportQueue,
     optimizationOrchestrationSupportQueue,
-    optimizationAutopilotSupportQueue
+    optimizationAutopilotSupportQueue,
+    publicationExecutionSupportQueue
   );
   const optimizationPlanningQueue = new OptimizationPlanningQueue(optimizationPlanningSupportQueue);
   const optimizationOrchestrationQueue = new OptimizationOrchestrationQueue(
@@ -248,7 +263,13 @@ export async function startWorkers() {
   const optimizationAutopilotQueue = new OptimizationAutopilotQueue(
     optimizationAutopilotSupportQueue
   );
+  const publicationExecutionQueue = new PublicationExecutionQueue(publicationExecutionSupportQueue);
   const optimizationAutopilotRepository = new OptimizationAutopilotRepository();
+  const optimizationAutopilotRuntimeDeps = buildOptimizationAutopilotRuntimeDeps({
+    repository: optimizationAutopilotRepository,
+    queue: optimizationAutopilotQueue,
+    executionQueue: publicationExecutionQueue
+  });
   const optimizationOrchestrationService = new OptimizationOrchestrationService({
     repository: optimizationOrchestrationRepository,
     planningQueue: optimizationPlanningQueue,
@@ -329,10 +350,7 @@ export async function startWorkers() {
         name,
         async (job) => processOptimizationAutopilotJob(
           { name: job.name, data: job.data },
-          {
-            repository: optimizationAutopilotRepository,
-            queue: optimizationAutopilotQueue
-          }
+          optimizationAutopilotRuntimeDeps
         ),
         { connection, concurrency: OPTIMIZATION_AUTOPILOT_WORKER_CONCURRENCY }
       );
