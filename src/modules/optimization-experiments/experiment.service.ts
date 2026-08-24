@@ -22,6 +22,8 @@ import {
 } from './experiment.observability.js';
 import {
   OptimizationExperimentRepository,
+  type CreateExperimentObservationInput,
+  type CreateOrGetExperimentObservationResult,
   type ExperimentStartReasonCode,
   type ExperimentStartResult
 } from './experiment.repository.js';
@@ -268,6 +270,23 @@ export class OptimizationExperimentService {
     return { kind: 'DEFERRED', reasonCode };
   }
 
+  private async persistObservation(
+    input: CreateExperimentObservationInput
+  ): Promise<CreateOrGetExperimentObservationResult> {
+    if (hasMethod(this.repository, 'createOrGetObservationWithOutcome')) {
+      return (this.repository as unknown as {
+        createOrGetObservationWithOutcome(
+          value: CreateExperimentObservationInput
+        ): Promise<CreateOrGetExperimentObservationResult>;
+      }).createOrGetObservationWithOutcome(input);
+    }
+
+    return {
+      kind: 'EXISTING',
+      observation: await this.repository.createOrGetObservation(input)
+    };
+  }
+
   async startFromVerifiedExecution(input: {
     projectId: string;
     publicationExecutionId: string;
@@ -475,7 +494,7 @@ export class OptimizationExperimentService {
       evaluatorVersion: OPTIMIZATION_EXPERIMENT_EVALUATOR_VERSION
     });
 
-    const observation = await this.repository.createOrGetObservation({
+    const persistence = await this.persistObservation({
       projectId: input.projectId,
       experimentId: experiment.id,
       observationVersion: OPTIMIZATION_EXPERIMENT_OBSERVATION_VERSION,
@@ -500,6 +519,17 @@ export class OptimizationExperimentService {
       reasonCodes: asInputJson(evaluation.reasonCodes),
       evaluatorVersion: OPTIMIZATION_EXPERIMENT_EVALUATOR_VERSION
     });
+    const observation = persistence.observation;
+
+    if (persistence.kind === 'CREATED') {
+      this.observability.emit({
+        event: 'optimization.experiment.observation.created',
+        projectId: input.projectId,
+        experimentId: experiment.id,
+        observationId: observation.id,
+        windowType: window.windowType
+      });
+    }
 
     const terminalReasonCode = evaluation.reasonCodes.at(-1);
     this.observability.emit({
