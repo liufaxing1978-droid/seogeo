@@ -57,24 +57,28 @@ function makeFact(input: {
   };
 }
 
+function completeWindowFacts(): SearchFactView[] {
+  return [
+    ...Array.from({ length: 7 }, (_, index) => makeFact({
+      day: index + 1,
+      snapshotId: `baseline-${index + 1}`,
+      clicks: 1,
+      impressions: 10,
+      position: 4
+    })),
+    ...Array.from({ length: 7 }, (_, index) => makeFact({
+      day: index + 8,
+      snapshotId: `observed-${index + 8}`,
+      clicks: 2,
+      impressions: 10,
+      position: 3
+    }))
+  ];
+}
+
 describe('P9-D search fact window resolver', () => {
   it('aggregates exact complete daily query-page facts across baseline and observed UTC windows', async () => {
-    const facts = [
-      ...Array.from({ length: 7 }, (_, index) => makeFact({
-        day: index + 1,
-        snapshotId: `baseline-${index + 1}`,
-        clicks: 1,
-        impressions: 10,
-        position: 4
-      })),
-      ...Array.from({ length: 7 }, (_, index) => makeFact({
-        day: index + 8,
-        snapshotId: `observed-${index + 8}`,
-        clicks: 2,
-        impressions: 10,
-        position: 3
-      }))
-    ];
+    const facts = completeWindowFacts();
     let receivedFilter: SearchFactReadFilter | null = null;
     const source = {
       async listCompletedFacts(filter: SearchFactReadFilter): Promise<SearchFactView[]> {
@@ -113,5 +117,33 @@ describe('P9-D search fact window resolver', () => {
     expect(result.baselineSearchSourceRefs).toHaveLength(7);
     expect(result.observedSearchSourceRefs).toHaveLength(7);
     expect(result.inputCutoffAt.toISOString()).toBe('2026-08-14T23:00:00.000Z');
+  });
+
+  it('includes the entire final UTC calendar day in the repository read window', async () => {
+    const facts = completeWindowFacts().map((fact) => (
+      fact.sourceDate.getUTCDate() === 14
+        ? { ...fact, sourceDate: new Date('2026-08-14T12:00:00.000Z') }
+        : fact
+    ));
+    const source = {
+      async listCompletedFacts(filter: SearchFactReadFilter): Promise<SearchFactView[]> {
+        return facts.filter((fact) => (
+          (!filter.sourceDateFrom || fact.sourceDate >= filter.sourceDateFrom)
+          && (!filter.sourceDateTo || fact.sourceDate <= filter.sourceDateTo)
+        ));
+      }
+    };
+
+    const result = await resolveSearchWindowComparison({
+      projectId: 'project-1',
+      scope,
+      verifiedAnchorAt: new Date('2026-08-08T15:30:00.000Z'),
+      windowType: '7D',
+      windowDays: 7,
+      source
+    });
+
+    expect(result.coverageState).toBe('SUFFICIENT');
+    expect(result.observedSearchSourceRefs).toHaveLength(7);
   });
 });
