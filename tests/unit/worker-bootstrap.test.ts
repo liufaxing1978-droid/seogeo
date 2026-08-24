@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { processDistributionPreparationJob } from '../../src/modules/distribution/distribution.worker.js';
 import { processGrowthMaterializationJob } from '../../src/modules/growth/growth.worker.js';
 import { processOptimizationAutopilotJob } from '../../src/modules/optimization-autopilot/autopilot.worker.js';
@@ -6,6 +6,7 @@ import {
   processOptimizationOrchestrationJob,
   processOptimizationPlanningJob
 } from '../../src/modules/optimization-orchestration/orchestration.worker.js';
+import { processOptimizationExperimentJob } from '../../src/modules/optimization-experiments/experiment.worker.js';
 import { PUBLICATION_EXECUTION_QUEUE_NAME } from '../../src/modules/publication/publication-execution.queue.js';
 import { processVisibilityJob } from '../../src/modules/visibility/visibility.worker.js';
 import { processVisibilityMetricsJob } from '../../src/modules/visibility/visibility-metrics.worker.js';
@@ -21,6 +22,7 @@ import {
   OPTIMIZATION_ORCHESTRATION_WORKER_CONCURRENCY,
   OPTIMIZATION_PLANNING_WORKER_CONCURRENCY,
   buildOptimizationAutopilotRuntimeDeps,
+  buildPublicationVerificationExperimentHandoff,
   workerDefinitionForQueue
 } from '../../src/queue/worker-bootstrap.js';
 
@@ -83,8 +85,22 @@ describe('worker bootstrap', () => {
     });
   });
 
-  it('reserves one P9-D experiment worker at concurrency 2', () => {
+  it('activates the P9-D experiment queue with the real processor at concurrency 2', () => {
     expect(OPTIMIZATION_EXPERIMENT_WORKER_CONCURRENCY).toBe(2);
+    expect(workerDefinitionForQueue('optimization-experiment-evaluation')).toMatchObject({
+      processor: processOptimizationExperimentJob,
+      concurrency: 2
+    });
+  });
+
+  it('wires P8 VERIFIED handoff only to the P9-D start queue producer', async () => {
+    const enqueueStart = vi.fn().mockResolvedValue(undefined);
+    const deps = buildPublicationVerificationExperimentHandoff({ enqueueStart });
+
+    await deps.onVerified({ executionId: 'execution-1', projectId: 'project-1' });
+
+    expect(enqueueStart).toHaveBeenCalledTimes(1);
+    expect(enqueueStart).toHaveBeenCalledWith('execution-1', 'project-1');
   });
 
   it('wires P9-C to the existing P8 site-mutation-execution producer instead of a second execution queue', () => {
