@@ -28,7 +28,7 @@ P8 PublicationVerification = VERIFIED
         ↓
 P9-D OptimizationExperiment
         ↓
-frozen baseline identity
+deterministic observation schedule
         ↓
 window evaluation from persisted completed facts
         ↓
@@ -80,13 +80,15 @@ P9-D never edits the plan.
 An experiment can start only when all of the following are true:
 
 - `PublicationExecution.projectId` equals the experiment project;
-- the execution is linked through its P8 publication plan/proposal provenance to the same P9 `OptimizationPlan`;
+- the execution is linked through its P8 publication proposal provenance to the same P9 `OptimizationPlan`;
+- proposal `sourceType = P9_OPTIMIZATION_PLAN`;
+- proposal `sourceReferenceId` equals the exact `OptimizationPlan.id`;
 - execution status is `VERIFIED`;
 - at least one persisted `PublicationVerification` for that execution has `status = VERIFIED`;
 - the selected verification row has a non-null `observedAt`;
-- the verified observed URL is present and consistent with the exact publication target identity.
+- the selected verification row has a bounded HTTP(S) `observedUrl` consistent with the exact P8 target URL.
 
-P9-D stores the exact `publicationExecutionId` and `publicationVerificationId` used to start the experiment. Later P8 state is read for contamination checks but does not rewrite experiment history.
+P9-D stores the exact `publicationExecutionId` and `publicationVerificationId` used to start the experiment. Later P8 facts are read for contamination checks but do not rewrite experiment history.
 
 P9-D must not infer VERIFIED from a Draft PR, commit SHA, deployment marker, HTTP success, or any non-P8 source.
 
@@ -118,7 +120,9 @@ NOT_SUPPORTED
 
 `UNKNOWN` and `NOT_SUPPORTED` never become numeric zero.
 
-`KNOWN_EMPTY` may represent a known empty provider result only where the original Search Fact contract semantically supports that interpretation; P9-D must not generalize it into a numeric zero for unrelated metrics.
+`KNOWN_EMPTY` may represent a known empty provider result only where the original Search Fact contract semantically supports that interpretation; P9-D must not generalize it into numeric zero for unrelated metrics.
+
+`SearchFactCompleteness = COMPLETE` is conclusive-compatible. `TOP_ROWS_ONLY` is usable only when the exact target fact exists in both baseline and observation windows; absence from a top-rows-only snapshot is never interpreted as zero. `PROVIDER_UNSPECIFIED` and `UNKNOWN` completeness are insufficient for a conclusive effect.
 
 ### 3.4 AI visibility evidence authority
 
@@ -178,21 +182,9 @@ Use a new Prisma model file:
 prisma/models/optimization-experiment.prisma
 ```
 
-Do not add experiment fields to P7, P8, Search Facts, Visibility Metrics, or existing P9 tables except required reverse relations where Prisma requires them.
+Do not add experiment-owned lifecycle fields to P7, P8, Search Facts, Visibility Metrics, or existing P9 tables except required reverse relations where Prisma requires them.
 
-### 5.1 `OptimizationExperimentStatus`
-
-```text
-OBSERVING
-EVALUATED
-INCONCLUSIVE
-CONTAMINATED
-CANCELLED
-```
-
-`CANCELLED` is reserved for an explicit future/manual administrative stop. V1 runtime does not expose a generic cancel mutation unless required by existing project administrative patterns.
-
-### 5.2 `OptimizationExperimentEffectState`
+### 5.1 `OptimizationExperimentEffectState`
 
 ```text
 POSITIVE
@@ -201,7 +193,7 @@ NEGATIVE
 INCONCLUSIVE
 ```
 
-### 5.3 `OptimizationExperimentCoverageState`
+### 5.2 `OptimizationExperimentCoverageState`
 
 ```text
 SUFFICIENT
@@ -210,7 +202,7 @@ INSUFFICIENT
 UNKNOWN
 ```
 
-### 5.4 `OptimizationExperimentContaminationState`
+### 5.3 `OptimizationExperimentContaminationState`
 
 ```text
 CLEAR
@@ -220,6 +212,21 @@ VERIFICATION_INVALIDATED
 SOURCE_IDENTITY_CHANGED
 UNKNOWN
 ```
+
+### 5.4 Derived experiment view state
+
+Experiment lifecycle state is NOT stored as a mutable field. It is derived at read time from the immutable experiment plus its immutable observations and deterministic due schedule.
+
+Derived view values are:
+
+```text
+OBSERVING
+EVALUATED
+INCONCLUSIVE
+CONTAMINATED
+```
+
+This preserves immutable experiment identity while still giving API/UI consumers a useful current projection.
 
 ### 5.5 `OptimizationExperiment`
 
@@ -237,13 +244,10 @@ interventionType
 targetUrl
 marketCode nullable
 locale nullable
-baselineWindowStart
-baselineWindowEnd
+verifiedAnchorAt
+measurementScopeJson
 observationScheduleJson
-baselineIdentityJson
-expectedDirection
-status
-startedAt
+expectedDirectionJson
 createdAt
 ```
 
@@ -252,7 +256,8 @@ Design requirements:
 - exactly one experiment identity for one verified execution + P9 plan + experiment version;
 - immutable after creation;
 - deterministic `experimentKey`;
-- `baselineIdentityJson` stores bounded source identity only, never provider raw payloads;
+- `measurementScopeJson` stores bounded normalized query/page/provider/market/locale scope only;
+- `observationScheduleJson` is server-derived from intervention class;
 - no article body, diff, prompt, model answer, credentials, token, or raw upstream data.
 
 ### 5.6 `OptimizationExperimentObservation`
@@ -266,11 +271,13 @@ experimentId
 observationVersion
 observationKey
 windowType
-windowStart
-windowEnd
+windowDays
+dueAt
 inputCutoffAt
-searchSourceRefs
-visibilitySourceRefs
+baselineSearchSourceRefs
+observedSearchSourceRefs
+baselineVisibilitySourceRefs
+observedVisibilitySourceRefs
 baselineMetricsJson
 observedMetricsJson
 deltaMetricsJson
@@ -282,11 +289,14 @@ evaluatorVersion
 createdAt
 ```
 
+Each bounded metric projection carries its own actual baseline and observation source windows, so Search Facts and Visibility Metrics do not have to pretend to share identical source-window shapes.
+
 Design requirements:
 
 - immutable after creation;
-- one deterministic identity per experiment/window/input-cutoff/evaluator version;
+- one deterministic identity per experiment/window/input-cutoff/source-set/evaluator version;
 - observation records are append-only across later cutoffs;
+- baseline selection is frozen inside each observation record;
 - source refs are bounded IDs/versions only;
 - no provider raw payloads;
 - no mutation/update of older observations when new facts arrive.
@@ -316,9 +326,10 @@ interventionType
 targetUrl
 marketCode
 locale
-baselineWindowStart
-baselineWindowEnd
+verifiedAnchorAt
+measurement scope
 observation schedule
+expected-direction map
 ```
 
 The repository uses create-or-get with exact collision verification. A unique-key collision with non-identical immutable data fails closed.
@@ -331,11 +342,13 @@ Use a versioned canonical hash over:
 EXPERIMENT_OBSERVATION_V1
 experimentId
 windowType
-windowStart
-windowEnd
+windowDays
+dueAt
 inputCutoffAt
-search source identity set
-visibility source identity set
+baseline search source identity set
+observed search source identity set
+baseline visibility source identity set
+observed visibility source identity set
 evaluatorVersion
 ```
 
@@ -349,23 +362,24 @@ Required gates:
 
 1. feature `OPTIMIZATION_EXPERIMENTS` is enabled for the project plan level;
 2. exact project match across OptimizationPlan, P8 proposal/plan/execution/verification;
-3. P8 execution status is exactly `VERIFIED`;
-4. exact persisted P8 verification status is `VERIFIED`;
-5. verification `observedAt` exists;
-6. target URL is bounded and consistent with the verified publication target;
-7. intervention type maps deterministically from the immutable P9 action/P8 operations;
-8. baseline window can be defined without crossing the verified intervention time;
-9. no experiment identity collision with different immutable bindings.
+3. P8 proposal source identity is exactly the OptimizationPlan;
+4. P8 execution status is exactly `VERIFIED`;
+5. exact persisted P8 verification status is `VERIFIED`;
+6. verification `observedAt` exists;
+7. verification `observedUrl` is bounded HTTP(S) and matches the publication target identity;
+8. intervention type is supported in P9-D V1;
+9. measurement scope can be derived deterministically from immutable P9 source facts and P8 target identity;
+10. no experiment identity collision with different immutable bindings.
 
-A missing baseline does not necessarily block experiment creation. It may create an observing experiment with an explicit baseline-insufficiency identity so later observations can remain auditable. It must never invent a baseline.
+A missing comparable baseline does not block experiment creation. The experiment records the measurement policy and schedule; each due observation later resolves and freezes its own baseline source set. It must never invent a baseline.
 
-## 8. Intervention classes and observation windows
+## 8. Supported intervention classes and observation windows
 
-V1 uses deterministic schedules based on the actual intervention class.
+P9-D V1 only produces conclusive evaluations for actions supported by current persisted fact semantics.
 
-### 8.1 Snippet-oriented changes
+### 8.1 `SERP_SNIPPET_OPTIMIZATION`
 
-For title/meta-related interventions:
+Schedule:
 
 ```text
 7D
@@ -373,9 +387,12 @@ For title/meta-related interventions:
 28D
 ```
 
-### 8.2 Content/body/structured-content changes
+Primary metric family: CTR.
+Secondary metric families: clicks, impressions, provider-specific position.
 
-For content creation, H1/FAQ, content refresh, ordinary on-page content changes, and structured-data/citability work:
+### 8.2 `ON_PAGE_OPTIMIZATION`
+
+Schedule:
 
 ```text
 14D
@@ -383,82 +400,166 @@ For content creation, H1/FAQ, content refresh, ordinary on-page content changes,
 56D
 ```
 
-### 8.3 AI visibility-oriented changes
+Primary metric family: clicks.
+Secondary metric families: CTR, impressions, provider-specific position.
 
-Use provider sampling windows already represented by completed Visibility Metric snapshots. Scheduling still creates deterministic evaluation due dates, but the evaluator waits for a comparable completed metric window rather than causing sampling.
+### 8.3 `CONTENT_REFRESH`
 
-### 8.4 Window anchor
+Schedule:
 
-The intervention anchor is the authoritative P8 verified observation time, not PR creation time, commit time, merge time guessed by P9, or queue processing time.
+```text
+14D
+28D
+56D
+```
+
+Primary metric family: clicks.
+Secondary metric families: CTR, impressions, provider-specific position.
+
+### 8.4 `CONTENT_CREATION`
+
+Schedule:
+
+```text
+14D
+28D
+56D
+```
+
+A new page has no valid page-level pre-intervention zero baseline. P9-D therefore uses a query-level comparison only when the immutable P9 source identity supplies an exact comparable normalized query/market/provider scope. Primary metric family is query-level impressions; secondary is query-level clicks.
+
+If no comparable query baseline exists, the effect remains `INCONCLUSIVE / NO_COMPARABLE_BASELINE`. Page-level absence before creation is never converted to zero.
+
+### 8.5 `GEO_CITABILITY_IMPROVEMENT`
+
+Schedule:
+
+```text
+14D
+28D
+56D
+```
+
+Primary metric family: `CITATION_RATE`.
+Secondary metric families: `MENTION_RATE`, `MENTION_SHARE_OF_VOICE`.
+
+### 8.6 `AI_VISIBILITY_IMPROVEMENT`
+
+Schedule:
+
+```text
+14D
+28D
+56D
+```
+
+Primary metric family: `MENTION_RATE` unless the immutable P9 source scope explicitly targets citation, in which case `CITATION_RATE` is primary.
+Secondary metric families: the remaining compatible visibility rates.
+
+### 8.7 Unsupported V1 interventions
+
+The current persisted fact model does not provide sufficiently exact outcome semantics for automatic conclusive evaluation of:
+
+```text
+TECHNICAL_SEO_REMEDIATION
+CANNIBALIZATION_REMEDIATION
+```
+
+P9-D V1 does not start experiments for these actions. It records a deterministic deferred/not-supported result at the handoff boundary rather than inventing a proxy metric.
+
+### 8.8 Window anchor
+
+The intervention anchor is the authoritative P8 verification `observedAt`, not PR creation time, commit time, merge time guessed by P9, or queue processing time.
 
 ## 9. Baseline resolver
 
-The baseline resolver is read-only and deterministic.
+The baseline resolver is read-only and deterministic. Baselines are resolved per observation window and frozen in the resulting immutable observation.
 
 ### 9.1 Search baseline
 
-Search baseline prefers comparable completed Search Fact facts strictly before the verified intervention anchor.
+For a scheduled N-day observation, the search baseline uses the exact N calendar days immediately preceding `verifiedAnchorAt` and the observed search window uses the exact N calendar days beginning at `verifiedAnchorAt`.
 
-For an existing page optimization, page/query identities must match the experiment target scope.
+Daily Search Facts are aggregated only across exact compatible metric identities.
+
+For an existing page optimization, page/query identities must match the experiment measurement scope.
 
 For `CONTENT_CREATION`, page-level history for the new URL is normally absent. P9-D MUST NOT create a synthetic zero baseline. Allowed V1 outcomes are:
 
-- use a truly comparable pre-existing query/market/provider baseline when the P9 source identity explicitly supplies that query scope; or
-- record `NO_COMPARABLE_BASELINE` and keep effect state `INCONCLUSIVE` for metrics that require page-level before/after comparison.
+- use the exact query-level baseline when the P9 source identity explicitly supplies that normalized query scope; or
+- record `NO_COMPARABLE_BASELINE` and keep effect state `INCONCLUSIVE`.
 
 ### 9.2 Visibility baseline
 
-Visibility baseline requires a completed snapshot whose window ends before the intervention anchor and whose metric identity is compatible with the observation metric identity.
+Visibility Metric snapshots are not forced into synthetic daily buckets.
 
-No completed compatible snapshot means `NO_COMPARABLE_BASELINE`.
+For each due window, select:
 
-### 9.3 Baseline freezing
+- baseline: the latest completed compatible snapshot ending at or before `verifiedAnchorAt`;
+- observation: the earliest completed compatible snapshot ending at or after the due boundary;
+- both snapshots must have equal window duration;
+- both snapshots must have identical formula version, extractor version, subject/scope identity, metric identity, dimension identity, and actor identity.
 
-The experiment stores baseline source identities and bounded baseline metric projections at creation or the first deterministic resolution point. Later provider facts cannot silently replace the experiment baseline.
+If no such pair exists, record `NO_COMPARABLE_BASELINE` or `NO_COMPARABLE_OBSERVATION` and classify the result `INCONCLUSIVE`.
 
-If baseline resolution is delayed because facts are not yet available, the resolver may create a new append-only observation attempt later; it must not mutate an existing immutable experiment identity to pretend the baseline existed earlier.
+### 9.3 Late-arriving historical facts
+
+A later evaluation attempt may use historical Search Facts or Visibility Metric snapshots that were persisted after experiment creation but whose source windows are valid for the required baseline/observation periods.
+
+This does not mutate older observations. A later source cutoff creates a new immutable observation identity.
 
 ## 10. Observation resolver
 
-The observation resolver reads only persisted completed snapshots whose windows satisfy the deterministic experiment schedule.
+The observation resolver reads only persisted completed snapshots whose source windows satisfy the deterministic experiment schedule.
 
 A candidate observation must:
 
-- end no earlier than the due observation boundary;
-- not use facts with cutoff earlier than the required observation window;
+- satisfy the due boundary for its window;
 - match project/provider/market/locale/property and metric identities;
 - preserve source version/formula/normalization semantics;
-- reject incompatible or ambiguous identity changes.
+- reject incompatible or ambiguous identity changes;
+- use deterministic selection order, never the numerically most favorable snapshot.
 
-P9-D does not pick a numerically favorable snapshot. Selection order must be deterministic, such as the earliest completed compatible snapshot that fully covers the due window and satisfies minimum coverage.
+Search selection uses the exact scheduled daily interval. Visibility selection uses the baseline/observation pair rules in section 9.2.
 
 ## 11. Comparable metric projection
 
 P9-D persists bounded derived metric projections, not raw facts.
 
-Example search projection fields may include:
+Example search projection fields:
 
 ```text
 metricSemantic
 provider
 marketCode
 locale
-query/page identity
+factKind
+normalizedQuery nullable
+canonicalPage nullable
+baselineWindowStart
+baselineWindowEnd
+observedWindowStart
+observedWindowEnd
 baselineValue nullable
 observedValue nullable
 absoluteDelta nullable
 relativeDelta nullable
 evidenceState
-sourceSnapshotId
+sourceSnapshotIds
 ```
 
-Example visibility projection fields may include:
+Clicks and impressions are compared as per-day normalized values when the source window contains multiple daily facts. CTR and provider-specific position are compared using deterministic weighted aggregation defined by source semantics; unlike position semantics are never fused.
+
+Example visibility projection fields:
 
 ```text
 metricType
 dimensionType
 dimensionKey
 actorKey
+baselineWindowStart
+baselineWindowEnd
+observedWindowStart
+observedWindowEnd
 baselineNumerator
 baselineDenominator
 observedNumerator
@@ -466,8 +567,7 @@ observedDenominator
 baselineRate nullable
 observedRate nullable
 absoluteDelta nullable
-coverage counts
-sourceSnapshotId
+sourceSnapshotIds
 ```
 
 Relative delta is omitted when mathematically undefined or misleading, including zero/absent baseline cases.
@@ -476,18 +576,23 @@ Relative delta is omitted when mathematically undefined or misleading, including
 
 Effect classification requires sufficient evidence.
 
-V1 default rules:
+V1 deterministic rules:
 
 - all compared metric identities must be known and compatible;
-- required observation window must be complete;
+- required search observation interval must be complete for the exact target fact identity;
 - search snapshots must be `COMPLETED`;
+- `SearchFactCompleteness = COMPLETE` is sufficient;
+- `TOP_ROWS_ONLY` is sufficient only when the exact target fact exists in both baseline and observed windows;
+- absence from `TOP_ROWS_ONLY` never becomes zero;
+- `PROVIDER_UNSPECIFIED` or `UNKNOWN` search completeness yields `INSUFFICIENT`;
 - visibility snapshots must be `COMPLETED`;
 - visibility rows with `UNKNOWN`, `NO_DATA`, or `NOT_ELIGIBLE` cannot contribute a positive/negative conclusion;
-- partial provider coverage yields `PARTIAL` and normally `INCONCLUSIVE` unless the experiment scope explicitly targets only the covered provider;
+- visibility baseline and observation denominators must each be at least 10 eligible observations;
+- partial provider coverage yields `PARTIAL` and `INCONCLUSIVE` unless the experiment scope explicitly targets only the covered provider;
 - zero eligible visibility denominator yields no rate conclusion;
 - missing baseline yields `INSUFFICIENT`.
 
-Threshold constants must be versioned in evaluator code and tested. They are not user-editable policy in P9-D V1.
+These constants are first-party evaluator semantics and are not user-editable policy in P9-D V1.
 
 ## 13. Contamination detection
 
@@ -497,15 +602,15 @@ Before a conclusive observation, detect at least:
 
 ### `CONFLICTING_MUTATION`
 
-Another P8 publication execution affecting the same canonical page/target during the experiment window makes attribution ambiguous.
+Another persisted P8 publication execution affecting the same target URL/canonical page during the experiment window makes attribution ambiguous.
 
 ### `TARGET_REVISION_CHANGED`
 
-A relevant target identity changed outside the experiment's bound verified intervention in a way that prevents a clean comparison.
+Persisted P8 execution/event evidence shows a relevant target revision change outside the experiment's bound verified intervention. P9-D does not query Git directly to discover this state.
 
 ### `VERIFICATION_INVALIDATED`
 
-Persisted P8 facts later show failure/rollback state that makes the intervention no longer a stable verified treatment.
+Persisted P8 facts show a later rollback/failure state that makes the intervention no longer a stable verified treatment.
 
 ### `SOURCE_IDENTITY_CHANGED`
 
@@ -515,7 +620,7 @@ Any material contamination forces effect state `INCONCLUSIVE` for that observati
 
 ## 14. Effect evaluator
 
-The evaluator is deterministic and versioned, initially:
+The evaluator is deterministic and versioned:
 
 ```text
 OPTIMIZATION_EXPERIMENT_EVALUATOR_V1
@@ -526,14 +631,15 @@ It first evaluates authority and evidence, then direction.
 Order:
 
 1. exact project/experiment bindings valid;
-2. original P8 verified execution still suitable for observational evaluation;
+2. original P8 verified execution remains suitable for observational evaluation;
 3. no material contamination;
 4. comparable baseline exists;
 5. observation window complete;
 6. coverage sufficient;
 7. metric identities compatible;
 8. calculate bounded deltas;
-9. classify expected-direction consistency.
+9. classify primary metric;
+10. check secondary metrics for material contradiction.
 
 Possible result:
 
@@ -548,24 +654,42 @@ INCONCLUSIVE
 
 Expected direction is explicit per metric:
 
-- clicks/impressions/CTR: usually higher is favorable;
+- clicks/impressions: higher is favorable;
+- CTR: higher is favorable;
 - provider-specific position metrics: lower numeric position is favorable;
 - mention/citation/share-of-voice rates: higher is favorable.
 
 P9-D must not compare unlike position semantics such as Google average position with Bing average-click position.
 
-### 14.2 Neutral band
+### 14.2 V1 neutral bands
 
-V1 should use a small versioned deterministic neutral band to avoid classifying noise as lift/decline. The exact constants belong in the implementation plan and tests, not runtime user policy.
+Use these deterministic evaluator constants:
+
+```text
+SEARCH_COUNT_RATE_RELATIVE_NEUTRAL_BAND = 0.05
+CTR_ABSOLUTE_NEUTRAL_BAND = 0.005
+POSITION_ABSOLUTE_NEUTRAL_BAND = 0.5
+VISIBILITY_RATE_ABSOLUTE_NEUTRAL_BAND = 0.05
+MIN_VISIBILITY_ELIGIBLE_DENOMINATOR = 10
+```
+
+Interpretation:
+
+- normalized clicks/impressions change inside ±5% is neutral;
+- CTR change inside ±0.5 percentage points is neutral;
+- provider-specific position change inside ±0.5 positions is neutral;
+- visibility rate change inside ±5 percentage points is neutral.
+
+Changing these constants requires a new evaluator version and reviewed migration/compatibility decision; old observations are never rewritten.
 
 ### 14.3 Multi-metric aggregation
 
 V1 is conservative:
 
 - any authority/coverage/identity blocker => `INCONCLUSIVE`;
-- otherwise a clearly favorable primary metric with no materially contradictory protected metric => `POSITIVE`;
-- clearly unfavorable primary metric => `NEGATIVE`;
-- small or mixed changes inside the neutral band => `NEUTRAL`;
+- primary metric clearly favorable beyond its neutral band, with no materially contradictory secondary metric => `POSITIVE`;
+- primary metric clearly unfavorable beyond its neutral band => `NEGATIVE`;
+- primary metric inside its neutral band and no material contradiction => `NEUTRAL`;
 - materially contradictory metrics => `INCONCLUSIVE` rather than arbitrary averaging.
 
 No AI participates in effect classification.
@@ -601,7 +725,7 @@ Do not introduce another general event bus.
 
 Allowed job payloads contain durable IDs and dates only.
 
-Recommended job types:
+Job types:
 
 ```text
 START_EXPERIMENT
@@ -611,16 +735,16 @@ RECONCILE_DAILY
 
 ### 16.1 Start handoff
 
-A P8 verification completion integration may enqueue a durable `START_EXPERIMENT` request only after persisted VERIFIED state exists.
+After a P8 verification transaction has durably persisted VERIFIED state, a narrow injected P9-D queue port may enqueue `START_EXPERIMENT` using execution/project IDs only.
 
-The handoff itself does not create provider work.
+P8 does not call P9-D persistence directly and P9-D does not alter P8 verification semantics.
 
 ### 16.2 Daily reconciliation
 
 A UTC daily reconciliation scans for:
 
 - eligible verified P9-linked executions with no experiment;
-- due experiment windows without an effective observation;
+- due experiment windows without an effective observation at the current source cutoff;
 - retryable missed handoffs.
 
 Reconciliation derives current UTC date at processing time and uses deterministic identities.
@@ -642,19 +766,19 @@ Non-retryable deterministic outcomes include:
 - unverified execution;
 - cross-project mismatch;
 - invalid P9/P8 provenance;
+- unsupported V1 intervention;
 - incompatible metric identity;
 - no comparable baseline;
 - insufficient coverage;
-- contamination;
-- unsupported intervention/metric semantics.
+- contamination.
 
-Non-retryable evidence outcomes should normally materialize an auditable `INCONCLUSIVE` observation or explicit start-deferred reason rather than repeatedly throwing infrastructure retries.
+Non-retryable evidence outcomes materialize an auditable `INCONCLUSIVE` observation or deterministic deferred-start reason where appropriate rather than repeatedly throwing infrastructure retries.
 
 Retries must not duplicate experiments or observations.
 
 ## 18. Feature gate
 
-Add/activate:
+Use:
 
 ```text
 OPTIMIZATION_EXPERIMENTS
@@ -672,9 +796,7 @@ Feature availability does not create experiments from unverified data and does n
 
 ## 19. API surface
 
-P9-D API is project scoped.
-
-Recommended read routes:
+P9-D V1 API is project scoped and read-only:
 
 ```text
 GET /api/v1/projects/:projectId/optimization/experiments
@@ -687,10 +809,11 @@ GET is persisted-read only. It must not:
 - recalculate facts;
 - call providers;
 - call AI;
-- mutate experiment status;
-- create missing observations.
+- create experiments;
+- create observations;
+- mutate any lifecycle state.
 
-A narrow explicit administrative/manual evaluation trigger may be added only if existing project patterns require it, and must enqueue a durable experiment ID/window request rather than execute evaluation inline. P9-D V1 does not expose arbitrary client-supplied metrics, effect states, source refs, or evaluator outputs.
+P9-D V1 exposes no public POST/PUT/PATCH/DELETE experiment endpoint. Experiment creation/evaluation is internal queue/reconciliation work derived from persisted authoritative facts.
 
 Cross-project IDs fail closed without revealing unrelated resource existence.
 
@@ -704,7 +827,8 @@ For each experiment show bounded fields:
 - target URL;
 - market/locale;
 - verified intervention time;
-- baseline availability;
+- derived experiment state;
+- baseline availability per observation;
 - observation schedule;
 - latest due/completed window;
 - effect state;
@@ -720,7 +844,7 @@ Opening the UI must have zero side effects.
 
 ## 21. Observability
 
-Add bounded events such as:
+Add bounded events:
 
 ```text
 optimization.experiment.started
@@ -755,7 +879,7 @@ Never emit:
 - credentials/tokens;
 - unified diffs;
 - arbitrary source JSON;
-- search query collections unless a specifically bounded normalized identifier is already approved for observability.
+- unbounded search query collections.
 
 ## 22. Security and isolation
 
@@ -808,30 +932,31 @@ Deliver:
 - `OPTIMIZATION_EXPERIMENTS` entitlement;
 - canonical experiment/observation identities;
 - exact P9/P8 VERIFIED start gate;
+- supported-intervention gate;
 - create-or-get collision protection.
 
 ### Task 20 — Baseline and comparable-source resolver
 
 Deliver:
 
-- Search Facts baseline resolver;
-- Visibility Metrics baseline resolver;
+- Search Facts baseline/observation resolver;
+- Visibility Metrics baseline/observation resolver;
+- per-window baseline freezing in immutable observations;
 - no-zero-baseline behavior;
-- CONTENT_CREATION no-history safeguards;
+- CONTENT_CREATION query-baseline safeguards;
 - bounded source projections;
 - compatibility/version checks.
 
-### Task 21 — Observation evaluator, contamination, queue and reconciliation
+### Task 21 — Effect evaluator, contamination, queue and reconciliation
 
 Deliver:
 
 - deterministic observation windows;
-- due-window resolver;
 - coverage classification;
+- V1 neutral-band evaluator;
 - contamination detection;
-- deterministic effect evaluator;
 - one experiment evaluation queue;
-- VERIFIED handoff and UTC reconciliation;
+- post-VERIFIED handoff and UTC reconciliation;
 - idempotent retry behavior.
 
 ### Task 22 — Project-scoped API and persisted-read UI
@@ -841,6 +966,7 @@ Deliver:
 - Advanced/Enterprise API feature gate;
 - experiment list/detail API;
 - persisted-read experiment workspace;
+- derived lifecycle projection;
 - observational/non-causal wording;
 - cross-project isolation;
 - GET side-effect tests.
@@ -866,18 +992,24 @@ Tests must prove at minimum:
 - unverified P8 execution cannot create an experiment;
 - missing verification row cannot create an experiment;
 - cross-project P9/P8 identity fails closed;
+- proposal source identity must match the exact OptimizationPlan;
+- unsupported V1 interventions do not start experiments;
 - duplicate start is idempotent;
 - experiment and observation rows reject UPDATE/DELETE;
-- new content page does not receive a fabricated zero baseline;
+- derived experiment state requires no experiment mutation;
+- new content page does not receive a fabricated page-level zero baseline;
 - `UNKNOWN`/`NOT_SUPPORTED` do not become zero;
+- missing target in TOP_ROWS_ONLY does not become zero;
 - incompatible provider/market/locale/metric semantics do not compare;
 - Google position is not fused with Bing position semantics;
 - Visibility Metric formula/extractor mismatch fails comparability;
+- visibility denominator below 10 is insufficient;
 - incomplete windows or insufficient coverage become `INCONCLUSIVE`;
 - conflicting mutation contamination becomes `INCONCLUSIVE`;
 - no AI/provider/Git/deploy/rollback call exists in P9-D evaluation;
 - GET API/UI paths have no side effects;
 - retries do not duplicate experiments/observations;
+- later source cutoffs append observations rather than rewriting old ones;
 - P9-D never updates P7 score, P8 risk/verification, or P9 plan historical adjustment.
 
 ## 26. CI and release gate
@@ -923,7 +1055,7 @@ Merge requires a separate explicit human `合并`. Deployment requires separate 
 P9-D V1 is complete when the system can:
 
 1. deterministically create one immutable experiment from an exact P9 plan and exact P8 VERIFIED execution;
-2. freeze or explicitly fail to obtain a comparable baseline without fabricating zero;
+2. resolve and freeze a comparable baseline per observation window without fabricating zero;
 3. evaluate due windows only from persisted completed Search Facts and Visibility Metrics;
 4. preserve provider, market, locale, property, metric, normalization/formula, and cutoff semantics;
 5. detect contamination rather than over-attribute outcomes;
