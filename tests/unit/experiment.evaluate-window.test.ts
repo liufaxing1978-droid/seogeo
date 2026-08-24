@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import {
+  ExperimentObservability,
+  type ExperimentObservabilityEvent
+} from '../../src/modules/optimization-experiments/experiment.observability.js';
 import { OptimizationExperimentService } from '../../src/modules/optimization-experiments/experiment.service.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -104,11 +108,18 @@ describe('P9-D evaluateWindow orchestration', () => {
     });
 
     let persistedInput: Record<string, unknown> | null = null;
+    const lifecycle: string[] = [];
+    const events: ExperimentObservabilityEvent[] = [];
+    const observability = new ExperimentObservability((event) => {
+      lifecycle.push(`event:${event.event}`);
+      events.push(event);
+    });
     const repository = {
       findExperimentForEvaluation: async () => frozenSearchExperiment(verifiedAnchorAt),
       listPublicationEvents: async () => [],
       createOrGetObservation: async (input: Record<string, unknown>) => {
         persistedInput = input;
+        lifecycle.push('persisted');
         return {
           id: 'observation-1',
           createdAt: new Date('2026-08-08T12:01:00.000Z'),
@@ -120,7 +131,7 @@ describe('P9-D evaluateWindow orchestration', () => {
       listCompletedFacts: async () => facts
     };
 
-    const service = new OptimizationExperimentService(repository as never);
+    const service = new OptimizationExperimentService(repository as never, undefined, observability);
     (service as unknown as { searchSource: unknown }).searchSource = searchSource;
     (service as unknown as { now: () => Date }).now = () => new Date('2026-08-09T00:00:00.000Z');
 
@@ -156,6 +167,22 @@ describe('P9-D evaluateWindow orchestration', () => {
     expect(persistedInput).toHaveProperty('baselineMetricsJson');
     expect(persistedInput).toHaveProperty('observedMetricsJson');
     expect(persistedInput).toHaveProperty('deltaMetricsJson');
+    expect(lifecycle).toEqual([
+      'persisted',
+      'event:optimization.experiment.evaluated'
+    ]);
+    expect(events).toEqual([{
+      event: 'optimization.experiment.evaluated',
+      projectId: 'project-1',
+      experimentId: 'experiment-1',
+      observationId: 'observation-1',
+      windowType: '7D',
+      effectState: 'POSITIVE',
+      coverageState: 'SUFFICIENT',
+      contaminationState: 'CLEAR',
+      marketCode: 'HK',
+      provider: 'GOOGLE_SEARCH_CONSOLE'
+    }]);
   });
 
   it('returns null before a frozen window is due and never persists an observation', async () => {
@@ -191,19 +218,26 @@ describe('P9-D evaluateWindow orchestration', () => {
     const verifiedAnchorAt = new Date('2026-08-01T00:00:00.000Z');
     const dueAt = new Date(verifiedAnchorAt.getTime() + 7 * DAY_MS);
     const persisted: Record<string, unknown>[] = [];
+    const lifecycle: string[] = [];
+    const events: ExperimentObservabilityEvent[] = [];
+    const observability = new ExperimentObservability((event) => {
+      lifecycle.push(`event:${event.event}`);
+      events.push(event);
+    });
     const repository = {
       findExperimentForEvaluation: async () => frozenSearchExperiment(verifiedAnchorAt),
       listPublicationEvents: async () => [],
       createOrGetObservation: async (input: Record<string, unknown>) => {
         persisted.push(input);
+        lifecycle.push('persisted');
         return {
-          id: `observation-${persisted.length}`,
+          id: 'observation-1',
           createdAt: new Date('2026-08-09T00:00:00.000Z'),
           ...input
         };
       }
     };
-    const service = new OptimizationExperimentService(repository as never);
+    const service = new OptimizationExperimentService(repository as never, undefined, observability);
     (service as unknown as { searchSource: unknown }).searchSource = {
       listCompletedFacts: async () => []
     };
@@ -230,5 +264,39 @@ describe('P9-D evaluateWindow orchestration', () => {
     });
     expect(persisted[1]).toMatchObject({ inputCutoffAt: dueAt });
     expect(persisted[1]?.observationKey).toBe(persisted[0]?.observationKey);
+    expect(lifecycle).toEqual([
+      'persisted',
+      'event:optimization.experiment.inconclusive',
+      'persisted',
+      'event:optimization.experiment.inconclusive'
+    ]);
+    expect(events).toEqual([
+      {
+        event: 'optimization.experiment.inconclusive',
+        projectId: 'project-1',
+        experimentId: 'experiment-1',
+        observationId: 'observation-1',
+        windowType: '7D',
+        effectState: 'INCONCLUSIVE',
+        coverageState: 'INSUFFICIENT',
+        contaminationState: 'CLEAR',
+        reasonCode: 'EXPERIMENT_COVERAGE_INSUFFICIENT',
+        marketCode: 'HK',
+        provider: 'GOOGLE_SEARCH_CONSOLE'
+      },
+      {
+        event: 'optimization.experiment.inconclusive',
+        projectId: 'project-1',
+        experimentId: 'experiment-1',
+        observationId: 'observation-1',
+        windowType: '7D',
+        effectState: 'INCONCLUSIVE',
+        coverageState: 'INSUFFICIENT',
+        contaminationState: 'CLEAR',
+        reasonCode: 'EXPERIMENT_COVERAGE_INSUFFICIENT',
+        marketCode: 'HK',
+        provider: 'GOOGLE_SEARCH_CONSOLE'
+      }
+    ]);
   });
 });
