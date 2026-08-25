@@ -15,6 +15,7 @@ describe('queue registry', () => {
       'optimization-orchestration',
       'optimization-autopilot',
       'optimization-experiment-evaluation',
+      'optimization-feedback-materialization',
       'visibility',
       'visibility-extraction',
       'visibility-metrics',

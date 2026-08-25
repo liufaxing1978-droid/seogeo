@@ -1,6 +1,11 @@
 export const OPTIMIZATION_CANDIDATE_VERSION = 'OPTIMIZATION_CANDIDATE_V1' as const
 export const OPTIMIZATION_PLAN_VERSION = 'OPTIMIZATION_PLAN_V1' as const
+export const OPTIMIZATION_PLAN_V2 = 'OPTIMIZATION_PLAN_V2' as const
 export const OPTIMIZATION_ACTION_MAP_VERSION = 'OPTIMIZATION_ACTION_MAP_V1' as const
+
+export type OptimizationPlanVersion =
+  | typeof OPTIMIZATION_PLAN_VERSION
+  | typeof OPTIMIZATION_PLAN_V2
 
 export type OptimizationMarketScopeMode =
   | 'CONFIGURED_MARKET'

@@ -37,10 +37,19 @@ export type OptimizationExperimentReconciliationPort = {
   }): Promise<readonly DueExperimentWindow[]>;
 };
 
+export type OptimizationExperimentFeedbackHandoff = {
+  onObservationPersisted(input: {
+    projectId: string;
+    experimentId: string;
+    observationId: string;
+  }): Promise<void>;
+};
+
 export type OptimizationExperimentWorkerDeps = {
   service: OptimizationExperimentWorkerService;
   queue: OptimizationExperimentWorkerQueue;
   repository: OptimizationExperimentReconciliationPort;
+  feedbackHandoff?: OptimizationExperimentFeedbackHandoff;
   now?: () => Date;
 };
 
@@ -140,11 +149,22 @@ export async function processOptimizationExperimentJob(
   }
 
   if (job.data.kind === 'EVALUATE_WINDOW') {
-    await deps.service.evaluateWindow({
+    const observation = await deps.service.evaluateWindow({
       experimentId: job.data.experimentId,
       projectId: job.data.projectId,
       windowType: job.data.windowType
     });
+    if (observation && deps.feedbackHandoff) {
+      try {
+        await deps.feedbackHandoff.onObservationPersisted({
+          projectId: job.data.projectId,
+          experimentId: job.data.experimentId,
+          observationId: observation.id
+        });
+      } catch {
+        // Best-effort only. P9-D persistence remains authoritative and P9-E reconciliation can recover.
+      }
+    }
     return;
   }
 

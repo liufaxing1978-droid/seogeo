@@ -45,7 +45,8 @@ model OptimizationCandidate {
   eligibilityReasonCodes      Json
   createdAt                   DateTime                       @default(now())
 
-  plans OptimizationPlan[]
+  plans            OptimizationPlan[]
+  feedbackEvidence OptimizationFeedbackEvidence[]
 
   @@unique([projectId, candidateKey], map: "OptimizationCandidate_project_key")
   @@index([projectId, eligibilityState, createdAt], map: "OptimizationCandidate_project_eligibility_idx")
@@ -68,9 +69,10 @@ model OptimizationPlan {
   explanation              Json
   createdAt                DateTime              @default(now())
 
-  candidate   OptimizationCandidate  @relation(fields: [candidateId], references: [id], onDelete: Restrict)
-  runItems    OptimizationRunItem[]
-  experiments OptimizationExperiment[]
+  candidate        OptimizationCandidate  @relation(fields: [candidateId], references: [id], onDelete: Restrict)
+  runItems         OptimizationRunItem[]
+  experiments      OptimizationExperiment[]
+  feedbackEvidence OptimizationFeedbackEvidence[]
 
   @@unique([candidateId, planVersion], map: "OptimizationPlan_candidate_version")
   @@index([projectId, finalRank, createdAt], map: "OptimizationPlan_project_rank_idx")

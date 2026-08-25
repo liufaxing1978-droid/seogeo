@@ -39,10 +39,11 @@ model OptimizationExperiment {
   expectedDirectionJson     Json
   createdAt                 DateTime              @default(now())
 
-  optimizationPlan        OptimizationPlan        @relation(fields: [optimizationPlanId], references: [id], onDelete: Restrict)
-  publicationExecution    PublicationExecution    @relation(fields: [publicationExecutionId], references: [id], onDelete: Restrict)
-  publicationVerification PublicationVerification @relation(fields: [publicationVerificationId], references: [id], onDelete: Restrict)
+  optimizationPlan        OptimizationPlan              @relation(fields: [optimizationPlanId], references: [id], onDelete: Restrict)
+  publicationExecution    PublicationExecution          @relation(fields: [publicationExecutionId], references: [id], onDelete: Restrict)
+  publicationVerification PublicationVerification       @relation(fields: [publicationVerificationId], references: [id], onDelete: Restrict)
   observations            OptimizationExperimentObservation[]
+  feedbackEvidence        OptimizationFeedbackEvidence[]
 
   @@unique([projectId, experimentKey], map: "OptimizationExperiment_project_key")
   @@unique([optimizationPlanId, publicationExecutionId, experimentVersion], map: "OptimizationExperiment_plan_execution_version")
@@ -74,7 +75,8 @@ model OptimizationExperimentObservation {
   evaluatorVersion             String
   createdAt                    DateTime                                 @default(now())
 
-  experiment OptimizationExperiment @relation(fields: [experimentId], references: [id], onDelete: Restrict)
+  experiment       OptimizationExperiment       @relation(fields: [experimentId], references: [id], onDelete: Restrict)
+  feedbackEvidence OptimizationFeedbackEvidence[]
 
   @@unique([experimentId, observationKey], map: "OptimizationExperimentObservation_experiment_key")
   @@index([projectId, createdAt], map: "OptimizationExperimentObservation_project_created_idx")

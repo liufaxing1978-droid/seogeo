@@ -1,10 +1,19 @@
-import type { OptimizationCandidate, OptimizationPlan } from '@prisma/client'
+import type {
+  MarketCode,
+  OptimizationCandidate,
+  OptimizationFeedbackProfile,
+  OptimizationMarketScopeMode,
+  OptimizationPlan,
+  RecommendedActionType,
+} from '@prisma/client'
 import { createAdvisorySkillRegistry } from '../advisory-skills/advisory-skill.registry.js'
 import {
   buildOptimizationPlanRankingTaskInput,
   type OptimizationPlanRankingSeed,
 } from '../ai/optimization-plan-ranking.js'
 import { aiTaskService, type AiTaskService } from '../ai/ai.service.js'
+import { OptimizationFeedbackRepository } from '../optimization-feedback/feedback.repository.js'
+import { OPTIMIZATION_FEEDBACK_PROFILE_VERSION } from '../optimization-feedback/feedback.types.js'
 import { buildAdvisoryContext } from './optimization.advisory.js'
 import { buildCandidateDrafts } from './optimization.candidate.js'
 import { recommendedActionForGrowthType } from './optimization.policy.js'
@@ -13,15 +22,22 @@ import {
   optimizationRepository,
   type CreateOptimizationPlanInput,
 } from './optimization.repository.js'
-import { rankEligibleCandidates } from './optimization.ranking.js'
+import {
+  applyFeedbackAwareRankAdjustments,
+  rankEligibleCandidates,
+  type BoundedRankSeed,
+} from './optimization.ranking.js'
 import {
   OPTIMIZATION_ACTION_MAP_VERSION,
+  OPTIMIZATION_PLAN_V2,
   OPTIMIZATION_PLAN_VERSION,
+  type OptimizationPlanVersion,
 } from './optimization.types.js'
 
 export type MaterializeOptimizationOptions = {
   advisoryRootDir: string
   useAi?: boolean
+  planVersion?: OptimizationPlanVersion
 }
 
 export type MaterializeOptimizationResult = {
@@ -30,15 +46,73 @@ export type MaterializeOptimizationResult = {
   aiTaskId: string | null
 }
 
+export type OptimizationFeedbackProfileReadPort = {
+  findLatestProfileForScope(input: {
+    projectId: string
+    marketScopeMode: OptimizationMarketScopeMode
+    marketCode: MarketCode | null
+    locale: string | null
+    recommendedActionType: RecommendedActionType
+  }): Promise<OptimizationFeedbackProfile | null>
+}
+
 type PreparedPlan = {
   deterministicPlan: CreateOptimizationPlanInput
   aiSeed: OptimizationPlanRankingSeed
+  rankSeed: BoundedRankSeed
+  marketScopeMode: OptimizationMarketScopeMode
+  marketCode: MarketCode | null
+  locale: string | null
+  recommendedActionType: RecommendedActionType
+}
+
+type FrozenFeedback = {
+  profile: OptimizationFeedbackProfile | null
+  historicalRankAdjustment: number
+}
+
+function compatibleFeedbackProfile(
+  profile: OptimizationFeedbackProfile | null,
+  projectId: string,
+): profile is OptimizationFeedbackProfile {
+  if (!profile) return false
+  return (
+    profile.projectId === projectId
+    && profile.feedbackProfileVersion === OPTIMIZATION_FEEDBACK_PROFILE_VERSION
+    && /^[0-9a-f]{64}$/i.test(profile.inputFingerprint)
+    && Number.isInteger(profile.sampleCount)
+    && profile.sampleCount >= 0
+    && Number.isInteger(profile.historicalRankAdjustment)
+    && profile.historicalRankAdjustment >= -10
+    && profile.historicalRankAdjustment <= 10
+  )
+}
+
+function withFeedbackExplanation(
+  explanation: unknown,
+  feedback: {
+    feedbackProfileId: string | null
+    feedbackProfileVersion: string | null
+    feedbackInputFingerprint: string | null
+    feedbackSampleCount: number | null
+    historicalRankAdjustment: number
+    historicalFallback: boolean
+  },
+): Record<string, unknown> {
+  if (!explanation || typeof explanation !== 'object' || Array.isArray(explanation)) {
+    throw new Error('Optimization plan explanation must be an object')
+  }
+  return {
+    ...(explanation as Record<string, unknown>),
+    feedback,
+  }
 }
 
 export class OptimizationService {
   constructor(
     private readonly repository: OptimizationRepository = optimizationRepository,
     private readonly aiTasks: Pick<AiTaskService, 'createAndEnqueue'> = aiTaskService,
+    private readonly feedbackProfiles: OptimizationFeedbackProfileReadPort = new OptimizationFeedbackRepository(),
   ) {}
 
   async materializeProject(
@@ -131,15 +205,66 @@ export class OptimizationService {
           advisoryContext,
           sourceFactReferences,
         },
+        rankSeed: {
+          candidateId: persistedCandidate.id,
+          candidateKey: rankedCandidate.candidateKey,
+          deterministicRank: rankedCandidate.deterministicRank,
+        },
+        marketScopeMode: rankedCandidate.marketScopeMode,
+        marketCode: rankedCandidate.marketCode,
+        locale: rankedCandidate.locale,
+        recommendedActionType,
       }
     })
+
+    const planVersion = options.planVersion ?? OPTIMIZATION_PLAN_VERSION
+    if (planVersion !== OPTIMIZATION_PLAN_VERSION && planVersion !== OPTIMIZATION_PLAN_V2) {
+      throw new Error(`Unsupported optimization plan version ${planVersion}`)
+    }
 
     if (options.useAi === true) {
       if (prepared.length === 0) {
         return { candidates, plans: [], aiTaskId: null }
       }
+
+      if (planVersion === OPTIMIZATION_PLAN_VERSION) {
+        const task = await this.aiTasks.createAndEnqueue(
+          buildOptimizationPlanRankingTaskInput(projectId, prepared.map((item) => item.aiSeed)),
+        )
+        return {
+          candidates,
+          plans: [],
+          aiTaskId: task.id,
+        }
+      }
+
+      const v2Seeds: OptimizationPlanRankingSeed[] = []
+      for (const item of prepared) {
+        const profile = await this.feedbackProfiles.findLatestProfileForScope({
+          projectId,
+          marketScopeMode: item.marketScopeMode,
+          marketCode: item.marketCode,
+          locale: item.locale,
+          recommendedActionType: item.recommendedActionType,
+        })
+        v2Seeds.push({
+          ...item.aiSeed,
+          feedback: compatibleFeedbackProfile(profile, projectId)
+            ? {
+              profileId: profile.id,
+              profileVersion: OPTIMIZATION_FEEDBACK_PROFILE_VERSION,
+              inputFingerprint: profile.inputFingerprint,
+              sampleCount: profile.sampleCount,
+              historicalRankAdjustment: profile.historicalRankAdjustment,
+            }
+            : null,
+        })
+      }
+
       const task = await this.aiTasks.createAndEnqueue(
-        buildOptimizationPlanRankingTaskInput(projectId, prepared.map((item) => item.aiSeed)),
+        buildOptimizationPlanRankingTaskInput(projectId, v2Seeds, {
+          planVersion: OPTIMIZATION_PLAN_V2,
+        }),
       )
       return {
         candidates,
@@ -148,9 +273,72 @@ export class OptimizationService {
       }
     }
 
-    const plans: OptimizationPlan[] = []
+    if (planVersion === OPTIMIZATION_PLAN_VERSION) {
+      const plans: OptimizationPlan[] = []
+      for (const item of prepared) {
+        plans.push(await this.repository.createPlan(item.deterministicPlan))
+      }
+      return {
+        candidates,
+        plans,
+        aiTaskId: null,
+      }
+    }
+
+    const frozenFeedback: FrozenFeedback[] = []
     for (const item of prepared) {
-      plans.push(await this.repository.createPlan(item.deterministicPlan))
+      const profile = await this.feedbackProfiles.findLatestProfileForScope({
+        projectId,
+        marketScopeMode: item.marketScopeMode,
+        marketCode: item.marketCode,
+        locale: item.locale,
+        recommendedActionType: item.recommendedActionType,
+      })
+      if (compatibleFeedbackProfile(profile, projectId)) {
+        frozenFeedback.push({
+          profile,
+          historicalRankAdjustment: profile.historicalRankAdjustment,
+        })
+      } else {
+        frozenFeedback.push({ profile: null, historicalRankAdjustment: 0 })
+      }
+    }
+
+    const historicalAdjustments = prepared.map((item, index) => ({
+      candidateId: item.rankSeed.candidateId,
+      adjustment: frozenFeedback[index]!.historicalRankAdjustment,
+    }))
+    const rankedV2 = applyFeedbackAwareRankAdjustments(
+      prepared.map((item) => item.rankSeed),
+      [],
+      historicalAdjustments,
+    )
+    const rankedV2ByCandidate = new Map(rankedV2.map((item) => [item.candidateId, item] as const))
+
+    const plans: OptimizationPlan[] = []
+    for (let index = 0; index < prepared.length; index += 1) {
+      const item = prepared[index]!
+      const feedback = frozenFeedback[index]!
+      const rankResult = rankedV2ByCandidate.get(item.rankSeed.candidateId)
+      if (!rankResult) {
+        throw new Error('Feedback-aware optimization ranking result is missing a candidate')
+      }
+      const profile = feedback.profile
+      const deterministicPlan: CreateOptimizationPlanInput = {
+        ...item.deterministicPlan,
+        planVersion: OPTIMIZATION_PLAN_V2,
+        historicalRankAdjustment: rankResult.historicalRankAdjustment,
+        finalRank: rankResult.finalRank,
+        explanation: withFeedbackExplanation(item.deterministicPlan.explanation, {
+          feedbackProfileId: profile?.id ?? null,
+          feedbackProfileVersion: profile?.feedbackProfileVersion ?? null,
+          feedbackInputFingerprint: profile?.inputFingerprint ?? null,
+          feedbackSampleCount: profile?.sampleCount ?? null,
+          historicalRankAdjustment: rankResult.historicalRankAdjustment,
+          historicalFallback: rankResult.historicalFallback,
+        }),
+      }
+      plans.push(await this.repository.createPlan(deterministicPlan))
     }
 
     return {

@@ -1,0 +1,65 @@
+enum OptimizationFeedbackEffect {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+model OptimizationFeedbackEvidence {
+  id                      String                      @id @default(uuid()) @db.Uuid
+  projectId               String                      @db.Uuid
+  experimentId            String                      @unique @db.Uuid
+  observationId           String                      @unique @db.Uuid
+  optimizationPlanId      String                      @db.Uuid
+  candidateId             String                      @db.Uuid
+  feedbackEvidenceVersion String
+  evidenceKey             String
+  scopeKey                String
+  marketScopeMode         OptimizationMarketScopeMode
+  marketCode              MarketCode?
+  locale                  String?
+  recommendedActionType   RecommendedActionType
+  effectState             OptimizationFeedbackEffect
+  feedbackValue           Int
+  terminalWindowType      String
+  terminalWindowDays      Int
+  inputCutoffAt           DateTime
+  sourceEvaluatorVersion  String
+  sourceObservationKey    String
+  createdAt               DateTime                    @default(now())
+
+  experiment       OptimizationExperiment            @relation(fields: [experimentId], references: [id], onDelete: Restrict)
+  observation      OptimizationExperimentObservation @relation(fields: [observationId], references: [id], onDelete: Restrict)
+  optimizationPlan OptimizationPlan                  @relation(fields: [optimizationPlanId], references: [id], onDelete: Restrict)
+  candidate        OptimizationCandidate             @relation(fields: [candidateId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, evidenceKey], map: "OptimizationFeedbackEvidence_project_key")
+  @@index([projectId, scopeKey, inputCutoffAt], map: "OptimizationFeedbackEvidence_scope_cutoff_idx")
+}
+
+model OptimizationFeedbackProfile {
+  id                       String                      @id @default(uuid()) @db.Uuid
+  projectId                String                      @db.Uuid
+  feedbackProfileVersion   String
+  profileKey               String
+  scopeKey                 String
+  marketScopeMode          OptimizationMarketScopeMode
+  marketCode               MarketCode?
+  locale                   String?
+  recommendedActionType    RecommendedActionType
+  sampleCount              Int
+  positiveCount            Int
+  neutralCount             Int
+  negativeCount            Int
+  rollingEffectBalance     Float
+  historicalRankAdjustment Int
+  windowLimit              Int
+  oldestEvidenceCutoffAt   DateTime
+  newestEvidenceCutoffAt   DateTime
+  inputEvidenceIdsJson     Json
+  inputFingerprint         String
+  createdAt                DateTime                    @default(now())
+
+  @@unique([projectId, profileKey], map: "OptimizationFeedbackProfile_project_key")
+  @@unique([projectId, inputFingerprint], map: "OptimizationFeedbackProfile_project_input")
+  @@index([projectId, scopeKey, newestEvidenceCutoffAt], map: "OptimizationFeedbackProfile_scope_latest_idx")
+}
