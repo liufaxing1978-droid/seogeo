@@ -177,8 +177,6 @@ async function createReadyFixture(planLevel: 'STANDARD' | 'ADVANCED' = 'ADVANCED
       plannedCount: 1,
       itemCount: 1,
       completedCount: 1,
-      failureCount: 0,
-      startedAt: new Date('2026-08-24T00:00:00.000Z'),
       planningCompletedAt: new Date('2026-08-24T00:00:00.000Z'),
       completedAt: new Date('2026-08-24T00:01:00.000Z')
     }
