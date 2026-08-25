@@ -329,10 +329,11 @@ describe('P9-F Operations Center web route', () => {
     expect(source).toContain('[data-operations-root]');
     expect(source).toContain("document.visibilityState === 'visible'");
     expect(source).toMatch(/30_?000|30000/);
-    expect(source).toContain('/optimization/operations');
+    expect(source).toContain('`/api/v1/projects/${projectId}/optimization`');
+    expect(source).toContain('`${apiBase}/operations`');
     expect(source).toContain('data-dirty');
     expect(source).toContain('crypto.randomUUID()');
-    expect(source).toContain('/optimization/runs');
+    expect(source).toContain('`${apiBase}/runs`');
     expect(source).toContain('manualRequestId');
     expect(source).toContain('/autopilot-policy/revisions');
     expect(source).toContain('window.confirm');
