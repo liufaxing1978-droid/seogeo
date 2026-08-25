@@ -24,7 +24,7 @@ test('captures the live rendered P10 dashboard acceptance view', async ({ page }
     await expect(page.locator('[data-ui="task-center"]')).toBeVisible();
     await expect(page.locator('[data-ui="quick-actions"]')).toBeVisible();
     await expect(page.locator('[data-ui="activity-feed"]')).toBeVisible();
-    await expect(page.getByText('P10 UI Acceptance', { exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'P10 UI Acceptance', exact: true }).first()).toBeVisible();
 
     await page.screenshot({
       path: 'p10-dashboard.png',
