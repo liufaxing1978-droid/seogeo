@@ -40,7 +40,7 @@ describe('P9-A V2 feedback-aware ranking', () => {
         { candidateId: ranked[1]!.candidateId, adjustment: -1 },
       ],
       [
-        { candidateId: ranked[2]!.candidateId, adjustment: -2 },
+        { candidateId: ranked[2]!.candidateId, adjustment: -1 },
         { candidateId: ranked[3]!.candidateId, adjustment: 2 },
       ],
     )
@@ -66,7 +66,7 @@ describe('P9-A V2 feedback-aware ranking', () => {
         candidateId: ranked[2]!.candidateId,
         deterministicRank: 3,
         aiRankAdjustment: 0,
-        historicalRankAdjustment: -2,
+        historicalRankAdjustment: -1,
         finalRank: 3,
         historicalFallback: false,
       },
