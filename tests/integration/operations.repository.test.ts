@@ -768,6 +768,26 @@ describe('P9-F persisted-read Operations repository and service', () => {
         { projectId: project.id, decisionId: extraDecision.id, utcDate, reservationKey: `overview-consumed:${randomUUID()}`, status: 'CONSUMED' },
       ],
     });
+    await prisma.optimizationRun.create({
+      data: {
+        projectId: project.id,
+        runVersion: 'OPTIMIZATION_RUN_V1',
+        triggerType: 'MANUAL',
+        triggerSource: 'MANUAL_REQUEST',
+        triggerKey: `run:overview-today:${randomUUID()}`,
+        triggerPayload: {},
+        status: 'SUCCEEDED',
+        candidateCount: 0,
+        plannedCount: 0,
+        itemCount: 0,
+        completedCount: 0,
+        failureCount: 0,
+        startedAt: ago(60 * 60 * 1000),
+        planningCompletedAt: ago(50 * 60 * 1000),
+        completedAt: ago(30 * 60 * 1000),
+        createdAt: ago(60 * 60 * 1000),
+      },
+    });
 
     const repository = new OptimizationOperationsRepository(prisma);
     const service = new OptimizationOperationsService(repository, () => false);
