@@ -299,7 +299,7 @@ async function createP8(input: {
       baseSha: publicationPlan.baseSha,
       targetRepository: publicationPlan.targetRepository,
       targetBranch: publicationPlan.targetBranch,
-      targetBlobHashes: publicationPlan.targetBlobHashes,
+      targetBlobHashes: {},
       approverActorId: 'operator:fixture',
       approvedRiskClass: 'LOW',
       confirmedWarningCodes: [],
