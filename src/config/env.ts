@@ -40,4 +40,10 @@ const schema = z.object({
   OAUTH_CREDENTIAL_KEY_VERSION: z.string().min(1).default('v1')
 });
 
-export const env = schema.parse(process.env);
+const parsed = schema.parse(process.env);
+
+if (parsed.NODE_ENV === 'production' && parsed.SESSION_SECRET.length < 32) {
+  throw new Error('SESSION_SECRET must be at least 32 characters in production');
+}
+
+export const env = parsed;
