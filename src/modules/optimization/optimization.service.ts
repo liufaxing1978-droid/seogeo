@@ -252,7 +252,7 @@ export class OptimizationService {
           feedback: compatibleFeedbackProfile(profile, projectId)
             ? {
               profileId: profile.id,
-              profileVersion: profile.feedbackProfileVersion,
+              profileVersion: OPTIMIZATION_FEEDBACK_PROFILE_VERSION,
               inputFingerprint: profile.inputFingerprint,
               sampleCount: profile.sampleCount,
               historicalRankAdjustment: profile.historicalRankAdjustment,
