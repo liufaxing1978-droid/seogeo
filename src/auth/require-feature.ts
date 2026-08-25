@@ -17,7 +17,7 @@ export function requireFeature(feature: Feature): RequestHandler {
   return async (req, res, next) => {
     try {
       const projectId = projectIdFromParams(req.params);
-      const project = await projectService.get(projectId);
+      const project = res.locals.project ?? await projectService.get(projectId);
       if (!hasFeature(project.planLevel, feature)) {
         return res.status(403).json({
           error: {
