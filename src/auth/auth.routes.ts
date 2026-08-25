@@ -12,10 +12,10 @@ import {
   type LoginAttemptLimiter,
 } from './login-attempt-limiter.js';
 import { passwordHasher } from './password.js';
+import { SecurityAuditRepository } from './security-audit.repository.js';
 import {
   SESSION_COOKIE_NAME,
   SESSION_TTL_MS,
-  SessionRepository,
   createSessionToken,
 } from './session.repository.js';
 
@@ -23,7 +23,6 @@ export interface AuthRoutesOptions {
   loginAttemptLimiter?: LoginAttemptLimiter;
 }
 
-const sessionRepository = new SessionRepository();
 let sharedProductionLimiter: LoginAttemptLimiter | null = null;
 
 function getProductionLoginAttemptLimiter(): LoginAttemptLimiter {
@@ -171,11 +170,23 @@ export function createAuthRoutes(options: AuthRoutesOptions = {}) {
 
       await limiter.clear(limiterKey);
       const token = createSessionToken();
-      await sessionRepository.create(
-        user.id,
-        token.tokenHash,
-        new Date(Date.now() + SESSION_TTL_MS),
-      );
+      const createdAt = new Date();
+      await prisma.$transaction(async (tx) => {
+        await tx.userSession.create({
+          data: {
+            userId: user.id,
+            tokenHash: token.tokenHash,
+            createdAt,
+            expiresAt: new Date(createdAt.getTime() + SESSION_TTL_MS),
+          },
+        });
+        await new SecurityAuditRepository(tx).append({
+          eventType: 'SESSION_CREATED',
+          actorUserId: user.id,
+          targetUserId: user.id,
+          createdAt,
+        });
+      });
       setSessionCookie(res, token.rawToken);
       res.redirect(303, returnPath);
     } catch (error) {
@@ -228,7 +239,21 @@ export function createAuthRoutes(options: AuthRoutesOptions = {}) {
 
   routes.post('/logout', requireAuthentication(), requireCsrf(), async (req, res, next) => {
     try {
-      await sessionRepository.revoke(req.auth!.sessionId, new Date());
+      const revokedAt = new Date();
+      const userId = req.auth!.userId;
+      const sessionId = req.auth!.sessionId;
+      await prisma.$transaction(async (tx) => {
+        await tx.userSession.updateMany({
+          where: { id: sessionId, userId, revokedAt: null },
+          data: { revokedAt },
+        });
+        await new SecurityAuditRepository(tx).append({
+          eventType: 'SESSION_REVOKED',
+          actorUserId: userId,
+          targetUserId: userId,
+          createdAt: revokedAt,
+        });
+      });
       clearSessionCookie(res);
       res.status(204).end();
     } catch (error) {
@@ -270,6 +295,19 @@ export function createAuthRoutes(options: AuthRoutesOptions = {}) {
           await tx.userSession.updateMany({
             where: { userId: user.id, revokedAt: null },
             data: { revokedAt },
+          });
+          const audit = new SecurityAuditRepository(tx);
+          await audit.append({
+            eventType: 'PASSWORD_CHANGED',
+            actorUserId: user.id,
+            targetUserId: user.id,
+            createdAt: revokedAt,
+          });
+          await audit.append({
+            eventType: 'SESSIONS_REVOKED_ALL',
+            actorUserId: user.id,
+            targetUserId: user.id,
+            createdAt: revokedAt,
           });
         });
 
