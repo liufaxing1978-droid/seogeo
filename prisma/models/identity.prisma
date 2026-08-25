@@ -1,0 +1,87 @@
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum ProjectRole {
+  OWNER
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum SecurityAuditEventType {
+  USER_PROVISIONED
+  USER_DISABLED
+  USER_ENABLED
+  PASSWORD_CHANGED
+  SESSION_CREATED
+  SESSION_REVOKED
+  SESSIONS_REVOKED_ALL
+  MEMBERSHIP_CREATED
+  MEMBERSHIP_REACTIVATED
+  MEMBERSHIP_ROLE_CHANGED
+  MEMBERSHIP_REVOKED
+}
+
+model User {
+  id                  String              @id @default(uuid()) @db.Uuid
+  email               String
+  normalizedEmail     String              @unique
+  displayName         String?
+  passwordHash        String
+  passwordHashVersion Int                 @default(1)
+  status              UserStatus          @default(ACTIVE)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  sessions            UserSession[]
+  memberships         ProjectMembership[]
+}
+
+model UserSession {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  tokenHash String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model ProjectMembership {
+  id        String           @id @default(uuid()) @db.Uuid
+  projectId String           @db.Uuid
+  userId    String           @db.Uuid
+  role      ProjectRole
+  status    MembershipStatus @default(ACTIVE)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  project   Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId, status])
+  @@index([projectId, status, role])
+}
+
+model SecurityAuditEvent {
+  id           String                 @id @default(uuid()) @db.Uuid
+  version      String                 @default("SECURITY_AUDIT_V1")
+  eventType    SecurityAuditEventType
+  actorUserId  String?                @db.Uuid
+  targetUserId String?                @db.Uuid
+  projectId    String?                @db.Uuid
+  roleBefore   ProjectRole?
+  roleAfter    ProjectRole?
+  createdAt    DateTime               @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([targetUserId, createdAt])
+}
