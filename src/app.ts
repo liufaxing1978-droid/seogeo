@@ -1,6 +1,7 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { createAuthRoutes } from './auth/auth.routes.js';
 import { authenticationMiddleware } from './auth/authentication.js';
 import { errorHandler } from './core/http.js';
 import { createAiRoutes } from './modules/ai/ai.routes.js';
@@ -107,6 +108,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/assets', express.static(assetsDir));
   app.use('/health', healthRoutes);
   app.use(authenticationMiddleware);
+  app.use('/auth', createAuthRoutes());
   app.use('/api/projects', projectRoutes);
   app.use('/api', createMarketRoutes(options.marketService));
   app.use('/api', createCrawlRoutes(options.crawlService));
