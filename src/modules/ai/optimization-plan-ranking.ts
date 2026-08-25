@@ -8,10 +8,15 @@ import {
   optimizationRepository,
   type CreateOptimizationPlanInput,
 } from '../optimization/optimization.repository.js'
-import { applyBoundedRankAdjustments } from '../optimization/optimization.ranking.js'
+import {
+  applyBoundedRankAdjustments,
+  applyFeedbackAwareRankAdjustments,
+} from '../optimization/optimization.ranking.js'
 import {
   OPTIMIZATION_ACTION_MAP_VERSION,
+  OPTIMIZATION_PLAN_V2,
   OPTIMIZATION_PLAN_VERSION,
+  type OptimizationPlanVersion,
   type RecommendedActionType,
 } from '../optimization/optimization.types.js'
 
@@ -84,7 +89,30 @@ const RankingFactSnapshotSchema = z.object({
   candidates: z.array(RankingFactCandidateSchema).min(1).max(100),
 }).strict()
 
+const FrozenFeedbackSchema = z.object({
+  profileId: z.string().uuid(),
+  profileVersion: z.literal('OPTIMIZATION_FEEDBACK_PROFILE_V1'),
+  inputFingerprint: z.string().regex(/^[0-9a-f]{64}$/i),
+  sampleCount: z.number().int().min(0),
+  historicalRankAdjustment: z.number().int().min(-10).max(10),
+}).strict()
+
+const RankingFactCandidateV2Schema = RankingFactCandidateSchema.extend({
+  feedback: FrozenFeedbackSchema.nullable(),
+}).strict()
+
+const RankingFactSnapshotV2Schema = z.object({
+  version: z.literal('OPTIMIZATION_PLAN_RANKING_FACTS_V2'),
+  planVersion: z.literal(OPTIMIZATION_PLAN_V2),
+  authority: z.literal('P9_A_FIRST_PARTY_PLANNER'),
+  candidates: z.array(RankingFactCandidateV2Schema).min(1).max(100),
+}).strict()
+
 type RankingFactCandidate = z.infer<typeof RankingFactCandidateSchema>
+type RankingFactCandidateV2 = z.infer<typeof RankingFactCandidateV2Schema>
+type RankingFacts = z.infer<typeof RankingFactSnapshotSchema> | z.infer<typeof RankingFactSnapshotV2Schema>
+
+export type FrozenOptimizationFeedback = z.infer<typeof FrozenFeedbackSchema>
 
 export type OptimizationPlanRankingSeed = {
   candidateId: string
@@ -113,6 +141,7 @@ export type OptimizationPlanRankingSeed = {
     localVersion: string
   }>
   sourceFactReferences: Array<{ type: string; id: string }>
+  feedback?: FrozenOptimizationFeedback | null
 }
 
 type Ref = { type: string; id: string }
@@ -190,47 +219,63 @@ function normalizeSeeds(seeds: readonly OptimizationPlanRankingSeed[]): Optimiza
   )
 }
 
+function visibleCandidate(seed: OptimizationPlanRankingSeed) {
+  return {
+    candidateId: seed.candidateId,
+    candidateKey: seed.candidateKey,
+    deterministicRank: seed.deterministicRank,
+    recommendedActionType: seed.recommendedActionType,
+    market: { ...seed.market },
+    growth: { ...seed.growth },
+    advisoryContext: seed.advisoryContext.map((method) => ({
+      skillId: method.skillId,
+      methodKey: method.methodKey,
+      authority: method.authority,
+      projectionSha256: method.projectionSha256,
+      sourceRepo: method.sourceRepo,
+      upstreamCommit: method.upstreamCommit,
+      localVersion: method.localVersion,
+    })),
+    sourceFactReferences: seed.sourceFactReferences.map((reference) => ({ ...reference })),
+  }
+}
+
 export function buildOptimizationPlanRankingTaskInput(
   projectId: string,
   seeds: readonly OptimizationPlanRankingSeed[],
+  options: { planVersion?: OptimizationPlanVersion } = {},
 ): CreateAiTaskInput {
   const normalizedSeeds = normalizeSeeds(seeds)
   const sourceReferenceMap = new Map<string, Ref>()
 
-  const candidates = normalizedSeeds.map((seed) => {
+  const visibleCandidates = normalizedSeeds.map((seed) => {
     for (const reference of seed.sourceFactReferences) {
       sourceReferenceMap.set(refKey(reference), { ...reference })
     }
-
-    return {
-      candidateId: seed.candidateId,
-      candidateKey: seed.candidateKey,
-      deterministicRank: seed.deterministicRank,
-      recommendedActionType: seed.recommendedActionType,
-      market: { ...seed.market },
-      growth: { ...seed.growth },
-      advisoryContext: seed.advisoryContext.map((method) => ({
-        skillId: method.skillId,
-        methodKey: method.methodKey,
-        authority: method.authority,
-        projectionSha256: method.projectionSha256,
-        sourceRepo: method.sourceRepo,
-        upstreamCommit: method.upstreamCommit,
-        localVersion: method.localVersion,
-      })),
-      sourceFactReferences: seed.sourceFactReferences.map((reference) => ({ ...reference })),
-    }
+    return visibleCandidate(seed)
   })
 
   const sourceReferences = [...sourceReferenceMap.values()].sort(
     (left, right) => left.type.localeCompare(right.type) || left.id.localeCompare(right.id),
   )
-
-  const factSnapshot = {
-    version: 'OPTIMIZATION_PLAN_RANKING_FACTS_V1',
-    authority: 'P9_A_FIRST_PARTY_PLANNER',
-    candidates,
-  }
+  const planVersion = options.planVersion ?? OPTIMIZATION_PLAN_VERSION
+  const factSnapshot = planVersion === OPTIMIZATION_PLAN_VERSION
+    ? {
+      version: 'OPTIMIZATION_PLAN_RANKING_FACTS_V1' as const,
+      authority: 'P9_A_FIRST_PARTY_PLANNER' as const,
+      candidates: visibleCandidates,
+    }
+    : planVersion === OPTIMIZATION_PLAN_V2
+      ? {
+        version: 'OPTIMIZATION_PLAN_RANKING_FACTS_V2' as const,
+        planVersion: OPTIMIZATION_PLAN_V2,
+        authority: 'P9_A_FIRST_PARTY_PLANNER' as const,
+        candidates: normalizedSeeds.map((seed, index) => ({
+          ...visibleCandidates[index]!,
+          feedback: seed.feedback ?? null,
+        })),
+      }
+      : (() => { throw new Error(`Unsupported optimization plan version ${planVersion}`) })()
   const seedSetHash = createHash('sha256').update(canonicalJson(factSnapshot)).digest('hex')
 
   return {
@@ -276,12 +321,31 @@ export function parseOptimizationPlanRankingOutput(
   return output
 }
 
-function parseRankingFacts(task: AiTask): z.infer<typeof RankingFactSnapshotSchema> {
-  const parsed = RankingFactSnapshotSchema.safeParse(task.factSnapshot)
-  if (!parsed.success) {
-    throw new Error('Optimization ranking task facts do not match the first-party contract')
+function parseRankingFactsValue(value: unknown): RankingFacts {
+  const v1 = RankingFactSnapshotSchema.safeParse(value)
+  if (v1.success) return v1.data
+  const v2 = RankingFactSnapshotV2Schema.safeParse(value)
+  if (v2.success) return v2.data
+  throw new Error('Optimization ranking task facts do not match the first-party contract')
+}
+
+function parseRankingFacts(task: AiTask): RankingFacts {
+  return parseRankingFactsValue(task.factSnapshot)
+}
+
+export function projectOptimizationRankingPromptFacts(
+  factSnapshot: Prisma.JsonValue | unknown,
+): Prisma.InputJsonValue {
+  const facts = parseRankingFactsValue(factSnapshot)
+  if (facts.version === 'OPTIMIZATION_PLAN_RANKING_FACTS_V1') {
+    return canonicalize(facts) as Prisma.InputJsonValue
   }
-  return parsed.data
+  return canonicalize({
+    version: facts.version,
+    planVersion: facts.planVersion,
+    authority: facts.authority,
+    candidates: facts.candidates.map(({ feedback: _feedback, ...candidate }) => candidate),
+  }) as Prisma.InputJsonValue
 }
 
 function explanationFor(
@@ -301,7 +365,22 @@ function explanationFor(
   }
 }
 
-function planInputFor(
+function feedbackExplanation(
+  candidate: RankingFactCandidateV2,
+  historicalRankAdjustment: number,
+  historicalFallback: boolean,
+) {
+  return {
+    feedbackProfileId: candidate.feedback?.profileId ?? null,
+    feedbackProfileVersion: candidate.feedback?.profileVersion ?? null,
+    feedbackInputFingerprint: candidate.feedback?.inputFingerprint ?? null,
+    feedbackSampleCount: candidate.feedback?.sampleCount ?? null,
+    historicalRankAdjustment,
+    historicalFallback,
+  }
+}
+
+function planInputForV1(
   task: AiTask,
   candidate: RankingFactCandidate,
   ranking: { aiRankAdjustment: number; finalRank: number },
@@ -320,6 +399,40 @@ function planInputFor(
     advisoryContext: candidate.advisoryContext.map((method) => ({ ...method })),
     automationEligibility: false,
     explanation: explanationFor(candidate, ai),
+  }
+}
+
+function planInputForV2(
+  task: AiTask,
+  candidate: RankingFactCandidateV2,
+  ranking: {
+    aiRankAdjustment: number
+    historicalRankAdjustment: number
+    finalRank: number
+    historicalFallback: boolean
+  },
+  ai: { applied: boolean; fallback: boolean; adjustment: number; annotation: string | null },
+): CreateOptimizationPlanInput {
+  return {
+    candidateId: candidate.candidateId,
+    projectId: task.projectId,
+    planVersion: OPTIMIZATION_PLAN_V2,
+    recommendedActionType: candidate.recommendedActionType,
+    sourceFactReferences: candidate.sourceFactReferences.map((reference) => ({ ...reference })),
+    deterministicRank: candidate.deterministicRank,
+    aiRankAdjustment: ranking.aiRankAdjustment,
+    historicalRankAdjustment: ranking.historicalRankAdjustment,
+    finalRank: ranking.finalRank,
+    advisoryContext: candidate.advisoryContext.map((method) => ({ ...method })),
+    automationEligibility: false,
+    explanation: {
+      ...explanationFor(candidate, ai),
+      feedback: feedbackExplanation(
+        candidate,
+        ranking.historicalRankAdjustment,
+        ranking.historicalFallback,
+      ),
+    },
   }
 }
 
@@ -402,23 +515,55 @@ export async function materializeOptimizationRankingSuccess(
   const facts = parseRankingFacts(task)
   const desiredAdjustment = new Map(output.adjustments.map((item) => [item.candidateId, item.adjustment] as const))
   const annotationByCandidate = new Map(output.adjustments.map((item) => [item.candidateId, item.explanation] as const))
-  const ranking = applyBoundedRankAdjustments(
+  const rankSeeds = facts.candidates.map((candidate) => ({
+    candidateId: candidate.candidateId,
+    candidateKey: candidate.candidateKey,
+    deterministicRank: candidate.deterministicRank,
+  }))
+
+  if (facts.version === 'OPTIMIZATION_PLAN_RANKING_FACTS_V1') {
+    const ranking = applyBoundedRankAdjustments(
+      rankSeeds,
+      output.adjustments.map(({ candidateId, adjustment }) => ({ candidateId, adjustment })),
+    )
+    const rankingByCandidate = new Map(ranking.map((item) => [item.candidateId, item] as const))
+    const wholeSetFallback = ranking.some((item) => (
+      item.aiRankAdjustment !== (desiredAdjustment.get(item.candidateId) ?? 0)
+    ))
+
+    for (const candidate of facts.candidates) {
+      const ranked = rankingByCandidate.get(candidate.candidateId)
+      if (!ranked) throw new Error('Optimization ranking result is missing a candidate')
+      const ai = wholeSetFallback
+        ? { applied: false, fallback: true, adjustment: 0, annotation: null }
+        : {
+          applied: true,
+          fallback: false,
+          adjustment: ranked.aiRankAdjustment,
+          annotation: annotationByCandidate.get(candidate.candidateId) ?? null,
+        }
+      await createPlanInTransaction(tx, planInputForV1(task, candidate, ranked, ai))
+    }
+    return
+  }
+
+  const ranking = applyFeedbackAwareRankAdjustments(
+    rankSeeds,
+    output.adjustments.map(({ candidateId, adjustment }) => ({ candidateId, adjustment })),
     facts.candidates.map((candidate) => ({
       candidateId: candidate.candidateId,
-      candidateKey: candidate.candidateKey,
-      deterministicRank: candidate.deterministicRank,
+      adjustment: candidate.feedback?.historicalRankAdjustment ?? 0,
     })),
-    output.adjustments.map(({ candidateId, adjustment }) => ({ candidateId, adjustment })),
   )
   const rankingByCandidate = new Map(ranking.map((item) => [item.candidateId, item] as const))
-  const wholeSetFallback = ranking.some((item) => (
+  const aiWholeSetFallback = ranking.some((item) => (
     item.aiRankAdjustment !== (desiredAdjustment.get(item.candidateId) ?? 0)
   ))
 
   for (const candidate of facts.candidates) {
     const ranked = rankingByCandidate.get(candidate.candidateId)
     if (!ranked) throw new Error('Optimization ranking result is missing a candidate')
-    const ai = wholeSetFallback
+    const ai = aiWholeSetFallback
       ? { applied: false, fallback: true, adjustment: 0, annotation: null }
       : {
         applied: true,
@@ -426,7 +571,7 @@ export async function materializeOptimizationRankingSuccess(
         adjustment: ranked.aiRankAdjustment,
         annotation: annotationByCandidate.get(candidate.candidateId) ?? null,
       }
-    await createPlanInTransaction(tx, planInputFor(task, candidate, ranked, ai))
+    await createPlanInTransaction(tx, planInputForV2(task, candidate, ranked, ai))
   }
 }
 
@@ -439,11 +584,39 @@ export async function materializeOptimizationRankingFallback(
   }
 
   const facts = parseRankingFacts(task)
+  if (facts.version === 'OPTIMIZATION_PLAN_RANKING_FACTS_V1') {
+    for (const candidate of facts.candidates) {
+      await repository.createPlan(planInputForV1(
+        task,
+        candidate,
+        { aiRankAdjustment: 0, finalRank: candidate.deterministicRank },
+        { applied: false, fallback: true, adjustment: 0, annotation: null },
+      ))
+    }
+    return
+  }
+
+  const ranking = applyFeedbackAwareRankAdjustments(
+    facts.candidates.map((candidate) => ({
+      candidateId: candidate.candidateId,
+      candidateKey: candidate.candidateKey,
+      deterministicRank: candidate.deterministicRank,
+    })),
+    [],
+    facts.candidates.map((candidate) => ({
+      candidateId: candidate.candidateId,
+      adjustment: candidate.feedback?.historicalRankAdjustment ?? 0,
+    })),
+  )
+  const rankingByCandidate = new Map(ranking.map((item) => [item.candidateId, item] as const))
+
   for (const candidate of facts.candidates) {
-    await repository.createPlan(planInputFor(
+    const ranked = rankingByCandidate.get(candidate.candidateId)
+    if (!ranked) throw new Error('Optimization ranking result is missing a candidate')
+    await repository.createPlan(planInputForV2(
       task,
       candidate,
-      { aiRankAdjustment: 0, finalRank: candidate.deterministicRank },
+      ranked,
       { applied: false, fallback: true, adjustment: 0, annotation: null },
     ))
   }
