@@ -119,7 +119,11 @@ describe('P9-F Operations authority hardening', () => {
       `${apiBase}/autopilot-policy/revisions`,
     ];
     for (const endpoint of getPaths) {
-      await request(app).get(endpoint).expect(200);
+      const response = await request(app).get(endpoint);
+      expect(
+        { endpoint, status: response.status, body: response.body },
+        `GET ${endpoint} must stay a persisted-read success`,
+      ).toMatchObject({ status: 200 });
     }
     await request(app).get(`/projects/${project.id}/optimization`).expect(200);
 
