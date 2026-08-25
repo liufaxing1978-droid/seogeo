@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../src/db/prisma.js';
 import { OptimizationAutopilotRepository } from '../../src/modules/optimization-autopilot/autopilot.repository.js';
 import { processOptimizationAutopilotJob } from '../../src/modules/optimization-autopilot/autopilot.worker.js';
@@ -177,6 +177,8 @@ async function createReadyFixture(planLevel: 'STANDARD' | 'ADVANCED' = 'ADVANCED
       plannedCount: 1,
       itemCount: 1,
       completedCount: 1,
+      failureCount: 0,
+      startedAt: new Date('2026-08-24T00:00:00.000Z'),
       planningCompletedAt: new Date('2026-08-24T00:00:00.000Z'),
       completedAt: new Date('2026-08-24T00:01:00.000Z')
     }
@@ -355,10 +357,13 @@ async function createReadyFixture(planLevel: 'STANDARD' | 'ADVANCED' = 'ADVANCED
 }
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(NOW);
   process.env.CONTROLLED_AUTOPILOT_GLOBAL_KILL_SWITCH = 'false';
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   if (ORIGINAL_GLOBAL_KILL_SWITCH === undefined) delete process.env.CONTROLLED_AUTOPILOT_GLOBAL_KILL_SWITCH;
   else process.env.CONTROLLED_AUTOPILOT_GLOBAL_KILL_SWITCH = ORIGINAL_GLOBAL_KILL_SWITCH;
 });
