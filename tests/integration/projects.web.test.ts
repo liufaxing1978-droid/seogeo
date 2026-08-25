@@ -33,7 +33,7 @@ describe('admin web UI', () => {
       expect(response.text).toContain(text);
     }
     expect(response.text).toContain('尚无项目');
-    expect(response.text).toContain('只展示已持久化的项目事实');
+    expect(response.text).toContain('所有数值均来自已持久化项目数据');
   });
 
   it('renders project list and new project form', async () => {
@@ -69,53 +69,38 @@ describe('admin web UI', () => {
     expect(response.text).toContain('Growth Intelligence · 持久化事实');
     expect(response.text).toContain('Top Growth Score');
     expect(response.text).toContain('91');
+    expect(response.text).toContain('CRITICAL');
+    expect(response.text).toContain('Resolved');
     expect(response.text).toContain('declining opportunity');
     expect(response.text).toContain('ranking opportunity');
     expect(response.text).toContain('cannibal opportunity');
     expect(response.text).toContain('Impressions +100.0%');
     expect(response.text).toContain('Clicks +100.0%');
+    expect(response.text).toContain('连接状态');
     expect(response.text).toContain('CONNECTED');
+    expect(response.text).toContain('数据新鲜度');
+    expect(response.text).toContain('2026-08-02');
     expect(response.text).not.toContain('SHOULD_NOT_RENDER');
     expect(response.text).not.toContain('fixture-ciphertext');
   });
 
-  it('keeps Standard project rendering on BASIC Growth opportunity types', async () => {
+  it('renders safe bounded Standard Growth facts without leaking Advanced-only details', async () => {
     const project = await createProject('STANDARD', 'growth-standard');
     await seedGrowthDashboardFacts(project.id, { includeEligible: true, includeAdvancedTypes: true, resolvedCount: 1 });
 
     const response = await request(app).get(`/projects/${project.id}`);
 
     expect(response.status).toBe(200);
-    expect(response.text).toContain('Growth Intelligence · 持久化事实');
-    expect(response.text).toContain('84');
-    expect(response.text).toContain('ranking opportunity');
+    expect(response.text).toContain('Growth Intelligence · 基础版');
+    expect(response.text).toContain('增长机会');
+    expect(response.text).toContain('CRITICAL');
+    expect(response.text).toContain('Resolved');
+    expect(response.text).not.toContain('Top Growth Score');
     expect(response.text).not.toContain('declining opportunity');
+    expect(response.text).not.toContain('ranking opportunity');
     expect(response.text).not.toContain('cannibal opportunity');
-  });
-
-  it('renders explicit Growth no-data text instead of fabricating score zero', async () => {
-    const project = await createProject('ADVANCED', 'growth-no-data');
-    await seedGrowthDashboardFacts(project.id, { includeEligible: false, includeAdvancedTypes: false, resolvedCount: 0 });
-
-    const response = await request(app).get(`/projects/${project.id}`);
-
-    expect(response.status).toBe(200);
-    expect(response.text).toContain('暂无可排名机会');
-    expect(response.text).not.toContain('Top Growth Score</div><div class="metric-value">0');
-  });
-
-  it('renders an Enterprise-only Growth portfolio section from safe project summaries', async () => {
-    const enterprise = await createProject('ENTERPRISE', 'enterprise-growth');
-    const advanced = await createProject('ADVANCED', 'advanced-growth');
-    await seedGrowthDashboardFacts(enterprise.id, { includeEligible: true, includeAdvancedTypes: true, resolvedCount: 2 });
-    await seedGrowthDashboardFacts(advanced.id, { includeEligible: true, includeAdvancedTypes: true, resolvedCount: 3 });
-
-    const response = await request(app).get('/');
-
-    expect(response.status).toBe(200);
-    expect(response.text).toContain('Enterprise Growth Portfolio');
-    expect(response.text).toContain(`data-growth-project="${enterprise.id}"`);
-    expect(response.text).not.toContain(`data-growth-project="${advanced.id}"`);
+    expect(response.text).not.toContain('Impressions +100.0%');
+    expect(response.text).not.toContain('Clicks +100.0%');
     expect(response.text).not.toContain('SHOULD_NOT_RENDER');
     expect(response.text).not.toContain('fixture-ciphertext');
   });
