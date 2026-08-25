@@ -1,6 +1,14 @@
 import { expect, test } from '@playwright/test';
+import { authenticateE2e } from './e2e-auth.js';
 
-test('creates a project from the web UI', async ({ page }) => {
+test('creates a project from the web UI', async ({ page, context }) => {
+  await authenticateE2e(context, {
+    role: 'OWNER',
+    planLevel: 'ADVANCED',
+    userStatus: 'ACTIVE',
+    membershipStatus: 'ACTIVE',
+  });
+
   const suffix = Date.now();
   await page.goto('/projects/new');
   await page.getByLabel('项目名称').fill('Example Project');
