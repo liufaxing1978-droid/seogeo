@@ -207,6 +207,7 @@ async function createFullPersistedChain() {
       sourceMetadata: { authority: true },
     },
   });
+  const contentHash = `hash-${label}`;
   const draft = await prisma.contentDraft.create({
     data: {
       projectId: project.id,
@@ -215,7 +216,7 @@ async function createFullPersistedChain() {
       body: 'fixture',
       language: 'zh-CN',
       currentVersion: 1,
-      currentContentHash: `hash-${label}`,
+      currentContentHash: contentHash,
       status: 'READY_FOR_REVIEW',
       generatedBy: 'DETERMINISTIC_GENERATOR',
     },
@@ -227,7 +228,7 @@ async function createFullPersistedChain() {
       title: draft.title,
       body: draft.body,
       language: draft.language,
-      contentHash: draft.currentContentHash,
+      contentHash,
       generatedBy: 'DETERMINISTIC_GENERATOR',
     },
   });
@@ -269,7 +270,7 @@ async function createFullPersistedChain() {
       planVersion: publicationPlan.version,
       planHash: publicationPlan.planHash,
       contentVersion: 1,
-      contentHash: draft.currentContentHash,
+      contentHash,
       previewHash: preview.previewHash,
       baseSha: publicationPlan.baseSha,
       targetRepository: publicationPlan.targetRepository,
