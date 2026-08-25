@@ -6,11 +6,11 @@ import { OptimizationOperationsRepository } from '../../src/modules/optimization
 import { OptimizationOperationsService } from '../../src/modules/optimization-operations/operations.service.js';
 
 const projectIds: string[] = [];
-const dayMs = 24 * 60 * 60 * 1000;
-const now = new Date('2026-08-25T05:15:00.000Z');
+const DAY_MS = 24 * 60 * 60 * 1000;
+const NOW = new Date('2026-08-25T05:15:00.000Z');
 
 function ago(ms: number): Date {
-  return new Date(now.getTime() - ms);
+  return new Date(NOW.getTime() - ms);
 }
 
 async function createProject(label: string) {
@@ -27,11 +27,23 @@ async function createProject(label: string) {
   return project;
 }
 
-async function createGrowthCandidate(projectId: string, label: string) {
+async function createPolicy(projectId: string, dailyDraftPrLimit = 3) {
+  return prisma.autopilotPolicy.create({
+    data: {
+      projectId,
+      enabled: true,
+      dailyDraftPrLimit,
+      killSwitch: false,
+      updatedBy: 'fixture',
+    },
+  });
+}
+
+async function createCandidate(projectId: string, label: string) {
   const identity = await prisma.growthOpportunityIdentity.create({
     data: {
       projectId,
-      opportunityKey: `p9f:${label}:${randomUUID()}`,
+      opportunityKey: `growth:${label}:${randomUUID()}`,
       identityVersion: 'GROWTH_IDENTITY_V1',
       identityType: 'QUERY_PAGE_GROWTH',
       normalizedQuery: `task 36 ${label}`,
@@ -89,10 +101,10 @@ async function createGrowthCandidate(projectId: string, label: string) {
       createdAt: ago(9 * 60 * 60 * 1000),
     },
   });
-  return { identity, snapshot, candidate };
+  return { identity, candidate };
 }
 
-async function createOptimizationPlan(projectId: string, candidateId: string, label: string) {
+async function createPlan(projectId: string, candidateId: string, label: string) {
   return prisma.optimizationPlan.create({
     data: {
       candidateId,
@@ -112,7 +124,7 @@ async function createOptimizationPlan(projectId: string, candidateId: string, la
   });
 }
 
-async function createRunAndDecision(input: {
+async function createRunDecision(input: {
   projectId: string;
   optimizationPlanId: string;
   policyId: string;
@@ -153,6 +165,12 @@ async function createRunAndDecision(input: {
       createdAt: ago(7 * 60 * 60 * 1000),
     },
   });
+  const status = input.decisionStatus ?? 'AUTOPILOT_READY';
+  const reasonCode = status === 'POLICY_BLOCKED'
+    ? 'AUTOPILOT_POLICY_DISABLED'
+    : status === 'P8_VALIDATION_BLOCKED'
+      ? 'P8_VALIDATION_FAILED'
+      : 'AUTOPILOT_READY';
   const decision = await prisma.optimizationAutopilotDecision.create({
     data: {
       projectId: input.projectId,
@@ -163,8 +181,8 @@ async function createRunAndDecision(input: {
       policyVersion: 'CONTROLLED_AUTOPILOT_POLICY_V1',
       policySnapshot: { enabled: true },
       sourceSnapshot: { fixture: input.label },
-      status: input.decisionStatus ?? 'AUTOPILOT_READY',
-      reasonCodes: [input.decisionStatus === 'POLICY_BLOCKED' ? 'AUTOPILOT_POLICY_DISABLED' : input.decisionStatus === 'P8_VALIDATION_BLOCKED' ? 'P8_VALIDATION_FAILED' : 'AUTOPILOT_READY'],
+      status,
+      reasonCodes: [reasonCode],
       p8PlanId: null,
       p8PreviewId: null,
       decisionKey: `decision:${input.label}:${randomUUID()}`,
@@ -174,7 +192,7 @@ async function createRunAndDecision(input: {
   return { run, item, decision };
 }
 
-async function createPublicationAuthority(input: {
+async function createP8(input: {
   projectId: string;
   optimizationPlanId: string;
   runItemId: string;
@@ -196,12 +214,7 @@ async function createPublicationAuthority(input: {
     },
   });
   const channel = await prisma.publicationChannel.create({
-    data: {
-      siteId: site.id,
-      pathPrefix: '/',
-      displayName: 'Default',
-      enabled: true,
-    },
+    data: { siteId: site.id, pathPrefix: '/', displayName: 'Default', enabled: true },
   });
   const proposal = await prisma.publicationProposal.create({
     data: {
@@ -284,27 +297,52 @@ async function createPublicationAuthority(input: {
       commitSha: 'b'.repeat(40),
       pullRequestNo: input.status === 'FAILED' ? null : 36,
       pullRequestUrl: input.status === 'FAILED' ? null : `https://github.com/example/${input.label}/pull/36`,
-      errorCode: input.status === 'FAILED' ? 'EXECUTION_FAILED' : input.status === 'VERIFICATION_FAILED' ? 'VERIFICATION_FAILED' : null,
+      errorCode: input.status === 'FAILED'
+        ? 'EXECUTION_FAILED'
+        : input.status === 'VERIFICATION_FAILED'
+          ? 'VERIFICATION_FAILED'
+          : null,
       startedAt: ago(4 * 60 * 60 * 1000),
       completedAt: input.executionCompletedAt ?? ago(3 * 60 * 60 * 1000),
       createdAt: input.executionCreatedAt ?? ago(4 * 60 * 60 * 1000),
     },
   });
+  const verificationStatus = input.verificationStatus
+    ?? (input.status === 'VERIFIED' ? 'VERIFIED' : input.status === 'VERIFICATION_FAILED' ? 'FAILED' : 'PENDING');
   const verification = await prisma.publicationVerification.create({
     data: {
       projectId: input.projectId,
       executionId: execution.id,
-      status: input.verificationStatus ?? (input.status === 'VERIFIED' ? 'VERIFIED' : input.status === 'VERIFICATION_FAILED' ? 'FAILED' : 'PENDING'),
+      status: verificationStatus,
       observedUrl: publicationPlan.targetPublicUrl,
       observedAt: input.status === 'VERIFIED' ? ago(2 * 60 * 60 * 1000) : null,
-      reasonCode: input.status === 'VERIFICATION_FAILED' ? 'VERIFICATION_FAILED' : input.status === 'VERIFIED' ? 'VERIFIED' : null,
+      reasonCode: input.status === 'VERIFICATION_FAILED'
+        ? 'VERIFICATION_FAILED'
+        : input.status === 'VERIFIED'
+          ? 'VERIFIED'
+          : null,
       createdAt: ago(3 * 60 * 60 * 1000),
     },
   });
-  return { site, channel, proposal, draft, publicationPlan, preview, execution, verification };
+  return { proposal, publicationPlan, preview, execution, verification };
 }
 
-async function createExperimentAuthority(input: {
+async function createVerifiedChain(projectId: string, policyId: string, label: string) {
+  const growth = await createCandidate(projectId, label);
+  const plan = await createPlan(projectId, growth.candidate.id, label);
+  const run = await createRunDecision({ projectId, optimizationPlanId: plan.id, policyId, label });
+  const p8 = await createP8({
+    projectId,
+    optimizationPlanId: plan.id,
+    runItemId: run.item.id,
+    label,
+    status: 'VERIFIED',
+    verificationStatus: 'VERIFIED',
+  });
+  return { growth, plan, run, p8 };
+}
+
+async function createTerminalExperiment(input: {
   projectId: string;
   optimizationPlanId: string;
   publicationExecutionId: string;
@@ -316,23 +354,28 @@ async function createExperimentAuthority(input: {
   effectState: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'INCONCLUSIVE';
   accepted: boolean;
 }) {
+  const verifiedAnchorAt = new Date(input.cutoffAt.getTime() - 56 * DAY_MS);
   const experiment = await prisma.optimizationExperiment.create({
     data: {
       projectId: input.projectId,
       optimizationPlanId: input.optimizationPlanId,
       publicationExecutionId: input.publicationExecutionId,
       publicationVerificationId: input.publicationVerificationId,
-      experimentVersion: 'OPTIMIZATION_EXPERIMENT_V1',
+      experimentVersion: `OPTIMIZATION_EXPERIMENT_V1_${input.label}`,
       experimentKey: `experiment:${input.label}:${randomUUID()}`,
       interventionType: 'CONTENT_CREATION',
       targetUrl: `https://${input.label}.example.com/`,
       marketCode: null,
       locale: 'zh-CN',
-      verifiedAnchorAt: ago(2 * dayMs),
+      verifiedAnchorAt,
       measurementScopeJson: {},
-      observationScheduleJson: {},
+      observationScheduleJson: [
+        { windowType: '14D', windowDays: 14 },
+        { windowType: '28D', windowDays: 28 },
+        { windowType: '56D', windowDays: 56 },
+      ],
       expectedDirectionJson: {},
-      createdAt: ago(2 * dayMs),
+      createdAt: verifiedAnchorAt,
     },
   });
   const observation = await prisma.optimizationExperimentObservation.create({
@@ -341,8 +384,8 @@ async function createExperimentAuthority(input: {
       experimentId: experiment.id,
       observationVersion: 'OPTIMIZATION_OBSERVATION_V1',
       observationKey: `observation:${input.label}:${randomUUID()}`,
-      windowType: 'TERMINAL',
-      windowDays: 30,
+      windowType: '56D',
+      windowDays: 56,
       dueAt: input.cutoffAt,
       inputCutoffAt: input.cutoffAt,
       baselineSearchSourceRefs: [],
@@ -378,19 +421,55 @@ async function createExperimentAuthority(input: {
         recommendedActionType: 'CONTENT_CREATION',
         effectState: input.effectState,
         feedbackValue: input.effectState === 'POSITIVE' ? 1 : input.effectState === 'NEGATIVE' ? -1 : 0,
-        terminalWindowType: 'TERMINAL',
-        terminalWindowDays: 30,
+        terminalWindowType: '56D',
+        terminalWindowDays: 56,
         inputCutoffAt: input.cutoffAt,
         sourceEvaluatorVersion: 'P9D_EVALUATOR_V1',
         sourceObservationKey: observation.observationKey,
-        createdAt: now,
+        createdAt: NOW,
       },
     });
   }
   return { experiment, observation, evidence };
 }
 
-async function deleteFixtures(): Promise<void> {
+async function createFeedbackProfile(input: {
+  projectId: string;
+  label: string;
+  oldest: Date;
+  newest: Date;
+  evidenceIds: string[];
+  sampleCount: number;
+  positiveCount: number;
+  negativeCount: number;
+}) {
+  return prisma.optimizationFeedbackProfile.create({
+    data: {
+      projectId: input.projectId,
+      feedbackProfileVersion: 'OPTIMIZATION_FEEDBACK_PROFILE_V1',
+      profileKey: `profile:${input.label}:${randomUUID()}`,
+      scopeKey: `scope:${input.label}`,
+      marketScopeMode: 'UNCONFIGURED_LEGACY',
+      marketCode: null,
+      locale: 'zh-CN',
+      recommendedActionType: 'CONTENT_CREATION',
+      sampleCount: input.sampleCount,
+      positiveCount: input.positiveCount,
+      neutralCount: 0,
+      negativeCount: input.negativeCount,
+      rollingEffectBalance: input.positiveCount - input.negativeCount,
+      historicalRankAdjustment: input.positiveCount - input.negativeCount,
+      windowLimit: 30,
+      oldestEvidenceCutoffAt: input.oldest,
+      newestEvidenceCutoffAt: input.newest,
+      inputEvidenceIdsJson: input.evidenceIds,
+      inputFingerprint: `profile-input:${input.label}:${randomUUID()}`,
+      createdAt: NOW,
+    },
+  });
+}
+
+async function cleanup(): Promise<void> {
   if (projectIds.length === 0) return;
   const where = { projectId: { in: projectIds } };
   await prisma.optimizationFeedbackEvidence.deleteMany({ where }).catch(() => undefined);
@@ -406,9 +485,9 @@ async function deleteFixtures(): Promise<void> {
   await prisma.publicationSite.deleteMany({ where }).catch(() => undefined);
   await prisma.autopilotExecutionReservation.deleteMany({ where }).catch(() => undefined);
   await prisma.optimizationAutopilotDecision.deleteMany({ where }).catch(() => undefined);
-  await prisma.autopilotPolicy.deleteMany({ where }).catch(() => undefined);
   await prisma.optimizationRunItem.deleteMany({ where }).catch(() => undefined);
   await prisma.optimizationRun.deleteMany({ where }).catch(() => undefined);
+  await prisma.autopilotPolicy.deleteMany({ where }).catch(() => undefined);
   await prisma.optimizationPlan.deleteMany({ where }).catch(() => undefined);
   await prisma.optimizationCandidate.deleteMany({ where }).catch(() => undefined);
   await prisma.growthOpportunitySnapshot.deleteMany({ where }).catch(() => undefined);
@@ -416,51 +495,43 @@ async function deleteFixtures(): Promise<void> {
   await prisma.project.deleteMany({ where: { id: { in: projectIds } } }).catch(() => undefined);
 }
 
-afterAll(async () => {
-  await deleteFixtures();
-});
+afterAll(cleanup);
 
 describe('P9-F persisted-read Operations repository and service', () => {
-  it('keeps every read project-scoped and projects each pipeline item only at its farthest persisted stage', async () => {
-    const projectA = await createProject('isolation-a');
-    const projectB = await createProject('isolation-b');
-    const policyA = await prisma.autopilotPolicy.create({ data: { projectId: projectA.id, enabled: true, dailyDraftPrLimit: 3, updatedBy: 'fixture' } });
-    const policyB = await prisma.autopilotPolicy.create({ data: { projectId: projectB.id, enabled: true, dailyDraftPrLimit: 9, updatedBy: 'fixture' } });
+  it('keeps pipeline reads project-scoped and emits one farthest stage per growth identity', async () => {
+    const projectA = await createProject('pipeline-a');
+    const projectB = await createProject('pipeline-b');
+    const policyA = await createPolicy(projectA.id);
+    const policyB = await createPolicy(projectB.id, 9);
 
-    const eligible = await createGrowthCandidate(projectA.id, 'eligible');
-    const planned = await createGrowthCandidate(projectA.id, 'planned');
-    await createOptimizationPlan(projectA.id, planned.candidate.id, 'planned');
+    const eligible = await createCandidate(projectA.id, 'eligible');
 
-    const draft = await createGrowthCandidate(projectA.id, 'draft-pr');
-    const draftPlan = await createOptimizationPlan(projectA.id, draft.candidate.id, 'draft-pr');
-    const draftRun = await createRunAndDecision({ projectId: projectA.id, optimizationPlanId: draftPlan.id, policyId: policyA.id, label: 'draft-pr' });
-    await createPublicationAuthority({ projectId: projectA.id, optimizationPlanId: draftPlan.id, runItemId: draftRun.item.id, label: 'draft-pr', status: 'PR_CREATED' });
+    const planned = await createCandidate(projectA.id, 'planned');
+    await createPlan(projectA.id, planned.candidate.id, 'planned');
 
-    const verified = await createGrowthCandidate(projectA.id, 'verified');
-    const verifiedPlan = await createOptimizationPlan(projectA.id, verified.candidate.id, 'verified');
-    const verifiedRun = await createRunAndDecision({ projectId: projectA.id, optimizationPlanId: verifiedPlan.id, policyId: policyA.id, label: 'verified' });
-    await createPublicationAuthority({ projectId: projectA.id, optimizationPlanId: verifiedPlan.id, runItemId: verifiedRun.item.id, label: 'verified', status: 'VERIFIED', verificationStatus: 'VERIFIED' });
+    const draft = await createCandidate(projectA.id, 'draft');
+    const draftPlan = await createPlan(projectA.id, draft.candidate.id, 'draft');
+    const draftRun = await createRunDecision({ projectId: projectA.id, optimizationPlanId: draftPlan.id, policyId: policyA.id, label: 'draft' });
+    await createP8({ projectId: projectA.id, optimizationPlanId: draftPlan.id, runItemId: draftRun.item.id, label: 'draft', status: 'PR_CREATED' });
 
-    const evaluated = await createGrowthCandidate(projectA.id, 'evaluated');
-    const evaluatedPlan = await createOptimizationPlan(projectA.id, evaluated.candidate.id, 'evaluated');
-    const evaluatedRun = await createRunAndDecision({ projectId: projectA.id, optimizationPlanId: evaluatedPlan.id, policyId: policyA.id, label: 'evaluated' });
-    const evaluatedP8 = await createPublicationAuthority({ projectId: projectA.id, optimizationPlanId: evaluatedPlan.id, runItemId: evaluatedRun.item.id, label: 'evaluated', status: 'VERIFIED', verificationStatus: 'VERIFIED' });
-    await createExperimentAuthority({
+    const verified = await createVerifiedChain(projectA.id, policyA.id, 'verified');
+    const evaluated = await createVerifiedChain(projectA.id, policyA.id, 'evaluated');
+    await createTerminalExperiment({
       projectId: projectA.id,
-      optimizationPlanId: evaluatedPlan.id,
-      publicationExecutionId: evaluatedP8.execution.id,
-      publicationVerificationId: evaluatedP8.verification.id,
-      candidateId: evaluated.candidate.id,
+      optimizationPlanId: evaluated.plan.id,
+      publicationExecutionId: evaluated.p8.execution.id,
+      publicationVerificationId: evaluated.p8.verification.id,
+      candidateId: evaluated.growth.candidate.id,
       label: 'evaluated',
-      cutoffAt: ago(2 * dayMs),
-      createdAt: now,
+      cutoffAt: ago(2 * DAY_MS),
+      createdAt: NOW,
       effectState: 'POSITIVE',
       accepted: true,
     });
 
-    const foreign = await createGrowthCandidate(projectB.id, 'foreign');
-    const foreignPlan = await createOptimizationPlan(projectB.id, foreign.candidate.id, 'foreign');
-    await createRunAndDecision({ projectId: projectB.id, optimizationPlanId: foreignPlan.id, policyId: policyB.id, label: 'foreign' });
+    const foreign = await createCandidate(projectB.id, 'foreign');
+    const foreignPlan = await createPlan(projectB.id, foreign.candidate.id, 'foreign');
+    await createRunDecision({ projectId: projectB.id, optimizationPlanId: foreignPlan.id, policyId: policyB.id, label: 'foreign' });
 
     const repository = new OptimizationOperationsRepository(prisma);
     const rows = await repository.listPipelineAuthority(projectA.id, 100, 0);
@@ -469,27 +540,31 @@ describe('P9-F persisted-read Operations repository and service', () => {
     expect(stages.get(eligible.identity.id)).toBe('ELIGIBLE');
     expect(stages.get(planned.identity.id)).toBe('PLANNED');
     expect(stages.get(draft.identity.id)).toBe('DRAFT_PR');
-    expect(stages.get(verified.identity.id)).toBe('VERIFIED');
-    expect(stages.get(evaluated.identity.id)).toBe('EVALUATED');
-    expect(rows.filter((row) => row.growthOpportunityId === evaluated.identity.id)).toHaveLength(1);
+    expect(stages.get(verified.growth.identity.id)).toBe('VERIFIED');
+    expect(stages.get(evaluated.growth.identity.id)).toBe('EVALUATED');
+    expect(rows.filter((row) => row.growthOpportunityId === evaluated.growth.identity.id)).toHaveLength(1);
     expect(rows.some((row) => row.growthOpportunityId === foreign.identity.id)).toBe(false);
-    await expect(repository.getCurrentPolicy(projectA.id)).resolves.toMatchObject({ id: policyA.id, projectId: projectA.id, dailyDraftPrLimit: 3 });
+    await expect(repository.getCurrentPolicy(projectA.id)).resolves.toMatchObject({
+      id: policyA.id,
+      projectId: projectA.id,
+      dailyDraftPrLimit: 3,
+    });
   });
 
-  it('reads inbox authority, cutoff windows, quota and semantic activity without cross-project leakage', async () => {
+  it('preserves inbox authority, business cutoffs, quota state and semantic activity time', async () => {
     const projectA = await createProject('semantics-a');
     const projectB = await createProject('semantics-b');
-    const policyA = await prisma.autopilotPolicy.create({ data: { projectId: projectA.id, enabled: true, dailyDraftPrLimit: 3, updatedBy: 'fixture' } });
-    const policyB = await prisma.autopilotPolicy.create({ data: { projectId: projectB.id, enabled: true, dailyDraftPrLimit: 3, updatedBy: 'fixture' } });
+    const policyA = await createPolicy(projectA.id);
+    const policyB = await createPolicy(projectB.id);
 
-    const blocked = await createGrowthCandidate(projectA.id, 'blocked');
-    const blockedPlan = await createOptimizationPlan(projectA.id, blocked.candidate.id, 'blocked');
-    await createRunAndDecision({ projectId: projectA.id, optimizationPlanId: blockedPlan.id, policyId: policyA.id, label: 'blocked', decisionStatus: 'POLICY_BLOCKED' });
+    const blocked = await createCandidate(projectA.id, 'blocked');
+    const blockedPlan = await createPlan(projectA.id, blocked.candidate.id, 'blocked');
+    await createRunDecision({ projectId: projectA.id, optimizationPlanId: blockedPlan.id, policyId: policyA.id, label: 'blocked', decisionStatus: 'POLICY_BLOCKED' });
 
-    const failed = await createGrowthCandidate(projectA.id, 'failed');
-    const failedPlan = await createOptimizationPlan(projectA.id, failed.candidate.id, 'failed');
-    const failedRun = await createRunAndDecision({ projectId: projectA.id, optimizationPlanId: failedPlan.id, policyId: policyA.id, label: 'failed', decisionCreatedAt: ago(2 * 60 * 60 * 1000) });
-    await createPublicationAuthority({
+    const failed = await createCandidate(projectA.id, 'failed');
+    const failedPlan = await createPlan(projectA.id, failed.candidate.id, 'failed');
+    const failedRun = await createRunDecision({ projectId: projectA.id, optimizationPlanId: failedPlan.id, policyId: policyA.id, label: 'failed' });
+    await createP8({
       projectId: projectA.id,
       optimizationPlanId: failedPlan.id,
       runItemId: failedRun.item.id,
@@ -499,75 +574,59 @@ describe('P9-F persisted-read Operations repository and service', () => {
       executionCompletedAt: ago(3 * 60 * 60 * 1000),
     });
 
-    const observed = await createGrowthCandidate(projectA.id, 'observed');
-    const observedPlan = await createOptimizationPlan(projectA.id, observed.candidate.id, 'observed');
-    const observedRun = await createRunAndDecision({ projectId: projectA.id, optimizationPlanId: observedPlan.id, policyId: policyA.id, label: 'observed' });
-    const observedP8 = await createPublicationAuthority({ projectId: projectA.id, optimizationPlanId: observedPlan.id, runItemId: observedRun.item.id, label: 'observed', status: 'VERIFIED', verificationStatus: 'VERIFIED' });
-    const recent = await createExperimentAuthority({
+    const recentChain = await createVerifiedChain(projectA.id, policyA.id, 'recent-positive');
+    const recent = await createTerminalExperiment({
       projectId: projectA.id,
-      optimizationPlanId: observedPlan.id,
-      publicationExecutionId: observedP8.execution.id,
-      publicationVerificationId: observedP8.verification.id,
-      candidateId: observed.candidate.id,
+      optimizationPlanId: recentChain.plan.id,
+      publicationExecutionId: recentChain.p8.execution.id,
+      publicationVerificationId: recentChain.p8.verification.id,
+      candidateId: recentChain.growth.candidate.id,
       label: 'recent-positive',
       cutoffAt: ago(4 * 60 * 60 * 1000),
-      createdAt: now,
+      createdAt: NOW,
       effectState: 'POSITIVE',
       accepted: true,
     });
-    const older = await createExperimentAuthority({
+    const olderChain = await createVerifiedChain(projectA.id, policyA.id, 'older-negative');
+    const older = await createTerminalExperiment({
       projectId: projectA.id,
-      optimizationPlanId: observedPlan.id,
-      publicationExecutionId: observedP8.execution.id,
-      publicationVerificationId: observedP8.verification.id,
-      candidateId: observed.candidate.id,
+      optimizationPlanId: olderChain.plan.id,
+      publicationExecutionId: olderChain.p8.execution.id,
+      publicationVerificationId: olderChain.p8.verification.id,
+      candidateId: olderChain.growth.candidate.id,
       label: 'older-negative',
-      cutoffAt: ago(20 * dayMs),
-      createdAt: now,
+      cutoffAt: ago(20 * DAY_MS),
+      createdAt: NOW,
       effectState: 'NEGATIVE',
       accepted: false,
     });
-    await createExperimentAuthority({
+    const outsideChain = await createVerifiedChain(projectA.id, policyA.id, 'outside-window');
+    await createTerminalExperiment({
       projectId: projectA.id,
-      optimizationPlanId: observedPlan.id,
-      publicationExecutionId: observedP8.execution.id,
-      publicationVerificationId: observedP8.verification.id,
-      candidateId: observed.candidate.id,
+      optimizationPlanId: outsideChain.plan.id,
+      publicationExecutionId: outsideChain.p8.execution.id,
+      publicationVerificationId: outsideChain.p8.verification.id,
+      candidateId: outsideChain.growth.candidate.id,
       label: 'outside-window',
-      cutoffAt: ago(31 * dayMs),
-      createdAt: now,
+      cutoffAt: ago(31 * DAY_MS),
+      createdAt: NOW,
       effectState: 'POSITIVE',
       accepted: false,
     });
-
-    await prisma.optimizationFeedbackProfile.create({
-      data: {
-        projectId: projectA.id,
-        feedbackProfileVersion: 'OPTIMIZATION_FEEDBACK_PROFILE_V1',
-        profileKey: `profile:${randomUUID()}`,
-        scopeKey: 'scope:observed',
-        marketScopeMode: 'UNCONFIGURED_LEGACY',
-        marketCode: null,
-        locale: 'zh-CN',
-        recommendedActionType: 'CONTENT_CREATION',
-        sampleCount: 2,
-        positiveCount: 1,
-        neutralCount: 0,
-        negativeCount: 1,
-        rollingEffectBalance: 0,
-        historicalRankAdjustment: 0,
-        windowLimit: 30,
-        oldestEvidenceCutoffAt: older.observation.inputCutoffAt,
-        newestEvidenceCutoffAt: recent.observation.inputCutoffAt,
-        inputEvidenceIdsJson: recent.evidence ? [recent.evidence.id] : [],
-        inputFingerprint: `profile-input:${randomUUID()}`,
-        createdAt: now,
-      },
+    await createFeedbackProfile({
+      projectId: projectA.id,
+      label: 'semantics',
+      oldest: older.observation.inputCutoffAt,
+      newest: recent.observation.inputCutoffAt,
+      evidenceIds: recent.evidence ? [recent.evidence.id] : [],
+      sampleCount: 2,
+      positiveCount: 1,
+      negativeCount: 1,
     });
 
-    const reservationDecisions = [];
+    const quotaDecisions = [];
     for (const label of ['reserved', 'consumed', 'released'] as const) {
-      const decision = await prisma.optimizationAutopilotDecision.create({
+      quotaDecisions.push(await prisma.optimizationAutopilotDecision.create({
         data: {
           projectId: projectA.id,
           runId: failedRun.run.id,
@@ -584,33 +643,31 @@ describe('P9-F persisted-read Operations repository and service', () => {
           decisionKey: `quota:${label}:${randomUUID()}`,
           createdAt: ago(90 * 60 * 1000),
         },
-      });
-      reservationDecisions.push(decision);
+      }));
     }
     const utcDate = new Date('2026-08-25T00:00:00.000Z');
     await prisma.autopilotExecutionReservation.createMany({
       data: [
-        { projectId: projectA.id, decisionId: reservationDecisions[0]!.id, utcDate, reservationKey: `reserved:${randomUUID()}`, status: 'RESERVED' },
-        { projectId: projectA.id, decisionId: reservationDecisions[1]!.id, utcDate, reservationKey: `consumed:${randomUUID()}`, status: 'CONSUMED' },
-        { projectId: projectA.id, decisionId: reservationDecisions[2]!.id, utcDate, reservationKey: `released:${randomUUID()}`, status: 'RELEASED', releasedAt: ago(30 * 60 * 1000) },
+        { projectId: projectA.id, decisionId: quotaDecisions[0]!.id, utcDate, reservationKey: `reserved:${randomUUID()}`, status: 'RESERVED' },
+        { projectId: projectA.id, decisionId: quotaDecisions[1]!.id, utcDate, reservationKey: `consumed:${randomUUID()}`, status: 'CONSUMED' },
+        { projectId: projectA.id, decisionId: quotaDecisions[2]!.id, utcDate, reservationKey: `released:${randomUUID()}`, status: 'RELEASED', releasedAt: ago(30 * 60 * 1000) },
       ],
     });
 
-    const foreign = await createGrowthCandidate(projectB.id, 'semantic-foreign');
-    const foreignPlan = await createOptimizationPlan(projectB.id, foreign.candidate.id, 'semantic-foreign');
-    await createRunAndDecision({ projectId: projectB.id, optimizationPlanId: foreignPlan.id, policyId: policyB.id, label: 'semantic-foreign', decisionStatus: 'POLICY_BLOCKED' });
+    const foreign = await createCandidate(projectB.id, 'semantic-foreign');
+    const foreignPlan = await createPlan(projectB.id, foreign.candidate.id, 'semantic-foreign');
+    await createRunDecision({ projectId: projectB.id, optimizationPlanId: foreignPlan.id, policyId: policyB.id, label: 'semantic-foreign', decisionStatus: 'POLICY_BLOCKED' });
 
     const repository = new OptimizationOperationsRepository(prisma);
     const inbox = await repository.listInboxAuthority(projectA.id, 100, 0);
     expect(inbox.some((item) => item.authorityType === 'AUTOPILOT_DECISION' && item.status === 'POLICY_BLOCKED')).toBe(true);
     expect(inbox.some((item) => item.authorityType === 'PUBLICATION_EXECUTION' && item.status === 'FAILED')).toBe(true);
-    expect(inbox.every((item) => !item.reasonCode.includes('semantic-foreign'))).toBe(true);
 
-    const observations = await repository.listTerminalObservations(projectA.id, ago(30 * dayMs), now);
+    const observations = await repository.listTerminalObservations(projectA.id, ago(30 * DAY_MS), NOW);
     expect(observations.map((item) => item.id)).toContain(recent.observation.id);
     expect(observations.map((item) => item.id)).toContain(older.observation.id);
     expect(observations).toHaveLength(2);
-    const feedback = await repository.listFeedbackEvidence(projectA.id, ago(30 * dayMs), now);
+    const feedback = await repository.listFeedbackEvidence(projectA.id, ago(30 * DAY_MS), NOW);
     expect(feedback.map((item) => item.observationId)).toEqual([recent.observation.id]);
 
     const reservations = await repository.listReservations(projectA.id, utcDate);
@@ -624,51 +681,53 @@ describe('P9-F persisted-read Operations repository and service', () => {
     expect(activity[0]?.occurredAt.getTime()).toBeGreaterThanOrEqual(activity.at(-1)?.occurredAt.getTime() ?? 0);
   });
 
-  it('composes an overview from persisted reads only and clamps quota without conflating outcome with feedback acceptance', async () => {
+  it('composes overview counts without conflating experiment outcome with feedback acceptance', async () => {
     const project = await createProject('overview');
-    const policy = await prisma.autopilotPolicy.create({
-      data: {
-        projectId: project.id,
-        enabled: true,
-        dailyDraftPrLimit: 1,
-        killSwitch: false,
-        updatedBy: 'fixture',
-      },
-    });
-    const growth = await createGrowthCandidate(project.id, 'overview-evaluated');
-    const plan = await createOptimizationPlan(project.id, growth.candidate.id, 'overview-evaluated');
-    const run = await createRunAndDecision({ projectId: project.id, optimizationPlanId: plan.id, policyId: policy.id, label: 'overview-evaluated' });
-    const p8 = await createPublicationAuthority({ projectId: project.id, optimizationPlanId: plan.id, runItemId: run.item.id, label: 'overview-evaluated', status: 'VERIFIED', verificationStatus: 'VERIFIED' });
-    const accepted = await createExperimentAuthority({
+    const policy = await createPolicy(project.id, 1);
+
+    const positiveChain = await createVerifiedChain(project.id, policy.id, 'overview-positive');
+    const positive = await createTerminalExperiment({
       projectId: project.id,
-      optimizationPlanId: plan.id,
-      publicationExecutionId: p8.execution.id,
-      publicationVerificationId: p8.verification.id,
-      candidateId: growth.candidate.id,
+      optimizationPlanId: positiveChain.plan.id,
+      publicationExecutionId: positiveChain.p8.execution.id,
+      publicationVerificationId: positiveChain.p8.verification.id,
+      candidateId: positiveChain.growth.candidate.id,
       label: 'overview-positive',
-      cutoffAt: ago(2 * dayMs),
-      createdAt: now,
+      cutoffAt: ago(2 * DAY_MS),
+      createdAt: NOW,
       effectState: 'POSITIVE',
       accepted: true,
     });
-    await createExperimentAuthority({
+    const inconclusiveChain = await createVerifiedChain(project.id, policy.id, 'overview-inconclusive');
+    await createTerminalExperiment({
       projectId: project.id,
-      optimizationPlanId: plan.id,
-      publicationExecutionId: p8.execution.id,
-      publicationVerificationId: p8.verification.id,
-      candidateId: growth.candidate.id,
+      optimizationPlanId: inconclusiveChain.plan.id,
+      publicationExecutionId: inconclusiveChain.p8.execution.id,
+      publicationVerificationId: inconclusiveChain.p8.verification.id,
+      candidateId: inconclusiveChain.growth.candidate.id,
       label: 'overview-inconclusive',
-      cutoffAt: ago(dayMs),
-      createdAt: now,
+      cutoffAt: ago(DAY_MS),
+      createdAt: NOW,
       effectState: 'INCONCLUSIVE',
       accepted: false,
     });
+    await createFeedbackProfile({
+      projectId: project.id,
+      label: 'overview',
+      oldest: positive.observation.inputCutoffAt,
+      newest: positive.observation.inputCutoffAt,
+      evidenceIds: positive.evidence ? [positive.evidence.id] : [],
+      sampleCount: 1,
+      positiveCount: 1,
+      negativeCount: 0,
+    });
+
     const extraDecision = await prisma.optimizationAutopilotDecision.create({
       data: {
         projectId: project.id,
-        runId: run.run.id,
-        runItemId: run.item.id,
-        optimizationPlanId: plan.id,
+        runId: positiveChain.run.run.id,
+        runItemId: positiveChain.run.item.id,
+        optimizationPlanId: positiveChain.plan.id,
         policyId: policy.id,
         policyVersion: 'CONTROLLED_AUTOPILOT_POLICY_V1',
         policySnapshot: {},
@@ -684,42 +743,18 @@ describe('P9-F persisted-read Operations repository and service', () => {
     const utcDate = new Date('2026-08-25T00:00:00.000Z');
     await prisma.autopilotExecutionReservation.createMany({
       data: [
-        { projectId: project.id, decisionId: run.decision.id, utcDate, reservationKey: `overview-reserved:${randomUUID()}`, status: 'RESERVED' },
+        { projectId: project.id, decisionId: positiveChain.run.decision.id, utcDate, reservationKey: `overview-reserved:${randomUUID()}`, status: 'RESERVED' },
         { projectId: project.id, decisionId: extraDecision.id, utcDate, reservationKey: `overview-consumed:${randomUUID()}`, status: 'CONSUMED' },
       ],
-    });
-    await prisma.optimizationFeedbackProfile.create({
-      data: {
-        projectId: project.id,
-        feedbackProfileVersion: 'OPTIMIZATION_FEEDBACK_PROFILE_V1',
-        profileKey: `overview-profile:${randomUUID()}`,
-        scopeKey: 'scope:overview',
-        marketScopeMode: 'UNCONFIGURED_LEGACY',
-        marketCode: null,
-        locale: 'zh-CN',
-        recommendedActionType: 'CONTENT_CREATION',
-        sampleCount: 1,
-        positiveCount: 1,
-        neutralCount: 0,
-        negativeCount: 0,
-        rollingEffectBalance: 1,
-        historicalRankAdjustment: 1,
-        windowLimit: 30,
-        oldestEvidenceCutoffAt: accepted.observation.inputCutoffAt,
-        newestEvidenceCutoffAt: accepted.observation.inputCutoffAt,
-        inputEvidenceIdsJson: accepted.evidence ? [accepted.evidence.id] : [],
-        inputFingerprint: `overview-profile-input:${randomUUID()}`,
-        createdAt: now,
-      },
     });
 
     const repository = new OptimizationOperationsRepository(prisma);
     const service = new OptimizationOperationsService(repository, () => false);
-    const overview = await service.getOverview(project.id, now);
+    const overview = await service.getOverview(project.id, NOW);
 
     expect(overview.effectiveAutopilotState).toBe('ACTIVE');
     expect(overview.quota).toEqual({ configuredLimit: 1, reserved: 1, consumed: 1, remaining: 0 });
-    expect(overview.pipelineCounts.EVALUATED).toBe(1);
+    expect(overview.pipelineCounts.EVALUATED).toBe(2);
     expect(overview.experimentSummary.last7Days).toMatchObject({
       positive: 1,
       inconclusive: 1,
@@ -728,10 +763,9 @@ describe('P9-F persisted-read Operations repository and service', () => {
     });
     expect(overview.feedbackSummary.sampleCount).toBe(1);
     expect(overview.todayRunCount).toBeGreaterThanOrEqual(1);
-    expect(overview.generatedAt.toISOString()).toBe(now.toISOString());
+    expect(overview.generatedAt.toISOString()).toBe(NOW.toISOString());
 
-    const policyRead = await service.getPolicy(project.id);
-    expect(policyRead?.id).toBe(policy.id);
+    await expect(service.getPolicy(project.id)).resolves.toMatchObject({ id: policy.id });
     await expect(service.listPolicyRevisions(project.id, { limit: 25, offset: 0 })).resolves.toEqual([]);
   });
 });
