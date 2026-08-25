@@ -30,13 +30,14 @@ describe('P10.5 dashboard UI contract', () => {
     const topbar = source('src/views/partials/topbar.ejs');
 
     expect(layout).toContain('data-ui="app-shell"');
+    expect(layout).toContain('/assets/css/p10.css');
     expect(sidebar).not.toContain('href="#"');
     expect(topbar).toContain('P10');
     expect(topbar).not.toContain('P3');
   });
 
   it('uses the approved warm neutral and gold design tokens', () => {
-    const css = source('src/public/css/app.css').toLowerCase();
+    const css = source('src/public/css/p10.css').toLowerCase();
 
     expect(css).toContain('--bg:#fafaf7');
     expect(css).toContain('--text:#111111');
