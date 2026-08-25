@@ -217,12 +217,54 @@ export class OptimizationService {
       }
     })
 
+    const planVersion = options.planVersion ?? OPTIMIZATION_PLAN_VERSION
+    if (planVersion !== OPTIMIZATION_PLAN_VERSION && planVersion !== OPTIMIZATION_PLAN_V2) {
+      throw new Error(`Unsupported optimization plan version ${planVersion}`)
+    }
+
     if (options.useAi === true) {
       if (prepared.length === 0) {
         return { candidates, plans: [], aiTaskId: null }
       }
+
+      if (planVersion === OPTIMIZATION_PLAN_VERSION) {
+        const task = await this.aiTasks.createAndEnqueue(
+          buildOptimizationPlanRankingTaskInput(projectId, prepared.map((item) => item.aiSeed)),
+        )
+        return {
+          candidates,
+          plans: [],
+          aiTaskId: task.id,
+        }
+      }
+
+      const v2Seeds: OptimizationPlanRankingSeed[] = []
+      for (const item of prepared) {
+        const profile = await this.feedbackProfiles.findLatestProfileForScope({
+          projectId,
+          marketScopeMode: item.marketScopeMode,
+          marketCode: item.marketCode,
+          locale: item.locale,
+          recommendedActionType: item.recommendedActionType,
+        })
+        v2Seeds.push({
+          ...item.aiSeed,
+          feedback: compatibleFeedbackProfile(profile, projectId)
+            ? {
+              profileId: profile.id,
+              profileVersion: profile.feedbackProfileVersion,
+              inputFingerprint: profile.inputFingerprint,
+              sampleCount: profile.sampleCount,
+              historicalRankAdjustment: profile.historicalRankAdjustment,
+            }
+            : null,
+        })
+      }
+
       const task = await this.aiTasks.createAndEnqueue(
-        buildOptimizationPlanRankingTaskInput(projectId, prepared.map((item) => item.aiSeed)),
+        buildOptimizationPlanRankingTaskInput(projectId, v2Seeds, {
+          planVersion: OPTIMIZATION_PLAN_V2,
+        }),
       )
       return {
         candidates,
@@ -231,7 +273,6 @@ export class OptimizationService {
       }
     }
 
-    const planVersion = options.planVersion ?? OPTIMIZATION_PLAN_VERSION
     if (planVersion === OPTIMIZATION_PLAN_VERSION) {
       const plans: OptimizationPlan[] = []
       for (const item of prepared) {
@@ -242,10 +283,6 @@ export class OptimizationService {
         plans,
         aiTaskId: null,
       }
-    }
-
-    if (planVersion !== OPTIMIZATION_PLAN_V2) {
-      throw new Error(`Unsupported optimization plan version ${planVersion}`)
     }
 
     const frozenFeedback: FrozenFeedback[] = []
