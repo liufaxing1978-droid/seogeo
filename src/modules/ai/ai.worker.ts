@@ -27,6 +27,7 @@ import {
   materializeOptimizationRankingFallback,
   materializeOptimizationRankingSuccess,
   parseOptimizationPlanRankingOutput,
+  projectOptimizationRankingPromptFacts,
   type OptimizationPlanRankingOutput,
 } from './optimization-plan-ranking.js';
 import { getPromptDefinition } from './prompts/prompt-registry.js';
@@ -161,7 +162,10 @@ export async function executeAiTask(taskId: string, dependencies: ExecuteAiTaskD
 
   let providerCompleted = false;
   try {
-    const response = await gateway.complete({ messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.buildUserMessage(task.factSnapshot) }], mode: prompt.mode, responseFormat: prompt.responseFormat });
+    const promptFacts = task.taskType === 'OPTIMIZATION_PLAN_RANKING'
+      ? projectOptimizationRankingPromptFacts(task.factSnapshot)
+      : task.factSnapshot;
+    const response = await gateway.complete({ messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.buildUserMessage(promptFacts) }], mode: prompt.mode, responseFormat: prompt.responseFormat });
     providerCompleted = true;
     await repository.recordProviderSuccess(run.id, response);
     observability.emit({ event: 'ai.provider.request.completed', taskId: task.id, projectId: task.projectId, runId: run.id, provider: 'DEEPSEEK', model: response.model, promptVersion: task.promptVersion, latencyMs: response.latencyMs, promptTokens: response.usage.promptTokens, completionTokens: response.usage.completionTokens, totalTokens: response.usage.totalTokens, cacheHitTokens: response.usage.cacheHitTokens, cacheMissTokens: response.usage.cacheMissTokens, reasoningTokens: response.usage.reasoningTokens });
