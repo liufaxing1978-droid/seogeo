@@ -147,6 +147,133 @@ describe('P9-D experiment worker', () => {
     expect(queue.enqueueWindow).not.toHaveBeenCalled();
   });
 
+  it('hands off only the persisted observation after evaluateWindow resolves', async () => {
+    const observation = { id: 'observation-1' };
+    const service = {
+      startFromVerifiedExecution: vi.fn(),
+      evaluateWindow: vi.fn().mockResolvedValue(observation)
+    };
+    const queue = {
+      enqueueStart: vi.fn(),
+      enqueueWindow: vi.fn()
+    };
+    const repository = {
+      listVerifiedP9ExecutionsWithoutExperiment: vi.fn(),
+      listDueExperimentWindows: vi.fn()
+    };
+    const feedbackHandoff = {
+      onObservationPersisted: vi.fn().mockResolvedValue(undefined)
+    };
+    const deps = {
+      service: service as never,
+      queue: queue as never,
+      repository: repository as never,
+      feedbackHandoff
+    } as unknown as OptimizationExperimentWorkerDeps;
+
+    await processOptimizationExperimentJob(
+      {
+        name: 'evaluate-window',
+        data: {
+          kind: 'EVALUATE_WINDOW',
+          experimentId: 'experiment-1',
+          projectId: 'project-1',
+          windowType: '28D'
+        }
+      },
+      deps
+    );
+
+    expect(feedbackHandoff.onObservationPersisted).toHaveBeenCalledTimes(1);
+    expect(feedbackHandoff.onObservationPersisted).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      experimentId: 'experiment-1',
+      observationId: 'observation-1'
+    });
+    expect(service.evaluateWindow.mock.invocationCallOrder[0])
+      .toBeLessThan(feedbackHandoff.onObservationPersisted.mock.invocationCallOrder[0]!);
+  });
+
+  it('does not hand off when evaluateWindow produces no persisted observation', async () => {
+    const service = {
+      startFromVerifiedExecution: vi.fn(),
+      evaluateWindow: vi.fn().mockResolvedValue(null)
+    };
+    const queue = {
+      enqueueStart: vi.fn(),
+      enqueueWindow: vi.fn()
+    };
+    const repository = {
+      listVerifiedP9ExecutionsWithoutExperiment: vi.fn(),
+      listDueExperimentWindows: vi.fn()
+    };
+    const feedbackHandoff = {
+      onObservationPersisted: vi.fn().mockResolvedValue(undefined)
+    };
+    const deps = {
+      service: service as never,
+      queue: queue as never,
+      repository: repository as never,
+      feedbackHandoff
+    } as unknown as OptimizationExperimentWorkerDeps;
+
+    await processOptimizationExperimentJob(
+      {
+        name: 'evaluate-window',
+        data: {
+          kind: 'EVALUATE_WINDOW',
+          experimentId: 'experiment-1',
+          projectId: 'project-1',
+          windowType: '28D'
+        }
+      },
+      deps
+    );
+
+    expect(feedbackHandoff.onObservationPersisted).not.toHaveBeenCalled();
+  });
+
+  it('keeps durable P9-D evaluation successful when the feedback handoff fails', async () => {
+    const observation = { id: 'observation-1' };
+    const service = {
+      startFromVerifiedExecution: vi.fn(),
+      evaluateWindow: vi.fn().mockResolvedValue(observation)
+    };
+    const queue = {
+      enqueueStart: vi.fn(),
+      enqueueWindow: vi.fn()
+    };
+    const repository = {
+      listVerifiedP9ExecutionsWithoutExperiment: vi.fn(),
+      listDueExperimentWindows: vi.fn()
+    };
+    const feedbackHandoff = {
+      onObservationPersisted: vi.fn().mockRejectedValue(new Error('redis unavailable'))
+    };
+    const deps = {
+      service: service as never,
+      queue: queue as never,
+      repository: repository as never,
+      feedbackHandoff
+    } as unknown as OptimizationExperimentWorkerDeps;
+
+    await expect(processOptimizationExperimentJob(
+      {
+        name: 'evaluate-window',
+        data: {
+          kind: 'EVALUATE_WINDOW',
+          experimentId: 'experiment-1',
+          projectId: 'project-1',
+          windowType: '28D'
+        }
+      },
+      deps
+    )).resolves.toBeUndefined();
+
+    expect(service.evaluateWindow).toHaveBeenCalledTimes(1);
+    expect(feedbackHandoff.onObservationPersisted).toHaveBeenCalledTimes(1);
+  });
+
   it('reconciles bounded VERIFIED starts first, then bounded due experiment windows', async () => {
     const now = new Date('2026-08-24T00:00:00.000Z');
     const service = {
