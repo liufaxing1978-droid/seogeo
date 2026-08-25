@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import type Redis from 'ioredis';
 import { AppError } from '../core/errors.js';
 
 const LOGIN_FAILURE_LIMIT = 10;
@@ -19,6 +18,17 @@ export interface LoginAttemptLimiter {
   clear(key: string): Promise<void>;
 }
 
+export interface LoginAttemptRedis {
+  get(key: string): Promise<string | null>;
+  eval(
+    script: string,
+    numberOfKeys: number,
+    key: string,
+    ttlSeconds: string,
+  ): Promise<unknown>;
+  del(key: string): Promise<number>;
+}
+
 export function loginLimiterKey(normalizedEmail: string, sourceIp: string): string {
   const digest = createHash('sha256')
     .update(`${normalizedEmail}\n${sourceIp}`, 'utf8')
@@ -35,7 +45,7 @@ function backendUnavailable(): AppError {
 }
 
 export class RedisLoginAttemptLimiter implements LoginAttemptLimiter {
-  constructor(private readonly redis: Redis) {}
+  constructor(private readonly redis: LoginAttemptRedis) {}
 
   async assertAllowed(key: string): Promise<void> {
     let rawCount: string | null;
