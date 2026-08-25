@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { prisma } from '../../src/db/prisma.js';
 import { seedGrowthDashboardFacts } from '../helpers/growth-dashboard-fixture.js';
+import { authenticateE2e } from './e2e-auth.js';
 
 async function seedVisibility(projectId: string, numerator: number) {
   const snapshot = await prisma.visibilityMetricSnapshot.create({
@@ -45,15 +46,16 @@ async function seedVisibility(projectId: string, numerator: number) {
   });
 }
 
-test('renders persisted Advanced visibility facts on project and portfolio dashboards', async ({ page }) => {
-  const suffix = `${Date.now()}-${Math.random()}`;
-  const project = await prisma.project.create({
-    data: {
-      name: 'Advanced Dashboard Browser',
-      slug: `advanced-dashboard-${suffix}`,
-      primaryDomain: `advanced-dashboard-${suffix}.example.com`,
-      planLevel: 'ADVANCED'
-    }
+test('renders persisted Advanced visibility facts on project and portfolio dashboards', async ({ page, context }) => {
+  const auth = await authenticateE2e(context, {
+    role: 'OWNER',
+    planLevel: 'ADVANCED',
+    userStatus: 'ACTIVE',
+    membershipStatus: 'ACTIVE',
+  });
+  const project = await prisma.project.update({
+    where: { id: auth.project.id },
+    data: { name: 'Advanced Dashboard Browser' },
   });
   try {
     await seedVisibility(project.id, 3);
@@ -71,21 +73,22 @@ test('renders persisted Advanced visibility facts on project and portfolio dashb
 
     await page.goto('/');
     await expect(page.getByRole('main').getByText('Advanced Dashboard Browser', { exact: true })).toBeVisible();
-    await expect(page.getByRole('main').getByText('30.0%', { exact: true })).toBeVisible();
+    await expect(page.locator('[data-ui="geo-visibility"]').getByText('30.0%', { exact: true })).toBeVisible();
   } finally {
-    await prisma.project.delete({ where: { id: project.id } }).catch(() => undefined);
+    await auth.cleanup();
   }
 });
 
-test('Standard project dashboard never exposes restricted P6 facts even when stray rows exist', async ({ page }) => {
-  const suffix = `${Date.now()}-${Math.random()}`;
-  const project = await prisma.project.create({
-    data: {
-      name: 'Standard Dashboard Browser',
-      slug: `standard-dashboard-${suffix}`,
-      primaryDomain: `standard-dashboard-${suffix}.example.com`,
-      planLevel: 'STANDARD'
-    }
+test('Standard project dashboard never exposes restricted P6 facts even when stray rows exist', async ({ page, context }) => {
+  const auth = await authenticateE2e(context, {
+    role: 'OWNER',
+    planLevel: 'STANDARD',
+    userStatus: 'ACTIVE',
+    membershipStatus: 'ACTIVE',
+  });
+  const project = await prisma.project.update({
+    where: { id: auth.project.id },
+    data: { name: 'Standard Dashboard Browser' },
   });
   try {
     await seedVisibility(project.id, 9);
@@ -98,26 +101,35 @@ test('Standard project dashboard never exposes restricted P6 facts even when str
     await expect(main).not.toContainText('E2E DASHBOARD PRIVATE SUBJECT');
     await expect(main).not.toContainText('E2E DASHBOARD PRIVATE SCOPE');
   } finally {
-    await prisma.project.delete({ where: { id: project.id } }).catch(() => undefined);
+    await auth.cleanup();
   }
 });
 
-test('renders persisted Growth intelligence on project dashboard and Enterprise portfolio without private facts', async ({ page }) => {
-  const suffix = `${Date.now()}-${Math.random()}`;
-  const advanced = await prisma.project.create({
-    data: {
-      name: 'Advanced Growth Browser',
-      slug: `advanced-growth-browser-${suffix}`,
-      primaryDomain: `advanced-growth-browser-${suffix}.example.com`,
-      planLevel: 'ADVANCED'
-    }
+test('renders persisted Growth intelligence on project dashboard and Enterprise portfolio without private facts', async ({ page, context }) => {
+  const auth = await authenticateE2e(context, {
+    role: 'OWNER',
+    planLevel: 'ADVANCED',
+    userStatus: 'ACTIVE',
+    membershipStatus: 'ACTIVE',
   });
+  const advanced = await prisma.project.update({
+    where: { id: auth.project.id },
+    data: { name: 'Advanced Growth Browser' },
+  });
+  const suffix = `${Date.now()}-${Math.random()}`;
   const enterprise = await prisma.project.create({
     data: {
       name: 'Enterprise Growth Browser',
       slug: `enterprise-growth-browser-${suffix}`,
       primaryDomain: `enterprise-growth-browser-${suffix}.example.com`,
-      planLevel: 'ENTERPRISE'
+      planLevel: 'ENTERPRISE',
+      memberships: {
+        create: {
+          userId: auth.user.id,
+          role: 'OWNER',
+          status: 'ACTIVE',
+        },
+      },
     }
   });
   try {
@@ -145,7 +157,7 @@ test('renders persisted Growth intelligence on project dashboard and Enterprise 
     await expect(enterpriseSection).not.toContainText('SHOULD_NOT_RENDER');
     await expect(enterpriseSection).not.toContainText('fixture-ciphertext');
   } finally {
-    await prisma.project.delete({ where: { id: advanced.id } }).catch(() => undefined);
+    await auth.cleanup();
     await prisma.project.delete({ where: { id: enterprise.id } }).catch(() => undefined);
   }
 });
