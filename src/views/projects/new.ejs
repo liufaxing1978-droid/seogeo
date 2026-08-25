@@ -4,6 +4,7 @@
 </section>
 <section class="panel form-panel">
   <form method="post" action="/projects" class="form-grid">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <% const field = (name) => (values && values[name]) || ''; %>
     <label><span>项目名称</span><input name="name" value="<%= field('name') %>" required><small class="error"><%= errors?.name?.[0] || '' %></small></label>
     <label><span>slug</span><input name="slug" value="<%= field('slug') %>" placeholder="xingshantang" required><small class="error"><%= errors?.slug?.[0] || '' %></small></label>
