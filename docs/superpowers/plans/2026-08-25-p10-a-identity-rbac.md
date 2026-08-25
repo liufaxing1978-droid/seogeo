@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add application-native users, secure server-side sessions, project membership/RBAC, CSRF protection, trusted actor propagation, and project-scoped authorization without expanding any P7/P8/P9 domain authority.
+**Goal:** Add application-native users, secure database-backed sessions, project membership/RBAC, CSRF protection, trusted human actor propagation, and project-scoped authorization without expanding any P7/P8/P9 domain authority.
 
-**Architecture:** Keep identity, session, CSRF, membership, capability policy, audit, and rate limiting as separate modules under `src/auth` and `src/modules/projects`. `createApp()` performs only composition. Every project request resolves trusted authentication first, then active membership/capability, then the existing plan feature gate and domain command. P9-F consumes authenticated `User.id` as its server actor and retains all existing authority-field restrictions.
+**Architecture:** Keep password, session, CSRF, login throttling, audit, project capability policy, membership commands, and route authorization in focused modules. `createApp()` composes them; it does not become an auth service. Every protected request follows Authentication → Active ProjectMembership → ProjectCapability → existing PlanLevel feature gate → existing domain command. P9-F receives authenticated `User.id` as the server actor and retains its immutable policy/authority protections.
 
 **Tech Stack:** Node.js 22+, TypeScript 5.9, Express 5, EJS, Prisma 6/PostgreSQL 17, Redis 7/ioredis, Vitest 3, Supertest, Playwright Chromium.
 
@@ -12,27 +12,26 @@
 
 ## Global Constraints
 
-- Base is `main@60733718026b1876340d50ff8626fcd8cd1558f5` on branch `feat/p10-a-identity-rbac`.
-- Authentication source is local email + password plus database-backed opaque sessions; no public signup, OAuth login, magic link, MFA, API key, organization RBAC, or invitation email in P10-A.
-- Passwords use Node `crypto.scrypt` with V1 parameters `N=32768`, `r=8`, `p=1`, 32-byte random salt, 64-byte derived key; malformed hashes fail closed.
-- Session lifetime is seven-day absolute expiry with no sliding refresh and no request-time `lastSeenAt` writes.
-- Production session cookie is `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`; only a SHA-256 digest of the raw token is stored.
-- `SESSION_SECRET` must be at least 32 characters in production; development/test may use an explicit local default.
-- Unsafe cookie-authenticated methods `POST|PUT|PATCH|DELETE` require CSRF before domain side effects; login uses same-origin validation and rate limiting because it is unauthenticated.
-- Global identity comes only from validated server session state; never from client `actorId`, user/role headers, query parameters, or request body identity fields.
-- Project roles are `OWNER | ADMIN | OPERATOR | VIEWER`; membership status is `ACTIVE | REVOKED`.
-- Every normal project must retain at least one ACTIVE OWNER; membership commands use a project-row lock to serialize owner-changing operations.
-- Role capability, PlanLevel feature gates, and P7/P8/P9 domain authority remain separate checks.
-- P9-C automation remains exact LOW + `CREATE_CONTENT_PAGE`; no auto Merge, Deploy, Rollback, writable global kill switch, fake human approval, or P8 verification bypass is added.
-- P9-F GET/SSR persisted-read purity must remain request-write-free, including authentication/session handling.
-- No `NODE_ENV=test` authentication bypass, hard-coded actor, or fallback production admin is allowed. Tests create explicit User/Session/Membership fixtures.
-- Merge requires separate explicit human authorization. Deployment requires another separate explicit human authorization.
+- Base is `main@60733718026b1876340d50ff8626fcd8cd1558f5`; branch is `feat/p10-a-identity-rbac`.
+- P10-A uses local email + password and opaque database sessions. No public signup, magic link, OAuth login, MFA, SAML, API key, organization RBAC, invitation email, or password-reset email is added.
+- Email normalization is trim + lowercase over the complete string only; no Gmail dot/plus rewriting.
+- Password V1 uses Node `crypto.scrypt` with `N=32768`, `r=8`, `p=1`, 32 random salt bytes, 64 derived-key bytes, and explicit `maxmem >= 64 MiB`.
+- Session token is at least 32 random bytes, base64url encoded; only SHA-256(token) is persisted.
+- Session lifetime is seven-day absolute expiry. No sliding renewal, request-time `lastSeenAt`, read-triggered rotation, or read-triggered audit is allowed.
+- Production cookie: `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`; production `SESSION_SECRET` must contain at least 32 characters.
+- Unsafe authenticated methods `POST|PUT|PATCH|DELETE` require CSRF before any business/queue/provider/AI/Git side effect. Login is unauthenticated and therefore uses same-origin validation plus rate limiting instead of authenticated CSRF.
+- Identity never comes from `X-User-Id`, `X-Actor-Id`, client `actorId`, client role fields, query identity, or request-body identity.
+- Roles: `OWNER | ADMIN | OPERATOR | VIEWER`; membership states: `ACTIVE | REVOKED`.
+- Every normal project must retain at least one ACTIVE OWNER. Owner-changing commands serialize on the Project row.
+- Human RBAC, PlanLevel feature entitlement, and P7/P8/P9 domain authority remain separate gates.
+- P9-C remains exact LOW + `CREATE_CONTENT_PAGE`; no automatic Merge, Deploy, Rollback, writable global kill switch, fake approval, or P8 verification bypass is introduced.
+- All P9-F GET/SSR paths remain persisted-read: auth lookup may read UserSession/User/Membership but must not write them.
+- No test-only global auth bypass is allowed. Tests create explicit User/Session/ProjectMembership fixtures.
+- Merge requires a new explicit human merge instruction. Deployment requires another separate explicit deployment instruction.
 
----
+## File Structure
 
-## File Structure Map
-
-Create these focused modules:
+Create:
 
 ```text
 prisma/models/identity.prisma
@@ -55,19 +54,26 @@ scripts/auth-admin.ts
 tests/helpers/auth-fixture.ts
 tests/unit/auth.email.test.ts
 tests/unit/auth.password.test.ts
+tests/unit/auth.env.test.ts
 tests/unit/auth.csrf.test.ts
 tests/unit/auth.project-capabilities.test.ts
 tests/unit/auth.login-attempt-limiter.test.ts
 tests/integration/auth.session.test.ts
 tests/integration/auth.routes.test.ts
+tests/integration/auth.admin-cli.test.ts
 tests/integration/project-membership.test.ts
 tests/integration/project-authorization.test.ts
+tests/integration/projects.auth.test.ts
+tests/integration/p10a-operations-auth.test.ts
+tests/integration/p10a-route-authorization.test.ts
 tests/integration/p10a-authority-boundary.test.ts
+tests/unit/p10a-route-boundary.test.ts
+tests/unit/p10a-authority-static.test.ts
 tests/e2e/auth-rbac.spec.ts
 docs/development/p10-a-identity-rbac.md
 ```
 
-Modify existing composition/domain files only where required:
+Modify only where the new boundary requires it:
 
 ```text
 prisma/schema.prisma
@@ -81,18 +87,18 @@ src/modules/projects/project.routes.ts
 src/modules/optimization-operations/operations.routes.ts
 src/modules/optimization-operations/operations.web.routes.ts
 src/modules/search-console/search-console.routes.ts
+src/modules/search-console/search-console.service.ts
 src/web/routes.ts
+src/web/dashboard.repository.ts
 package.json
 .github/workflows/ci.yml
-tests/e2e/projects.spec.ts
-tests/e2e/dashboard.spec.ts
+project-scoped route/web-route modules already mounted in src/app.ts
+existing E2E specs that directly create projects
 ```
-
-The remaining route modules mounted by `src/app.ts` are changed in Task 10 only to add the shared authorization guards appropriate to their existing read/mutation operations; do not refactor their domain implementations.
 
 ---
 
-### Task 1: Identity Schema, Email Normalization, Password Hashing, and Production Secret Contract
+### Task 1: Identity Schema, Password Hashing, Audit Persistence, and Production Secret Contract
 
 **Files:**
 - Create: `prisma/models/identity.prisma`
@@ -103,13 +109,15 @@ The remaining route modules mounted by `src/app.ts` are changed in Task 10 only 
 - Modify: `src/config/env.ts`
 - Test: `tests/unit/auth.email.test.ts`
 - Test: `tests/unit/auth.password.test.ts`
+- Test: `tests/unit/auth.env.test.ts`
 
 **Interfaces:**
-- Produces: `normalizeEmail(email: string): string`
-- Produces: `PasswordHasher` with `hash(password: string): Promise<string>` and `verify(password: string, encoded: string): Promise<boolean>`
-- Produces Prisma models/enums: `User`, `UserSession`, `ProjectMembership`, `SecurityAuditEvent`, `UserStatus`, `ProjectRole`, `MembershipStatus`, `SecurityAuditEventType`
+- `normalizeEmail(email: string): string`
+- `PasswordHasher.hash(password: string): Promise<string>`
+- `PasswordHasher.verify(password: string, encoded: string): Promise<boolean>`
+- Prisma enums/models: `UserStatus`, `ProjectRole`, `MembershipStatus`, `SecurityAuditEventType`, `User`, `UserSession`, `ProjectMembership`, `SecurityAuditEvent`
 
-- [ ] **Step 1: Write RED tests for normalized email and password format**
+- [ ] **Step 1: Write RED normalization/password/environment tests**
 
 ```ts
 expect(normalizeEmail('  Owner@Example.COM ')).toBe('owner@example.com');
@@ -119,33 +127,45 @@ const encoded = await passwordHasher.hash('correct horse battery staple');
 expect(encoded).toMatch(/^scrypt\$1\$32768\$8\$1\$/);
 expect(await passwordHasher.verify('correct horse battery staple', encoded)).toBe(true);
 expect(await passwordHasher.verify('wrong', encoded)).toBe(false);
-expect(await passwordHasher.verify('x', 'broken-format')).toBe(false);
+expect(await passwordHasher.verify('x', 'broken')).toBe(false);
 ```
 
-- [ ] **Step 2: Run focused RED tests**
+`auth.env.test.ts` must import `src/config/env.ts` with `NODE_ENV=production` and `SESSION_SECRET=short`, expecting module initialization to reject; 32-character production secret must parse.
 
-Run:
+- [ ] **Step 2: Run RED**
 
 ```bash
-npx vitest run tests/unit/auth.email.test.ts tests/unit/auth.password.test.ts
+npx vitest run tests/unit/auth.email.test.ts tests/unit/auth.password.test.ts tests/unit/auth.env.test.ts
 ```
 
-Expected: FAIL because `src/auth/email.ts` and `src/auth/password.ts` do not exist.
+Expected: FAIL because new modules/contracts are absent.
 
-- [ ] **Step 3: Add identity Prisma model and additive SQL migration**
+- [ ] **Step 3: Add Prisma schema and forward-only migration**
 
-Use this schema shape:
+Use these bounded enums:
 
 ```prisma
 enum UserStatus { ACTIVE DISABLED }
 enum ProjectRole { OWNER ADMIN OPERATOR VIEWER }
 enum MembershipStatus { ACTIVE REVOKED }
 enum SecurityAuditEventType {
-  USER_PROVISIONED USER_DISABLED USER_ENABLED
-  SESSION_CREATED SESSION_REVOKED SESSIONS_REVOKED_ALL
-  MEMBERSHIP_CREATED MEMBERSHIP_REACTIVATED MEMBERSHIP_ROLE_CHANGED MEMBERSHIP_REVOKED
+  USER_PROVISIONED
+  USER_DISABLED
+  USER_ENABLED
+  PASSWORD_CHANGED
+  SESSION_CREATED
+  SESSION_REVOKED
+  SESSIONS_REVOKED_ALL
+  MEMBERSHIP_CREATED
+  MEMBERSHIP_REACTIVATED
+  MEMBERSHIP_ROLE_CHANGED
+  MEMBERSHIP_REVOKED
 }
+```
 
+Required models:
+
+```prisma
 model User {
   id                  String        @id @default(uuid()) @db.Uuid
   email               String
@@ -188,6 +208,7 @@ model ProjectMembership {
 
 model SecurityAuditEvent {
   id           String                 @id @default(uuid()) @db.Uuid
+  version      String                 @default("SECURITY_AUDIT_V1")
   eventType    SecurityAuditEventType
   actorUserId  String?                @db.Uuid
   targetUserId String?                @db.Uuid
@@ -200,17 +221,21 @@ model SecurityAuditEvent {
 }
 ```
 
-Add `memberships ProjectMembership[]` to `Project` in `prisma/schema.prisma`. The SQL migration must be additive only and contain no rewrite/delete of P7/P8/P9 tables.
+Add `memberships ProjectMembership[]` to `Project`. The SQL migration also adds a PostgreSQL `BEFORE UPDATE OR DELETE` trigger on `SecurityAuditEvent` that raises an exception, matching the repository's immutable-row pattern. The migration contains no `DROP`, `TRUNCATE`, existing-row `DELETE`, P7/P8/P9 rewrite, hard-coded user, or literal-email membership assignment.
 
-- [ ] **Step 4: Implement normalization, scrypt format, and production secret validation**
+- [ ] **Step 4: Implement email and password utilities**
 
-Use `scrypt` with explicit `maxmem: 64 * 1024 * 1024` and `timingSafeEqual`. Encoded format:
+Encoded password format:
 
 ```text
-scrypt$1$32768$8$1$<base64url-salt>$<base64url-derived-key>
+scrypt$1$32768$8$1$<base64url-32-byte-salt>$<base64url-64-byte-key>
 ```
 
-In `src/config/env.ts`, parse `SESSION_SECRET` with existing development/test default but add a post-parse production assertion:
+Use `crypto.scrypt` with `{ N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }` and `timingSafeEqual`. Stored-format parsing is strict and malformed values return `false` rather than throwing credentials into logs.
+
+- [ ] **Step 5: Enforce production secret length**
+
+After parsing env:
 
 ```ts
 if (parsed.NODE_ENV === 'production' && parsed.SESSION_SECRET.length < 32) {
@@ -218,29 +243,27 @@ if (parsed.NODE_ENV === 'production' && parsed.SESSION_SECRET.length < 32) {
 }
 ```
 
-- [ ] **Step 5: Verify Prisma and focused GREEN tests**
-
-Run:
+- [ ] **Step 6: Run GREEN**
 
 ```bash
 npx prisma validate
 npx prisma generate
-npx vitest run tests/unit/auth.email.test.ts tests/unit/auth.password.test.ts
+npx vitest run tests/unit/auth.email.test.ts tests/unit/auth.password.test.ts tests/unit/auth.env.test.ts
 npm run typecheck
 ```
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit Task 1**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add prisma src/auth/email.ts src/auth/password.ts src/config/env.ts tests/unit/auth.email.test.ts tests/unit/auth.password.test.ts
+git add prisma src/auth/email.ts src/auth/password.ts src/config/env.ts tests/unit/auth.email.test.ts tests/unit/auth.password.test.ts tests/unit/auth.env.test.ts
 git commit -m "feat: add P10-A identity foundation"
 ```
 
 ---
 
-### Task 2: Session Persistence, Trusted Request Authentication, and Test Fixture
+### Task 2: Session Repository, Trusted Request Authentication, and Explicit Test Fixture
 
 **Files:**
 - Create: `src/auth/session.repository.ts`
@@ -251,39 +274,44 @@ git commit -m "feat: add P10-A identity foundation"
 - Modify: `src/app.ts`
 
 **Interfaces:**
-- Produces: `SESSION_COOKIE_NAME = 'seogeo_session'`
-- Produces: `createSessionToken(): { rawToken: string; tokenHash: string }`
-- Produces: `SessionRepository.create/findActiveByTokenHash/revoke/revokeAllForUser`
-- Produces: `AuthenticatedActor { userId: string; sessionId: string }`
-- Produces: `authenticationMiddleware: RequestHandler`
-- Produces: `requireAuthentication(): RequestHandler`
-- Produces test helper `seedAuthenticatedUser(options): Promise<{ user; project?; membership?; cookie; csrfToken }>`
+- `SESSION_COOKIE_NAME = 'seogeo_session'`
+- `createSessionToken(): { rawToken: string; tokenHash: string }`
+- `SessionRepository.create(userId, tokenHash, expiresAt)`
+- `SessionRepository.findActiveByTokenHash(tokenHash, now)`
+- `SessionRepository.revoke(sessionId, at)`
+- `SessionRepository.revokeAllForUser(userId, at)`
+- `AuthenticatedActor { userId: string; sessionId: string }`
+- `authenticationMiddleware: RequestHandler`
+- `requireAuthentication(): RequestHandler`
+- `seedAuthenticatedUser(options)` creates real Prisma rows and returns cookie/CSRF inputs for tests
 
-- [ ] **Step 1: Write RED session integration contracts**
+- [ ] **Step 1: Write RED tests against a test-local protected probe route**
+
+Do not depend on `/auth/session`, which is created in Task 4. In the test:
 
 ```ts
-const session = await seedSession({ userStatus: 'ACTIVE', expiresAt: future });
-const res = await request(createApp()).get('/auth/session').set('Cookie', session.cookie);
-expect(res.status).toBe(200);
-
-await prisma.userSession.update({ where: { id: session.id }, data: { revokedAt: new Date() } });
-const revoked = await request(createApp()).get('/auth/session').set('Cookie', session.cookie);
-expect(revoked.status).toBe(401);
+const app = express();
+app.use(authenticationMiddleware);
+app.get('/probe', requireAuthentication(), (req, res) => res.json({ auth: req.auth }));
 ```
 
-Add a purity assertion that snapshots the `UserSession` row before/after authenticated GET and expects byte-for-byte relevant fields unchanged.
+Assert a valid cookie returns `{ userId, sessionId }`; missing, expired, revoked, and DISABLED-user sessions return 401.
 
-- [ ] **Step 2: Run RED**
+- [ ] **Step 2: Add GET purity assertion**
+
+Read the `UserSession` row and `SecurityAuditEvent` count, call `/probe`, read them again, and assert no session fields changed and no audit row was appended merely because authentication was read.
+
+- [ ] **Step 3: Run RED**
 
 ```bash
 npx vitest run tests/integration/auth.session.test.ts
 ```
 
-Expected: FAIL because session repository/middleware/routes are absent.
+Expected: FAIL because session/authentication modules do not exist.
 
-- [ ] **Step 3: Implement opaque token + read-only resolver**
+- [ ] **Step 4: Implement token and read-only resolver**
 
-`createSessionToken()` generates 32 random bytes base64url and SHA-256 digests the raw token. `authenticationMiddleware` parses only `seogeo_session`, looks up one active session with ACTIVE user, sets:
+Generate 32 random bytes, base64url encode as raw token, SHA-256 digest as `tokenHash`. `authenticationMiddleware` reads only the owned session cookie, looks up active session + ACTIVE user, then sets:
 
 ```ts
 req.auth = { userId: row.userId, sessionId: row.id };
@@ -291,22 +319,22 @@ res.locals.auth = req.auth;
 res.locals.authSessionTokenHash = row.tokenHash;
 ```
 
-Invalid/missing cookie sets both auth values to null and performs no write.
+Missing/invalid auth sets `req.auth = null`, `res.locals.auth = null`, and performs no write.
 
-- [ ] **Step 4: Add explicit test fixture instead of auth bypass**
+- [ ] **Step 5: Add real test fixture**
 
-`tests/helpers/auth-fixture.ts` must create actual Prisma User/Session/Membership rows and return a real cookie. It may accept role/plan/status parameters but never alter production middleware behavior.
+`tests/helpers/auth-fixture.ts` accepts explicit `{ role, planLevel, userStatus, membershipStatus }`, creates User/Project/ProjectMembership/UserSession rows, derives the actual cookie and CSRF token, and returns cleanup identifiers. It must not branch production code on `NODE_ENV=test`.
 
-- [ ] **Step 5: Run focused GREEN and request-write purity test**
+- [ ] **Step 6: Run GREEN**
 
 ```bash
 npx vitest run tests/integration/auth.session.test.ts
 npm run typecheck
 ```
 
-Expected: PASS, including zero `UserSession` update on GET.
+Expected: PASS including the no-write GET contract.
 
-- [ ] **Step 6: Commit Task 2**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/auth/session.repository.ts src/auth/authentication.ts src/types/express.d.ts src/app.ts tests/helpers/auth-fixture.ts tests/integration/auth.session.test.ts
@@ -315,7 +343,7 @@ git commit -m "feat: add server-side authentication sessions"
 
 ---
 
-### Task 3: CSRF and Login Rate Limiter
+### Task 3: CSRF and Redis Login Throttling
 
 **Files:**
 - Create: `src/auth/csrf.ts`
@@ -324,24 +352,30 @@ git commit -m "feat: add server-side authentication sessions"
 - Create: `tests/unit/auth.login-attempt-limiter.test.ts`
 
 **Interfaces:**
-- Produces: `deriveCsrfToken(secret, sessionId, tokenHash): string`
-- Produces: `requireCsrf(): RequestHandler`
-- Produces: `LoginAttemptLimiter` with `assertAllowed(key)`, `recordFailure(key)`, `clear(key)`
-- Produces: `RedisLoginAttemptLimiter` using an injected `Redis`
-- Produces: `loginLimiterKey(normalizedEmail, sourceIp): string`
+- `deriveCsrfToken(secret: string, sessionId: string, tokenHash: string): string`
+- `verifyCsrfToken(expected: string, submitted: string): boolean`
+- `requireCsrf(): RequestHandler`
+- `LoginAttemptLimiter.assertAllowed(key: string): Promise<void>`
+- `LoginAttemptLimiter.recordFailure(key: string): Promise<void>`
+- `LoginAttemptLimiter.clear(key: string): Promise<void>`
+- `loginLimiterKey(normalizedEmail: string, sourceIp: string): string`
+- `RedisLoginAttemptLimiter` accepts an injected ioredis `Redis`
 
-- [ ] **Step 1: Write RED crypto and limiter tests**
+- [ ] **Step 1: Write RED CSRF tests**
 
 ```ts
 const token = deriveCsrfToken('s'.repeat(32), 'session-id', 'a'.repeat(64));
 expect(verifyCsrfToken(token, token)).toBe(true);
 expect(verifyCsrfToken(token, token + 'x')).toBe(false);
-
-for (let i = 0; i < 10; i++) await limiter.recordFailure(key);
-await expect(limiter.assertAllowed(key)).rejects.toMatchObject({ code: 'LOGIN_RATE_LIMITED' });
 ```
 
-- [ ] **Step 2: Run RED**
+Also assert `requireCsrf()` rejects missing/header/form mismatch before `next()`.
+
+- [ ] **Step 2: Write RED limiter tests**
+
+Use a deterministic fake Redis or injected fake limiter for unit behavior. Ten recorded failures within one 15-minute bucket are allowed to accumulate; `assertAllowed` then returns `LOGIN_RATE_LIMITED` 429. `clear` permits the next attempt. Backend errors map to `AUTH_RATE_LIMITER_UNAVAILABLE` 503.
+
+- [ ] **Step 3: Run RED**
 
 ```bash
 npx vitest run tests/unit/auth.csrf.test.ts tests/unit/auth.login-attempt-limiter.test.ts
@@ -349,33 +383,26 @@ npx vitest run tests/unit/auth.csrf.test.ts tests/unit/auth.login-attempt-limite
 
 Expected: FAIL on missing modules.
 
-- [ ] **Step 3: Implement CSRF HMAC and constant-time verification**
+- [ ] **Step 4: Implement CSRF**
 
-Derive HMAC-SHA256 over canonical UTF-8 `sessionId + "\n" + tokenHash`; read submitted token from `X-CSRF-Token` or `_csrf` form field. Missing auth/token returns `CSRF_INVALID` 403 before next middleware.
+HMAC-SHA256 message is exact UTF-8 `sessionId + "\n" + tokenHash`. Read submitted value from `X-CSRF-Token` or `_csrf`; compare with `timingSafeEqual`. Never accept CSRF as authentication.
 
-- [ ] **Step 4: Implement Redis limiter fail-closed semantics**
+- [ ] **Step 5: Implement fixed-window Redis limiter**
 
-Hash `normalizedEmail + "\n" + sourceIp` with SHA-256 for the Redis key. Use one Lua script for atomic `INCR` + first-write `EXPIRE 900`; block when current failures are >= 10. Convert Redis errors to `AUTH_RATE_LIMITER_UNAVAILABLE` 503.
+Key material is SHA-256 of `normalizedEmail + "\n" + sourceIp`; Redis never stores plaintext email/password/token. Use Lua for atomic `INCR` + first-write `EXPIRE 900`. Do not enable unrestricted `trust proxy`; source IP remains Express connection-derived under current config.
 
-- [ ] **Step 5: Run GREEN**
+- [ ] **Step 6: Run GREEN and commit**
 
 ```bash
 npx vitest run tests/unit/auth.csrf.test.ts tests/unit/auth.login-attempt-limiter.test.ts
 npm run typecheck
-```
-
-Expected: PASS.
-
-- [ ] **Step 6: Commit Task 3**
-
-```bash
 git add src/auth/csrf.ts src/auth/login-attempt-limiter.ts tests/unit/auth.csrf.test.ts tests/unit/auth.login-attempt-limiter.test.ts
 git commit -m "feat: add CSRF and login throttling"
 ```
 
 ---
 
-### Task 4: Login, Logout, Session, and Password-Change HTTP Surface
+### Task 4: Authentication HTTP Routes
 
 **Files:**
 - Create: `src/auth/auth.routes.ts`
@@ -384,20 +411,15 @@ git commit -m "feat: add CSRF and login throttling"
 - Modify: `src/app.ts`
 
 **Interfaces:**
-- Routes: `GET /auth/login`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/session`, `POST /auth/password/change`
-- Consumes: Task 1 `PasswordHasher`, Task 2 `SessionRepository/authenticationMiddleware`, Task 3 `requireCsrf/LoginAttemptLimiter`
+- `GET /auth/login`
+- `POST /auth/login`
+- `POST /auth/logout`
+- `GET /auth/session`
+- `POST /auth/password/change`
 
 - [ ] **Step 1: Write RED route tests**
 
-Cover exact public semantics:
-
-```ts
-expect((await postLogin('missing@example.com', 'wrong')).body.error.code).toBe('INVALID_CREDENTIALS');
-expect((await postLogin(validEmail, 'wrong')).body.error.code).toBe('INVALID_CREDENTIALS');
-expect(success.headers['set-cookie'][0]).toContain('HttpOnly');
-```
-
-Also assert: external `Origin` fails before password verification; logout without CSRF is 403; password change revokes every active session; disabled user cannot log in.
+Assert nonexistent email, wrong password, and disabled user all return the same `401 INVALID_CREDENTIALS`; valid login creates a fresh session and cookie; external `Origin` is rejected before credential verification; logout/password change require authentication + CSRF; password change revokes all active sessions.
 
 - [ ] **Step 2: Run RED**
 
@@ -405,112 +427,100 @@ Also assert: external `Origin` fails before password verification; logout withou
 npx vitest run tests/integration/auth.routes.test.ts
 ```
 
-Expected: FAIL because auth routes do not exist.
+Expected: FAIL because routes do not exist.
 
-- [ ] **Step 3: Implement route service dependencies and cookie handling**
+- [ ] **Step 3: Implement login flow**
 
-Login flow is strictly:
+Exact order:
 
 ```text
 normalize email
-→ same-origin check
+→ validate same-origin request metadata
 → limiter.assertAllowed
-→ find ACTIVE user
-→ passwordHasher.verify
-→ on failure limiter.recordFailure + INVALID_CREDENTIALS
-→ limiter.clear
-→ create fresh session
-→ set cookie
+→ read ACTIVE user
+→ PasswordHasher.verify
+→ failure: limiter.recordFailure + INVALID_CREDENTIALS
+→ success: limiter.clear
+→ create fresh seven-day UserSession
+→ set seogeo_session cookie
 ```
 
-Use the same public `INVALID_CREDENTIALS` response for unknown email, wrong password, and disabled user. Session endpoint returns bounded `{ user: { id, email, displayName }, session: { id, expiresAt }, csrfToken }` and never tokenHash/password fields.
+Do not reuse/promote an old cookie.
 
-- [ ] **Step 4: Implement logout/password change mutations**
+- [ ] **Step 4: Implement bounded session response and unsafe auth mutations**
 
-Both require `requireAuthentication()` then `requireCsrf()`. Password change verifies current password, writes new hash/version and revokes all sessions in one transaction; clear the current browser cookie afterward.
+`GET /auth/session` returns only user `{id,email,displayName}`, session `{id,expiresAt}`, and derived CSRF token. Logout revokes only current session. Password change verifies current password, then in one transaction updates password hash/version and revokes all sessions; caller must log in again.
 
-- [ ] **Step 5: Run GREEN**
+- [ ] **Step 5: Run GREEN and commit**
 
 ```bash
 npx vitest run tests/integration/auth.routes.test.ts tests/integration/auth.session.test.ts
 npm run typecheck
-```
-
-Expected: PASS.
-
-- [ ] **Step 6: Commit Task 4**
-
-```bash
 git add src/auth/auth.routes.ts src/views/auth/login.ejs src/app.ts tests/integration/auth.routes.test.ts
 git commit -m "feat: add local authentication routes"
 ```
 
 ---
 
-### Task 5: Append-Only Security Audit and Server-Operator CLI
+### Task 5: Security Audit Repository and Server-Operator Account CLI
 
 **Files:**
 - Create: `src/auth/security-audit.repository.ts`
 - Create: `scripts/auth-admin.ts`
+- Create: `tests/integration/auth.admin-cli.test.ts`
+- Modify: `src/auth/auth.routes.ts`
 - Modify: `package.json`
-- Test: `tests/integration/auth.admin-cli.test.ts`
 
 **Interfaces:**
-- Produces: `SecurityAuditRepository.append(event)`; no update/delete methods
-- CLI commands: `bootstrap-owner`, `provision-user`, `disable-user`, `enable-user`
-- Package command: `npm run auth:admin -- <command> <email>`
+- `SecurityAuditRepository.append(event)` only; no update/delete API
+- CLI: `bootstrap-owner`, `provision-user`, `disable-user`, `enable-user`
+- Package entry: `npm run auth:admin -- <command> <email>`; password is never a command-line argument
 
-- [ ] **Step 1: Write RED CLI/service tests using exported command functions**
+- [ ] **Step 1: Write RED audit/CLI tests**
 
-Assert:
+Verify:
 
 ```text
-bootstrap-owner with zero users → creates ACTIVE user + OWNER on every existing project
-bootstrap-owner with >=1 user → fails with no writes
-provision-user → user only, no project membership
-disable-user → status DISABLED + all sessions revoked + USER_DISABLED audit
-enable-user → status ACTIVE + USER_ENABLED audit
+successful login → SESSION_CREATED
+logout → SESSION_REVOKED
+password change → PASSWORD_CHANGED + SESSIONS_REVOKED_ALL
+bootstrap-owner with zero users → initial ACTIVE user + OWNER membership on every existing project
+bootstrap-owner with >=1 user → fail with zero writes
+provision-user → global user only
+user disable → DISABLED + all sessions revoked + USER_DISABLED
+user enable → ACTIVE + USER_ENABLED
 ```
+
+Try Prisma `update/delete` against an audit row and assert the database immutability trigger rejects both.
 
 - [ ] **Step 2: Run RED**
 
 ```bash
-npx vitest run tests/integration/auth.admin-cli.test.ts
+npx vitest run tests/integration/auth.admin-cli.test.ts tests/integration/auth.routes.test.ts
 ```
 
-Expected: FAIL on missing CLI/audit modules.
+Expected: new audit/CLI assertions fail.
 
-- [ ] **Step 3: Implement append-only audit repository and transactional commands**
+- [ ] **Step 3: Implement append-only audit repository and auth-route event writes**
 
-Export pure command functions from `scripts/auth-admin.ts` and keep only argument/TTY wiring in the executable tail. Password input must come from stdin/TTY and never `process.argv`; mask interactive characters while reading and request confirmation before hashing.
+Audit allowlist contains only event type, actor/target user ids, project id, role before/after, version, timestamp. Never pass password, hash, cookie, tokenHash, CSRF, authorization header, request body, or provider credential.
 
-- [ ] **Step 4: Add package script**
+- [ ] **Step 4: Implement CLI commands**
 
-```json
-"auth:admin": "tsx scripts/auth-admin.ts"
-```
+Export command functions for tests; executable wrapper parses only command/email. Read password from stdin/TTY with hidden echo and confirmation, then hash. `bootstrap-owner` is allowed only when User count is zero and creates initial OWNER memberships for all existing projects in the same command transaction.
 
-Do not add startup-time bootstrap logic to `src/server.ts`.
-
-- [ ] **Step 5: Run GREEN**
+- [ ] **Step 5: Run GREEN and commit**
 
 ```bash
-npx vitest run tests/integration/auth.admin-cli.test.ts
+npx vitest run tests/integration/auth.admin-cli.test.ts tests/integration/auth.routes.test.ts
 npm run typecheck
-```
-
-Expected: PASS.
-
-- [ ] **Step 6: Commit Task 5**
-
-```bash
-git add src/auth/security-audit.repository.ts scripts/auth-admin.ts package.json tests/integration/auth.admin-cli.test.ts
-git commit -m "feat: add identity bootstrap and audit"
+git add src/auth/security-audit.repository.ts src/auth/auth.routes.ts scripts/auth-admin.ts package.json tests/integration/auth.admin-cli.test.ts
+git commit -m "feat: add identity bootstrap and security audit"
 ```
 
 ---
 
-### Task 6: Central Project Capabilities and Membership-Aware Middleware
+### Task 6: Central Project Capabilities and Access Middleware
 
 **Files:**
 - Create: `src/auth/project-capabilities.ts`
@@ -520,7 +530,6 @@ git commit -m "feat: add identity bootstrap and audit"
 - Modify: `src/auth/require-feature.ts`
 
 **Interfaces:**
-- Produces `ProjectCapability` union exactly:
 
 ```text
 PROJECT_READ
@@ -542,52 +551,52 @@ EXPERIMENT_READ
 FEEDBACK_READ
 ```
 
-- Produces `hasProjectCapability(role, capability): boolean`
-- Produces `requireProjectMembership(): RequestHandler`
-- Produces `requireProjectCapability(capability): RequestHandler`
-- Produces `assertProjectCapability(userId, projectId, capability)` for resource-ID routes after minimal project resolution
+- `hasProjectCapability(role, capability): boolean`
+- `requireProjectMembership(): RequestHandler`
+- `requireProjectCapability(capability): RequestHandler`
+- `assertProjectCapability(userId, projectId, capability)` for resource-id routes after minimal owning-project resolution
 
-- [ ] **Step 1: Write RED role matrix tests**
+- [ ] **Step 1: Write RED role-matrix tests**
 
-Explicitly assert VIEWER has no mutation capability; OPERATOR has operational capabilities but no project settings/member management; ADMIN can manage VIEWER/OPERATOR but not ADMIN/OWNER; OWNER has manage-all but no special domain bypass flag.
+Exact roles:
+
+```text
+VIEWER  → PROJECT_READ, EXPERIMENT_READ, FEEDBACK_READ
+OPERATOR→ VIEWER + operational capabilities, no project settings/member management
+ADMIN   → OPERATOR + PROJECT_SETTINGS_WRITE + PROJECT_MEMBER_READ + PROJECT_MEMBER_MANAGE_BASIC
+OWNER   → ADMIN + PROJECT_MEMBER_MANAGE_ALL
+```
+
+ADMIN target rules: may manage VIEWER/OPERATOR only; cannot create/modify/revoke ADMIN/OWNER or promote any member to ADMIN/OWNER.
 
 - [ ] **Step 2: Write RED HTTP non-enumeration tests**
 
-Use two users/projects and assert user A requesting user B project gets `404 PROJECT_NOT_FOUND`; valid member with insufficient capability gets `403 PROJECT_CAPABILITY_REQUIRED`.
+User A requesting User B project must receive `404 PROJECT_NOT_FOUND`. Valid member lacking capability receives `403 PROJECT_CAPABILITY_REQUIRED`.
 
-- [ ] **Step 3: Implement central capability table and access repository**
+- [ ] **Step 3: Implement explicit Set-based capability map**
 
-Do not use numeric role ordering for authorization. Use explicit immutable `Set<ProjectCapability>` values per role.
+Do not authorize using numeric role ranking. `requireProjectMembership` resolves Project + ACTIVE membership once and stores both in `res.locals`.
 
-- [ ] **Step 4: Modify `requireFeature()` to reuse `res.locals.project`**
-
-Behavior:
+- [ ] **Step 4: Make `requireFeature()` reuse resolved project**
 
 ```ts
 const project = res.locals.project ?? await projectService.get(projectId);
 ```
 
-Keep the existing compatibility lookup when project membership middleware has not populated locals yet.
+Keep fallback only for migration compatibility; release completion requires all project-scoped production routes classified.
 
-- [ ] **Step 5: Run GREEN**
+- [ ] **Step 5: Run GREEN and commit**
 
 ```bash
 npx vitest run tests/unit/auth.project-capabilities.test.ts tests/integration/project-authorization.test.ts
 npm run typecheck
-```
-
-Expected: PASS.
-
-- [ ] **Step 6: Commit Task 6**
-
-```bash
 git add src/auth/project-capabilities.ts src/auth/project-access.ts src/auth/require-feature.ts tests/unit/auth.project-capabilities.test.ts tests/integration/project-authorization.test.ts
 git commit -m "feat: add project RBAC middleware"
 ```
 
 ---
 
-### Task 7: Project Membership Commands, Last-Owner Invariant, and Membership API
+### Task 7: Membership Commands, Last-Owner Lock, and Membership API
 
 **Files:**
 - Create: `src/modules/projects/project-membership.repository.ts`
@@ -597,13 +606,14 @@ git commit -m "feat: add project RBAC middleware"
 - Modify: `src/app.ts`
 
 **Interfaces:**
-- Routes: `GET|POST /api/projects/:projectId/members`, `PATCH|DELETE /api/projects/:projectId/members/:membershipId`
-- `POST` accepts `{ email, role }`; `PATCH` accepts `{ role }`; DELETE logically sets REVOKED
-- Every role-changing/revoking transaction acquires project lock using `SELECT id FROM "Project" WHERE id = $1 FOR UPDATE`
+- `GET /api/projects/:projectId/members`
+- `POST /api/projects/:projectId/members` accepts `{ email, role }`
+- `PATCH /api/projects/:projectId/members/:membershipId` accepts `{ role }`
+- `DELETE /api/projects/:projectId/members/:membershipId` performs logical `REVOKED`
 
 - [ ] **Step 1: Write RED service/API tests**
 
-Cover create/reactivate, ADMIN target restrictions, OWNER manage-all, disabled/missing `USER_NOT_AVAILABLE`, cross-project membership id hiding, and last-owner demotion/revoke rejection with `409 LAST_PROJECT_OWNER_REQUIRED`.
+Cover new membership, reactivation, disabled/missing user as bounded `USER_NOT_AVAILABLE`, ADMIN target restrictions, OWNER manage-all, cross-project membership id hiding, and last-owner demotion/revocation as `409 LAST_PROJECT_OWNER_REQUIRED`.
 
 - [ ] **Step 2: Run RED**
 
@@ -611,42 +621,41 @@ Cover create/reactivate, ADMIN target restrictions, OWNER manage-all, disabled/m
 npx vitest run tests/integration/project-membership.test.ts
 ```
 
-Expected: FAIL because membership service/routes do not exist.
+Expected: FAIL on missing service/routes.
 
-- [ ] **Step 3: Implement repository and transactional invariant**
+- [ ] **Step 3: Implement serialized owner invariant**
 
-All owner-count-sensitive changes lock the Project row first, re-read ACTIVE OWNER count inside the same transaction, and reject any resulting zero-owner state. Do not rely on UI checks.
+Every role-change/revoke/reactivate transaction begins with:
 
-- [ ] **Step 4: Implement route authorization**
-
-```text
-GET    → requireAuthentication → membership → PROJECT_MEMBER_READ
-POST   → requireAuthentication → CSRF → membership → BASIC or ALL target-policy validation
-PATCH  → requireAuthentication → CSRF → membership → BASIC or ALL target-policy validation
-DELETE → requireAuthentication → CSRF → membership → BASIC or ALL target-policy validation
+```sql
+SELECT id FROM "Project" WHERE id = $1 FOR UPDATE;
 ```
 
-VIEWER receives no `PROJECT_MEMBER_READ`; ADMIN/OWNER do.
+Re-read ACTIVE OWNER count in that transaction and reject any resulting zero-owner state. UI checks are non-authoritative.
 
-- [ ] **Step 5: Run GREEN**
+- [ ] **Step 4: Implement route chain**
+
+```text
+GET    → auth → membership → PROJECT_MEMBER_READ
+POST   → auth → CSRF → membership → BASIC/ALL target-policy check
+PATCH  → auth → CSRF → membership → BASIC/ALL target-policy check
+DELETE → auth → CSRF → membership → BASIC/ALL target-policy check
+```
+
+Append corresponding membership audit events inside the successful transaction boundary.
+
+- [ ] **Step 5: Run GREEN and commit**
 
 ```bash
 npx vitest run tests/integration/project-membership.test.ts tests/integration/project-authorization.test.ts
 npm run typecheck
-```
-
-Expected: PASS.
-
-- [ ] **Step 6: Commit Task 7**
-
-```bash
 git add src/modules/projects/project-membership.* src/app.ts tests/integration/project-membership.test.ts
 git commit -m "feat: add project memberships"
 ```
 
 ---
 
-### Task 8: Make Project Creation, Listing, Detail, Dashboard, and Update Membership-Scoped
+### Task 8: Scope Project Creation, Listing, Detail, Update, and Portfolio to Memberships
 
 **Files:**
 - Modify: `src/modules/projects/project.repository.ts`
@@ -655,20 +664,17 @@ git commit -m "feat: add project memberships"
 - Modify: `src/modules/projects/project.routes.ts`
 - Modify: `src/web/routes.ts`
 - Modify: `src/web/dashboard.repository.ts`
+- Create: `tests/integration/projects.auth.test.ts`
 - Modify: `tests/e2e/projects.spec.ts`
 - Modify: `tests/e2e/dashboard.spec.ts`
-- Test: `tests/integration/projects.auth.test.ts`
 
 **Interfaces:**
-- `ProjectService.createForOwner(userId, input)` creates Project + OWNER membership atomically
-- `ProjectService.listForUser(userId)` returns only ACTIVE memberships
-- `GET /api/projects` requires authentication
-- `GET /api/projects/:id` requires `PROJECT_READ`
-- `PATCH /api/projects/:id` requires CSRF + `PROJECT_SETTINGS_WRITE`
+- `ProjectService.createForOwner(userId, input)` atomically creates Project + ACTIVE OWNER membership
+- `ProjectService.listForUser(userId)` returns only projects joined through ACTIVE membership
 
 - [ ] **Step 1: Write RED API tests**
 
-Assert anonymous list/create/get/update reject; creation always creates OWNER; project+membership rollback together on forced membership failure; list excludes non-members and revoked memberships.
+Anonymous create/list/get/update reject. New project creates owner membership in same transaction. Forced membership failure rolls Project back. Revoked/non-member projects never appear in list.
 
 - [ ] **Step 2: Run RED**
 
@@ -676,59 +682,52 @@ Assert anonymous list/create/get/update reject; creation always creates OWNER; p
 npx vitest run tests/integration/projects.auth.test.ts
 ```
 
-Expected: FAIL on current unscoped project repository/service.
+- [ ] **Step 3: Implement transactional create and scoped list**
 
-- [ ] **Step 3: Implement transactional project command and membership-scoped list**
-
-Use `prisma.$transaction` for `project.create` + `projectMembership.create`. Replace unscoped `findMany` with relation-filtered query:
+Scoped list query uses:
 
 ```ts
 where: { memberships: { some: { userId, status: 'ACTIVE' } } }
 ```
 
-- [ ] **Step 4: Protect web project pages and portfolio**
+`GET /api/projects/:id` requires `PROJECT_READ`; `PATCH` requires CSRF + `PROJECT_SETTINGS_WRITE`.
 
-`/`, `/projects`, `/projects/new`, POST `/projects`, and `/projects/:id` require authentication; portfolio/dashboard queries accept the authenticated user id and cannot return projects outside ACTIVE memberships. Add CSRF hidden input to project-create form.
+- [ ] **Step 4: Protect web portfolio/project creation**
 
-- [ ] **Step 5: Update Playwright setup in affected specs**
+`/`, `/projects`, `/projects/new`, POST `/projects`, and `/projects/:id` require authentication. Portfolio repository accepts authenticated user id and never returns non-member projects. Project-create form carries derived `_csrf` hidden input.
 
-Each browser spec creates/logs in an explicit fixture user, creates membership for directly seeded projects, and uses CSRF-aware project creation. Do not add a global browser auth bypass.
+- [ ] **Step 5: Update focused E2E fixtures**
 
-- [ ] **Step 6: Run GREEN**
+Directly seeded projects receive ACTIVE membership for the test login user. Do not bypass auth globally.
+
+- [ ] **Step 6: Run GREEN and commit**
 
 ```bash
 npx vitest run tests/integration/projects.auth.test.ts
 npx playwright test tests/e2e/projects.spec.ts tests/e2e/dashboard.spec.ts --project=chromium
 npm run typecheck
-```
-
-Expected: PASS.
-
-- [ ] **Step 7: Commit Task 8**
-
-```bash
 git add src/modules/projects src/web tests/integration/projects.auth.test.ts tests/e2e/projects.spec.ts tests/e2e/dashboard.spec.ts
 git commit -m "feat: scope projects to memberships"
 ```
 
 ---
 
-### Task 9: Roll Trusted Authentication into P9-F Operations Center
+### Task 9: P9-F Trusted Actor and Operations Center RBAC
 
 **Files:**
 - Modify: `src/modules/optimization-operations/operations.routes.ts`
 - Modify: `src/modules/optimization-operations/operations.web.routes.ts`
 - Modify: `src/app.ts`
-- Test: `tests/integration/p10a-operations-auth.test.ts`
+- Create: `tests/integration/p10a-operations-auth.test.ts`
 
 **Interfaces:**
-- Production `OperationsActorResolver.resolve(req)` returns `{ actorId: req.auth.userId }` only after project RBAC gate has passed
-- Operations reads require authenticated membership + `PROJECT_READ` + existing `OPTIMIZATION_OPERATIONS_CENTER`
-- Policy revision requires CSRF + `AUTOPILOT_POLICY_REVISE` + feature gate
+- Operations reads: auth → ACTIVE membership → `PROJECT_READ` → `OPTIMIZATION_OPERATIONS_CENTER`
+- Policy revision: auth → CSRF → ACTIVE membership → `AUTOPILOT_POLICY_REVISE` → feature gate → current P9-F validation/command
+- Production actor: `OperationsActor { actorId: req.auth.userId }`
 
 - [ ] **Step 1: Write RED P9-F authorization tests**
 
-Assert VIEWER Advanced can read but cannot revise; OPERATOR Advanced can revise; OPERATOR Standard receives feature denial; OWNER Standard still receives feature denial; submitted `actorId/allowedRiskClass/allowedOperationClasses` remains rejected before command; persisted revision actor equals authenticated User.id.
+VIEWER Advanced reads but cannot revise; OPERATOR Advanced revises; OPERATOR/OWNER Standard cannot bypass feature gate; persisted revision actor equals authenticated User.id. Client `actorId`, `allowedRiskClass`, and `allowedOperationClasses` remain rejected before policy command.
 
 - [ ] **Step 2: Run RED**
 
@@ -736,113 +735,75 @@ Assert VIEWER Advanced can read but cannot revise; OPERATOR Advanced can revise;
 npx vitest run tests/integration/p10a-operations-auth.test.ts
 ```
 
-Expected: FAIL because current P9-F only checks feature + actor presence.
+- [ ] **Step 3: Add human authorization guards without changing P9-F domain command**
 
-- [ ] **Step 3: Add explicit guards before current P9-F logic**
+Preserve forbidden-field check, optimistic concurrency, request idempotency, immutable revision, atomic policy update + revision, and LOW/CREATE_CONTENT_PAGE authority lock.
 
-Do not change `PolicyRevisionCommand` domain semantics. Preserve `containsForbiddenPolicyMutationField`, optimistic concurrency, idempotency, immutable revision, and LOW/CREATE_CONTENT_PAGE lock.
+- [ ] **Step 4: Fix SSR control visibility**
 
-- [ ] **Step 4: Replace SSR `policyMutationAvailable` computation**
+`policyMutationAvailable` is true only when authenticated membership has `AUTOPILOT_POLICY_REVISE` and PlanLevel has Operations Center. Render CSRF token for authorized control; never render tokenHash.
 
-Compute only from server facts:
+- [ ] **Step 5: Prove read purity**
 
-```ts
-policyMutationAvailable =
-  hasProjectCapability(res.locals.membership.role, 'AUTOPILOT_POLICY_REVISE')
-  && hasFeature(res.locals.project.planLevel, 'OPTIMIZATION_OPERATIONS_CENTER');
-```
+Snapshot UserSession, SecurityAuditEvent, policy and revision counts before/after Operations GET; assert no request-time auth/audit/policy write.
 
-Render CSRF token only for an authenticated session and never render tokenHash.
-
-- [ ] **Step 5: Prove P9-F GET purity remains unchanged**
-
-Snapshot UserSession and policy/audit tables before/after Operations GET and assert no authentication/session/audit write occurs.
-
-- [ ] **Step 6: Run GREEN and P9-F regression**
+- [ ] **Step 6: Run GREEN plus full Vitest**
 
 ```bash
-npx vitest run tests/integration/p10a-operations-auth.test.ts tests/integration/optimization-operations*.test.ts tests/unit/optimization-operations*.test.ts
+npx vitest run tests/integration/p10a-operations-auth.test.ts
+npm test
 npm run typecheck
-```
-
-If shell glob matches no file, run the existing discovered P9-F test filenames returned by `find tests -type f | grep 'operations'`.
-
-- [ ] **Step 7: Commit Task 9**
-
-```bash
 git add src/modules/optimization-operations src/app.ts tests/integration/p10a-operations-auth.test.ts
 git commit -m "feat: bind P9-F actor to authenticated user"
 ```
 
 ---
 
-### Task 10: Authorize Every Remaining Project-Scoped Read and Mutation Route
+### Task 10: Protect Every Remaining Project-Scoped Route and Search Console OAuth Actor
 
 **Files:**
-- Modify project-scoped route modules already mounted in `src/app.ts`:
-  - `src/modules/market/market.routes.ts`
-  - `src/modules/crawler/crawl.routes.ts`
-  - `src/modules/seo/seo.routes.ts`
-  - `src/modules/geo/geo.routes.ts`
-  - `src/modules/search-console/search-console.routes.ts`
-  - `src/modules/growth/growth.routes.ts`
-  - `src/modules/growth/growth-explanation.routes.ts`
-  - `src/modules/optimization-feedback/feedback.routes.ts`
-  - `src/modules/ai/ai.routes.ts`
-  - `src/modules/content/content.routes.ts`
-  - `src/modules/competitor/competitor.routes.ts`
-  - `src/modules/optimization-orchestration/orchestration.routes.ts`
-  - `src/modules/optimization-experiments/experiment.routes.ts`
-  - `src/modules/publication/publication.routes.ts`
-  - `src/modules/distribution/distribution.routes.ts`
-  - `src/modules/reporting/report.routes.ts`
-  - `src/modules/visibility/visibility.routes.ts`
-  - `src/modules/visibility/visibility-intelligence.routes.ts`
-  - `src/modules/visibility/visibility-metrics.routes.ts`
-  - `src/modules/visibility/visibility-history.routes.ts`
-- Modify corresponding project-scoped web route modules and `src/web/routes.ts`
-- Test: `tests/integration/p10a-route-authorization.test.ts`
-- Test: `tests/unit/p10a-route-boundary.test.ts`
+- Modify the project-scoped route modules already mounted by `src/app.ts` for Market, Crawl, SEO, GEO, Search Console, Growth, Optimization Feedback, AI, Content, Competitor, Optimization Orchestration, Experiments, Publication, Distribution, Reporting, Visibility, Visibility Intelligence/Metrics/History
+- Modify corresponding web route modules and `src/web/routes.ts`
+- Modify: `src/modules/search-console/search-console.routes.ts`
+- Modify: `src/modules/search-console/search-console.service.ts`
+- Create: `tests/integration/p10a-route-authorization.test.ts`
+- Create: `tests/unit/p10a-route-boundary.test.ts`
 
-**Interfaces / capability mapping:**
+**Capability mapping:**
 
 ```text
-all persisted project reads                           → PROJECT_READ
-market/project connection settings writes            → PROJECT_SETTINGS_WRITE
+persisted project reads                               → PROJECT_READ
+market/connection/project settings write              → PROJECT_SETTINGS_WRITE
 crawl start/retry                                     → CRAWL_RUN
 SEO run/issue mutation                                → SEO_RUN
 GEO run                                               → GEO_RUN
-AI analysis, visibility sampling, report generation  → AI_RUN
-content draft/editor mutation                         → CONTENT_WRITE
+AI analysis/visibility sampling/report generation     → AI_RUN
+content mutation                                      → CONTENT_WRITE
 publication preparation/approval planning             → PUBLICATION_PREPARE
-publication execution/verify commands                 → PUBLICATION_EXECUTE
+publication execution/verification commands           → PUBLICATION_EXECUTE
 distribution prepare/publish/manual-result/verify     → DISTRIBUTION_EXECUTE
 manual optimization run                               → OPTIMIZATION_RUN
 experiment reads                                      → EXPERIMENT_READ
 feedback reads                                        → FEEDBACK_READ
 ```
 
-- [ ] **Step 1: Write a RED static route-boundary inventory**
+- [ ] **Step 1: Write RED static route inventory**
 
-Create a test that reads the above route source files and requires imports/usages of shared project access guards for every route containing `:projectId` or `:id` project scope and CSRF on unsafe methods. Add explicit resource-ID cases for `/crawls/:crawlId`, `/pages/:pageId`, `/seo/issues/:issueId`, AI task ids, publication/distribution ids: resolve the owning project id before rendering/mutating, then call `assertProjectCapability`.
+Read every mounted project-scoped route source and require use of shared auth/project guards. Unsafe methods must also use CSRF. Explicitly inventory resource-id routes such as crawl/page/SEO issue/AI task/publication/distribution ids: resolve owning `projectId` with a minimal persisted read, then call `assertProjectCapability` before full detail/mutation.
 
-- [ ] **Step 2: Write RED HTTP side-effect tests for representative modules**
+- [ ] **Step 2: Write representative side-effect RED tests**
 
-For CRAWL, AI, publication, distribution, optimization manual run, and Search Console, inject fake services whose methods increment counters. Assert anonymous/VIEWER/missing-CSRF requests are rejected and counters remain zero.
+Inject fakes for Crawl, AI, Publication, Distribution, Optimization manual run, and Search Console; anonymous/VIEWER/missing-CSRF requests must be rejected with fake call counters still zero.
 
-- [ ] **Step 3: Apply read guards without changing domain logic**
+- [ ] **Step 3: Apply guards without refactoring domain implementations**
 
-Add `requireAuthentication`, membership/project resolution and the mapped read capability before repository/service calls that expose protected data.
+Human authorization occurs before feature/domain work. Preserve every existing PlanLevel/domain check after RBAC.
 
-- [ ] **Step 4: Apply mutation guards and CSRF**
+- [ ] **Step 4: Correct Search Console OAuth actor**
 
-Every cookie-authenticated unsafe route must run CSRF before queue/provider/AI/Git/domain command. Preserve existing PlanLevel/domain gates after human RBAC.
+At OAuth start, replace `project-api:${projectId}` with authenticated `req.auth.userId`. At callback, consume/validate nonce state as today, then require current authenticated user id to equal persisted nonce `actorId` before token/credential materialization. Actor mismatch returns bounded authorization failure before vault/provider connection write. Existing 10-minute TTL and single-use state semantics remain unchanged.
 
-- [ ] **Step 5: Fix Search Console OAuth actor and callback binding**
-
-Replace current `actorId = project-api:${projectId}` with authenticated `req.auth.userId` at `/oauth/start`. On callback, consume the stored nonce and require the current authenticated user id to equal the nonce actor before credential materialization; mismatch returns a bounded authorization error before provider credential write. Preserve existing state TTL/single-use behavior.
-
-- [ ] **Step 6: Run focused route suite and full unit/integration regression**
+- [ ] **Step 5: Run focused suite, then full regression**
 
 ```bash
 npx vitest run tests/unit/p10a-route-boundary.test.ts tests/integration/p10a-route-authorization.test.ts
@@ -850,9 +811,9 @@ npm test
 npm run typecheck
 ```
 
-Expected: PASS. Inspect negative DB/authorization logs; do not describe logs as globally clean.
+Expected: PASS. Inspect expected negative DB/security logs; do not claim globally clean logs.
 
-- [ ] **Step 7: Commit Task 10**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/modules src/web src/app.ts tests/unit/p10a-route-boundary.test.ts tests/integration/p10a-route-authorization.test.ts
@@ -861,52 +822,46 @@ git commit -m "feat: enforce project authorization across routes"
 
 ---
 
-### Task 11: P9/P8 Authority Regression and Forbidden-Write Static Gate
+### Task 11: Freeze P7/P8/P9 Authority Boundaries Under Human RBAC
 
 **Files:**
 - Create: `tests/integration/p10a-authority-boundary.test.ts`
 - Create: `tests/unit/p10a-authority-static.test.ts`
 
-**Interfaces:**
-- No new production interface; this task freezes the cross-phase authority contract.
+**Interfaces:** No new production interface; this task is a release safety gate.
 
-- [ ] **Step 1: Write authority integration assertions**
+- [ ] **Step 1: Write authority integration tests**
 
-With an authenticated OWNER and OPERATOR, prove:
+Authenticated OWNER/OPERATOR still cannot cause:
 
 ```text
-MEDIUM/HIGH autopilot is still impossible
-operation class other than CREATE_CONTENT_PAGE is still impossible
-human RBAC cannot synthesize P8 approval
-P9-C still has no direct Git mutation
-P8 VERIFIED cannot be forced by role
-no automatic merge/deploy/rollback command is exposed
-global autopilot kill switch has no write route
-client actor fields remain forbidden
+MEDIUM/HIGH autopilot
+non-CREATE_CONTENT_PAGE autopilot
+fake P8 human approval
+P9-C direct Git mutation
+forced P8 VERIFIED
+automatic Merge
+Deploy
+Rollback
+writable global autopilot kill switch
+client actor override
 ```
 
-- [ ] **Step 2: Write static forbidden-import/route scan**
+- [ ] **Step 2: Write static forbidden-source scan**
 
-Scan P10-A/auth/membership modules and reject imports/calls that provide Git merge/deploy/rollback, P7 score mutation, P8 verification mutation, or global kill-switch write authority. Also reject production-source reads of `X-User-Id`, `X-Actor-Id`, `body.actorId` as authentication sources.
+Scan new P10-A/auth/membership modules and reject imports/calls that mutate P7 scoring/lifecycle, force P8 verification, merge/deploy/rollback, or write global kill switch. Reject production auth reads of `X-User-Id`, `X-Actor-Id`, or client `body.actorId` as identity sources.
 
-- [ ] **Step 3: Run RED against any uncovered leak, then minimal GREEN**
+- [ ] **Step 3: Run and minimally fix any discovered leak**
 
 ```bash
 npx vitest run tests/integration/p10a-authority-boundary.test.ts tests/unit/p10a-authority-static.test.ts
-```
-
-If a test identifies a real boundary leak, fix only that leak and rerun until PASS.
-
-- [ ] **Step 4: Run P7→P9 authority regression set plus full Vitest**
-
-```bash
 npm test
 npm run typecheck
 ```
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit Task 11**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add tests/integration/p10a-authority-boundary.test.ts tests/unit/p10a-authority-static.test.ts src
@@ -915,35 +870,31 @@ git commit -m "test: harden P10-A authority boundaries"
 
 ---
 
-### Task 12: Browser E2E, Migration Verification, Development Documentation, and Exact-Head Release Gate
+### Task 12: Browser E2E, Migration Proof, Operations Documentation, and Exact-Head Release Gate
 
 **Files:**
 - Create: `tests/e2e/auth-rbac.spec.ts`
-- Modify existing E2E specs that directly seed projects so each project receives an explicit membership for the logged-in fixture user
+- Modify existing E2E specs that seed Project rows directly so each receives a membership for the logged-in test user
 - Create: `docs/development/p10-a-identity-rbac.md`
-- Modify: `.github/workflows/ci.yml` only if required to seed a test login fixture; do not weaken CI secret policy
+- Modify: `.github/workflows/ci.yml` only when needed for deterministic test fixture setup; do not weaken secrets or auth
 
-**Interfaces:**
-- Browser test helper logs in through the real `/auth/login` route and uses returned real session cookie.
-- Release gate remains `production-audit`, `e2e`, `verify` on one exact head.
+**Interfaces:** Browser tests authenticate through real `/auth/login`; release gate remains `production-audit`, `e2e`, `verify` on the same exact SHA.
 
-- [ ] **Step 1: Write RED Chromium flows**
-
-`tests/e2e/auth-rbac.spec.ts` must cover:
+- [ ] **Step 1: Write RED browser flows**
 
 ```text
 valid login → only member projects visible
-cross-project URL → no project existence leak
-VIEWER → allowed read, mutation controls absent
-OPERATOR + ADVANCED → P9-F policy control visible and valid CSRF revision succeeds
+cross-project URL → PROJECT_NOT_FOUND/no existence leak
+VIEWER → read allowed, mutation controls absent
+OPERATOR + ADVANCED → Operations policy controls visible, valid CSRF revision succeeds
 logout → protected pages inaccessible
 ```
 
-- [ ] **Step 2: Update existing browser fixtures without bypassing auth**
+- [ ] **Step 2: Update existing E2E fixtures explicitly**
 
-For each spec that currently calls `prisma.project.create`, create one test user/session or use a shared Playwright setup that provisions a user through server-side test seed code, then create ACTIVE membership rows for the projects used by that spec. Do not globally disable auth in Playwright.
+Every spec that directly calls `prisma.project.create` must create/use a test login User and ACTIVE ProjectMembership. No global browser auth bypass or production code branch is permitted.
 
-- [ ] **Step 3: Run focused E2E**
+- [ ] **Step 3: Run focused Chromium suite**
 
 ```bash
 npx playwright test tests/e2e/auth-rbac.spec.ts tests/e2e/projects.spec.ts tests/e2e/dashboard.spec.ts --project=chromium
@@ -951,21 +902,26 @@ npx playwright test tests/e2e/auth-rbac.spec.ts tests/e2e/projects.spec.ts tests
 
 Expected: PASS.
 
-- [ ] **Step 4: Verify both migration paths**
+- [ ] **Step 4: Verify migration from blank database**
 
-Blank DB:
+On a test-owned empty PostgreSQL database:
 
 ```bash
 DATABASE_URL="$P10A_BLANK_DATABASE_URL" npx prisma migrate deploy
+DATABASE_URL="$P10A_BLANK_DATABASE_URL" npx prisma validate
 ```
 
-Current-P9-shaped DB: restore/prepare a DB migrated through existing P9 migrations, record counts/hashes for P9 immutable/history tables, run `npx prisma migrate deploy`, and assert those counts/hashes are unchanged while the P10-A identity tables exist. Use test-owned PostgreSQL databases only.
+Expected: all migrations apply from zero.
 
-- [ ] **Step 5: Write development/operator documentation**
+- [ ] **Step 5: Verify migration from current P9 shape**
 
-`docs/development/p10-a-identity-rbac.md` must document exact cookie/session/CSRF behavior, role/capability matrix, bootstrap/provision/disable commands, production rollout order, last-owner recovery procedure, P9-F actor attribution, rate-limiter fail-closed behavior, and rollback principle. State explicitly that migration does not create an admin and production must run `bootstrap-owner` before authenticated traffic is promoted.
+Create a second test DB migrated through current main/P9 migrations, seed representative P9 immutable/history rows, record stable row counts/identity hashes, apply only forward P10-A migration(s), then assert those P9 values are unchanged and identity tables/audit immutability exist.
 
-- [ ] **Step 6: Run local final verification**
+- [ ] **Step 6: Write operator/development document**
+
+Document exact session cookie/expiry, CSRF, role-capability matrix, login limiter 10/15-minute rule and Redis fail-closed behavior, bootstrap/provision/disable/enable CLI, last-owner procedure, production rollout order, Search Console actor binding, P9-F actor attribution, read-purity guarantee, rollback principle, and explicit no Merge/Deploy authority expansion.
+
+- [ ] **Step 7: Run full local release gate**
 
 ```bash
 npx prisma validate
@@ -977,18 +933,18 @@ npm run test:e2e
 npm audit --omit=dev --audit-level=high --legacy-peer-deps
 ```
 
-Expected: all commands PASS. Inspect expected negative security/database messages rather than claiming zero-error logs.
+Expected: all PASS. Inspect expected negative security/database logs instead of claiming there are no ERROR strings.
 
-- [ ] **Step 7: Commit release docs/E2E**
+- [ ] **Step 8: Commit final release slice**
 
 ```bash
 git add tests/e2e docs/development .github/workflows/ci.yml
 git commit -m "docs: finalize P10-A identity release gate"
 ```
 
-- [ ] **Step 8: Push/open Draft PR and require exact-head CI**
+- [ ] **Step 9: Open Draft PR and require exact-head CI**
 
-Record the exact branch head SHA and require the GitHub Actions run for that exact SHA to complete:
+Record the exact feature SHA and require the GitHub Actions run for that same SHA:
 
 ```text
 production-audit ✅
@@ -1002,4 +958,4 @@ verify ✅
   Build ✅
 ```
 
-Do not mark Ready for Review until changed-file authority review is complete and unresolved review threads are zero/resolved. Do not merge without a new explicit human merge instruction. Do not deploy without a separate explicit deployment instruction.
+Before Ready for Review: changed-file authority review complete; unresolved review threads zero/resolved; exact reviewed head equals exact CI head. Do not merge without a new explicit human merge instruction. Do not deploy without a separate explicit deployment instruction.
