@@ -28,7 +28,7 @@ async function createProject(planLevel: 'STANDARD' | 'ADVANCED' | 'ENTERPRISE') 
 class FakeOperationsApi implements OptimizationOperationsApiPort {
   calls: Array<{ method: string; projectId: string; limit?: number; offset?: number }> = [];
 
-  async getOverview(projectId: string) {
+  async getOverview(projectId: string): Promise<any> {
     this.calls.push({ method: 'getOverview', projectId });
     return { kind: 'overview', projectId };
   }
