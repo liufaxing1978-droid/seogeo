@@ -25,6 +25,11 @@ import { createGrowthWebRoutes } from './modules/growth/growth.web.routes.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import { createMarketRoutes, type MarketApiPort } from './modules/market/market.routes.js';
 import {
+  createOptimizationExperimentRoutes,
+  type OptimizationExperimentApiPort
+} from './modules/optimization-experiments/experiment.routes.js';
+import { optimizationExperimentWebRoutes } from './modules/optimization-experiments/experiment.web.routes.js';
+import {
   createOptimizationOrchestrationRoutes,
   type OptimizationOrchestrationApiPort
 } from './modules/optimization-orchestration/orchestration.routes.js';
@@ -55,6 +60,7 @@ import { visibilityHistoryWebRoutes } from './modules/visibility/visibility-hist
 import { webRoutes } from './web/routes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const assetsDir = path.join(here, 'public');
 
 export interface AppOptions {
   crawlService?: CrawlService;
@@ -66,6 +72,7 @@ export interface AppOptions {
   searchConsoleService?: SearchConsoleService;
   growthApiRepository?: Partial<GrowthRestRepository>;
   optimizationOrchestrationApi?: OptimizationOrchestrationApiPort;
+  optimizationExperimentApi?: OptimizationExperimentApiPort;
   publicationApi?: PublicationApiPort;
   distributionApi?: DistributionApiPort;
   marketService?: MarketApiPort;
@@ -81,7 +88,7 @@ export function createApp(options: AppOptions = {}) {
   app.set('views', path.join(here, 'views'));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
-  app.use('/assets', express.static(path.join(here, 'public')));
+  app.use('/assets', express.static(assetsDir));
   app.use('/health', healthRoutes);
   app.use('/api/projects', projectRoutes);
   app.use('/api', createMarketRoutes(options.marketService));
@@ -95,6 +102,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/v1', createContentRoutes(options.contentService, options.aiTaskService));
   app.use('/api/v1', createCompetitorRoutes(options.competitorService, options.aiTaskService));
   app.use('/api/v1', createOptimizationOrchestrationRoutes(options.optimizationOrchestrationApi));
+  app.use('/api/v1', createOptimizationExperimentRoutes(options.optimizationExperimentApi));
   app.use('/api/v1', createPublicationRoutes(options.publicationApi));
   app.use('/api/v1', createDistributionRoutes(options.distributionApi));
   app.use('/api/v1', createReportRoutes(options.aiTaskService));
@@ -113,6 +121,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/', visibilityHistoryWebRoutes);
   app.use('/', searchConsoleWebRoutes);
   app.use('/', createGrowthWebRoutes(options.growthApiRepository));
+  app.use('/', optimizationExperimentWebRoutes);
   app.use('/', webRoutes);
   app.use(errorHandler);
   return app;

@@ -1,0 +1,45 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">P9-D · Experiment Engine</p>
+    <h1>优化实验</h1>
+    <p class="muted"><%= project.name %> · 仅展示已经持久化的实验与观察事实，不会在打开页面时启动、评估或重新采样。</p>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>实验结果</h2>
+      <p class="muted">状态由冻结的观察计划和最新不可变观察记录派生；实验结论描述观察关联，不代表因果关系。</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>状态</th>
+          <th>目标 URL</th>
+          <th>干预类型</th>
+          <th>市场</th>
+          <th>Locale</th>
+          <th>验证锚点</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% for (const row of experiments) { %>
+          <tr>
+            <td><span class="badge"><%= row.derivedState %></span></td>
+            <td><a href="/projects/<%= project.id %>/optimization/experiments/<%= row.id %>"><%= row.targetUrl %></a></td>
+            <td><%= row.interventionType %></td>
+            <td><%= row.marketCode ?? '—' %></td>
+            <td><%= row.locale ?? '—' %></td>
+            <td><%= row.verifiedAnchorAt.toISOString() %></td>
+          </tr>
+        <% } %>
+        <% if (!experiments.length) { %>
+          <tr><td colspan="6" class="muted">当前项目还没有满足 P8 VERIFIED 启动条件的持久化优化实验。</td></tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</section>

@@ -1,0 +1,85 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">P9-D · Experiment Engine</p>
+    <h1>优化实验详情</h1>
+    <p class="muted"><%= project.name %> · <%= experiment.targetUrl %></p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/projects/<%= project.id %>/optimization/experiments">返回优化实验</a>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>冻结实验身份</h2>
+      <p class="muted">实验身份和观察记录均为不可变持久化事实。页面只读，不触发重新计算。</p>
+    </div>
+    <span class="badge"><%= experiment.derivedState %></span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <tbody>
+        <tr><th>Target URL</th><td><code><%= experiment.targetUrl %></code></td></tr>
+        <tr><th>Intervention</th><td><%= experiment.interventionType %></td></tr>
+        <tr><th>Market / Locale</th><td><%= experiment.marketCode ?? '—' %> / <%= experiment.locale ?? '—' %></td></tr>
+        <tr><th>Verified Anchor</th><td><%= experiment.verifiedAnchorAt.toISOString() %></td></tr>
+        <tr><th>Measurement Scope</th><td><code><%= JSON.stringify(experiment.measurementScopeJson) %></code></td></tr>
+        <tr><th>Observation Schedule</th><td><code><%= JSON.stringify(experiment.observationScheduleJson) %></code></td></tr>
+        <tr><th>Expected Direction</th><td><code><%= JSON.stringify(experiment.expectedDirectionJson) %></code></td></tr>
+        <tr><th>P8 Execution</th><td><code><%= experiment.publicationExecutionId %></code></td></tr>
+        <tr><th>P8 Verification</th><td><code><%= experiment.publicationVerificationId %></code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>不可变观察历史</h2>
+      <p class="muted">同一窗口的新 source cutoff 会追加新观察，不覆盖旧记录；“当前”按 inputCutoffAt、createdAt、id 的确定性顺序选择。</p>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Window</th>
+          <th>Effect</th>
+          <th>Coverage</th>
+          <th>Contamination</th>
+          <th>Baseline</th>
+          <th>Observed</th>
+          <th>Delta</th>
+          <th>Reasons</th>
+          <th>Evaluator</th>
+          <th>Cutoff</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% for (const observation of experiment.observations) { %>
+          <tr>
+            <td><strong><%= observation.windowType %></strong><% if (experiment.currentObservationIds.has(observation.id)) { %> <span class="badge">当前</span><% } %></td>
+            <td><%= observation.effectState %></td>
+            <td><%= observation.coverageState %></td>
+            <td><%= observation.contaminationState %></td>
+            <td><code><%= JSON.stringify(observation.baselineMetricsJson) %></code></td>
+            <td><code><%= JSON.stringify(observation.observedMetricsJson) %></code></td>
+            <td><code><%= JSON.stringify(observation.deltaMetricsJson) %></code></td>
+            <td><code><%= JSON.stringify(observation.reasonCodes) %></code></td>
+            <td><%= observation.evaluatorVersion %></td>
+            <td><%= observation.inputCutoffAt.toISOString() %></td>
+          </tr>
+        <% } %>
+        <% if (!experiment.observations.length) { %>
+          <tr><td colspan="10" class="muted">尚无到期观察记录。</td></tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
+  <p class="muted">观察关联，不代表因果关系</p>
+</section>

@@ -12,6 +12,7 @@ export const QUEUE_NAMES = [
   'optimization-planning',
   'optimization-orchestration',
   'optimization-autopilot',
+  'optimization-experiment-evaluation',
   'visibility',
   'visibility-extraction',
   'visibility-metrics',
