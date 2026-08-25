@@ -6,7 +6,14 @@ import {
   requireProjectCapability,
   requireProjectMembership,
 } from '../../auth/project-access.js';
+import { NotFoundError } from '../../core/errors.js';
 import { ProjectMembershipService } from './project-membership.service.js';
+
+function routeParam(value: string | string[]): string {
+  const normalized = Array.isArray(value) ? value[0] : value;
+  if (!normalized) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
+  return normalized;
+}
 
 export function createProjectMembershipRoutes(
   service = new ProjectMembershipService(),
@@ -20,7 +27,7 @@ export function createProjectMembershipRoutes(
     requireProjectCapability('PROJECT_MEMBER_READ'),
     async (req, res, next) => {
       try {
-        res.json({ data: await service.list(req.params.projectId) });
+        res.json({ data: await service.list(routeParam(req.params.projectId)) });
       } catch (error) {
         next(error);
       }
@@ -38,7 +45,7 @@ export function createProjectMembershipRoutes(
         const result = await service.addOrReactivate({
           actorUserId: req.auth!.userId,
           actorRole: res.locals.projectMembership.role as ProjectRole,
-          projectId: req.params.projectId,
+          projectId: routeParam(req.params.projectId),
           email: req.body?.email,
           role: req.body?.role,
         });
@@ -60,8 +67,8 @@ export function createProjectMembershipRoutes(
         const membership = await service.changeRole({
           actorUserId: req.auth!.userId,
           actorRole: res.locals.projectMembership.role as ProjectRole,
-          projectId: req.params.projectId,
-          membershipId: req.params.membershipId,
+          projectId: routeParam(req.params.projectId),
+          membershipId: routeParam(req.params.membershipId),
           role: req.body?.role,
         });
         res.json({ data: membership });
@@ -82,8 +89,8 @@ export function createProjectMembershipRoutes(
         await service.revoke({
           actorUserId: req.auth!.userId,
           actorRole: res.locals.projectMembership.role as ProjectRole,
-          projectId: req.params.projectId,
-          membershipId: req.params.membershipId,
+          projectId: routeParam(req.params.projectId),
+          membershipId: routeParam(req.params.membershipId),
         });
         res.status(204).end();
       } catch (error) {
