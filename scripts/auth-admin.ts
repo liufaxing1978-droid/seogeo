@@ -30,7 +30,7 @@ function validatePassword(password: string): void {
 }
 
 async function lockIdentityProvisioning(tx: Prisma.TransactionClient): Promise<void> {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(${IDENTITY_PROVISIONING_LOCK_ID})`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${IDENTITY_PROVISIONING_LOCK_ID})`;
 }
 
 async function requireUser(tx: Prisma.TransactionClient, email: string) {
