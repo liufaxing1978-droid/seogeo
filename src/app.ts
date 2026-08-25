@@ -39,6 +39,7 @@ import {
   type OptimizationOperationsApiPort,
   type PolicyRevisionCommandPort,
 } from './modules/optimization-operations/operations.routes.js';
+import { createOptimizationOperationsWebRoutes } from './modules/optimization-operations/operations.web.routes.js';
 import {
   createOptimizationOrchestrationRoutes,
   type OptimizationOrchestrationApiPort
@@ -141,6 +142,10 @@ export function createApp(options: AppOptions = {}) {
   app.use('/', visibilityHistoryWebRoutes);
   app.use('/', searchConsoleWebRoutes);
   app.use('/', createGrowthWebRoutes(options.growthApiRepository));
+  app.use('/', createOptimizationOperationsWebRoutes(
+    options.optimizationOperationsApi,
+    options.operationsActorResolver,
+  ));
   app.use('/', optimizationExperimentWebRoutes);
   app.use('/', webRoutes);
   app.use(errorHandler);
