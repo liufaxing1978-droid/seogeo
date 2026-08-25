@@ -1,15 +1,17 @@
 import { expect, test } from '@playwright/test';
 import { prisma } from '../../src/db/prisma.js';
+import { authenticateE2e } from './e2e-auth.js';
 
-test('captures the live rendered P10 dashboard acceptance view', async ({ page }) => {
-  const suffix = `${Date.now()}-${Math.random()}`;
-  const project = await prisma.project.create({
-    data: {
-      name: 'P10 UI Acceptance',
-      slug: `p10-ui-acceptance-${suffix}`,
-      primaryDomain: `p10-ui-${suffix}.example.com`,
-      planLevel: 'ENTERPRISE'
-    }
+test('captures the live rendered P10 dashboard acceptance view', async ({ page, context }) => {
+  const auth = await authenticateE2e(context, {
+    role: 'OWNER',
+    planLevel: 'ENTERPRISE',
+    userStatus: 'ACTIVE',
+    membershipStatus: 'ACTIVE',
+  });
+  await prisma.project.update({
+    where: { id: auth.project.id },
+    data: { name: 'P10 UI Acceptance' },
   });
 
   try {
@@ -32,6 +34,6 @@ test('captures the live rendered P10 dashboard acceptance view', async ({ page }
       animations: 'disabled'
     });
   } finally {
-    await prisma.project.delete({ where: { id: project.id } }).catch(() => undefined);
+    await auth.cleanup();
   }
 });
