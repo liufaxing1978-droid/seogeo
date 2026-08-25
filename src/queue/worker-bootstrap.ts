@@ -26,6 +26,16 @@ import {
 import { OptimizationAutopilotRepository } from '../modules/optimization-autopilot/autopilot.repository.js';
 import { processOptimizationAutopilotJob } from '../modules/optimization-autopilot/autopilot.worker.js';
 import {
+  OPTIMIZATION_FEEDBACK_QUEUE_ATTEMPTS,
+  OPTIMIZATION_FEEDBACK_QUEUE_NAME,
+  OptimizationFeedbackQueue,
+  type OptimizationFeedbackJobData
+} from '../modules/optimization-feedback/feedback.queue.js';
+import { feedbackObservability } from '../modules/optimization-feedback/feedback.observability.js';
+import { OptimizationFeedbackRepository } from '../modules/optimization-feedback/feedback.repository.js';
+import { OptimizationFeedbackService } from '../modules/optimization-feedback/feedback.service.js';
+import { processOptimizationFeedbackJob } from '../modules/optimization-feedback/feedback.worker.js';
+import {
   OPTIMIZATION_ORCHESTRATION_QUEUE_NAME,
   OPTIMIZATION_PLANNING_QUEUE_NAME,
   OPTIMIZATION_QUEUE_ATTEMPTS,
@@ -110,6 +120,7 @@ export const OPTIMIZATION_PLANNING_WORKER_CONCURRENCY = 1;
 export const OPTIMIZATION_ORCHESTRATION_WORKER_CONCURRENCY = 2;
 export const OPTIMIZATION_AUTOPILOT_WORKER_CONCURRENCY = 2;
 export const OPTIMIZATION_EXPERIMENT_WORKER_CONCURRENCY = 2;
+export const OPTIMIZATION_FEEDBACK_WORKER_CONCURRENCY = 2;
 export const OPTIMIZATION_DAILY_RECONCILE_EVERY_MS = 24 * 60 * 60 * 1000;
 export const OPTIMIZATION_DAILY_RECONCILE_SCHEDULER = {
   id: 'optimization-daily-reconcile',
@@ -137,6 +148,15 @@ export const OPTIMIZATION_EXPERIMENT_DAILY_RECONCILE_SCHEDULER = {
     data: { kind: 'RECONCILE_DAILY' as const }
   }
 } as const;
+export const OPTIMIZATION_FEEDBACK_DAILY_RECONCILE_EVERY_MS = 24 * 60 * 60 * 1000;
+export const OPTIMIZATION_FEEDBACK_DAILY_RECONCILE_SCHEDULER = {
+  id: 'optimization-feedback-daily-reconcile',
+  repeat: { every: OPTIMIZATION_FEEDBACK_DAILY_RECONCILE_EVERY_MS },
+  job: {
+    name: 'reconcile-daily',
+    data: { kind: 'RECONCILE_DAILY' as const }
+  }
+} as const;
 
 export function buildOptimizationAutopilotRuntimeDeps(input: {
   repository: OptimizationAutopilotRepository;
@@ -152,6 +172,24 @@ export function buildPublicationVerificationExperimentHandoff(
   return {
     onVerified: async (input: { executionId: string; projectId: string }): Promise<void> => {
       await queue.enqueueStart(input.executionId, input.projectId);
+    }
+  };
+}
+
+export function buildOptimizationExperimentFeedbackHandoff(
+  queue: Pick<OptimizationFeedbackQueue, 'enqueueObservation'>
+) {
+  return {
+    onObservationPersisted: async (input: {
+      projectId: string;
+      experimentId: string;
+      observationId: string;
+    }): Promise<void> => {
+      await queue.enqueueObservation(
+        input.projectId,
+        input.experimentId,
+        input.observationId
+      );
     }
   };
 }
@@ -180,6 +218,7 @@ export function workerDefinitionForQueue(
     | 'optimization-orchestration'
     | 'optimization-autopilot'
     | 'optimization-experiment-evaluation'
+    | 'optimization-feedback-materialization'
     | 'visibility'
     | 'visibility-extraction'
     | 'visibility-metrics'
@@ -222,6 +261,12 @@ export function workerDefinitionForQueue(
     return {
       processor: processOptimizationExperimentJob,
       concurrency: OPTIMIZATION_EXPERIMENT_WORKER_CONCURRENCY
+    } as const;
+  }
+  if (name === OPTIMIZATION_FEEDBACK_QUEUE_NAME) {
+    return {
+      processor: processOptimizationFeedbackJob,
+      concurrency: OPTIMIZATION_FEEDBACK_WORKER_CONCURRENCY
     } as const;
   }
   if (name === 'visibility') {
@@ -286,6 +331,10 @@ export async function startWorkers() {
     OPTIMIZATION_EXPERIMENT_QUEUE_NAME,
     { connection }
   );
+  const optimizationFeedbackSupportQueue = new Queue<OptimizationFeedbackJobData>(
+    OPTIMIZATION_FEEDBACK_QUEUE_NAME,
+    { connection }
+  );
   const publicationExecutionSupportQueue = new Queue<PublicationExecutionJobData>(
     PUBLICATION_EXECUTION_QUEUE_NAME,
     { connection }
@@ -295,6 +344,7 @@ export async function startWorkers() {
     optimizationOrchestrationSupportQueue,
     optimizationAutopilotSupportQueue,
     optimizationExperimentSupportQueue,
+    optimizationFeedbackSupportQueue,
     publicationExecutionSupportQueue
   );
   const optimizationPlanningQueue = new OptimizationPlanningQueue(optimizationPlanningSupportQueue);
@@ -307,6 +357,9 @@ export async function startWorkers() {
   const optimizationExperimentQueue = new OptimizationExperimentQueue(
     optimizationExperimentSupportQueue
   );
+  const optimizationFeedbackQueue = new OptimizationFeedbackQueue(
+    optimizationFeedbackSupportQueue
+  );
   const publicationExecutionQueue = new PublicationExecutionQueue(publicationExecutionSupportQueue);
   const optimizationAutopilotRepository = new OptimizationAutopilotRepository();
   const optimizationAutopilotRuntimeDeps = buildOptimizationAutopilotRuntimeDeps({
@@ -318,10 +371,24 @@ export async function startWorkers() {
   const optimizationExperimentService = new OptimizationExperimentService(
     optimizationExperimentRepository
   );
+  const optimizationFeedbackRepository = new OptimizationFeedbackRepository();
+  const optimizationFeedbackService = new OptimizationFeedbackService(
+    optimizationFeedbackRepository
+  );
+  const optimizationExperimentFeedbackHandoff = buildOptimizationExperimentFeedbackHandoff(
+    optimizationFeedbackQueue
+  );
   const optimizationExperimentRuntimeDeps = {
     service: optimizationExperimentService,
     queue: optimizationExperimentQueue,
-    repository: optimizationExperimentRepository
+    repository: optimizationExperimentRepository,
+    feedbackHandoff: optimizationExperimentFeedbackHandoff
+  };
+  const optimizationFeedbackRuntimeDeps = {
+    service: optimizationFeedbackService,
+    repository: optimizationFeedbackRepository,
+    queue: optimizationFeedbackQueue,
+    observability: feedbackObservability
   };
   const publicationVerificationExperimentHandoff = buildPublicationVerificationExperimentHandoff(
     optimizationExperimentQueue
@@ -419,6 +486,16 @@ export async function startWorkers() {
           optimizationExperimentRuntimeDeps
         ),
         { connection, concurrency: OPTIMIZATION_EXPERIMENT_WORKER_CONCURRENCY }
+      );
+    }
+    if (name === OPTIMIZATION_FEEDBACK_QUEUE_NAME) {
+      return new Worker<OptimizationFeedbackJobData>(
+        name,
+        async (job) => processOptimizationFeedbackJob(
+          { name: job.name, data: job.data } as Parameters<typeof processOptimizationFeedbackJob>[0],
+          optimizationFeedbackRuntimeDeps
+        ),
+        { connection, concurrency: OPTIMIZATION_FEEDBACK_WORKER_CONCURRENCY }
       );
     }
     if (name === 'visibility') {
@@ -532,6 +609,15 @@ export async function startWorkers() {
     {
       ...OPTIMIZATION_EXPERIMENT_DAILY_RECONCILE_SCHEDULER.job,
       opts: { attempts: OPTIMIZATION_EXPERIMENT_QUEUE_ATTEMPTS }
+    }
+  );
+
+  await optimizationFeedbackSupportQueue.upsertJobScheduler(
+    OPTIMIZATION_FEEDBACK_DAILY_RECONCILE_SCHEDULER.id,
+    OPTIMIZATION_FEEDBACK_DAILY_RECONCILE_SCHEDULER.repeat,
+    {
+      ...OPTIMIZATION_FEEDBACK_DAILY_RECONCILE_SCHEDULER.job,
+      opts: { attempts: OPTIMIZATION_FEEDBACK_QUEUE_ATTEMPTS }
     }
   );
 
