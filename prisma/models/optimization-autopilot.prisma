@@ -37,6 +37,25 @@ model AutopilotPolicy {
   @@index([projectId, enabled], map: "AutopilotPolicy_project_enabled_idx")
 }
 
+model AutopilotPolicyRevision {
+  id                      String   @id @default(uuid()) @db.Uuid
+  projectId               String   @db.Uuid
+  policyId                 String   @db.Uuid
+  revisionVersion         String
+  requestId               String   @db.Uuid
+  revisionKey             String
+  previousPolicyUpdatedAt DateTime?
+  appliedPolicyUpdatedAt  DateTime
+  beforeSnapshotJson      Json?
+  afterSnapshotJson       Json
+  actorId                 String
+  createdAt               DateTime @default(now())
+
+  @@unique([projectId, requestId])
+  @@unique([projectId, revisionKey])
+  @@index([projectId, createdAt])
+}
+
 model OptimizationAutopilotDecision {
   id                 String                              @id @default(uuid()) @db.Uuid
   projectId          String                              @db.Uuid

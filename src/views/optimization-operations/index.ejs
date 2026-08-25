@@ -1,0 +1,226 @@
+<% const inboxTotal = Object.values(overview.inboxCounts).reduce((sum, value) => sum + value, 0); %>
+<section
+  class="operations-page"
+  data-operations-root
+  data-project-id="<%= project.id %>"
+  data-policy-updated-at="<%= policy?.updatedAt ?? '' %>"
+>
+  <section class="page-header operations-hero">
+    <div>
+      <p class="eyebrow">P9-F · Autonomous Operations Center</p>
+      <h1>自动优化中心</h1>
+      <p class="muted"><%= project.name %> · 仅基于已持久化事实展示 P7 → P9-E 的当前状态；打开或刷新本页不会调用 AI、Provider、Git 或发布执行来补造数据。</p>
+    </div>
+    <div class="operations-actions">
+      <button class="btn" type="button" data-refresh-operations>刷新状态</button>
+      <button class="btn btn-primary" type="button" data-run-optimization>启动手动 Optimization Run</button>
+    </div>
+  </section>
+
+  <p class="muted operations-status" data-refresh-status>快照生成时间：<%= overview.generatedAt.toISOString() %></p>
+  <p class="muted operations-status" data-run-status aria-live="polite"></p>
+
+  <section class="metric-grid operations-metrics" aria-label="Operations overview metrics">
+    <article class="metric-card">
+      <span class="metric-label">Effective Autopilot</span>
+      <strong data-metric-effective-state><%= overview.effectiveAutopilotState %></strong>
+      <span class="muted">全局开关、项目策略与功能权限共同决定</span>
+    </article>
+    <article class="metric-card">
+      <span class="metric-label">今日 Optimization Runs</span>
+      <strong data-metric-today-runs><%= overview.todayRunCount %></strong>
+      <span class="muted">UTC 当日已持久化 Run</span>
+    </article>
+    <article class="metric-card">
+      <span class="metric-label">Human-attention inbox</span>
+      <strong data-metric-inbox-count><%= inboxTotal %></strong>
+      <span class="muted">需要人工查看的持久化事项</span>
+    </article>
+    <article class="metric-card">
+      <span class="metric-label">Draft PR</span>
+      <strong data-metric-draft-pr><%= overview.pipelineCounts.DRAFT_PR %></strong>
+      <span class="muted">等待既有人工合并流程</span>
+    </article>
+    <article class="metric-card">
+      <span class="metric-label">Observing</span>
+      <strong data-metric-observing><%= overview.pipelineCounts.OBSERVING %></strong>
+      <span class="muted">正在按冻结计划观察的实验</span>
+    </article>
+    <article class="metric-card">
+      <span class="metric-label">Feedback sample</span>
+      <strong data-metric-feedback-sample><%= overview.feedbackSummary.sampleCount %></strong>
+      <span class="muted">当前不可变反馈画像样本数</span>
+    </article>
+  </section>
+
+  <section class="operations-grid">
+    <article class="panel operations-panel">
+      <div class="panel-header">
+        <div>
+          <h2>Human-attention inbox</h2>
+          <p class="muted">只提供查看与既有边界命令，不提供绕过验证或审批的操作。</p>
+        </div>
+      </div>
+      <% if (inbox.length) { %>
+        <div class="operations-inbox-list">
+          <% for (const item of inbox) { %>
+            <article class="operations-inbox-item">
+              <div class="operations-inline">
+                <span class="badge"><%= item.severity %></span>
+                <strong><%= item.category %></strong>
+              </div>
+              <p><code><%= item.reasonCode %></code></p>
+              <% if (item.targetUrl) { %><p class="muted"><%= item.targetUrl %></p><% } %>
+              <p class="muted"><time datetime="<%= item.updatedAt %>"><%= item.updatedAt %></time></p>
+              <% if (item.authorityUrl) { %>
+                <a class="text-link" href="<%= item.authorityUrl %>">查看持久化 authority</a>
+              <% } %>
+            </article>
+          <% } %>
+        </div>
+      <% } else { %>
+        <div class="empty">暂无需要人工处理的事项。</div>
+      <% } %>
+    </article>
+
+    <article class="panel operations-panel">
+      <div class="panel-header">
+        <div>
+          <h2>Quota</h2>
+          <p class="muted">基于 P9-C 持久化 reservation / decision，不以 PR 数量反推额度。</p>
+        </div>
+      </div>
+      <dl class="operations-kv">
+        <div><dt>Configured limit</dt><dd><%= overview.quota.configuredLimit %></dd></div>
+        <div><dt>Reserved</dt><dd><%= overview.quota.reserved %></dd></div>
+        <div><dt>Consumed</dt><dd><%= overview.quota.consumed %></dd></div>
+        <div><dt>Remaining</dt><dd><%= overview.quota.remaining %></dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <section class="panel operations-panel">
+    <div class="panel-header">
+      <div>
+        <h2>Pipeline</h2>
+        <p class="muted">每个优化对象只计入一个最远已确认阶段。</p>
+      </div>
+    </div>
+    <div class="operations-stage-grid">
+      <% for (const [stage, count] of Object.entries(overview.pipelineCounts)) { %>
+        <div class="operations-stage-card">
+          <span><%= stage %></span>
+          <strong><%= count %></strong>
+        </div>
+      <% } %>
+    </div>
+  </section>
+
+  <section class="operations-grid">
+    <article class="panel operations-panel">
+      <div class="panel-header"><div><h2>Experiment outcomes</h2><p class="muted">观察结果不是因果“成功率”；时间窗按 P9-D terminal inputCutoffAt。</p></div></div>
+      <% for (const [label, summary] of [['最近 7 天', overview.experimentSummary.last7Days], ['最近 30 天', overview.experimentSummary.last30Days]]) { %>
+        <section class="operations-outcome-block">
+          <h3><%= label %></h3>
+          <dl class="operations-kv operations-outcomes">
+            <div><dt>POSITIVE</dt><dd><%= summary.positive %></dd></div>
+            <div><dt>NEUTRAL</dt><dd><%= summary.neutral %></dd></div>
+            <div><dt>NEGATIVE</dt><dd><%= summary.negative %></dd></div>
+            <div><dt>INCONCLUSIVE</dt><dd><%= summary.inconclusive %></dd></div>
+            <div><dt>FEEDBACK_ACCEPTED</dt><dd><%= summary.feedbackAccepted %></dd></div>
+            <div><dt>FEEDBACK_DEFERRED</dt><dd><%= summary.feedbackDeferred %></dd></div>
+          </dl>
+        </section>
+      <% } %>
+    </article>
+
+    <article class="panel operations-panel">
+      <div class="panel-header"><div><h2>Feedback weights</h2><p class="muted">读取最新不可变 OptimizationFeedbackProfile 快照。</p></div></div>
+      <dl class="operations-kv">
+        <div><dt>样本数</dt><dd><%= overview.feedbackSummary.sampleCount %></dd></div>
+        <div><dt>Positive</dt><dd><%= overview.feedbackSummary.positiveCount %></dd></div>
+        <div><dt>Neutral</dt><dd><%= overview.feedbackSummary.neutralCount %></dd></div>
+        <div><dt>Negative</dt><dd><%= overview.feedbackSummary.negativeCount %></dd></div>
+        <div><dt>Rolling effect balance</dt><dd><%= overview.feedbackSummary.rollingEffectBalance %></dd></div>
+        <div><dt>历史排序调整</dt><dd><%= overview.feedbackSummary.historicalRankAdjustment %></dd></div>
+      </dl>
+      <p class="muted">历史效果权重只参与未来 P9-A V2 排序，不改变 Growth Score、自动发布风险等级或审批要求。</p>
+    </article>
+  </section>
+
+  <section class="panel operations-panel" id="autopilot-policy">
+    <div class="panel-header">
+      <div>
+        <h2>Autopilot Policy</h2>
+        <p class="muted">策略修改创建不可变 Revision；全局 kill switch 在 P9-F V1 中只读。</p>
+      </div>
+    </div>
+
+    <% if (!policy) { %>
+      <div class="empty">尚未创建 Autopilot Policy。保存第一版策略时 expectedUpdatedAt 将为 null。</div>
+    <% } %>
+
+    <div class="operations-locked-grid" aria-label="Locked autopilot authority">
+      <div class="operations-locked"><span>Allowed risk class</span><strong>LOW</strong><small>锁定</small></div>
+      <div class="operations-locked"><span>Allowed operation</span><strong>CREATE_CONTENT_PAGE</strong><small>锁定</small></div>
+    </div>
+
+    <form class="operations-policy-form" data-policy-form data-dirty="false">
+      <div class="form-grid">
+        <label class="field checkbox-field">
+          <span>Enabled</span>
+          <input type="checkbox" name="enabled" <%= policy?.enabled ? 'checked' : '' %>>
+        </label>
+        <label class="field">
+          <span>Daily Draft PR limit</span>
+          <input type="number" name="dailyDraftPrLimit" min="1" max="10" required value="<%= policy?.dailyDraftPrLimit ?? '' %>">
+        </label>
+        <label class="field">
+          <span>Max concurrent runs</span>
+          <input type="number" name="maxConcurrentRuns" min="1" max="3" required value="<%= policy?.maxConcurrentRuns ?? '' %>">
+        </label>
+        <label class="field checkbox-field">
+          <span>Require fresh evidence</span>
+          <input type="checkbox" name="requireFreshEvidence" <%= policy?.requireFreshEvidence ? 'checked' : '' %>>
+        </label>
+        <label class="field">
+          <span>Minimum evidence coverage</span>
+          <input type="number" name="minimumEvidenceCoverage" min="70" max="100" required value="<%= policy?.minimumEvidenceCoverage ?? '' %>">
+        </label>
+        <label class="field checkbox-field">
+          <span>Pause on verification failure</span>
+          <input type="checkbox" name="pauseOnVerificationFailure" <%= policy?.pauseOnVerificationFailure ? 'checked' : '' %>>
+        </label>
+        <label class="field checkbox-field">
+          <span>Project kill switch</span>
+          <input type="checkbox" name="killSwitch" <%= policy?.killSwitch ? 'checked' : '' %>>
+        </label>
+      </div>
+      <div class="operations-policy-actions">
+        <button class="btn btn-primary" type="submit" data-policy-save <%= policyMutationAvailable ? '' : 'disabled' %>>保存 Policy Revision</button>
+        <span class="muted" data-policy-status aria-live="polite"></span>
+      </div>
+      <% if (!policyMutationAvailable) { %>
+        <p class="muted operations-warning">认证操作员身份不可用；Policy Revision 默认 fail-closed，当前页面仅可读取策略。</p>
+      <% } %>
+    </form>
+  </section>
+
+  <section class="panel operations-panel">
+    <div class="panel-header"><div><h2>Recent activity</h2><p class="muted">按各模块业务语义时间排序，不把数据库写入延迟当成业务时间。</p></div></div>
+    <% if (overview.recentActivity.length) { %>
+      <ol class="operations-activity">
+        <% for (const item of overview.recentActivity) { %>
+          <li>
+            <div class="operations-inline"><span class="badge"><%= item.severity %></span><strong><%= item.title %></strong><code><%= item.sourceModule %></code></div>
+            <p><%= item.summary %></p>
+            <time class="muted" datetime="<%= item.occurredAt.toISOString() %>"><%= item.occurredAt.toISOString() %></time>
+            <% if (item.authorityUrl) { %><a class="text-link" href="<%= item.authorityUrl %>">查看 authority</a><% } %>
+          </li>
+        <% } %>
+      </ol>
+    <% } else { %>
+      <div class="empty">暂无活动记录。</div>
+    <% } %>
+  </section>
+</section>

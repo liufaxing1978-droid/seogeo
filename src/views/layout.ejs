@@ -17,5 +17,10 @@
     </div>
   </div>
   <script src="/assets/js/app.js" defer></script>
+  <% if (typeof pageScripts !== 'undefined') { %>
+    <% for (const src of pageScripts) { %>
+      <script src="<%= src %>" defer></script>
+    <% } %>
+  <% } %>
 </body>
 </html>

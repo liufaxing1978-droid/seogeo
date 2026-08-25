@@ -34,6 +34,13 @@ import {
   type OptimizationFeedbackApiPort,
 } from './modules/optimization-feedback/feedback.routes.js';
 import {
+  createOptimizationOperationsRoutes,
+  type OperationsActorResolver,
+  type OptimizationOperationsApiPort,
+  type PolicyRevisionCommandPort,
+} from './modules/optimization-operations/operations.routes.js';
+import { createOptimizationOperationsWebRoutes } from './modules/optimization-operations/operations.web.routes.js';
+import {
   createOptimizationOrchestrationRoutes,
   type OptimizationOrchestrationApiPort
 } from './modules/optimization-orchestration/orchestration.routes.js';
@@ -78,6 +85,9 @@ export interface AppOptions {
   optimizationOrchestrationApi?: OptimizationOrchestrationApiPort;
   optimizationExperimentApi?: OptimizationExperimentApiPort;
   optimizationFeedbackApi?: OptimizationFeedbackApiPort;
+  optimizationOperationsApi?: OptimizationOperationsApiPort;
+  policyRevisionCommand?: PolicyRevisionCommandPort;
+  operationsActorResolver?: OperationsActorResolver;
   publicationApi?: PublicationApiPort;
   distributionApi?: DistributionApiPort;
   marketService?: MarketApiPort;
@@ -108,6 +118,11 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/v1', createContentRoutes(options.contentService, options.aiTaskService));
   app.use('/api/v1', createCompetitorRoutes(options.competitorService, options.aiTaskService));
   app.use('/api/v1', createOptimizationOrchestrationRoutes(options.optimizationOrchestrationApi));
+  app.use('/api/v1', createOptimizationOperationsRoutes(
+    options.optimizationOperationsApi,
+    options.policyRevisionCommand,
+    options.operationsActorResolver,
+  ));
   app.use('/api/v1', createOptimizationExperimentRoutes(options.optimizationExperimentApi));
   app.use('/api/v1', createPublicationRoutes(options.publicationApi));
   app.use('/api/v1', createDistributionRoutes(options.distributionApi));
@@ -127,6 +142,10 @@ export function createApp(options: AppOptions = {}) {
   app.use('/', visibilityHistoryWebRoutes);
   app.use('/', searchConsoleWebRoutes);
   app.use('/', createGrowthWebRoutes(options.growthApiRepository));
+  app.use('/', createOptimizationOperationsWebRoutes(
+    options.optimizationOperationsApi,
+    options.operationsActorResolver,
+  ));
   app.use('/', optimizationExperimentWebRoutes);
   app.use('/', webRoutes);
   app.use(errorHandler);
