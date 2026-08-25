@@ -23,6 +23,7 @@ import type {
 } from './operations.types.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_PERSISTED_CUTOFF = new Date('9999-12-31T23:59:59.999Z');
 
 const PIPELINE_STAGES: readonly OperationsPipelineStage[] = [
   'DISCOVERED',
@@ -227,7 +228,7 @@ export class OptimizationOperationsService {
     const rows = await this.repository.listTerminalObservations(
       projectId,
       new Date(0),
-      new Date(8_640_000_000_000_000),
+      MAX_PERSISTED_CUTOFF,
     );
     return rows.slice(pagination.offset, pagination.offset + pagination.limit);
   }
