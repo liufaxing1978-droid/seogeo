@@ -287,10 +287,30 @@ async function createP8(input: {
       createdAt: ago(4 * 60 * 60 * 1000),
     },
   });
+  const approval = await prisma.publicationApproval.create({
+    data: {
+      projectId: input.projectId,
+      planId: publicationPlan.id,
+      planVersion: publicationPlan.version,
+      planHash: publicationPlan.planHash,
+      contentVersion: 1,
+      contentHash: `hash-${input.label}`,
+      previewHash: preview.previewHash,
+      baseSha: publicationPlan.baseSha,
+      targetRepository: publicationPlan.targetRepository,
+      targetBranch: publicationPlan.targetBranch,
+      targetBlobHashes: publicationPlan.targetBlobHashes,
+      approverActorId: 'operator:fixture',
+      approvedRiskClass: 'LOW',
+      confirmedWarningCodes: [],
+      createdAt: ago(4 * 60 * 60 * 1000),
+    },
+  });
   const execution = await prisma.publicationExecution.create({
     data: {
       projectId: input.projectId,
       planId: publicationPlan.id,
+      approvalId: approval.id,
       executionKey: `execution:${input.label}:${randomUUID()}`,
       status: input.status,
       branchName: `task-36-${input.label}`,
@@ -478,6 +498,7 @@ async function cleanup(): Promise<void> {
   await prisma.optimizationExperiment.deleteMany({ where }).catch(() => undefined);
   await prisma.publicationVerification.deleteMany({ where }).catch(() => undefined);
   await prisma.publicationExecution.deleteMany({ where }).catch(() => undefined);
+  await prisma.publicationApproval.deleteMany({ where }).catch(() => undefined);
   await prisma.publicationPreview.deleteMany({ where }).catch(() => undefined);
   await prisma.publicationPlan.deleteMany({ where }).catch(() => undefined);
   await prisma.contentDraft.deleteMany({ where }).catch(() => undefined);
