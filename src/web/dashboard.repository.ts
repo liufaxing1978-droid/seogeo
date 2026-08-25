@@ -354,26 +354,10 @@ export class DashboardRepository {
     };
   }
 
-  async getPortfolio(input: { limit?: number } = {}): Promise<PortfolioDashboardViewModel> {
-    const requested = Number.isInteger(input.limit) ? input.limit! : 25;
-    const limit = Math.max(1, Math.min(50, requested));
-    const projects = await prisma.project.findMany({
-      orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
-      take: limit,
-      select: {
-        id: true,
-        name: true,
-        primaryDomain: true,
-        planLevel: true,
-        status: true,
-        defaultLanguage: true,
-        targetCountry: true,
-        timezone: true,
-        industry: true,
-        createdAt: true,
-        updatedAt: true
-      }
-    });
+  private async buildPortfolio(
+    projects: DashboardProject[],
+    limit: number,
+  ): Promise<PortfolioDashboardViewModel> {
     const rows = await Promise.all(projects.map(async (project) => ({
       project,
       facts: await this.getProjectFacts(project)
@@ -406,6 +390,63 @@ export class DashboardRepository {
       enterpriseGrowthProjects,
       projects: rows
     };
+  }
+
+  async getPortfolio(input: { limit?: number } = {}): Promise<PortfolioDashboardViewModel> {
+    const requested = Number.isInteger(input.limit) ? input.limit! : 25;
+    const limit = Math.max(1, Math.min(50, requested));
+    const projects = await prisma.project.findMany({
+      orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+      take: limit,
+      select: {
+        id: true,
+        name: true,
+        primaryDomain: true,
+        planLevel: true,
+        status: true,
+        defaultLanguage: true,
+        targetCountry: true,
+        timezone: true,
+        industry: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+    return this.buildPortfolio(projects, limit);
+  }
+
+  async getPortfolioForUser(
+    userId: string,
+    input: { limit?: number } = {},
+  ): Promise<PortfolioDashboardViewModel> {
+    const requested = Number.isInteger(input.limit) ? input.limit! : 25;
+    const limit = Math.max(1, Math.min(50, requested));
+    const projects = await prisma.project.findMany({
+      where: {
+        memberships: {
+          some: {
+            userId,
+            status: 'ACTIVE'
+          }
+        }
+      },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+      take: limit,
+      select: {
+        id: true,
+        name: true,
+        primaryDomain: true,
+        planLevel: true,
+        status: true,
+        defaultLanguage: true,
+        targetCountry: true,
+        timezone: true,
+        industry: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+    return this.buildPortfolio(projects, limit);
   }
 }
 
