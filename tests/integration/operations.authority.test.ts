@@ -10,6 +10,7 @@ import { OptimizationOperationsRepository } from '../../src/modules/optimization
 import { OptimizationOperationsService } from '../../src/modules/optimization-operations/operations.service.js';
 
 const projectIds: string[] = [];
+const retainedImmutableProjectIds = new Set<string>();
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 async function readSourceTree(root: string): Promise<Array<{ path: string; source: string }>> {
@@ -62,6 +63,7 @@ async function createEligibleProject() {
 
 async function createFullPersistedChain() {
   const { project, policy, growth } = await createEligibleProject();
+  retainedImmutableProjectIds.add(project.id);
   const now = new Date();
   const cutoffAt = new Date(now.getTime() - DAY_MS);
   const verifiedAnchorAt = new Date(cutoffAt.getTime() - 56 * DAY_MS);
@@ -436,30 +438,12 @@ async function authoritySnapshot(projectId: string) {
 }
 
 async function cleanup() {
-  if (projectIds.length === 0) return;
-  const where = { projectId: { in: projectIds } };
-  await prisma.optimizationFeedbackEvidence.deleteMany({ where }).catch(() => undefined);
-  await prisma.optimizationFeedbackProfile.deleteMany({ where }).catch(() => undefined);
-  await prisma.optimizationExperimentObservation.deleteMany({ where }).catch(() => undefined);
-  await prisma.optimizationExperiment.deleteMany({ where }).catch(() => undefined);
-  await prisma.publicationVerification.deleteMany({ where }).catch(() => undefined);
-  await prisma.publicationExecution.deleteMany({ where }).catch(() => undefined);
-  await prisma.publicationApproval.deleteMany({ where }).catch(() => undefined);
-  await prisma.publicationPreview.deleteMany({ where }).catch(() => undefined);
-  await prisma.publicationPlan.deleteMany({ where }).catch(() => undefined);
-  await prisma.contentDraft.deleteMany({ where }).catch(() => undefined);
-  await prisma.publicationProposal.deleteMany({ where }).catch(() => undefined);
-  await prisma.publicationSite.deleteMany({ where }).catch(() => undefined);
-  await prisma.autopilotExecutionReservation.deleteMany({ where }).catch(() => undefined);
-  await prisma.optimizationAutopilotDecision.deleteMany({ where }).catch(() => undefined);
-  await prisma.optimizationRunItem.deleteMany({ where }).catch(() => undefined);
-  await prisma.optimizationRun.deleteMany({ where }).catch(() => undefined);
-  await prisma.autopilotPolicy.deleteMany({ where }).catch(() => undefined);
-  await prisma.optimizationPlan.deleteMany({ where }).catch(() => undefined);
-  await prisma.optimizationCandidate.deleteMany({ where }).catch(() => undefined);
-  await prisma.growthOpportunitySnapshot.deleteMany({ where }).catch(() => undefined);
-  await prisma.growthOpportunityIdentity.deleteMany({ where }).catch(() => undefined);
-  await prisma.project.deleteMany({ where: { id: { in: projectIds } } }).catch(() => undefined);
+  const cleanupProjectIds = projectIds.filter((projectId) => !retainedImmutableProjectIds.has(projectId));
+  if (cleanupProjectIds.length === 0) return;
+  const where = { projectId: { in: cleanupProjectIds } };
+  await prisma.autopilotPolicy.deleteMany({ where });
+  await prisma.growthOpportunityIdentity.deleteMany({ where });
+  await prisma.project.deleteMany({ where: { id: { in: cleanupProjectIds } } });
 }
 
 afterAll(cleanup);
