@@ -30,6 +30,10 @@ import {
 } from './modules/optimization-experiments/experiment.routes.js';
 import { optimizationExperimentWebRoutes } from './modules/optimization-experiments/experiment.web.routes.js';
 import {
+  createOptimizationFeedbackRoutes,
+  type OptimizationFeedbackApiPort,
+} from './modules/optimization-feedback/feedback.routes.js';
+import {
   createOptimizationOrchestrationRoutes,
   type OptimizationOrchestrationApiPort
 } from './modules/optimization-orchestration/orchestration.routes.js';
@@ -73,6 +77,7 @@ export interface AppOptions {
   growthApiRepository?: Partial<GrowthRestRepository>;
   optimizationOrchestrationApi?: OptimizationOrchestrationApiPort;
   optimizationExperimentApi?: OptimizationExperimentApiPort;
+  optimizationFeedbackApi?: OptimizationFeedbackApiPort;
   publicationApi?: PublicationApiPort;
   distributionApi?: DistributionApiPort;
   marketService?: MarketApiPort;
@@ -97,6 +102,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api', createGeoRoutes(options.geoService));
   app.use('/api', createSearchConsoleRoutes(options.searchConsoleService));
   app.use('/api', createGrowthRoutes(options.growthApiRepository));
+  app.use('/api', createOptimizationFeedbackRoutes(options.optimizationFeedbackApi));
   app.use('/api/v1', createGrowthExplanationRoutes(options.aiTaskService));
   app.use('/api/v1', createAiRoutes(options.aiTaskService));
   app.use('/api/v1', createContentRoutes(options.contentService, options.aiTaskService));
