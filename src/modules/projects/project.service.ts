@@ -17,8 +17,23 @@ export class ProjectService {
     }
   }
 
+  async createForOwner(userId: string, input: unknown) {
+    try {
+      return await this.repository.createForOwner(userId, createProjectSchema.parse(input));
+    } catch (error) {
+      if (error instanceof ZodError) {
+        throw new ValidationError('Invalid project data', error.flatten());
+      }
+      throw error;
+    }
+  }
+
   list() {
     return this.repository.list();
+  }
+
+  listForUser(userId: string) {
+    return this.repository.listForUser(userId);
   }
 
   async get(id: string) {
