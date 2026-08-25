@@ -1,7 +1,15 @@
 import { expect, test } from '@playwright/test';
 import { prisma } from '../../src/db/prisma.js';
+import { authenticateE2e } from './e2e-auth.js';
 
-test('generates and opens a project report without invoking DeepSeek', async ({ page }) => {
+test('generates and opens a project report without invoking DeepSeek', async ({ page, context }) => {
+  await authenticateE2e(context, {
+    role: 'OWNER',
+    planLevel: 'STANDARD',
+    userStatus: 'ACTIVE',
+    membershipStatus: 'ACTIVE',
+  });
+
   const suffix = Date.now();
   await page.goto('/projects/new');
   await page.getByLabel('项目名称').fill('Report Center Smoke');
