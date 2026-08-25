@@ -33,11 +33,13 @@ async function installForcedRevisionFailureTrigger(): Promise<void> {
     END;
     $$ LANGUAGE plpgsql;
   `);
+  await prisma.$executeRawUnsafe(
+    'DROP TRIGGER IF EXISTS "p9f_test_reject_policy_revision_insert" ON "AutopilotPolicyRevision"',
+  );
   await prisma.$executeRawUnsafe(`
-    DROP TRIGGER IF EXISTS "p9f_test_reject_policy_revision_insert" ON "AutopilotPolicyRevision";
     CREATE TRIGGER "p9f_test_reject_policy_revision_insert"
     BEFORE INSERT ON "AutopilotPolicyRevision"
-    FOR EACH ROW EXECUTE FUNCTION "p9f_test_reject_policy_revision_insert"();
+    FOR EACH ROW EXECUTE FUNCTION "p9f_test_reject_policy_revision_insert"()
   `);
 }
 
