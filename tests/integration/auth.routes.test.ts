@@ -238,8 +238,8 @@ describe('P10-A authentication HTTP routes', () => {
     const otherRow = rows.find((row) => row.id === other.session.id);
     expect(currentRow?.revokedAt).not.toBeNull();
     expect(otherRow?.revokedAt).toBeNull();
-    expect(response.headers['set-cookie']?.join(';') ?? '').toContain(`${SESSION_COOKIE_NAME}=`);
-    expect(response.headers['set-cookie']?.join(';') ?? '').toMatch(/Max-Age=0|Expires=/);
+    expect(String(response.headers['set-cookie'] ?? '')).toContain(`${SESSION_COOKIE_NAME}=`);
+    expect(String(response.headers['set-cookie'] ?? '')).toMatch(/Max-Age=0|Expires=/);
   });
 
   it('requires authentication + CSRF for password change and revokes every active session', async () => {
