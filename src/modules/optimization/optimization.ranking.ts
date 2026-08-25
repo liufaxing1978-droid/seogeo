@@ -26,6 +26,15 @@ export type BoundedRankResult = {
   finalRank: number
 }
 
+export type FeedbackAwareRankResult = {
+  candidateId: string
+  deterministicRank: number
+  aiRankAdjustment: number
+  historicalRankAdjustment: number
+  finalRank: number
+  historicalFallback: boolean
+}
+
 export function rankEligibleCandidates(
   candidates: readonly OptimizationCandidateDraft[],
 ): RankedCandidate[] {
@@ -114,6 +123,81 @@ export function applyBoundedRankAdjustments(
 
   if (result.some((item) => Math.abs(item.finalRank - item.deterministicRank) > 2)) {
     return deterministicZero(ranked)
+  }
+
+  return result
+}
+
+export function applyFeedbackAwareRankAdjustments(
+  ranked: readonly BoundedRankSeed[],
+  aiAdjustments: readonly { candidateId: string; adjustment: number }[],
+  historicalAdjustments: readonly { candidateId: string; adjustment: number }[],
+): FeedbackAwareRankResult[] {
+  const aiRanking = applyBoundedRankAdjustments(ranked, aiAdjustments)
+  const rankedIds = new Set(ranked.map((item) => item.candidateId))
+  const historicalByCandidate = new Map<string, number>()
+
+  for (const item of historicalAdjustments) {
+    if (!rankedIds.has(item.candidateId)) {
+      throw new Error(`Unknown historical optimization ranking candidate ${item.candidateId}`)
+    }
+    if (historicalByCandidate.has(item.candidateId)) {
+      throw new Error(`Duplicate historical optimization ranking adjustment ${item.candidateId}`)
+    }
+    if (!Number.isInteger(item.adjustment) || item.adjustment < -10 || item.adjustment > 10) {
+      throw new Error('Historical optimization ranking adjustment must be an integer from -10 through 10')
+    }
+    historicalByCandidate.set(item.candidateId, item.adjustment)
+  }
+
+  const aiByCandidate = new Map(aiRanking.map((item) => [item.candidateId, item] as const))
+  const ordered = ranked
+    .map((item) => {
+      const ai = aiByCandidate.get(item.candidateId)
+      if (!ai) throw new Error('Optimization AI ranking result is missing a candidate')
+      const historicalRankAdjustment = historicalByCandidate.get(item.candidateId) ?? 0
+      return {
+        ...item,
+        aiRankAdjustment: ai.aiRankAdjustment,
+        historicalRankAdjustment,
+        adjustedRankSignal:
+          item.deterministicRank
+          + ai.aiRankAdjustment
+          + historicalRankAdjustment,
+      }
+    })
+    .sort((left, right) => (
+      left.adjustedRankSignal - right.adjustedRankSignal
+      || left.deterministicRank - right.deterministicRank
+      || left.candidateKey.localeCompare(right.candidateKey)
+    ))
+
+  const finalRankByCandidate = new Map(
+    ordered.map((item, index) => [item.candidateId, index + 1] as const),
+  )
+
+  const result: FeedbackAwareRankResult[] = ranked.map((item) => {
+    const ai = aiByCandidate.get(item.candidateId)
+    if (!ai) throw new Error('Optimization AI ranking result is missing a candidate')
+    return {
+      candidateId: item.candidateId,
+      deterministicRank: item.deterministicRank,
+      aiRankAdjustment: ai.aiRankAdjustment,
+      historicalRankAdjustment: historicalByCandidate.get(item.candidateId) ?? 0,
+      finalRank: finalRankByCandidate.get(item.candidateId)!,
+      historicalFallback: false,
+    }
+  })
+
+  if (result.some((item) => Math.abs(item.finalRank - item.deterministicRank) > 10)) {
+    return aiRanking.map((item) => ({
+      candidateId: item.candidateId,
+      deterministicRank: item.deterministicRank,
+      aiRankAdjustment: item.aiRankAdjustment,
+      historicalRankAdjustment: 0,
+      finalRank: item.finalRank,
+      historicalFallback: true,
+    }))
   }
 
   return result
