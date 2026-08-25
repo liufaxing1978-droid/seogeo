@@ -19,7 +19,7 @@ const schema = z.object({
     .min(1)
     .default('postgresql://postgres:postgres@localhost:5432/seogeo'),
   REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
-  SESSION_SECRET: z.string().min(8).default('development-secret'),
+  SESSION_SECRET: z.string().min(1).default('development-secret'),
   CRAWLER_USER_AGENT: z.string().min(1).max(300).default('SEOGEO-Bot/0.1 (+https://seo.xingshantang.org)'),
   CRAWLER_MAX_PAGES: z.coerce.number().int().min(1).max(5000).default(500),
   CRAWLER_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(4),
