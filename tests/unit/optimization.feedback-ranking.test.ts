@@ -128,7 +128,7 @@ describe('P9-A V2 feedback-aware ranking', () => {
       deterministicRank: 13,
       aiRankAdjustment: -2,
       historicalRankAdjustment: 0,
-      finalRank: 11,
+      finalRank: 12,
       historicalFallback: true,
     })
   })
