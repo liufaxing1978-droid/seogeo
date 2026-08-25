@@ -13,7 +13,7 @@ import {
 } from './operations.service.js';
 
 export interface OptimizationOperationsApiPort {
-  getOverview(projectId: string): Promise<OperationsOverview | unknown>;
+  getOverview(projectId: string): Promise<OperationsOverview>;
   listPipeline(projectId: string, limit: number, offset: number): Promise<unknown>;
   listInbox(projectId: string, limit: number, offset: number): Promise<unknown>;
   listExperiments(projectId: string, limit: number, offset: number): Promise<unknown>;
