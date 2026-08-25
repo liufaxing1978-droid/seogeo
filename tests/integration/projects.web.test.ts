@@ -60,7 +60,6 @@ async function createProjectForUser(
 
 afterEach(async () => {
   for (const projectId of directProjectIds.splice(0).reverse()) {
-    await prisma.securityAuditEvent.deleteMany({ where: { projectId } });
     await prisma.projectMembership.deleteMany({ where: { projectId } });
     await prisma.project.delete({ where: { id: projectId } }).catch(() => undefined);
   }
