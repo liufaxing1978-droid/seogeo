@@ -145,7 +145,7 @@ describe('P10-A authentication HTTP routes', () => {
     expect(limiter.cleared).toHaveLength(0);
   });
 
-  it('creates a fresh seven-day session and hardened cookie on valid login', async () => {
+  it('creates a fresh seven-day session, audit event and hardened cookie on valid login', async () => {
     const user = await createUser();
     createdUserIds.push(user.id);
     const oldSession = await createSession(user.id);
@@ -180,6 +180,9 @@ describe('P10-A authentication HTTP routes', () => {
     expect(sessions[1]?.tokenHash).not.toBe(oldSession.session.tokenHash);
     expect(sessions[1]?.expiresAt.getTime()).toBeGreaterThanOrEqual(before + SESSION_TTL_MS - 1_000);
     expect(sessions[1]?.expiresAt.getTime()).toBeLessThanOrEqual(after + SESSION_TTL_MS + 1_000);
+    expect(await prisma.securityAuditEvent.count({
+      where: { targetUserId: user.id, eventType: 'SESSION_CREATED' },
+    })).toBe(1);
   });
 
   it('returns only bounded current user/session data and a derived CSRF token', async () => {
@@ -212,7 +215,7 @@ describe('P10-A authentication HTTP routes', () => {
     expect(JSON.stringify(response.body)).not.toContain(user.passwordHash);
   });
 
-  it('requires authentication and CSRF for logout, then revokes only the current session and clears its cookie', async () => {
+  it('requires authentication and CSRF for logout, then revokes only the current session and audits it', async () => {
     const { app } = createTestApp();
     expect((await request(app).post('/auth/logout')).status).toBe(401);
 
@@ -238,11 +241,14 @@ describe('P10-A authentication HTTP routes', () => {
     const otherRow = rows.find((row) => row.id === other.session.id);
     expect(currentRow?.revokedAt).not.toBeNull();
     expect(otherRow?.revokedAt).toBeNull();
+    expect(await prisma.securityAuditEvent.count({
+      where: { targetUserId: user.id, eventType: 'SESSION_REVOKED' },
+    })).toBe(1);
     expect(String(response.headers['set-cookie'] ?? '')).toContain(`${SESSION_COOKIE_NAME}=`);
     expect(String(response.headers['set-cookie'] ?? '')).toMatch(/Max-Age=0|Expires=/);
   });
 
-  it('requires authentication + CSRF for password change and revokes every active session', async () => {
+  it('requires authentication + CSRF for password change, revokes every active session and audits both effects', async () => {
     const { app } = createTestApp();
     expect((await request(app).post('/auth/password/change')).status).toBe(401);
 
@@ -274,6 +280,16 @@ describe('P10-A authentication HTTP routes', () => {
       where: { id: { in: [current.session.id, other.session.id] } },
     });
     expect(sessions.every((session) => session.revokedAt !== null)).toBe(true);
+
+    const auditEvents = await prisma.securityAuditEvent.findMany({
+      where: {
+        targetUserId: user.id,
+        eventType: { in: ['PASSWORD_CHANGED', 'SESSIONS_REVOKED_ALL'] },
+      },
+      select: { eventType: true },
+    });
+    expect(new Set(auditEvents.map((event) => event.eventType)))
+      .toEqual(new Set(['PASSWORD_CHANGED', 'SESSIONS_REVOKED_ALL']));
 
     expect((await request(app).get('/auth/session').set('Cookie', current.cookie)).status).toBe(401);
   });
