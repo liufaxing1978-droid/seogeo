@@ -1,9 +1,7 @@
-import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createApp } from '../../src/app.js';
+import request from 'supertest';
 import { prisma } from '../../src/db/prisma.js';
-
-const app = createApp();
+import { createApp } from '../../src/app.js';
 
 beforeEach(async () => {
   await prisma.project.deleteMany();
@@ -11,23 +9,21 @@ beforeEach(async () => {
 
 describe('GEO overview UI', () => {
   it('renders deterministic GEO readiness and keeps AI Visibility explicitly unavailable', async () => {
-    const suffix = `${Date.now()}-${Math.random()}`;
     const project = await prisma.project.create({
       data: {
         name: 'GEO UI Project',
-        slug: `geo-ui-${suffix}`,
-        primaryDomain: 'example.com',
-        planLevel: 'ADVANCED'
+        slug: `geo-ui-${Date.now()}`,
+        primaryDomain: 'example.com'
       }
     });
     const crawl = await prisma.crawlRun.create({
       data: {
         projectId: project.id,
+        runType: 'MANUAL',
         status: 'COMPLETED',
-        startedAt: new Date(),
-        finishedAt: new Date(),
-        pagesDiscovered: 8,
-        pagesCrawled: 8
+        seedUrl: 'https://example.com/',
+        crawlerVersion: 'test',
+        finishedAt: new Date()
       }
     });
     const audit = await prisma.geoAuditRun.create({
@@ -35,45 +31,82 @@ describe('GEO overview UI', () => {
         projectId: project.id,
         crawlRunId: crawl.id,
         status: 'COMPLETED',
+        eligiblePages: 8,
+        rulesEvaluated: 42,
+        engineVersion: 'geo-readiness-1',
+        finishedAt: new Date()
+      }
+    });
+    const score = await prisma.geoScore.create({
+      data: {
+        geoAuditRunId: audit.id,
+        projectId: project.id,
         scoreType: 'GEO_READINESS_V1',
         score: 78.5,
         previousScore: 74,
-        scoreChange: 4.5,
-        completedAt: new Date()
+        change: 4.5,
+        formulaVersion: 'GEO_READINESS_V1_NORMALIZED_AVAILABLE',
+        engineVersion: 'geo-readiness-1'
       }
     });
-    await prisma.geoScoreBreakdown.createMany({
+    for (const component of [
+      ['CITABILITY', 'Citability', 82, 30, 24.6, 'CITABILITY_RESULTS'],
+      ['ENTITY', 'Entity Authority / Clarity', 70, 25, 17.5, 'ENTITY_OBSERVATIONS'],
+      ['AI_CRAWLER', 'Technical AI Readiness', 83, 20, 16.6, 'AI_CRAWLER_RESULTS'],
+      ['BRAND', 'Brand Authority / Consistency', 76, 15, 11.4, 'BRAND_READINESS'],
+      ['CONTENT_GEO', 'Content GEO Quality', 84, 10, 8.4, 'PAGE_FACTS']
+    ] as const) {
+      await prisma.geoScoreComponent.create({
+        data: {
+          geoScoreId: score.id,
+          componentCode: component[0],
+          componentName: component[1],
+          rawScore: component[2],
+          weight: component[3],
+          weightedScore: component[4],
+          sourceType: component[5]
+        }
+      });
+    }
+    await prisma.brandAuthorityResult.create({
+      data: {
+        geoAuditRunId: audit.id,
+        officialIdentityPresent: true,
+        organizationSchemaPresent: true,
+        sameAsCount: 3,
+        publisherConsistency: 100,
+        contactIdentityConsistency: 0,
+        aboutPagePresent: true,
+        overallScore: 86,
+        evidence: { availability: { contactIdentityConsistency: false } }
+      }
+    });
+    await prisma.aiCrawlerResult.createMany({
       data: [
-        { geoAuditRunId: audit.id, dimension: 'AI_CRAWLER', label: 'Technical AI Readiness', rawScore: 83, weight: 0.2, weightedScore: 16.6, sourceType: 'AI_CRAWLER_RESULTS' },
-        { geoAuditRunId: audit.id, dimension: 'BRAND', label: 'Brand Authority / Consistency', rawScore: 76, weight: 0.15, weightedScore: 11.4, sourceType: 'BRAND_READINESS' },
-        { geoAuditRunId: audit.id, dimension: 'CITABILITY', label: 'Citability', rawScore: 82, weight: 0.3, weightedScore: 24.6, sourceType: 'CITABILITY_RESULTS' },
-        { geoAuditRunId: audit.id, dimension: 'CONTENT_GEO', label: 'Content GEO Quality', rawScore: 84, weight: 0.1, weightedScore: 8.4, sourceType: 'PAGE_FACTS' },
-        { geoAuditRunId: audit.id, dimension: 'ENTITY', label: 'Entity Authority / Clarity', rawScore: 70, weight: 0.25, weightedScore: 17.5, sourceType: 'ENTITY_OBSERVATIONS' }
+        { geoAuditRunId: audit.id, crawlerCode: 'OAI_SEARCHBOT', robotsAllowed: true, reachable: true, status: 'PASS' },
+        { geoAuditRunId: audit.id, crawlerCode: 'GPTBOT', robotsAllowed: false, reachable: true, status: 'FAIL' }
       ]
     });
-    await prisma.geoCrawlerReadiness.createMany({
-      data: [
-        { geoAuditRunId: audit.id, crawler: 'GPTBOT', outcome: 'FAIL', robotsAllowed: false, reachable: true },
-        { geoAuditRunId: audit.id, crawler: 'OAI_SEARCHBOT', outcome: 'PASS', robotsAllowed: true, reachable: true }
-      ]
-    });
+
     const rule = await prisma.geoRule.create({
       data: {
-        ruleKey: `UI_OPPORTUNITY_${Date.now()}`,
-        dimension: 'CITABILITY',
-        title: 'Improve citation support',
-        description: 'Add explicit source links',
-        severity: 'HIGH',
-        scope: 'PROJECT'
+        ruleCode: `UI_OPPORTUNITY_${Date.now()}`,
+        name: 'Improve citation support',
+        category: 'Citability',
+        description: 'Fixture opportunity'
       }
     });
     const version = await prisma.geoRuleVersion.create({
       data: {
         geoRuleId: rule.id,
         version: 1,
-        engineVersion: 'geo-readiness-1',
-        active: true,
-        config: {}
+        dimension: 'CITABILITY',
+        severity: 'HIGH',
+        weight: 2,
+        detectionType: 'PAGE_FACT',
+        geoImpact: 'Weak source support',
+        fixGuide: 'Add explicit source links',
+        releasedAt: new Date()
       }
     });
     await prisma.geoRuleResult.create({
