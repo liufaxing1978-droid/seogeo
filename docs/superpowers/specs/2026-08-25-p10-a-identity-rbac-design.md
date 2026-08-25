@@ -10,14 +10,14 @@ Branch: `feat/p10-a-identity-rbac`
 
 P10-A introduces application-native identity, server-side sessions, project membership, role-based access control, CSRF protection, and trusted actor propagation so production mutations can be attributed to authenticated humans without weakening any existing P7/P8/P9 authority boundary.
 
-P10-A answers four questions that the current application does not answer centrally:
+P10-A answers four questions centrally:
 
 1. Who is making this request?
 2. Does that user belong to this project?
 3. Does that project role allow the user to request this operation?
 4. Does the existing plan/domain authority still allow the operation?
 
-The authority chain is therefore:
+The authority chain is:
 
 ```text
 Authentication
@@ -35,39 +35,40 @@ P10-A solves human identity and authorization. It does not expand automation aut
 
 ## 2. Existing repository constraints
 
-The design extends the existing Express/EJS/Prisma application rather than introducing a second application framework.
+P10-A extends the existing Express/EJS/Prisma application instead of introducing a second application framework.
 
-Current repository facts relevant to P10-A:
+Current repository facts relevant to this design:
 
 - `createApp()` has no authentication/session middleware;
 - `AppOptions` already exposes the P9-F `OperationsActorResolver` seam;
+- `OperationsActorResolver.resolve()` receives the Express `Request` object;
 - `requireFeature()` checks project plan entitlement, not user identity or role;
 - project create/list/get/update routes are not membership-scoped;
 - `Project` has no owner/user/membership relation;
-- Prisma uses the repository multi-file schema layout under `prisma/models`;
-- `SESSION_SECRET` already exists in environment configuration but is not currently used for application authentication;
+- Prisma uses the multi-file schema layout under `prisma/models`;
+- `SESSION_SECRET` exists in environment configuration but is not currently used for application authentication;
 - P9-F policy revision already fails closed when no trusted server actor is available;
 - P9-F rejects client-controlled `actorId`, `allowedRiskClass`, and `allowedOperationClasses`;
 - P9-F GET/SSR surfaces are persisted-read only and must not acquire request-time authentication writes.
 
 ## 3. Chosen approach
 
-### 3.1 Authentication approach
+### 3.1 Authentication
 
 P10-A V1 uses local email + password authentication backed by application-native `User` and `UserSession` persistence.
 
 Rejected alternatives:
 
 - public self-registration: deferred because it requires verification, abuse handling, recovery and customer-facing onboarding;
-- email magic link: deferred because the repository has no transactional email delivery foundation;
-- Google/GitHub OAuth as the sole identity source: deferred so core project authorization is not coupled to one external provider;
+- email magic link: deferred because the repository has no transactional email foundation;
+- Google/GitHub OAuth as the sole identity source: deferred so project authorization is not coupled to one external provider;
 - Cloudflare Access-only authorization: may remain an optional perimeter control but does not replace application identity or project RBAC.
 
-Future OAuth or passwordless providers may map into the same stable application `User.id` without changing ProjectMembership semantics.
+Future OAuth/passwordless providers can map into the same stable application `User.id` without changing ProjectMembership semantics.
 
-### 3.2 HTTP integration approach
+### 3.2 HTTP integration
 
-P10-A uses a global optional authentication resolver plus explicit route authorization middleware.
+P10-A uses global optional authentication resolution plus explicit route authorization middleware.
 
 It does not globally reject every unauthenticated request because `/health`, static assets and login routes remain public.
 
@@ -77,20 +78,18 @@ It does not allow each route to parse sessions or inspect raw roles independentl
 
 P10-A MUST NOT:
 
-- let a client submit or override the authenticated actor id;
+- let a client submit or override authenticated actor identity;
 - let a client submit a project role as proof of authorization;
-- let OWNER or ADMIN bypass plan feature gates;
+- let OWNER/ADMIN bypass plan feature gates;
 - let any human role change P7 Growth score, evidence, lifecycle or UNKNOWN semantics;
 - let any human role bypass P8 risk, approval, immutable PublicationPlan, preview, mutation validation or VERIFIED semantics;
 - expand P9-C automation beyond exact LOW-risk `CREATE_CONTENT_PAGE`;
-- add automatic Merge authority;
-- add automatic Deploy authority;
-- add automatic Rollback authority;
+- add automatic Merge, Deploy or Rollback authority;
 - add a writable global autopilot kill switch;
-- let authentication GET middleware enqueue work, call providers, call AI, call Git, materialize feedback, or update request activity timestamps;
-- introduce a production authentication bypass, fallback actor, hard-coded admin actor, or client header/body identity fallback.
+- let authentication GET middleware enqueue work, call providers/AI/Git, materialize feedback, or update request activity timestamps;
+- introduce a production auth bypass, fallback actor, hard-coded admin actor, or client header/body identity fallback.
 
-`OWNER` means highest project human role. It is not a domain superuser.
+`OWNER` is the highest project human role. It is not a domain superuser.
 
 ## 5. Identity model
 
@@ -111,6 +110,7 @@ Conceptual fields:
 id                  UUID primary key
 email               original display email
 normalizedEmail     unique normalized login identity
+displayName         nullable
 passwordHash        encoded password hash
 passwordHashVersion integer
 status              ACTIVE | DISABLED
@@ -121,17 +121,17 @@ updatedAt
 Rules:
 
 - `normalizedEmail` is the unique login identity;
-- normalization trims surrounding whitespace and applies a deterministic lowercase normalization to the complete email string;
-- normalization does not invent Gmail/provider-specific dot or plus-address semantics;
-- a disabled user cannot create a new session;
-- a disabled user cannot continue using an existing session;
-- password material never appears in application logs, audit metadata, API responses or observability events.
+- normalization trims surrounding whitespace and lowercases the complete email string deterministically;
+- normalization does not invent provider-specific dot/plus-address semantics;
+- P10-A V1 does not expose an email-change command;
+- a DISABLED user cannot create a new session or continue using an existing session;
+- password material never appears in logs, audit metadata, API responses or observability events.
 
-## 6. Password hashing
+## 6. Password contract
 
 P10-A V1 uses Node.js `crypto.scrypt` behind a narrow `PasswordHasher` port.
 
-Required encoded format is versioned and self-describing. V1 conceptually records:
+V1 encoded password hashes are versioned and self-describing with these parameters:
 
 ```text
 algorithm = scrypt
@@ -143,18 +143,26 @@ salt = 32 random bytes
 derivedKey = 64 bytes
 ```
 
-Verification uses constant-time comparison (`timingSafeEqual`) after deriving the candidate key with the stored parameters.
+Verification derives the candidate key with stored server-produced parameters and compares with `timingSafeEqual`.
+
+Password input policy is deliberately simple:
+
+```text
+minimum length = 12 characters
+maximum length = 256 characters
+no composition-class requirement
+```
 
 Rules:
 
-- every password receives a cryptographically random independent salt;
+- every password gets an independent cryptographically random salt;
 - raw SHA-256/MD5/SHA-1 password hashing is forbidden;
 - plaintext password is never persisted;
-- password hash format and hash parameters are parsed from the encoded server-produced value, not from client input;
 - malformed stored password hashes fail closed;
-- `passwordHashVersion` permits a future successful-login rehash migration without changing user identity.
+- client input cannot select scrypt parameters;
+- `passwordHashVersion = 1` for V1 and permits later rehash migration without changing user identity.
 
-P10-A does not implement password recovery email or MFA.
+P10-A does not implement recovery email or MFA.
 
 ## 7. Server-side session model
 
@@ -163,59 +171,57 @@ P10-A does not implement password recovery email or MFA.
 Conceptual fields:
 
 ```text
-id          UUID primary key
-userId      FK -> User
- tokenHash   unique SHA-256 digest of random session token
+id        UUID primary key
+userId    FK -> User
+tokenHash unique SHA-256 digest of random session token
 createdAt
 expiresAt
-revokedAt   nullable
+revokedAt nullable
 ```
 
-P10-A deliberately does not update `lastSeenAt` on ordinary requests. This preserves the existing P9-F persisted-read GET boundary.
+P10-A deliberately has no request-updated `lastSeenAt` field in V1. This preserves P9-F persisted-read GET semantics.
 
 ### 7.2 Session token
 
-At successful login:
+On successful login:
 
-1. generate at least 32 random bytes using a cryptographically secure RNG;
-2. encode as an opaque base64url token;
+1. generate at least 32 cryptographically random bytes;
+2. encode them as an opaque base64url token;
 3. store only SHA-256(token) in `UserSession.tokenHash`;
-4. return only the raw token in the HttpOnly session cookie.
+4. send only the raw token in the HttpOnly session cookie.
 
 Session lookup hashes the presented cookie token and performs an indexed equality lookup by `tokenHash`.
 
 ### 7.3 Session lifetime
 
-P10-A V1 uses a seven-day absolute expiration.
+P10-A V1 uses seven-day absolute expiration.
 
-There is no sliding expiration and no request-time session refresh.
+There is no sliding expiration, request-time session refresh or read-time rotation.
 
 A session is valid only when all are true:
 
 - session row exists;
 - `revokedAt IS NULL`;
 - `expiresAt > now`;
-- related user status is `ACTIVE`.
+- related User status is ACTIVE.
 
 ### 7.4 Cookie
 
-Cookie name is an application-owned constant and MUST be configured with:
+The application-owned session cookie MUST use:
 
 ```text
 HttpOnly = true
 Secure = true in production
 SameSite = Lax
 Path = /
-Max-Age aligned with absolute session lifetime
+Max-Age aligned with the absolute session lifetime
 ```
 
-Login always creates a new session token. An existing cookie is never promoted into an authenticated session.
+Login always creates a fresh UserSession/token. An existing anonymous/expired cookie is never promoted into an authenticated session.
 
 ## 8. CSRF design
 
-Because browser authentication is cookie-based, every authenticated unsafe method requires CSRF validation before business mutation.
-
-Unsafe methods are:
+Every authenticated unsafe cookie-based browser method requires CSRF validation before business mutation:
 
 ```text
 POST
@@ -224,57 +230,70 @@ PATCH
 DELETE
 ```
 
-P10-A uses a server-derived per-session CSRF token.
-
-Conceptually:
+P10-A uses a server-derived per-session token:
 
 ```text
-csrfToken = HMAC-SHA256(SESSION_SECRET, canonical(sessionId + tokenHash))
+csrfToken = HMAC-SHA256(
+  SESSION_SECRET,
+  canonical(sessionId + tokenHash)
+)
 ```
 
-The server can derive the token from authenticated server state without storing a second raw secret in the database.
+The server derives the token from authenticated server state and does not persist a second raw CSRF secret.
 
 Rules:
 
-- SSR forms receive the CSRF value as a hidden input;
-- authenticated browser JSON requests send `X-CSRF-Token`;
-- comparison is constant-time;
-- CSRF validation runs before business commands, queue operations, AI/provider work or Git work;
-- GET/HEAD do not mutate state and do not require CSRF;
-- CSRF token is never accepted as authentication;
-- `SESSION_SECRET` in production must be a non-default high-entropy secret of at least 32 bytes/characters as validated by application config;
-- development/test may use an explicit local default.
+- SSR forms receive the token in a hidden input;
+- authenticated browser JSON requests use `X-CSRF-Token`;
+- verification uses constant-time comparison;
+- CSRF validation runs before commands, queue work, AI/provider work or Git work;
+- GET/HEAD remain read-only and do not require CSRF;
+- CSRF is never accepted as authentication;
+- production `SESSION_SECRET` must be non-default and at least 32 characters; `development-secret` is rejected when `NODE_ENV=production`;
+- development/test may use the explicit local default.
+
+### 8.1 Login CSRF
+
+`POST /auth/login` is unauthenticated and therefore cannot use the authenticated per-session token.
+
+To prevent login-CSRF, production browser login POST requires a same-origin `Origin` header. Missing or cross-origin `Origin` is rejected. The login route also rejects arbitrary external return URLs and accepts only normalized same-origin relative return paths.
 
 ## 9. Authentication request context
 
-P10-A adds one global optional authentication middleware after request parsing and before protected application routes.
-
-It resolves:
+The global authentication middleware resolves:
 
 ```text
 session cookie
 → token digest
 → UserSession
 → User
-→ res.locals.auth
+→ Request authentication context
 ```
 
-Authenticated request context is:
+Because existing P9-F `OperationsActorResolver.resolve()` receives `Request`, the canonical context is stored on an augmented Express request:
 
 ```text
-AuthenticatedActor {
-  userId: string
-  sessionId: string
+req.auth = {
+  userId,
+  sessionId,
+  sessionTokenHash
 }
 ```
 
-Unauthenticated/invalid requests receive:
+`sessionTokenHash` is server-only request context and is never serialized to a response/template.
+
+For SSR/template convenience, a bounded public-safe projection is also mirrored to:
 
 ```text
-res.locals.auth = null
+res.locals.auth = {
+  userId,
+  sessionId
+}
 ```
 
-The middleware MUST NOT read identity from:
+Invalid/anonymous requests use `req.auth = null` and `res.locals.auth = null`.
+
+The middleware MUST NOT read local identity from:
 
 ```text
 X-User-Id
@@ -285,11 +304,11 @@ body.userId
 body.actorId
 ```
 
-The middleware performs no request-time persistence write.
+It performs no request-time persistence write.
 
 ## 10. Authentication routes
 
-P10-A V1 defines these browser/API authentication capabilities:
+P10-A V1 defines:
 
 ```text
 GET  /auth/login
@@ -301,46 +320,49 @@ POST /auth/password/change
 
 ### 10.1 Login
 
-Login input:
+Input:
 
 ```text
 email
 password
+returnPath optional same-origin relative path
 ```
 
-Failure for nonexistent email, invalid password or disabled user returns one bounded public error:
+Nonexistent email, wrong password and disabled user all return the same bounded error:
 
 ```text
 INVALID_CREDENTIALS
 ```
 
-The response does not reveal which credential fact failed.
+Successful login:
 
-Successful login creates a fresh UserSession and sets the session cookie.
+1. passes rate limiting;
+2. validates credentials;
+3. creates a fresh UserSession;
+4. records SESSION_CREATED audit;
+5. sets the session cookie.
 
 ### 10.2 Logout
 
 Logout requires authentication and CSRF.
 
-It sets the current session `revokedAt` and clears the browser cookie.
+It transactionally revokes the current session, appends SESSION_REVOKED audit and clears the cookie.
 
 ### 10.3 Session endpoint
 
-`GET /auth/session` is read-only and returns bounded authenticated-user/session state. It never returns token hashes, password fields or CSRF server secrets.
+`GET /auth/session` is persisted-read only and returns bounded user/session identity. It never returns password data, token hashes or the server CSRF key.
+
+It can return the derived current-session CSRF token to same-origin authenticated browser code.
 
 ### 10.4 Password change
 
-Password change requires:
+Password change requires authentication, valid CSRF, current password verification and a new password satisfying Section 6.
 
-- active authentication;
-- valid CSRF;
-- current password verification;
-- valid new password input.
+One transaction:
 
-On success, one transaction:
-
-1. updates the password hash/version;
-2. revokes every active UserSession for that user, including the current session.
+1. updates password hash/version;
+2. revokes every active session for that user, including current;
+3. appends PASSWORD_CHANGED and SESSIONS_REVOKED_ALL audit events.
 
 The caller must log in again.
 
@@ -348,22 +370,33 @@ The caller must log in again.
 
 P10-A introduces an injected `LoginAttemptLimiter` port.
 
-The production default uses the repository's existing Redis infrastructure (`REDIS_URL`) with bounded keys derived from a non-reversible hash of:
+Production uses existing Redis infrastructure through `REDIS_URL`.
+
+The rate-limit key is a SHA-256 digest of:
 
 ```text
-normalized email + source IP
+normalized email + server-derived source IP
 ```
 
-Required V1 policy:
+V1 policy is exact:
 
-- rolling/fixed bounded window equivalent to at most 10 failed attempts per 15 minutes per email+IP key;
-- successful authentication clears the bounded failure bucket for that key;
-- rate-limit errors do not reveal whether the email exists;
-- Redis payloads do not store plaintext passwords or session tokens;
-- if the production limiter backend is unavailable, login fails closed with a bounded service-unavailable error rather than silently disabling the limiter;
-- tests use an injected deterministic fake/in-memory limiter rather than a live external Redis service unless a dedicated integration test explicitly targets Redis.
+```text
+maximum failed attempts = 10
+window = fixed 15-minute bucket
+scope = normalized email + source IP
+```
 
-The rate limiter protects the login endpoint only in P10-A V1. It is not a general application abuse platform.
+Rules:
+
+- success clears the current failure bucket for that key;
+- rate-limit responses do not reveal whether the user exists;
+- Redis values never contain passwords/session tokens;
+- if Redis limiter storage is unavailable in production, login fails closed with 503;
+- tests use deterministic injected limiter fakes except dedicated Redis integration coverage.
+
+Source IP uses the connection address by default. P10-A MUST NOT enable unrestricted `trust proxy=true`; any future reverse-proxy trust configuration must explicitly constrain trusted proxies/hops so clients cannot spoof the limiter IP through arbitrary forwarded headers.
+
+The limiter is login-only in P10-A V1, not a general abuse platform.
 
 ## 12. Project membership model
 
@@ -399,17 +432,17 @@ updatedAt
 UNIQUE(projectId, userId)
 ```
 
-A revoked membership remains persisted for historical continuity and can only be reactivated through the membership command policy.
+Revoked memberships remain persisted for history. Reactivation occurs only through the membership command policy.
 
-Project ownership is represented by one or more ACTIVE OWNER memberships. `Project` does not receive a single `ownerId` field.
+Ownership is one or more ACTIVE OWNER memberships. `Project` does not receive a single `ownerId`.
 
 ## 13. Project capability model
 
-Routes and services do not scatter `role === ...` checks.
+Routes/services do not scatter `role === ...` checks.
 
-P10-A defines central `ProjectCapability` values and a deterministic role-to-capability mapping.
+P10-A defines central `ProjectCapability` values and one deterministic role mapping.
 
-Initial V1 capabilities:
+V1 capabilities:
 
 ```text
 PROJECT_READ
@@ -433,22 +466,19 @@ FEEDBACK_READ
 
 ### 13.1 VIEWER
 
-VIEWER receives read-only capabilities, including:
+VIEWER has read-only project/data capabilities:
 
 ```text
 PROJECT_READ
-PROJECT_MEMBER_READ
 EXPERIMENT_READ
 FEEDBACK_READ
 ```
 
-and read access to other project surfaces for which the plan feature gate permits viewing.
-
-VIEWER receives no mutation capability.
+VIEWER does not receive membership-list access or mutation capability.
 
 ### 13.2 OPERATOR
 
-OPERATOR includes VIEWER read capabilities plus normal operational capabilities:
+OPERATOR includes VIEWER read capabilities plus:
 
 ```text
 CRAWL_RUN
@@ -463,46 +493,39 @@ OPTIMIZATION_RUN
 AUTOPILOT_POLICY_REVISE
 ```
 
-Every operation remains subject to its existing plan and domain authority.
+Every operation remains subject to existing plan/domain authority.
 
 ### 13.3 ADMIN
 
-ADMIN includes OPERATOR capabilities plus:
+ADMIN includes OPERATOR plus:
 
 ```text
 PROJECT_SETTINGS_WRITE
+PROJECT_MEMBER_READ
 PROJECT_MEMBER_MANAGE_BASIC
 ```
 
-ADMIN membership management is limited to VIEWER and OPERATOR target memberships.
+ADMIN member management is limited to VIEWER and OPERATOR targets.
 
-ADMIN cannot:
-
-- create OWNER memberships;
-- create ADMIN memberships;
-- modify an OWNER membership;
-- modify another ADMIN membership;
-- promote itself or another user to OWNER/ADMIN.
+ADMIN cannot create/modify/revoke OWNER or ADMIN memberships and cannot promote any member to ADMIN/OWNER.
 
 ### 13.4 OWNER
 
-OWNER includes ADMIN capabilities plus:
+OWNER includes ADMIN plus:
 
 ```text
 PROJECT_MEMBER_MANAGE_ALL
 ```
 
-OWNER may manage all membership roles subject to the last-owner invariant.
-
-OWNER still cannot bypass plan or domain authority.
+OWNER may manage all roles subject to the last-owner invariant, but cannot bypass plan/domain authority.
 
 ## 14. Last-owner invariant
 
-Every normal project MUST have at least one ACTIVE OWNER after P10-A authorization is enabled.
+Every project MUST have at least one ACTIVE OWNER once P10-A authorization is enabled.
 
-Membership commands fail closed if an operation would produce zero ACTIVE OWNER memberships.
+Membership commands fail closed if their transaction would produce zero ACTIVE OWNER memberships.
 
-Forbidden atomic outcomes include:
+Forbidden outcomes:
 
 ```text
 revoke last OWNER
@@ -510,11 +533,11 @@ demote last OWNER
 remove last OWNER
 ```
 
-Ownership transfer requires promoting another membership to OWNER before the previous last OWNER is demoted/revoked.
+Ownership transfer requires promoting another member to OWNER before the previous last OWNER is demoted/revoked.
 
-The invariant is enforced in the membership command/repository transaction, not only in the UI.
+The command/repository transaction enforces the invariant; UI checks are not authoritative.
 
-## 15. Membership HTTP API
+## 15. Membership API
 
 P10-A V1 adds:
 
@@ -527,115 +550,122 @@ DELETE /api/projects/:projectId/members/:membershipId
 
 ### 15.1 Read
 
-`GET` requires `PROJECT_MEMBER_READ`.
+`GET` requires `PROJECT_MEMBER_READ`, therefore ADMIN or OWNER.
 
-The response is bounded and never includes password/session secrets.
+### 15.2 Add/reactivate
 
-### 15.2 Add/reactivate member
-
-`POST` accepts:
+`POST` accepts only:
 
 ```text
 email
 role
 ```
 
-The email must resolve to an existing ACTIVE User. P10-A does not create a global User through this project endpoint.
+The email resolves to an existing ACTIVE User.
 
-If a matching project membership is REVOKED, the command may reactivate it subject to actor capability and target-role rules.
+If the membership does not exist, create ACTIVE membership subject to the actor's management capability and target-role rule.
 
-A missing/disabled user returns a bounded `USER_NOT_AVAILABLE` style error without exposing global user inventory.
+If the membership exists with REVOKED status, POST reactivates that row with the requested allowed role and appends MEMBERSHIP_REACTIVATED audit.
 
-### 15.3 Change role
+Missing or disabled users return exactly:
 
-`PATCH` accepts only the new role and applies central target-role policy plus the last-owner invariant.
+```text
+404 USER_NOT_AVAILABLE
+```
+
+No global user inventory is returned.
+
+### 15.3 Role change
+
+`PATCH` accepts only the new role and applies central target-role rules plus last-owner invariant.
 
 ### 15.4 Revoke
 
-`DELETE` is logical revocation:
+`DELETE` performs logical revocation (`status = REVOKED`) and preserves the row.
 
-```text
-status = REVOKED
-```
-
-It does not physically delete the membership row.
-
-## 16. Global user provisioning
+## 16. Global user provisioning and administration
 
 P10-A V1 has no public signup and no project route that creates a global User.
 
-Global identity provisioning remains an explicit server-operator CLI responsibility.
-
-Two CLI commands are in scope:
+Global identity administration is an explicit server-operator CLI boundary with these commands:
 
 ```text
 auth bootstrap-owner
 auth provision-user
+auth disable-user
+auth enable-user
 ```
 
-The CLI accepts email as a normal argument/input but reads passwords through interactive standard input/TTY confirmation, never as a command-line password argument.
+Passwords are read through interactive stdin/TTY confirmation and are never accepted as command-line password arguments.
 
-Global user disable/enable may be provided through the same server-operator boundary if included by the implementation plan; it is not project RBAC authority.
+`auth provision-user` creates an ACTIVE User with no implicit ProjectMembership.
+
+`auth disable-user` transactionally sets User status DISABLED, revokes all active sessions and appends USER_DISABLED + SESSIONS_REVOKED_ALL audit events.
+
+`auth enable-user` sets status ACTIVE and appends USER_ENABLED. It does not create a session or restore revoked memberships.
 
 No HTTP endpoint lists all global users.
 
 ## 17. Initial owner bootstrap
 
-P10-A uses an explicit one-time bootstrap command rather than startup-time implicit admin creation.
+P10-A uses explicit one-time bootstrap rather than startup-time implicit admin creation.
 
-`auth bootstrap-owner` rules:
+`auth bootstrap-owner` is one database transaction:
 
-- allowed only when the database contains zero User rows;
-- creates the initial ACTIVE User;
-- in the same command, creates ACTIVE OWNER memberships for every existing Project;
-- if there are no Projects, creates only the User;
-- if one or more Users already exist, fails closed and makes no changes;
-- password is never accepted through a command-line argument;
-- command output never prints password/password hash/session data.
+1. confirm User count is zero under a transaction/advisory-lock-safe uniqueness boundary;
+2. create the initial ACTIVE User;
+3. create ACTIVE OWNER memberships for every existing Project;
+4. append USER_PROVISIONED and membership audit rows;
+5. commit all or nothing.
 
-This command solves migration of all pre-P10-A projects without hard-coding an administrator in a migration.
+Rules:
 
-## 18. Project creation and listing after P10-A
+- if there are no Projects, only User + audit are created;
+- if one or more Users already exist, fail closed and write nothing;
+- password is never a CLI argument;
+- output never prints password/hash/session data.
 
-### 18.1 Create project
+This migrates all pre-P10-A projects without hard-coding an admin into schema migration.
 
-`POST /api/projects` requires authentication because no project membership exists before creation.
+## 18. Project create/list/get/update after P10-A
 
-Creation is one database transaction:
+### 18.1 Create
+
+`POST /api/projects` requires authentication and CSRF.
+
+One transaction creates:
 
 ```text
-create Project
+Project
 +
-create ProjectMembership {
-  userId = authenticated user
+ProjectMembership {
+  userId = authenticated User.id
   role = OWNER
   status = ACTIVE
 }
++
+MEMBERSHIP_CREATED audit
 ```
 
-If either write fails, the entire transaction rolls back.
+Failure of any write rolls back the whole transaction. Normal HTTP cannot create an ownerless project.
 
-An ownerless project cannot be created through the normal HTTP command.
+### 18.2 List
 
-### 18.2 List projects
+`GET /api/projects` returns only Projects joined through the authenticated user's ACTIVE memberships. It never calls an unscoped project `findMany()` for the response.
 
-`GET /api/projects` no longer calls an unscoped `findMany()`.
-
-It returns only Projects with an ACTIVE membership for the authenticated user.
-
-### 18.3 Get project
+### 18.3 Get
 
 `GET /api/projects/:id` requires `PROJECT_READ`.
 
-A missing project and a project for which the actor has no active membership use the same non-enumerating not-found behavior.
+Missing project and no-active-membership project use the same non-enumerating `PROJECT_NOT_FOUND` behavior.
 
-### 18.4 Update project
+### 18.4 Update
 
-`PATCH /api/projects/:id` requires `PROJECT_SETTINGS_WRITE` plus CSRF.
+`PATCH /api/projects/:id` requires CSRF plus `PROJECT_SETTINGS_WRITE`.
 
 ## 19. Middleware chain
 
-For project-scoped authenticated browser mutation, the required order is:
+For project-scoped browser mutation:
 
 ```text
 authenticationMiddleware
@@ -648,7 +678,7 @@ authenticationMiddleware
 → domain command/service
 ```
 
-For project-scoped reads:
+For project reads:
 
 ```text
 authenticationMiddleware
@@ -659,11 +689,11 @@ authenticationMiddleware
 → persisted read
 ```
 
-`requireProjectMembership` resolves the Project and membership once and stores them in `res.locals`.
+`requireProjectMembership` resolves Project + ACTIVE membership once and stores them in `res.locals`.
 
-`requireFeature()` is changed to reuse `res.locals.project` when available and retain a compatibility lookup fallback for routes/tests that have not yet adopted membership middleware.
+`requireFeature()` reuses `res.locals.project` when available and retains compatibility lookup only for not-yet-migrated internal tests/routes during implementation. Release completion requires all project-scoped production routes to be classified and protected.
 
-Role and PlanLevel remain separate policy dimensions.
+Role and PlanLevel remain separate dimensions.
 
 Examples:
 
@@ -677,7 +707,7 @@ VIEWER + ADVANCED
 
 OPERATOR + ADVANCED
 → may request policy revision
-→ request still cannot change P9-C authority fields
+→ cannot change P9-C authority fields
 ```
 
 ## 20. Public route boundary
@@ -691,24 +721,24 @@ GET /auth/login
 POST /auth/login
 ```
 
-All project-scoped application/API surfaces require authentication after route migration is complete.
+All project-scoped API/web surfaces require authentication by release completion.
 
-The login page does not accept arbitrary external post-login redirect targets. Any return path is normalized to a same-origin relative application path.
+Login return paths must be same-origin relative application paths.
 
 ## 21. P9-F Operations Actor rollout
 
 P9-F already requires a server-resolved actor for policy revision.
 
-P10-A changes the production resolver source to:
+P10-A production actor resolution becomes:
 
 ```text
-Authenticated User
+req.auth User
 → ACTIVE ProjectMembership
 → AUTOPILOT_POLICY_REVISE capability
 → OperationsActor { actorId = User.id }
 ```
 
-Stable `User.id` is the canonical audit actor. Email is not the audit actor because email can change in future phases.
+Stable `User.id` is the audit actor; email is not.
 
 The client still cannot submit:
 
@@ -718,53 +748,53 @@ allowedRiskClass
 allowedOperationClasses
 ```
 
-The policy revision command keeps:
+P9-F policy command retains:
 
 - optimistic concurrency;
 - request idempotency;
 - immutable AutopilotPolicyRevision;
-- atomic policy update + revision write;
-- P9-C hard lock on LOW + CREATE_CONTENT_PAGE.
+- atomic policy update + revision;
+- P9-C LOW + CREATE_CONTENT_PAGE hard lock.
 
 ## 22. P9-F SSR integration
 
-The Operations Center read page requires authenticated project read access plus the existing `OPTIMIZATION_OPERATIONS_CENTER` feature gate.
+Operations Center read requires authenticated project read access plus existing `OPTIMIZATION_OPERATIONS_CENTER` feature entitlement.
 
-`policyMutationAvailable` is no longer based only on actor presence. It is derived server-side from all required human authorization facts:
+`policyMutationAvailable` is derived server-side from:
 
 ```text
-authenticated user
-AND active membership
+authenticated User
+AND ACTIVE membership
 AND AUTOPILOT_POLICY_REVISE
-AND OPTIMIZATION_OPERATIONS_CENTER feature
+AND OPTIMIZATION_OPERATIONS_CENTER
 ```
 
-The UI state is informational only. The POST route repeats the complete server authorization chain.
+UI state is informational. The POST route repeats the complete server authorization chain.
 
 ## 23. Preserve persisted-read GET semantics
 
-P10-A authentication MUST NOT turn existing read routes into hidden writes.
-
-Therefore ordinary authenticated GET/HEAD requests do not:
+Ordinary authenticated GET/HEAD requests MUST NOT:
 
 - update UserSession timestamps;
 - rotate sessions;
 - refresh expiration;
-- write audit rows solely because a page was viewed;
-- enqueue login/session maintenance work.
+- append audit merely because a page was viewed;
+- enqueue login/session maintenance;
+- trigger provider/AI/Git/feedback materialization side effects.
 
-This specifically preserves the P9-F persisted-read Operations Center contract.
+This preserves P9-F persisted-read semantics.
 
-## 24. Identity and membership audit
+## 24. Security audit persistence
 
-P10-A adds a small append-only bounded security audit surface rather than a general SIEM.
+P10-A adds an append-only `SecurityAuditEvent` model.
 
-Initial event vocabulary:
+Event vocabulary:
 
 ```text
 USER_PROVISIONED
 USER_DISABLED
 USER_ENABLED
+PASSWORD_CHANGED
 SESSION_CREATED
 SESSION_REVOKED
 SESSIONS_REVOKED_ALL
@@ -774,19 +804,23 @@ MEMBERSHIP_ROLE_CHANGED
 MEMBERSHIP_REVOKED
 ```
 
-Allowlisted fields may include:
+Conceptual fields:
 
 ```text
+id
+version = SECURITY_AUDIT_V1
 eventType
-actorUserId nullable for bootstrap/server-operator events
-targetUserId
+actorUserId nullable
+targetUserId nullable
 projectId nullable
 roleBefore nullable
 roleAfter nullable
 createdAt
 ```
 
-Audit events MUST NOT contain:
+`actorUserId = null` is reserved for authenticated-server-operator bootstrap/provisioning actions where no application User actor exists yet.
+
+Audit MUST NOT contain:
 
 ```text
 password
@@ -800,142 +834,162 @@ raw request body
 provider credentials
 ```
 
-Membership role/revocation history must remain reconstructable through current state plus append-only audit events.
+Audit rows are append-only and protected from update/delete using the repository's existing immutable-row database pattern.
 
 ## 25. Database migration strategy
 
-P10-A uses forward additive migrations only.
+P10-A uses forward additive migration(s) only.
 
-The migration creates:
+They create:
 
-- UserStatus enum;
-- ProjectRole enum;
-- MembershipStatus enum;
+- UserStatus;
+- ProjectRole;
+- MembershipStatus;
+- SecurityAuditEventType or equivalent bounded enum;
 - User;
 - UserSession;
 - ProjectMembership;
-- identity/security audit persistence if implemented as a dedicated table;
-- required indexes, unique constraints and foreign keys.
+- SecurityAuditEvent;
+- required indexes, unique constraints, foreign keys and audit immutability trigger.
 
-The migration does NOT:
+They do NOT:
 
 - create a hard-coded user;
-- assign memberships based on an email literal;
+- assign memberships from a literal email;
 - modify historical P9 actor ids;
 - delete/rewrite P7/P8/P9 rows;
 - drop existing project data;
 - rewrite existing AutopilotPolicyRevision rows.
 
-Existing projects receive their first OWNER only through the explicit bootstrap command.
+Existing projects get their first OWNER only through `auth bootstrap-owner`.
 
 ## 26. Production rollout order
 
-P10-A production rollout must follow this order:
+P10-A production rollout is:
 
 ```text
-1. deploy/apply forward database migration
-2. run auth bootstrap-owner
-3. verify every existing project has >= 1 ACTIVE OWNER
-4. start the P10-A application version
-5. verify login
-6. verify membership-scoped project list
-7. verify protected cross-project access
-8. verify P9-F policy revision actor attribution
+1. use the P10-A release artifact to apply forward DB migration
+2. run auth bootstrap-owner from the same trusted artifact
+3. verify every existing Project has >= 1 ACTIVE OWNER
+4. start/promote the P10-A web application
+5. smoke valid login
+6. smoke membership-scoped project list
+7. smoke cross-project denial
+8. smoke P9-F policy revision actor attribution
 ```
 
 There is no temporary production auth bypass.
 
-If bootstrap verification fails, the new application version must not be promoted as ready for authenticated traffic.
+If owner verification fails, authenticated traffic is not promoted.
 
-## 27. Error semantics
+## 27. Rollback boundary
 
-Required bounded error classes include:
+The database migration is additive and may remain present if runtime rollback is necessary.
+
+However, once P10-A authentication becomes the production access boundary, traffic MUST NOT be rolled back directly to an old unauthenticated P9 web build without an independent external access restriction/maintenance boundary. Doing so would reopen project routes that P10-A intentionally protects.
+
+Runtime rollback therefore means either:
+
+- keep P10-A authentication in front while reverting a later P10-A behavior; or
+- place the service behind an explicit operator-only maintenance/perimeter restriction before starting an older build.
+
+Rollback never deletes P9/P10 identity history merely to restore runtime availability.
+
+## 28. Error semantics
+
+Required public errors:
 
 ```text
 AUTHENTICATION_REQUIRED        401
 INVALID_CREDENTIALS            401
 AUTH_SESSION_INVALID           401
 CSRF_INVALID                   403
-PROJECT_NOT_FOUND              404 for absent or unauthorized project visibility
+PROJECT_NOT_FOUND              404
 PROJECT_CAPABILITY_REQUIRED    403
-FEATURE_NOT_AVAILABLE          403 existing feature gate
+FEATURE_NOT_AVAILABLE          403
 LAST_PROJECT_OWNER_REQUIRED    409
-USER_NOT_AVAILABLE             404/409 bounded membership provisioning failure
+USER_NOT_AVAILABLE             404
 LOGIN_RATE_LIMITED             429
 AUTH_RATE_LIMITER_UNAVAILABLE  503
 ```
 
-Exact HTTP error mapping is centralized; routes do not include credential or membership internals in public messages.
+`PROJECT_NOT_FOUND` is used both for an absent project and a project hidden by no ACTIVE membership.
 
-P9-F existing policy command conflict/idempotency errors remain unchanged except that ordinary authenticated authorization no longer relies on an unavailable default actor resolver.
+Error mapping is centralized and never exposes credential/membership internals.
 
-## 28. Testing strategy
+P9-F conflict/idempotency errors remain intact.
+
+## 29. Testing strategy
 
 P10-A implementation follows RED → minimal GREEN per task.
 
-### 28.1 Unit tests
+### 29.1 Unit
 
-Required unit coverage:
+Required coverage:
 
 - email normalization;
-- scrypt encoded hash creation/parse/verification;
-- malformed password hash fail-closed;
-- session token digest and expiry/revocation;
+- password length policy;
+- scrypt create/parse/verify;
+- malformed hash fail-closed;
+- session digest/expiry/revocation;
 - CSRF derivation/verification;
+- same-origin login Origin/returnPath validation;
 - role → ProjectCapability matrix;
 - ADMIN target-role restrictions;
 - last-owner invariant;
-- return-path same-origin normalization;
-- login limiter behavior.
+- fixed-window login limiter.
 
-### 28.2 Integration tests
+### 29.2 Integration
 
-Required database/HTTP integration contracts include:
+Required contracts include:
 
 ```text
 unauthenticated project list → 401
 unauthenticated project mutation → 401
 invalid session → 401
 revoked session → 401
-disabled user with otherwise-valid session → 401
+disabled User with valid-looking session → 401
 
-User A requests User B project → PROJECT_NOT_FOUND
-and no protected project data is returned
+User A requests User B project
+→ PROJECT_NOT_FOUND
+→ no protected data
 
-VIEWER GET permitted
-VIEWER unsafe mutation rejected before command side effect
+VIEWER project read permitted
+VIEWER membership list denied
+VIEWER mutation rejected before side effect
 
 OPERATOR + ADVANCED Operations read permitted
 OPERATOR + ADVANCED policy revision permitted with CSRF
 OPERATOR + STANDARD feature rejected
-OWNER + STANDARD feature still rejected
+OWNER + STANDARD feature rejected
 
 missing/invalid CSRF
-→ policy/project command not called
+→ command not called
 → queue/provider/AI/Git adapters not called
 
 client actorId / allowedRiskClass / allowedOperationClasses
 → rejected before policy command
 
-new project creation
-→ project + OWNER membership commit atomically
+project creation
+→ Project + OWNER membership commit atomically
 
 last OWNER demotion/revocation
-→ rejected transactionally
+→ transaction rejected
 
 membership role downgrade/revocation
-→ applies on next request without re-login
+→ effective on next request without re-login
+
+disabled User
+→ all sessions revoked by operator command
 ```
 
-### 28.3 Authentication read purity tests
+### 29.3 Read purity
 
-At least one integration contract proves authenticated GET routes do not update UserSession or write security audit rows simply because a page was read.
+At least one real integration contract proves authenticated GET does not update UserSession or append a security audit row simply because data was read.
 
-This contract protects P9-F persisted-read semantics.
+### 29.4 P9 authority regression
 
-### 28.4 P9 authority regression tests
-
-Release requires explicit regression proof that no human role enables:
+Release must prove no human role enables:
 
 - MEDIUM/HIGH autopilot;
 - non-`CREATE_CONTENT_PAGE` P9-C automation;
@@ -948,38 +1002,36 @@ Release requires explicit regression proof that no human role enables:
 - P8 verification bypass;
 - client actor override.
 
-## 29. Browser E2E
+## 30. Browser E2E
 
-Required Chromium paths include:
+Required Chromium flows:
 
-1. login with valid local user;
-2. project list shows only active memberships;
+1. valid local login;
+2. project list shows only ACTIVE memberships;
 3. cross-project URL does not leak project existence;
-4. VIEWER can read an allowed project/Operations page and does not receive mutation controls;
-5. OPERATOR with Advanced feature sees policy controls;
-6. valid CSRF policy revision succeeds and audit actor matches authenticated User.id;
-7. logout revokes access to protected pages;
-8. existing P8/P9 browser smoke coverage remains green.
+4. VIEWER reads an allowed Operations page and has no policy mutation controls;
+5. OPERATOR with Advanced sees policy controls;
+6. valid CSRF policy revision succeeds and audit actor equals authenticated User.id;
+7. logout revokes protected access;
+8. existing P8/P9 browser smoke remains green.
 
-No E2E test uses a production credential or real external provider write.
+No E2E uses production credentials or live provider writes.
 
-## 30. Migration verification
+## 31. Migration verification
 
-P10-A exact-head verification must cover both:
+Exact-head verification covers both:
 
-### 30.1 Blank database
+### 31.1 Blank database
 
 All migrations from zero apply successfully.
 
-### 30.2 Current P9 database shape
+### 31.2 Current P9 shape
 
-A database representing current `main@60733718026b1876340d50ff8626fcd8cd1558f5` applies only the new forward P10-A migration(s) without rewriting existing P9 facts.
+A database representing `main@60733718026b1876340d50ff8626fcd8cd1558f5` applies only forward P10-A migrations without rewriting P9 facts/history.
 
-P9 immutable/history tables remain intact.
+## 32. Release gate
 
-## 31. Release gate
-
-P10-A uses the repository's established exact-head release gate:
+P10-A uses the established exact-head jobs:
 
 ```text
 production-audit
@@ -987,7 +1039,7 @@ e2e
 verify
 ```
 
-`verify` must include:
+`verify` includes:
 
 ```text
 Prisma Validate
@@ -1001,38 +1053,38 @@ Build
 Before Ready for Review:
 
 - reviewed PR head SHA equals CI head SHA;
-- all three required jobs are green on that exact head;
+- all three jobs are green on that exact head;
 - changed-file authority review is complete;
-- authentication/RBAC static boundary checks are complete;
+- auth/RBAC static boundary scans are complete;
 - expected negative database/security logs are inspected rather than described as globally clean;
-- unresolved review threads are zero or explicitly resolved before merge authorization.
+- unresolved review threads are zero or explicitly resolved.
 
-Merge requires a separate explicit human authorization.
+Merge requires separate explicit human authorization.
 
 Deployment requires another separate explicit human authorization.
 
-## 32. Implementation decomposition
+## 33. Implementation decomposition
 
-The implementation plan should decompose P10-A into bounded TDD slices in this order:
+The implementation plan must use bounded RED→GREEN slices in this order:
 
-1. identity enums/models and password hashing contracts;
-2. UserSession persistence and authentication resolver;
-3. login/logout/session/password-change routes and CSRF;
-4. one-time bootstrap/provision-user CLI;
-5. ProjectMembership model, capabilities and last-owner invariant;
+1. identity enums/models, SecurityAuditEvent foundation and password contracts;
+2. UserSession persistence, request auth augmentation and resolver;
+3. login/session/logout/password-change routes, login Origin protection and CSRF;
+4. bootstrap/provision/disable/enable CLI commands;
+5. ProjectMembership, capability matrix and last-owner invariant;
 6. membership API;
-7. project create/list/get/update migration to membership scope;
+7. project create/list/get/update membership scoping;
 8. shared project middleware and `requireFeature()` integration;
-9. P9-F actor rollout and Operations SSR capability controls;
-10. remaining project-scoped read routes authorization classification;
+9. P9-F actor rollout and Operations SSR controls;
+10. remaining project-scoped read-route classification/adoption;
 11. remaining mutation routes capability + CSRF adoption;
-12. security audit and rate limiter integration;
+12. Redis login limiter integration;
 13. P9 authority regression/static scans;
 14. browser E2E, migration verification, development docs and exact-head release gate.
 
-The implementation plan may split a slice further if RED evidence exposes hidden complexity, but it must not merge independent authority layers into one unreviewable change.
+A slice can be split further when RED evidence exposes hidden complexity, but independent authority layers must not be collapsed into one unreviewable change.
 
-## 33. Non-goals for P10-A V1
+## 34. Non-goals for V1
 
 P10-A does not include:
 
@@ -1042,34 +1094,33 @@ P10-A does not include:
 - magic links;
 - OAuth login;
 - MFA/passkeys;
-- organization/workspace-level RBAC;
+- organization/workspace RBAC;
 - SSO/SAML;
 - SCIM;
 - API keys/service accounts;
 - billing/seat limits;
-- permission customization UI;
-- automatic user invitation email;
+- custom permission editor;
+- invitation email delivery;
 - cross-project organization roles;
 - any new P9 autonomous authority.
 
-These can be additive future phases using stable User and ProjectMembership identities.
+## 35. Success criteria
 
-## 34. Success criteria
+P10-A is complete only when all are true:
 
-P10-A is complete when all are true:
-
-1. every protected browser/API request derives user identity only from a validated server-side session;
-2. every project request verifies an ACTIVE membership before protected data or mutation is exposed;
-3. project roles map through central capabilities rather than scattered route role comparisons;
+1. protected requests derive user identity only from validated server-side session state;
+2. project requests verify ACTIVE membership before protected data/mutation;
+3. roles map through central ProjectCapability policy;
 4. PlanLevel and human RBAC remain separate gates;
-5. unsafe cookie-authenticated mutations require valid CSRF;
-6. all existing projects can be assigned a bootstrap OWNER before authorization enforcement;
-7. normal project creation atomically creates its OWNER membership;
-8. the last ACTIVE OWNER cannot be removed/demoted/revoked;
-9. P9-F policy revision actor id is the stable authenticated User.id;
-10. P9-F client authority-field protections remain intact;
-11. authenticated GET paths remain request-write-free;
-12. OWNER cannot bypass P7/P8/P9 domain authority;
-13. no auto Merge/Deploy/Rollback/global-kill-switch write capability is added;
-14. exact-head production-audit/e2e/verify are green;
-15. no deployment occurs without separate explicit human authorization.
+5. unsafe cookie-authenticated mutations require CSRF;
+6. login is same-origin protected and rate-limited;
+7. all existing projects receive a bootstrap OWNER before authorization enforcement;
+8. new project creation atomically creates its OWNER membership;
+9. last ACTIVE OWNER cannot be removed/demoted/revoked;
+10. P9-F policy revision actor is authenticated stable User.id;
+11. P9-F client authority-field protections remain intact;
+12. authenticated GET paths remain request-write-free;
+13. OWNER cannot bypass P7/P8/P9 domain authority;
+14. no auto Merge/Deploy/Rollback/global-kill-switch write capability is added;
+15. exact-head production-audit/e2e/verify are green;
+16. merge and deployment remain separately authorized human actions.
