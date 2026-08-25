@@ -155,20 +155,19 @@ export function createOptimizationOperationsWebRoutes(
           api.getPolicy(projectId),
         ]);
         const actor = actorResolver.resolve(req);
-        const policyMutationAvailable = Boolean(actor?.actorId.trim());
+        const project = res.locals.project;
 
         res.render('layout', {
-          title: '自动优化中心',
+          title: `自动优化中心 · ${project.name}`,
           activeNav: 'optimization-operations',
-          project: res.locals.project,
-          contentTemplate: 'optimization-operations/index',
-          contentData: {
-            project: res.locals.project,
-            overview,
-            inbox: normalizeInbox(rawInbox),
-            policy: normalizePolicy(rawPolicy),
-            policyMutationAvailable,
-          },
+          currentProjectId: project.id,
+          breadcrumbs: ['项目', project.name, '增长', '自动优化中心'],
+          bodyTemplate: 'optimization-operations/index',
+          project,
+          overview,
+          inbox: normalizeInbox(rawInbox),
+          policy: normalizePolicy(rawPolicy),
+          policyMutationAvailable: Boolean(actor?.actorId.trim()),
           pageScripts: ['/assets/js/optimization-operations.js'],
         });
       } catch (error) {
