@@ -147,3 +147,11 @@ jobs:
       - name: Browser smoke tests
         timeout-minutes: 5
         run: npm run test:e2e
+      - name: Upload P10 dashboard screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p10-dashboard-screenshot
+          path: p10-dashboard.png
+          if-no-files-found: warn
+          retention-days: 7
