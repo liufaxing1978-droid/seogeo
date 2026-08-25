@@ -1,5 +1,12 @@
 import { Router } from 'express';
+import { requireAuthentication } from '../auth/authentication.js';
+import { deriveCsrfToken, requireCsrf } from '../auth/csrf.js';
 import { hasFeature } from '../auth/feature-flags.js';
+import {
+  requireProjectCapability,
+  requireProjectMembership,
+} from '../auth/project-access.js';
+import { env } from '../config/env.js';
 import { AppError, NotFoundError } from '../core/errors.js';
 import { aiTaskService } from '../modules/ai/ai.service.js';
 import { aiWebRepository } from '../modules/ai/ai.web.repository.js';
@@ -30,42 +37,57 @@ function render(res: any, bodyTemplate: string, locals: Record<string, unknown>)
   });
 }
 
+function csrfTokenFor(req: any, res: any): string {
+  const tokenHash = res.locals.authSessionTokenHash;
+  if (!req.auth || typeof tokenHash !== 'string') {
+    throw new AppError('Authentication required', 401, 'AUTHENTICATION_REQUIRED');
+  }
+  return deriveCsrfToken(
+    env.SESSION_SECRET,
+    req.auth.sessionId,
+    tokenHash,
+  );
+}
+
 function assertAiAnalysisFeature(project: { planLevel: 'STANDARD' | 'ADVANCED' | 'ENTERPRISE' }) {
   if (!hasFeature(project.planLevel, 'AI_ANALYSIS')) {
     throw new AppError('AI analysis is not available for this project plan', 403, 'FEATURE_NOT_AVAILABLE');
   }
 }
 
-webRoutes.get('/', async (_req, res, next) => {
+webRoutes.get('/', requireAuthentication(), async (req, res, next) => {
   try {
-    const portfolio = await dashboardRepository.getPortfolio({ limit: 50 });
+    const portfolio = await dashboardRepository.getPortfolioForUser(req.auth!.userId, { limit: 50 });
     render(res, 'dashboard', { portfolio });
   } catch (error) {
     next(error);
   }
 });
 
-webRoutes.get('/projects', async (_req, res, next) => {
+webRoutes.get('/projects', requireAuthentication(), async (req, res, next) => {
   try {
-    const projects = await projectService.list();
+    const projects = await projectService.listForUser(req.auth!.userId);
     render(res, 'projects/index', { title: '项目列表', activeNav: 'projects', projects });
   } catch (error) {
     next(error);
   }
 });
 
-webRoutes.get('/projects/new', (_req, res) => {
+webRoutes.get('/projects/new', requireAuthentication(), (req, res) => {
   render(res, 'projects/new', {
     title: '新建项目',
     activeNav: 'projects',
     values: {},
-    errors: {}
+    errors: {},
+    csrfToken: csrfTokenFor(req, res)
   });
 });
 
-webRoutes.post('/projects', async (req, res) => {
+webRoutes.post('/projects', requireAuthentication(), requireCsrf(), async (req, res) => {
+  const projectInput = { ...(req.body ?? {}) };
+  delete projectInput._csrf;
   try {
-    const project = await projectService.create(req.body);
+    const project = await projectService.createForOwner(req.auth!.userId, projectInput);
     res.redirect(303, `/projects/${project.id}`);
   } catch (error: any) {
     const errors = error?.details?.fieldErrors ?? {};
@@ -73,8 +95,9 @@ webRoutes.post('/projects', async (req, res) => {
     render(res, 'projects/new', {
       title: '新建项目',
       activeNav: 'projects',
-      values: req.body,
-      errors
+      values: projectInput,
+      errors,
+      csrfToken: csrfTokenFor(req, res)
     });
   }
 });
@@ -393,19 +416,25 @@ webRoutes.post('/projects/:id/ai/tasks/:taskId/retry', async (req, res, next) =>
   }
 });
 
-webRoutes.get('/projects/:id', async (req, res, next) => {
-  try {
-    const project = await projectService.get(req.params.id);
-    const dashboard = await dashboardRepository.getProjectFacts(project);
-    render(res, 'projects/show', {
-      title: project.name,
-      activeNav: 'projects',
-      currentProjectId: project.id,
-      project,
-      tabs: projectTabs,
-      dashboard
-    });
-  } catch (error) {
-    next(error);
-  }
-});
+webRoutes.get(
+  '/projects/:id',
+  requireAuthentication(),
+  requireProjectMembership(),
+  requireProjectCapability('PROJECT_READ'),
+  async (_req, res, next) => {
+    try {
+      const project = res.locals.project;
+      const dashboard = await dashboardRepository.getProjectFacts(project);
+      render(res, 'projects/show', {
+        title: project.name,
+        activeNav: 'projects',
+        currentProjectId: project.id,
+        project,
+        tabs: projectTabs,
+        dashboard
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
