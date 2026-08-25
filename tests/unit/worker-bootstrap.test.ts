@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { processDistributionPreparationJob } from '../../src/modules/distribution/distribution.worker.js';
 import { processGrowthMaterializationJob } from '../../src/modules/growth/growth.worker.js';
 import { processOptimizationAutopilotJob } from '../../src/modules/optimization-autopilot/autopilot.worker.js';
+import { processOptimizationFeedbackJob } from '../../src/modules/optimization-feedback/feedback.worker.js';
 import {
   processOptimizationOrchestrationJob,
   processOptimizationPlanningJob
@@ -10,6 +11,7 @@ import { processOptimizationExperimentJob } from '../../src/modules/optimization
 import { PUBLICATION_EXECUTION_QUEUE_NAME } from '../../src/modules/publication/publication-execution.queue.js';
 import { processVisibilityJob } from '../../src/modules/visibility/visibility.worker.js';
 import { processVisibilityMetricsJob } from '../../src/modules/visibility/visibility-metrics.worker.js';
+import * as workerBootstrap from '../../src/queue/worker-bootstrap.js';
 import {
   OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_EVERY_MS,
   OPTIMIZATION_AUTOPILOT_DAILY_RECONCILE_SCHEDULER,
@@ -93,6 +95,17 @@ describe('worker bootstrap', () => {
     });
   });
 
+  it('activates the P9-E feedback queue with the real processor at concurrency 2', () => {
+    const feedbackConcurrency = (workerBootstrap as unknown as Record<string, unknown>)[
+      'OPTIMIZATION_FEEDBACK_WORKER_CONCURRENCY'
+    ];
+    expect(feedbackConcurrency).toBe(2);
+    expect(workerDefinitionForQueue('optimization-feedback-materialization' as never)).toMatchObject({
+      processor: processOptimizationFeedbackJob,
+      concurrency: 2
+    });
+  });
+
   it('wires P8 VERIFIED handoff only to the P9-D start queue producer', async () => {
     const enqueueStart = vi.fn().mockResolvedValue(undefined);
     const deps = buildPublicationVerificationExperimentHandoff({ enqueueStart });
@@ -101,6 +114,36 @@ describe('worker bootstrap', () => {
 
     expect(enqueueStart).toHaveBeenCalledTimes(1);
     expect(enqueueStart).toHaveBeenCalledWith('execution-1', 'project-1');
+  });
+
+  it('wires persisted P9-D observations only to the P9-E materialization producer', async () => {
+    const build = (workerBootstrap as unknown as Record<string, unknown>)[
+      'buildOptimizationExperimentFeedbackHandoff'
+    ];
+    expect(build).toBeTypeOf('function');
+    if (typeof build !== 'function') return;
+
+    const enqueueObservation = vi.fn().mockResolvedValue(undefined);
+    const deps = (build as (queue: { enqueueObservation: typeof enqueueObservation }) => {
+      onObservationPersisted(input: {
+        projectId: string;
+        experimentId: string;
+        observationId: string;
+      }): Promise<void>;
+    })({ enqueueObservation });
+
+    await deps.onObservationPersisted({
+      projectId: 'project-1',
+      experimentId: 'experiment-1',
+      observationId: 'observation-1'
+    });
+
+    expect(enqueueObservation).toHaveBeenCalledTimes(1);
+    expect(enqueueObservation).toHaveBeenCalledWith(
+      'project-1',
+      'experiment-1',
+      'observation-1'
+    );
   });
 
   it('wires P9-C to the existing P8 site-mutation-execution producer instead of a second execution queue', () => {
@@ -160,5 +203,26 @@ describe('worker bootstrap', () => {
     });
     expect(OPTIMIZATION_EXPERIMENT_DAILY_RECONCILE_SCHEDULER.job.data).not.toHaveProperty('utcDate');
     expect(OPTIMIZATION_EXPERIMENT_DAILY_RECONCILE_SCHEDULER.job.data).not.toHaveProperty('date');
+  });
+
+  it('defines one P9-E daily feedback reconciliation scheduler with a date-free payload', () => {
+    const dailyMs = (workerBootstrap as unknown as Record<string, unknown>)[
+      'OPTIMIZATION_FEEDBACK_DAILY_RECONCILE_EVERY_MS'
+    ];
+    const scheduler = (workerBootstrap as unknown as Record<string, unknown>)[
+      'OPTIMIZATION_FEEDBACK_DAILY_RECONCILE_SCHEDULER'
+    ];
+
+    expect(dailyMs).toBe(24 * 60 * 60 * 1000);
+    expect(scheduler).toEqual({
+      id: 'optimization-feedback-daily-reconcile',
+      repeat: { every: 24 * 60 * 60 * 1000 },
+      job: {
+        name: 'reconcile-daily',
+        data: { kind: 'RECONCILE_DAILY' }
+      }
+    });
+    expect((scheduler as { job: { data: unknown } }).job.data).not.toHaveProperty('utcDate');
+    expect((scheduler as { job: { data: unknown } }).job.data).not.toHaveProperty('date');
   });
 });
