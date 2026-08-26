@@ -8,6 +8,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-26-p10-ui-productization-design.md`
 
+**Final verification PR:** `#170` from `codex/p10-ui-05-operations-admin-settings`.
+
 ## Non-negotiable boundaries
 
 - P10 UI-05 only. No P11 and no production deployment.
@@ -114,3 +116,5 @@ Merge only when exact-head `verify`, `production-audit`, and `e2e` are green.
 ## Completion rule
 
 UI-05 is complete only after its exact-head PR is merged to `main`. Then stop numbered UI development and perform P10 closure/archive verification only. Do not start P11.
+
+Final verification must be attached to the current PR head; superseded workflow runs are not completion evidence.
