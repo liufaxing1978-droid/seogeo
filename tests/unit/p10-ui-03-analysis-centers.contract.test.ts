@@ -23,6 +23,19 @@ describe('P10 UI-03 analysis-center productization contract', () => {
     expect(ai).toContain('data-ui="ai-advisory-boundary"');
   });
 
+  it('locks the deterministic SEO center hierarchy without fabricated ranking facts', () => {
+    const seo = source('src/views/seo/audit.ejs');
+
+    expect(seo).toContain('data-ui="seo-center"');
+    expect(seo).toContain('data-ui="seo-score-summary"');
+    expect(seo).toContain('data-ui="seo-severity-summary"');
+    expect(seo).toContain('data-ui="seo-evidence-table"');
+    expect(seo).toContain('data-ui="seo-issues-table"');
+    expect(seo).toContain('Issue 由 FAIL 规则结果聚合，不由 AI 推断');
+    expect(seo).not.toContain('关键词排名');
+    expect(seo).not.toContain('Keyword Ranking');
+  });
+
   it('keeps measurement and AI authority boundaries explicit', () => {
     const geo = source('src/views/geo/overview.ejs');
     const visibility = source('src/views/visibility/index.ejs');
