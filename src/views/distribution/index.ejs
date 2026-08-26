@@ -1,33 +1,46 @@
-<main class="page-shell">
-  <div class="page-header">
+<section class="product-center" data-ui="distribution-center">
+  <%- include('../partials/content-publishing-nav', { project, contentPublishingActive: 'distribution' }) %>
+
+  <section class="product-center-hero">
     <div>
       <p class="eyebrow">P8-C · Distribution</p>
       <h1>多渠道分发</h1>
       <p class="muted">主站内容保持唯一原创来源；外部渠道只消费已经验证的冻结版本。</p>
     </div>
-  </div>
+    <div class="hero-meta"><span class="badge"><%= targets.length %> 个渠道目标</span></div>
+  </section>
+
+  <section class="truth-boundary-card" data-ui="distribution-boundary">
+    <div>
+      <p class="eyebrow">Distribution authority</p>
+      <h2>源版本与交接边界</h2>
+      <p class="muted">只有主站 VERIFIED 内容可以进入正常分发；任何旧源版本产物都会标记为 OUTDATED，不能静默重发。</p>
+    </div>
+    <div class="boundary-stack">
+      <p>Community GEO 与其他 <strong>MANUAL_HANDOFF</strong> 只生成交接，<strong>不会伪装成自动发布</strong>。</p>
+      <p>Entity Suggestion 仅提供人工编辑建议，不执行平台提交；PUBLISH_API 只有在服务端存在可信配置时才会启用。</p>
+    </div>
+  </section>
 
   <% if (primaryPublication) { %>
-    <section class="card">
-      <div class="card-header">
-        <div>
-          <span class="badge">ORIGINAL</span>
-          <h2><%= primaryPublication.plan.draft.title %></h2>
-        </div>
-        <span class="badge success">主站已验证</span>
+    <section class="source-publication-card" data-ui="distribution-source-publication">
+      <div>
+        <span class="badge">ORIGINAL</span>
+        <h2><%= primaryPublication.plan.draft.title %></h2>
+        <p class="muted"><%= primaryPublication.plan.targetPublicUrl %></p>
       </div>
-      <dl class="detail-grid">
-        <div><dt>原创地址</dt><dd><%= primaryPublication.plan.targetPublicUrl %></dd></div>
-        <div><dt>内容版本</dt><dd>V<%= primaryPublication.plan.draftVersion %></dd></div>
-      </dl>
+      <div class="source-publication-meta">
+        <span class="badge success">主站已验证</span>
+        <strong>V<%= primaryPublication.plan.draftVersion %></strong>
+      </div>
     </section>
   <% } else { %>
-    <section class="card"><p class="muted">当前没有可用于分发的已验证主站发布。</p></section>
+    <section class="empty-state-card"><h2>暂无可分发源版本</h2><p class="muted">当前没有可用于分发的已验证主站发布。</p></section>
   <% } %>
 
-  <section class="card">
-    <div class="card-header">
-      <div><p class="eyebrow">Targets</p><h2>渠道目标</h2></div>
+  <section class="panel product-table-panel" data-ui="distribution-targets">
+    <div class="panel-header">
+      <div><p class="eyebrow">Targets</p><h2>渠道目标</h2><p class="muted">能力、源版本与状态均来自已保存的分发目标。</p></div>
       <span class="muted"><%= targets.length %> 个</span>
     </div>
     <% if (targets.length === 0) { %>
@@ -55,15 +68,4 @@
       </div>
     <% } %>
   </section>
-
-  <section class="card">
-    <h2>安全边界</h2>
-    <ul>
-      <li>只有主站 VERIFIED 内容可以进入正常分发。</li>
-      <li>任何旧源版本产物都会标记为 OUTDATED，不能静默重发。</li>
-      <li>Community GEO 与其他 MANUAL_HANDOFF 只生成交接，不会伪装成自动发布。</li>
-      <li>Entity Suggestion 仅提供人工编辑建议，不执行平台提交。</li>
-      <li>PUBLISH_API 只有在服务端存在可信配置时才会启用。</li>
-    </ul>
-  </section>
-</main>
+</section>
