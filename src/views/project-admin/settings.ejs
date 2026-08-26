@@ -1,0 +1,112 @@
+<section class="admin-center" data-ui="settings-center">
+  <section class="admin-center-hero">
+    <div>
+      <p class="eyebrow">P10 · Project Administration</p>
+      <h1>设置</h1>
+      <p class="muted"><%= project.name %> · 仅展示 P0–P10 已存在且可安全暴露的配置事实。</p>
+    </div>
+    <div class="admin-role-chip">
+      <span>Plan</span>
+      <strong><%= project.planLevel %></strong>
+      <small><%= membership.role %> · <%= canWriteSettings ? '可编辑项目设置' : '只读' %></small>
+    </div>
+  </section>
+
+  <section class="authority-boundary-grid" data-ui="runtime-provider-boundary">
+    <article class="authority-card">
+      <p class="eyebrow">Safe projection</p>
+      <h2>配置状态不等于实时健康</h2>
+      <p>Configured 只表示当前服务端具备所需配置项；本页不会为了显示状态而调用 DeepSeek、Google、Crawler 或其他外部服务，也不会虚构 last success / latency / health。</p>
+    </article>
+    <article class="authority-card authority-card-warning">
+      <p class="eyebrow">Secret boundary</p>
+      <h2>敏感值永不回显</h2>
+      <p><strong>密钥、Token、连接串不会在页面输出</strong>。API key、OAuth client secret、credential encryption key、SESSION_SECRET、DATABASE_URL、REDIS_URL 均不进入视图模型。</p>
+    </article>
+  </section>
+
+  <section class="settings-section-grid">
+    <article class="panel settings-panel">
+      <div class="panel-header"><div><p class="eyebrow">Project</p><h2>项目与地区</h2><p class="muted">字段语义沿用现有 Project schema；Plan 只读展示。</p></div></div>
+      <form action="/projects/<%= project.id %>/settings" method="post" class="settings-form">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="form-grid">
+          <label>项目名称<input name="name" value="<%= project.name %>" required <%= canWriteSettings ? '' : 'disabled' %>></label>
+          <label>主域名<input name="primaryDomain" value="<%= project.primaryDomain %>" required <%= canWriteSettings ? '' : 'disabled' %>></label>
+          <label>行业<input name="industry" value="<%= project.industry ?? '' %>" <%= canWriteSettings ? '' : 'disabled' %>></label>
+          <label>默认语言<input name="defaultLanguage" value="<%= project.defaultLanguage %>" required <%= canWriteSettings ? '' : 'disabled' %>></label>
+          <label>目标国家<input name="targetCountry" value="<%= project.targetCountry %>" minlength="2" maxlength="2" required <%= canWriteSettings ? '' : 'disabled' %>></label>
+          <label>时区<input name="timezone" value="<%= project.timezone %>" required <%= canWriteSettings ? '' : 'disabled' %>></label>
+        </div>
+        <div class="settings-readonly-row"><span>Plan Level</span><strong><%= project.planLevel %></strong><small>本页不提供套餐变更入口</small></div>
+        <% if (canWriteSettings) { %><div class="actions"><button class="button" type="submit">保存项目设置</button></div><% } %>
+      </form>
+    </article>
+
+    <article class="panel settings-panel">
+      <div class="panel-header"><div><p class="eyebrow">Profile</p><h2>Profile & Session</h2><p class="muted">来自当前数据库认证用户和活动 Session，不创建新身份语义。</p></div></div>
+      <% if (user) { %>
+        <dl class="settings-kv">
+          <div><dt>Display name</dt><dd><%= user.displayName || '未设置' %></dd></div>
+          <div><dt>Email</dt><dd><%= user.email %></dd></div>
+          <div><dt>User status</dt><dd><span class="badge success"><%= user.status %></span></dd></div>
+          <div><dt>Current role</dt><dd><span class="badge"><%= membership.role %></span></dd></div>
+        </dl>
+      <% } else { %><p class="muted">当前用户资料不可用。</p><% } %>
+      <% if (session) { %>
+        <div class="settings-session-card">
+          <span>当前 Session</span>
+          <strong>ACTIVE</strong>
+          <small>创建：<%= new Date(session.createdAt).toLocaleString('zh-CN') %> · 到期：<%= new Date(session.expiresAt).toLocaleString('zh-CN') %></small>
+        </div>
+      <% } %>
+      <p class="muted settings-footnote">密码修改、Session 撤销仍由现有 `/auth/*` 安全接口负责；本页不绕过 CSRF 或重新实现认证。</p>
+    </article>
+  </section>
+
+  <section class="settings-section-grid">
+    <article class="panel settings-panel">
+      <div class="panel-header"><div><p class="eyebrow">AI Provider</p><h2>AI Provider</h2><p class="muted">只展示非敏感 DeepSeek 运行配置与 configured 状态。</p></div></div>
+      <div class="provider-status-card">
+        <div><strong>DeepSeek</strong><span class="badge <%= providerState.deepseek.configured ? 'success' : '' %>"><%= providerState.deepseek.configured ? 'CONFIGURED' : 'NOT_CONFIGURED' %></span></div>
+        <dl class="settings-kv">
+          <div><dt>Base URL</dt><dd><%= providerState.deepseek.baseUrl %></dd></div>
+          <div><dt>Fast model</dt><dd><%= providerState.deepseek.fastModel %></dd></div>
+          <div><dt>Reasoning model</dt><dd><%= providerState.deepseek.reasoningModel %></dd></div>
+          <div><dt>Timeout</dt><dd><%= providerState.deepseek.timeoutMs %> ms</dd></div>
+        </dl>
+      </div>
+    </article>
+
+    <article class="panel settings-panel">
+      <div class="panel-header"><div><p class="eyebrow">Search / Visibility</p><h2>Search / Visibility</h2><p class="muted">连接状态只反映现有 OAuth 服务端配置是否齐备。</p></div></div>
+      <div class="provider-status-card">
+        <div><strong>Google Search Console OAuth</strong><span class="badge <%= providerState.searchConsole.configured ? 'success' : '' %>"><%= providerState.searchConsole.configured ? 'CONFIGURED' : 'NOT_CONFIGURED' %></span></div>
+        <dl class="settings-kv"><div><dt>Redirect URI</dt><dd><%= providerState.searchConsole.redirectUriConfigured ? 'CONFIGURED' : 'NOT_CONFIGURED' %></dd></div></dl>
+      </div>
+      <p class="muted settings-footnote">没有 persisted provider-health 事实时，本页不会显示虚假的最近成功时间或健康百分比。</p>
+    </article>
+  </section>
+
+  <section class="panel settings-panel">
+    <div class="panel-header"><div><p class="eyebrow">Plan Features</p><h2>当前套餐能力</h2><p class="muted">直接由现有 feature matrix 计算，只用于说明可用性；真正访问仍由服务端 feature/capability gate 决定。</p></div></div>
+    <div class="capability-grid">
+      <% for (const row of featureRows) { %>
+        <div class="capability-row"><span><%= row.label %></span><code><%= row.feature %></code><span class="badge <%= row.enabled ? 'success' : '' %>"><%= row.enabled ? 'ENABLED' : 'NOT_ELIGIBLE' %></span></div>
+      <% } %>
+    </div>
+  </section>
+
+  <section class="panel settings-panel">
+    <div class="panel-header"><div><p class="eyebrow">Runtime Status</p><h2>Runtime Status</h2><p class="muted">只读展示现有 crawler/runtime 参数，不包含数据库、Redis 或 Session secrets。</p></div></div>
+    <dl class="runtime-grid">
+      <div><dt>Environment</dt><dd><%= runtimeState.nodeEnv %></dd></div>
+      <div><dt>Crawler browser</dt><dd><%= runtimeState.crawlerBrowserEnabled ? 'ENABLED' : 'DISABLED' %></dd></div>
+      <div><dt>Max pages</dt><dd><%= runtimeState.crawlerMaxPages %></dd></div>
+      <div><dt>Concurrency</dt><dd><%= runtimeState.crawlerConcurrency %></dd></div>
+      <div><dt>Request timeout</dt><dd><%= runtimeState.crawlerRequestTimeoutMs %> ms</dd></div>
+      <div><dt>Max response bytes</dt><dd><%= runtimeState.crawlerMaxResponseBytes %></dd></div>
+      <div class="runtime-wide"><dt>User agent</dt><dd><code><%= runtimeState.crawlerUserAgent %></code></dd></div>
+    </dl>
+  </section>
+</section>
