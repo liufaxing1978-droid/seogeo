@@ -27,14 +27,43 @@ describe('P10 UI-03 analysis-center productization contract', () => {
     expect(seo).not.toContain('Keyword Ranking');
   });
 
-  it('preserves existing GEO, Visibility, and AI truth boundaries while SEO is productized', () => {
+  it('requires a truthful GEO and AI Visibility secondary navigation', () => {
+    const navPath = resolve(process.cwd(), 'src/views/partials/geo-center-nav.ejs');
+    expect(existsSync(navPath)).toBe(true);
+    if (!existsSync(navPath)) return;
+
+    const nav = readFileSync(navPath, 'utf8');
+    for (const label of ['GEO Readiness', 'Citability', 'Entity', 'AI Crawler', 'AI Visibility', '历史', '告警', 'Prompt', '引用', '主体', '指标']) {
+      expect(nav).toContain(label);
+    }
+    for (const route of ['/geo', '/geo/citability', '/geo/entities', '/geo/ai-crawlers', '/visibility', '/visibility/history', '/visibility/alerts', '/visibility/prompts', '/visibility/citations', '/visibility/subjects', '/visibility/metrics']) {
+      expect(nav).toContain(route);
+    }
+    expect(nav).toContain('geoCenterActive');
+    expect(nav).not.toContain('href="#"');
+  });
+
+  it('keeps GEO Readiness separate from persisted AI Visibility metrics', () => {
     const geo = source('src/views/geo/overview.ejs');
     const visibility = source('src/views/visibility/index.ejs');
-    const ai = source('src/views/ai/index.ejs');
 
-    expect(geo).toContain('AI Visibility 与 GEO Readiness');
+    expect(geo).toContain('data-ui="geo-readiness-center"');
+    expect(geo).toContain('data-ui="geo-readiness-summary"');
+    expect(geo).toContain('AI Visibility 与 GEO Readiness 是两个指标');
+    expect(visibility).toContain('data-ui="visibility-center"');
+    expect(visibility).toContain('data-ui="visibility-metrics-summary"');
+    expect(visibility).toContain('Owned Mention Rate');
+    expect(visibility).toContain('Owned Citation Rate');
+    expect(visibility).toContain('Owned Mention SOV');
+    expect(visibility).toContain('Evidence Coverage');
     expect(visibility).toContain('官方 Provider API');
     expect(visibility).toContain('UNKNOWN / NO_DATA');
+    expect(visibility).not.toContain('ChatGPT 网页端排名');
+  });
+
+  it('preserves the existing AI advisory boundary while GEO and Visibility are productized', () => {
+    const ai = source('src/views/ai/index.ejs');
+
     expect(ai).toContain('AI 只分析已保存事实');
     expect(ai).toContain('不展示 API Key');
     expect(ai).toContain('provider reasoning');
