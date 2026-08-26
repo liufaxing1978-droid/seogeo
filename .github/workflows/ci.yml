@@ -166,3 +166,14 @@ jobs:
             p10-ui-03-ai.png
           if-no-files-found: warn
           retention-days: 7
+      - name: Upload P10 UI-05 admin screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p10-ui-05-admin-screenshots
+          path: |
+            p10-ui-05-members.png
+            p10-ui-05-settings.png
+            p10-ui-05-optimization.png
+          if-no-files-found: error
+          retention-days: 7
