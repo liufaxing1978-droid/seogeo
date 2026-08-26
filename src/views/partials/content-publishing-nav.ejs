@@ -1,0 +1,5 @@
+<nav class="content-publishing-subnav" data-ui="content-publishing-nav" aria-label="内容与发布二级导航">
+  <a data-ui="content-nav-content" href="/projects/<%= project.id %>/content" <%= contentPublishingActive === 'content' ? 'aria-current="page"' : '' %>>内容中心</a>
+  <a data-ui="content-nav-publication" href="/projects/<%= project.id %>/publication" <%= contentPublishingActive === 'publication' ? 'aria-current="page"' : '' %>>发布中心</a>
+  <a data-ui="content-nav-distribution" href="/projects/<%= project.id %>/distribution" <%= contentPublishingActive === 'distribution' ? 'aria-current="page"' : '' %>>分发中心</a>
+</nav>
