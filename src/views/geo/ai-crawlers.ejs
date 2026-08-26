@@ -7,6 +7,8 @@
   <a class="button secondary" href="/projects/<%= project.id %>/geo">返回 GEO 概览</a>
 </section>
 
+<%- include('../partials/geo-center-nav', { project, geoCenterActive: 'ai-crawlers' }) %>
+
 <section class="metric-grid compact">
   <article class="metric-card"><div class="metric-title">PASS</div><div class="metric-value"><%= counts.PASS %></div></article>
   <article class="metric-card"><div class="metric-title">FAIL</div><div class="metric-value"><%= counts.FAIL %></div></article>
