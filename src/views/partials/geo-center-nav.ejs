@@ -1,8 +1,8 @@
 <nav class="analysis-subnav" aria-label="GEO 与 AI Visibility 二级导航" data-ui="geo-center-nav">
-  <a href="/projects/<%= project.id %>/geo" <%= geoCenterActive === 'geo' ? 'aria-current="page"' : '' %>>GEO Readiness</a>
+  <a href="/projects/<%= project.id %>/geo" <%= geoCenterActive === 'readiness' ? 'aria-current="page"' : '' %>>GEO Readiness</a>
   <a href="/projects/<%= project.id %>/geo/citability" <%= geoCenterActive === 'citability' ? 'aria-current="page"' : '' %>>Citability</a>
-  <a href="/projects/<%= project.id %>/geo/entities" <%= geoCenterActive === 'entity' ? 'aria-current="page"' : '' %>>Entity</a>
-  <a href="/projects/<%= project.id %>/geo/ai-crawlers" <%= geoCenterActive === 'crawler' ? 'aria-current="page"' : '' %>>AI Crawler</a>
+  <a href="/projects/<%= project.id %>/geo/entities" <%= geoCenterActive === 'entities' ? 'aria-current="page"' : '' %>>Entity</a>
+  <a href="/projects/<%= project.id %>/geo/ai-crawlers" <%= geoCenterActive === 'ai-crawlers' ? 'aria-current="page"' : '' %>>AI Crawler</a>
   <span class="analysis-subnav-divider" aria-hidden="true"></span>
   <a href="/projects/<%= project.id %>/visibility" <%= geoCenterActive === 'visibility' ? 'aria-current="page"' : '' %>>AI Visibility</a>
   <a href="/projects/<%= project.id %>/visibility/history" <%= geoCenterActive === 'history' ? 'aria-current="page"' : '' %>>历史</a>
