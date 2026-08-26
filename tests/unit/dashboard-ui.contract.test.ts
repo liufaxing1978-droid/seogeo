@@ -24,7 +24,7 @@ describe('P10.5 dashboard UI contract', () => {
     }
   });
 
-  it('uses the P10 product shell without dead navigation placeholders', () => {
+  it('uses the approved product shell without dead navigation placeholders', () => {
     const layout = source('src/views/layout.ejs');
     const sidebar = source('src/views/partials/sidebar.ejs');
     const topbar = source('src/views/partials/topbar.ejs');
@@ -32,16 +32,17 @@ describe('P10.5 dashboard UI contract', () => {
     expect(layout).toContain('data-ui="app-shell"');
     expect(layout).toContain('/assets/css/p10.css');
     expect(sidebar).not.toContain('href="#"');
-    expect(topbar).toContain('P10');
+    expect(topbar).toContain('data-ui="topbar"');
+    expect(topbar).not.toContain('P10 · Identity &amp; RBAC');
     expect(topbar).not.toContain('P3');
   });
 
-  it('uses the approved warm neutral and gold design tokens', () => {
-    const css = source('src/public/css/p10.css').toLowerCase();
+  it('uses the approved P10 product design tokens', () => {
+    const css = source('src/public/css/p10.css').replace(/\s+/g, '').toLowerCase();
 
-    expect(css).toContain('--bg:#fafaf7');
-    expect(css).toContain('--text:#111111');
-    expect(css).toContain('--gold:#b08d57');
+    expect(css).toContain('--ui-bg:#f7f9fc');
+    expect(css).toContain('--ui-text:#111827');
+    expect(css).toContain('--ui-primary:#2563eb');
     expect(css).toContain('.dashboard-command-grid');
   });
 });

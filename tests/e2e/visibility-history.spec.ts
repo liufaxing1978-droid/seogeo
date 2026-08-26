@@ -23,12 +23,12 @@ test('navigates P6-D history and alerts without triggering sampling', async ({ p
   await page.goto(`/projects/${projectId}/visibility/history`);
   await expect(page.getByRole('heading', { level: 1, name: 'Visibility 历史趋势', exact: true })).toBeVisible();
   await expect(page.getByText('尚无可比前序快照')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Visibility 历史' })).toHaveClass(/active/);
+  await expect(page.getByRole('navigation').getByRole('link', { name: 'GEO / 可见度', exact: true })).toHaveAttribute('aria-current', 'page');
 
   await page.getByRole('link', { name: '告警', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Visibility 告警', exact: true })).toBeVisible();
   await expect(page.getByText('V1 为站内告警，不宣称外部通知投递。')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Visibility 告警' })).toHaveClass(/active/);
+  await expect(page.getByRole('navigation').getByRole('link', { name: 'GEO / 可见度', exact: true })).toHaveAttribute('aria-current', 'page');
 
   await page.getByLabel('名称').fill('Owned mention smoke');
   await page.getByLabel('规则类型').selectOption('OWNED_MENTION_RATE_DROP');

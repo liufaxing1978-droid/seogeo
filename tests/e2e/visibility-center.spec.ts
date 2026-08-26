@@ -24,16 +24,17 @@ test('opens Advanced AI Visibility, configures Prompt Monitor, and leaves sampli
   await page.goto(`/projects/${projectId}/visibility`);
   await expect(page.getByRole('main').getByRole('heading', { level: 1, name: 'AI Visibility' })).toBeVisible();
   await expect(page.getByText('API 采样', { exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: /AI Visibility/ })).toHaveClass(/active/);
-  await expect(page.getByRole('link', { name: 'Visibility 指标' })).toBeVisible();
+  const geoCenter = page.getByRole('navigation').getByRole('link', { name: 'GEO / 可见度', exact: true });
+  await expect(geoCenter).toHaveAttribute('aria-current', 'page');
+  await expect(geoCenter).toHaveAttribute('href', `/projects/${projectId}/geo`);
   await expect(page.getByText('ChatGPT 网页端排名')).toHaveCount(0);
   await expect(page.getByRole('main').getByText('Mention Rate')).toHaveCount(0);
   await expect(page.getByRole('main').getByText('Citation Rate')).toHaveCount(0);
   await expect(page.getByRole('main').getByText('Share of Voice')).toHaveCount(0);
 
-  await page.getByRole('link', { name: 'Prompt 监控' }).click();
+  await page.goto(`/projects/${projectId}/visibility/prompts`);
   await expect(page.getByRole('main').getByRole('heading', { level: 1, name: 'Prompt 监控' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Prompt 监控' })).toHaveClass(/active/);
+  await expect(page.getByRole('navigation').getByRole('link', { name: 'GEO / 可见度', exact: true })).toHaveAttribute('aria-current', 'page');
 
   await page.getByLabel('Prompt Set 名称').fill('Unbranded discovery');
   await page.getByLabel('默认语言').fill('en-US');

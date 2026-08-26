@@ -1,53 +1,57 @@
-<aside class="sidebar" data-ui="sidebar">
-  <a class="brand" href="/">SEO <span>GEO</span></a>
-  <nav aria-label="主导航">
-    <div class="nav-group"><div class="nav-label">总览</div><a class="<%= activeNav === 'overview' ? 'active' : '' %>" href="/">概览</a></div>
-    <div class="nav-group">
-      <div class="nav-label">项目</div>
-      <a class="<%= activeNav === 'projects' ? 'active' : '' %>" href="/projects">项目</a>
-      <a class="<%= activeNav === 'pages' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/pages` : '/projects' %>">页面中心</a>
-      <a class="<%= activeNav === 'crawls' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/crawls` : '/projects' %>">抓取历史</a>
-    </div>
-    <div class="nav-group">
-      <div class="nav-label">SEO</div>
-      <a class="<%= activeNav === 'seo' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/seo` : '/projects' %>">SEO 审计</a>
-      <a href="<%= currentProjectId ? `/projects/${currentProjectId}/seo/issues` : '/projects' %>">问题中心</a>
-    </div>
-    <div class="nav-group">
-      <div class="nav-label">GEO</div>
-      <a class="<%= activeNav === 'geo' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/geo` : '/projects' %>">GEO 概览</a>
-      <a href="<%= currentProjectId ? `/projects/${currentProjectId}/geo/citability` : '/projects' %>">Citability</a>
-      <a href="<%= currentProjectId ? `/projects/${currentProjectId}/geo/entities` : '/projects' %>">实体中心</a>
-      <a href="<%= currentProjectId ? `/projects/${currentProjectId}/geo/ai-crawlers` : '/projects' %>">AI Crawler</a>
-    </div>
-    <div class="nav-group">
-      <div class="nav-label">内容</div>
-      <a class="<%= activeNav === 'content' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/content` : '/projects' %>">内容中心</a>
-      <a class="<%= activeNav === 'publication' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/publication` : '/projects' %>">内容与发布</a>
-      <a class="<%= activeNav === 'distribution' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/distribution` : '/projects' %>">多渠道分发</a>
-      <a class="<%= activeNav === 'competitors' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/competitors` : '/projects' %>">竞争对手</a>
-    </div>
-    <div class="nav-group">
-      <div class="nav-label">增长</div>
-      <a class="<%= activeNav === 'search-console' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/search-console` : '/projects' %>">Search Console</a>
-      <a class="<%= activeNav === 'growth' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/growth` : '/projects' %>">Growth Center</a>
-      <a class="<%= activeNav === 'growth-topics' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/growth/topics` : '/projects' %>">Topic Clusters</a>
-      <a class="<%= activeNav === 'growth-cannibalization' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/growth/cannibalization` : '/projects' %>">Cannibalization</a>
-      <a class="<%= activeNav === 'growth-new-content' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/growth/new-content` : '/projects' %>">New Content</a>
-      <a class="<%= activeNav === 'optimization-operations' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/optimization` : '/projects' %>">自动优化中心 <span class="badge premium">高级版</span></a>
-      <a class="<%= activeNav === 'optimization-experiments' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/optimization/experiments` : '/projects' %>">优化实验 <span class="badge premium">高级版</span></a>
-    </div>
-    <div class="nav-group">
-      <div class="nav-label">高级功能</div>
-      <a class="<%= activeNav === 'visibility' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility` : '/projects' %>">AI Visibility <span class="badge premium">高级版</span></a>
-      <a class="<%= activeNav === 'visibility-history' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility/history` : '/projects' %>">Visibility 历史</a>
-      <a class="<%= activeNav === 'visibility-alerts' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility/alerts` : '/projects' %>">Visibility 告警</a>
-      <a class="<%= activeNav === 'visibility-prompts' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility/prompts` : '/projects' %>">Prompt 监控</a>
-      <a class="<%= activeNav === 'visibility-citations' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility/citations` : '/projects' %>">Citation 监控</a>
-      <a class="<%= activeNav === 'visibility-subjects' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility/subjects` : '/projects' %>">监控主体</a>
-      <a class="<%= activeNav === 'visibility-metrics' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/visibility/metrics` : '/projects' %>">Visibility 指标</a>
-    </div>
-    <div class="nav-group"><div class="nav-label">AI</div><a class="<%= activeNav === 'ai' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/ai` : '/projects' %>">DeepSeek 分析中心</a></div>
-    <div class="nav-group"><div class="nav-label">其他</div><a class="<%= activeNav === 'reports' ? 'active' : '' %>" href="<%= currentProjectId ? `/projects/${currentProjectId}/reports` : '/projects' %>">报告</a><a href="/projects">系统与项目设置</a></div>
+<%
+  const projectId = typeof currentProjectId === 'string' && currentProjectId ? currentProjectId : null;
+  const projectHref = (suffix) => projectId ? `/projects/${projectId}${suffix}` : '/projects';
+  const centerByActiveNav = {
+    overview: 'dashboard',
+    projects: 'projects', pages: 'projects', crawls: 'projects',
+    seo: 'seo',
+    geo: 'geo', visibility: 'geo', 'visibility-history': 'geo', 'visibility-alerts': 'geo',
+    'visibility-prompts': 'geo', 'visibility-citations': 'geo', 'visibility-subjects': 'geo', 'visibility-metrics': 'geo',
+    ai: 'ai',
+    content: 'content', publication: 'content', distribution: 'content',
+    competitors: 'competitors', reports: 'reports',
+    'search-console': 'optimization', growth: 'optimization', 'growth-topics': 'optimization',
+    'growth-cannibalization': 'optimization', 'growth-new-content': 'optimization',
+    'optimization-operations': 'optimization', 'optimization-experiments': 'optimization'
+  };
+  const activeCenter = centerByActiveNav[activeNav] || '';
+  const items = [
+    { key: 'dashboard', label: '仪表盘', icon: 'dashboard', href: '/' },
+    { key: 'projects', label: '项目中心', icon: 'projects', href: '/projects' },
+    { key: 'seo', label: 'SEO 中心', icon: 'seo', href: projectHref('/seo') },
+    { key: 'geo', label: 'GEO / 可见度', icon: 'geo', href: projectHref('/geo') },
+    { key: 'ai', label: 'AI 分析中心', icon: 'ai', href: projectHref('/ai') },
+    { key: 'content', label: '内容与发布', icon: 'content', href: projectHref('/content') },
+    { key: 'competitors', label: '竞品情报', icon: 'competitors', href: projectHref('/competitors') },
+    { key: 'reports', label: '报告中心', icon: 'reports', href: projectHref('/reports') },
+    { key: 'optimization', label: '优化运营', icon: 'optimization', href: projectHref('/optimization') },
+    { key: 'members', label: '成员与权限', icon: 'members', disabled: true },
+    { key: 'settings', label: '设置', icon: 'settings', disabled: true }
+  ];
+%>
+<aside class="sidebar" id="primary-navigation" data-ui="sidebar" aria-label="主导航">
+  <div class="sidebar-header">
+    <a class="brand" href="/" aria-label="SEO GEO 首页">
+      <span class="brand-mark">SG</span>
+      <span class="brand-copy">SEO GEO</span>
+    </a>
+    <button class="sidebar-close" type="button" data-ui="nav-close" aria-label="关闭导航">
+      <svg class="ui-icon" aria-hidden="true"><use href="#icon-close"></use></svg>
+    </button>
+  </div>
+  <nav class="primary-nav">
+    <% for (const item of items) { %>
+      <% if (item.disabled) { %>
+        <span class="nav-item is-disabled" aria-disabled="true" title="将在对应 UI 单元启用">
+          <svg class="ui-icon" aria-hidden="true"><use href="#icon-<%= item.icon %>"></use></svg>
+          <span><%= item.label %></span>
+        </span>
+      <% } else { %>
+        <a class="nav-item <%= activeCenter === item.key ? 'active' : '' %>" href="<%= item.href %>" <%- activeCenter === item.key ? 'aria-current="page"' : '' %>>
+          <svg class="ui-icon" aria-hidden="true"><use href="#icon-<%= item.icon %>"></use></svg>
+          <span><%= item.label %></span>
+        </a>
+      <% } %>
+    <% } %>
   </nav>
 </aside>

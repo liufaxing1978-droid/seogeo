@@ -214,7 +214,7 @@ test('renders ORIGINAL ownership, platform capability and independent distributi
 
   await page.goto(`/projects/${fixture.project.id}/distribution`);
   await expect(page.getByRole('main').getByRole('heading', { level: 1, name: '多渠道分发' })).toBeVisible();
-  await expect(page.getByRole('link', { name: '多渠道分发', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('link', { name: '内容与发布', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByText('ORIGINAL', { exact: true })).toBeVisible();
   await expect(page.getByText(fixture.originalUrl, { exact: true })).toBeVisible();
   await expect(page.getByText('MEDIUM', { exact: true })).toBeVisible();
