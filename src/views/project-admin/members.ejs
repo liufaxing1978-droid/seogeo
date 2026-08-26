@@ -1,0 +1,134 @@
+<section class="admin-center" data-ui="members-permissions-center">
+  <section class="admin-center-hero">
+    <div>
+      <p class="eyebrow">P10-A · Identity & RBAC</p>
+      <h1>成员与权限</h1>
+      <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
+    </div>
+    <div class="admin-role-chip">
+      <span>当前角色</span>
+      <strong><%= membership.role %></strong>
+      <small><%= membership.status %></small>
+    </div>
+  </section>
+
+  <section class="authority-boundary-grid" data-ui="role-ui-authority-boundary">
+    <article class="authority-card">
+      <p class="eyebrow">Authorization Authority</p>
+      <h2>服务器 RBAC 是唯一授权依据</h2>
+      <p>页面只投影服务端已解析的角色与 capabilities。按钮显示、隐藏或角色标签都不会自行授予任何权限；所有写操作仍由 middleware 与 ProjectMembershipService 再次校验。</p>
+    </article>
+    <article class="authority-card authority-card-warning">
+      <p class="eyebrow">Owner protection</p>
+      <h2>最后 OWNER 保护保持不变</h2>
+      <p><code>LAST_PROJECT_OWNER_REQUIRED</code> 仍由现有事务锁与服务层强制执行，UI 不绕过、不复制判定，也不提供“强制撤销”入口。</p>
+    </article>
+  </section>
+
+  <section class="admin-metric-grid">
+    <article class="metric-card">
+      <div class="metric-title">成员总数</div>
+      <div class="metric-value"><%= members.length %></div>
+      <div class="metric-caption">含 ACTIVE / REVOKED 历史成员关系</div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">ACTIVE</div>
+      <div class="metric-value"><%= members.filter((item) => item.status === 'ACTIVE').length %></div>
+      <div class="metric-caption">当前有效成员</div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">PROJECT_MEMBER_MANAGE_BASIC</div>
+      <div class="metric-value"><%= canManageBasic ? 'YES' : 'NO' %></div>
+      <div class="metric-caption">由当前角色服务端解析</div>
+    </article>
+    <article class="metric-card">
+      <div class="metric-title">PROJECT_MEMBER_MANAGE_ALL</div>
+      <div class="metric-value"><%= canManageAll ? 'YES' : 'NO' %></div>
+      <div class="metric-caption">仅 OWNER 拥有</div>
+    </article>
+  </section>
+
+  <section class="panel admin-table-panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">Memberships</p>
+        <h2>项目成员</h2>
+        <p class="muted">仅展示数据库中的 ProjectMembership 与关联 User 状态，不推断组织关系。</p>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>成员</th><th>角色</th><th>状态</th><th>加入时间</th><th>管理</th></tr></thead>
+        <tbody>
+          <% for (const item of members) { const manageable = canManageAll || (canManageBasic && ['OPERATOR', 'VIEWER'].includes(item.role)); %>
+            <tr>
+              <td>
+                <strong><%= item.user.displayName || item.user.email %></strong>
+                <div class="muted"><%= item.user.email %> · User <%= item.user.status %></div>
+              </td>
+              <td><span class="badge"><%= item.role %></span></td>
+              <td><span class="badge <%= item.status === 'ACTIVE' ? 'success' : '' %>"><%= item.status %></span></td>
+              <td><%= new Date(item.createdAt).toLocaleString('zh-CN') %></td>
+              <td>
+                <% if (item.status === 'ACTIVE' && manageable) { %>
+                  <div class="member-actions">
+                    <form action="/projects/<%= project.id %>/members/<%= item.id %>/role" method="post" class="inline-form">
+                      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                      <label class="sr-only" for="role-<%= item.id %>">调整 <%= item.user.email %> 的角色</label>
+                      <select id="role-<%= item.id %>" name="role">
+                        <% const allowedRoles = canManageAll ? ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] : ['OPERATOR', 'VIEWER']; %>
+                        <% for (const role of allowedRoles) { %><option value="<%= role %>" <%= item.role === role ? 'selected' : '' %>><%= role %></option><% } %>
+                      </select>
+                      <button class="button secondary compact" type="submit">更新角色</button>
+                    </form>
+                    <form action="/projects/<%= project.id %>/members/<%= item.id %>/revoke" method="post">
+                      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                      <button class="button danger compact" type="submit">撤销</button>
+                    </form>
+                  </div>
+                <% } else if (item.status === 'REVOKED') { %>
+                  <span class="muted">可通过邮箱重新激活</span>
+                <% } else { %>
+                  <span class="muted">当前角色不可管理此成员</span>
+                <% } %>
+              </td>
+            </tr>
+          <% } %>
+          <% if (!members.length) { %><tr><td colspan="5" class="muted">没有可展示的成员关系。</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <% if (canManageBasic) { %>
+    <section class="panel admin-form-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Existing user only</p>
+          <h2>添加或重新激活成员</h2>
+          <p class="muted">此入口不会创建新账号或开放 public signup；目标邮箱必须对应现有 ACTIVE User。</p>
+        </div>
+      </div>
+      <form action="/projects/<%= project.id %>/members" method="post" class="form-grid admin-member-form">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <label>成员邮箱<input type="email" name="email" required autocomplete="email" placeholder="existing-user@example.com"></label>
+        <label>角色
+          <select name="role" required>
+            <% const addRoles = canManageAll ? ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] : ['OPERATOR', 'VIEWER']; %>
+            <% for (const role of addRoles) { %><option value="<%= role %>"><%= role %></option><% } %>
+          </select>
+        </label>
+        <div class="actions"><button class="button" type="submit">添加成员</button></div>
+      </form>
+    </section>
+  <% } %>
+
+  <section class="panel capability-panel">
+    <div class="panel-header"><div><p class="eyebrow">Resolved capabilities</p><h2>当前角色能力</h2><p class="muted">这是服务端角色矩阵的只读投影，不是授权配置器。</p></div></div>
+    <div class="capability-grid">
+      <% for (const row of capabilityRows) { %>
+        <div class="capability-row"><code><%= row.capability %></code><span class="badge <%= row.enabled ? 'success' : '' %>"><%= row.enabled ? 'ALLOWED' : 'DENIED' %></span></div>
+      <% } %>
+    </div>
+  </section>
+</section>
