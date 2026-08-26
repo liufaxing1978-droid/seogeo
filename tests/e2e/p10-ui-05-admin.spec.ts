@@ -11,6 +11,7 @@ test('renders Members & Permissions from server-resolved OWNER authority', async
 
   try {
     await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(`/projects/${auth.project.id}/members`);
 
     const main = page.getByRole('main');
@@ -25,6 +26,7 @@ test('renders Members & Permissions from server-resolved OWNER authority', async
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
+    await page.screenshot({ path: 'p10-ui-05-members.png', fullPage: false });
   } finally {
     await auth.cleanup();
   }
@@ -40,6 +42,7 @@ test('renders safe project Settings without exposing secrets or synthetic provid
 
   try {
     await page.setViewportSize({ width: 1440, height: 1100 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(`/projects/${auth.project.id}/settings`);
 
     const main = page.getByRole('main');
@@ -59,6 +62,7 @@ test('renders safe project Settings without exposing secrets or synthetic provid
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
+    await page.screenshot({ path: 'p10-ui-05-settings.png', fullPage: false });
   } finally {
     await auth.cleanup();
   }
@@ -74,6 +78,7 @@ test('preserves Optimization Operations executor hooks while showing the P10 aut
 
   try {
     await page.setViewportSize({ width: 1440, height: 1100 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(`/projects/${auth.project.id}/optimization`);
 
     const main = page.getByRole('main');
@@ -84,6 +89,7 @@ test('preserves Optimization Operations executor hooks while showing the P10 aut
     await expect(main.locator('[data-run-optimization]')).toBeVisible();
     await expect(main.locator('[data-policy-form]')).toBeVisible();
     await expect(page.getByRole('link', { name: '优化运营', exact: true })).toHaveAttribute('aria-current', 'page');
+    await page.screenshot({ path: 'p10-ui-05-optimization.png', fullPage: false });
   } finally {
     await auth.cleanup();
   }
