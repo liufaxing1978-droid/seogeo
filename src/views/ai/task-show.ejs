@@ -1,6 +1,7 @@
 <% const latestRun = task.runs[0] ?? null; %>
 <% const result = latestRun?.result ?? null; %>
-<section class="page-header">
+<div class="analysis-center" data-ui="ai-task-detail">
+<section class="page-header analysis-hero">
   <div>
     <p class="eyebrow">DeepSeek Intelligence · P4</p>
     <h1>AI 任务详情</h1>
@@ -16,7 +17,7 @@
   </div>
 </section>
 
-<section class="panel">
+<section class="panel analysis-evidence-note">
   <div class="panel-header">
     <div>
       <h2>执行状态</h2>
@@ -37,7 +38,7 @@
 </section>
 
 <% if (result) { %>
-  <section class="panel">
+  <section class="panel" data-ui="ai-result-summary">
     <div class="panel-header">
       <div>
         <h2>分析摘要</h2>
@@ -71,7 +72,7 @@
 <% } %>
 
 <% if (latestRun && latestRun.calls.length) { %>
-  <section class="panel">
+  <section class="panel analysis-table-panel">
     <div class="panel-header"><div><h2>调用指标</h2><p class="muted">用于成本、延迟与缓存命中审计。</p></div></div>
     <div class="table-wrap">
       <table>
@@ -94,3 +95,4 @@
     </div>
   </section>
 <% } %>
+</div>
