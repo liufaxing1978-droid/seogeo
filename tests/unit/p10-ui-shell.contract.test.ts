@@ -71,4 +71,16 @@ describe('P10 UI-01 shell design system contract', () => {
     expect(sidebar).toContain('aria-disabled="true"');
     expect(sidebar).not.toContain('href="#"');
   });
+
+  it('keeps topbar controls truthful and non-deceptive', () => {
+    const topbar = source('src/views/partials/topbar.ejs');
+    expect(topbar).toContain('data-ui="nav-toggle"');
+    expect(topbar).toContain('aria-controls="primary-navigation"');
+    expect(topbar).toContain('切换项目');
+    expect(topbar).toContain('已认证');
+    expect(topbar).toContain('currentProjectId');
+    expect(topbar).not.toContain('P10 · Identity &amp; RBAC');
+    expect(topbar).not.toContain('aria-label="通知"');
+    expect(topbar).not.toContain('class="avatar"');
+  });
 });
