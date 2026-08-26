@@ -26,6 +26,11 @@ test('opens the Standard-plan DeepSeek AI Analysis Center without invoking a pro
     page.getByRole('main').getByRole('heading', { level: 1, name: 'DeepSeek AI 分析中心' })
   ).toBeVisible();
   await expect(page.getByText('AI 只分析已保存事实')).toBeVisible();
+  await expect(page.locator('[data-ui="ai-advisory-boundary"]')).toContainText(
+    '不会展示原始 fact pack、API Key 或 provider reasoning'
+  );
+  await expect(page.locator('[data-ui="ai-analysis-actions"]')).toBeVisible();
+  await expect(page.locator('[data-ui="ai-task-history"]')).toBeVisible();
   await expect(page.getByText(/P6 高级版/)).toBeVisible();
   await expect(page.getByRole('link', { name: 'AI 分析中心', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByText('尚无 AI 分析任务')).toBeVisible();
