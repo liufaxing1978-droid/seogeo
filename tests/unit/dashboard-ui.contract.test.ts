@@ -24,7 +24,7 @@ describe('P10.5 dashboard UI contract', () => {
     }
   });
 
-  it('uses the P10 product shell without dead navigation placeholders', () => {
+  it('uses the approved product shell without dead navigation placeholders', () => {
     const layout = source('src/views/layout.ejs');
     const sidebar = source('src/views/partials/sidebar.ejs');
     const topbar = source('src/views/partials/topbar.ejs');
@@ -32,7 +32,8 @@ describe('P10.5 dashboard UI contract', () => {
     expect(layout).toContain('data-ui="app-shell"');
     expect(layout).toContain('/assets/css/p10.css');
     expect(sidebar).not.toContain('href="#"');
-    expect(topbar).toContain('P10');
+    expect(topbar).toContain('data-ui="topbar"');
+    expect(topbar).not.toContain('P10 · Identity &amp; RBAC');
     expect(topbar).not.toContain('P3');
   });
 
