@@ -67,7 +67,22 @@ webRoutes.get('/', requireAuthentication(), async (req, res, next) => {
 webRoutes.get('/projects', requireAuthentication(), async (req, res, next) => {
   try {
     const projects = await projectService.listForUser(req.auth!.userId);
-    render(res, 'projects/index', { title: '项目列表', activeNav: 'projects', projects });
+    const projectRows = await Promise.all(projects.map(async (project) => ({
+      project,
+      facts: await dashboardRepository.getProjectFacts(project)
+    })));
+    const projectSummary = {
+      total: projectRows.length,
+      active: projectRows.filter(({ project }) => project.status === 'ACTIVE').length,
+      advanced: projectRows.filter(({ project }) => project.planLevel === 'ADVANCED').length,
+      enterprise: projectRows.filter(({ project }) => project.planLevel === 'ENTERPRISE').length
+    };
+    render(res, 'projects/index', {
+      title: '项目中心',
+      activeNav: 'projects',
+      projectRows,
+      projectSummary
+    });
   } catch (error) {
     next(error);
   }
