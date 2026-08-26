@@ -68,7 +68,9 @@ describe('P10 UI-01 shell design system contract', () => {
     }
     expect(sidebar).toContain('id="primary-navigation"');
     expect(sidebar).toContain('aria-current="page"');
-    expect(sidebar).toContain('aria-disabled="true"');
+    expect(sidebar).toContain("href: projectHref('/members')");
+    expect(sidebar).toContain("href: projectHref('/settings')");
+    expect(sidebar).not.toContain('disabled: true');
     expect(sidebar).not.toContain('href="#"');
   });
 
