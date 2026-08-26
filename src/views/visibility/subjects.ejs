@@ -7,6 +7,8 @@
   <div class="actions"><a class="button" href="/projects/<%= project.id %>/visibility/citations">Citation 监控</a></div>
 </section>
 
+<%- include('../partials/geo-center-nav', { project }) %>
+
 <section class="panel">
   <div class="panel-header"><div><h2>新增主体</h2><p class="muted">本页面提供 Owned Brand / Owned Domain 基础配置；实体和竞争对手可继续通过 API 关联。</p></div></div>
   <form action="/projects/<%= project.id %>/visibility/subjects" method="post" class="form-grid">

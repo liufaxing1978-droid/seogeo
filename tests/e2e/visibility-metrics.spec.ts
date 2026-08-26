@@ -73,6 +73,9 @@ test('renders P6-C metrics with zero-vs-unknown semantics, SOV, provenance and a
     await page.goto(`/projects/${project.id}/visibility/metrics?snapshotId=${snapshot.id}`);
     await expect(page.getByRole('main').getByRole('heading', { level: 1, name: 'Visibility 指标' })).toBeVisible();
     await expect(page.getByRole('navigation').getByRole('link', { name: 'GEO / 可见度', exact: true })).toHaveAttribute('aria-current', 'page');
+    const visibilitySubnav = page.getByLabel('GEO 与 AI Visibility 二级导航');
+    await expect(visibilitySubnav.getByRole('link', { name: '指标', exact: true })).toHaveAttribute('aria-current', 'page');
+    await expect(visibilitySubnav.getByRole('link', { name: '告警', exact: true })).toBeVisible();
 
     const mentionCard = page.locator('.metric-card').filter({ hasText: 'Owned Mention Rate' });
     const citationCard = page.locator('.metric-card').filter({ hasText: 'Owned Citation Rate' });
@@ -91,7 +94,7 @@ test('renders P6-C metrics with zero-vs-unknown semantics, SOV, provenance and a
     const main = await page.getByRole('main').innerText();
     expect(main).not.toContain('BROWSER PRIVATE SUBJECT SNAPSHOT');
     expect(main).not.toContain('BROWSER PRIVATE SCOPE');
-    expect(main).not.toMatch(/趋势线|delta|alert|告警|AI narrative/i);
+    expect(main).not.toMatch(/趋势线|delta|AI narrative/i);
   } finally {
     await prisma.visibilityMetricRow.deleteMany({ where: { projectId: project.id } }).catch(() => undefined);
     await prisma.visibilityMetricSnapshot.deleteMany({ where: { projectId: project.id } }).catch(() => undefined);

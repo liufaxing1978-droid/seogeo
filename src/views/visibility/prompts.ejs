@@ -7,6 +7,8 @@
   <div class="actions"><a class="button" href="/projects/<%= project.id %>/visibility">返回 AI Visibility</a></div>
 </section>
 
+<%- include('../partials/geo-center-nav', { project }) %>
+
 <section class="panel">
   <div class="panel-header"><div><h2>创建 Prompt Set</h2><p class="muted">用于组织同一监控主题下的版本化 Prompt。</p></div></div>
   <form action="/projects/<%= project.id %>/visibility/prompt-sets" method="post" class="form-grid">

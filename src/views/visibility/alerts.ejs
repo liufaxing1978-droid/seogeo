@@ -10,6 +10,8 @@
   </div>
 </section>
 
+<%- include('../partials/geo-center-nav', { project }) %>
+
 <section class="metric-grid compact">
   <% const openCount = alerts.filter((item) => item.status === 'OPEN').length; const ackCount = alerts.filter((item) => item.status === 'ACKNOWLEDGED').length; const resolvedCount = alerts.filter((item) => item.status === 'RESOLVED').length; %>
   <article class="metric-card"><div class="metric-title">OPEN</div><div class="metric-value"><%= openCount %></div><div class="metric-caption">等待处理</div></article>

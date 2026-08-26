@@ -1,73 +1,75 @@
-<section class="page-header">
-  <div>
-    <p class="eyebrow">SEO</p>
-    <h1>审计对比</h1>
-    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
-  </div>
-  <div class="actions">
-    <a class="button secondary" href="/projects/<%= project.id %>/seo">返回 SEO 审计</a>
-  </div>
-</section>
-
-<section class="panel">
-  <div class="panel-header">
+<section class="analysis-center">
+  <header class="analysis-hero">
     <div>
-      <h2>Audit Compare</h2>
-      <p class="muted">变化来自持久化 Audit Occurrence 与稳定 Issue 生命周期，不通过临时比较 HTML 文本推断。</p>
+      <p class="eyebrow">SEO 中心</p>
+      <h1>审计对比</h1>
+      <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
     </div>
-  </div>
-  <dl class="detail-grid">
-    <div><dt>当前审计</dt><dd><%= current.id %></dd></div>
-    <div><dt>上一审计</dt><dd><%= previous.id %></dd></div>
-    <div><dt>当前 SEO Score</dt><dd><%= current.seoScore?.score ?? '—' %></dd></div>
-    <div><dt>上一 SEO Score</dt><dd><%= previous.seoScore?.score ?? '—' %></dd></div>
-  </dl>
-</section>
+    <div class="actions">
+      <a class="button secondary" href="/projects/<%= project.id %>/seo">返回 SEO 审计</a>
+    </div>
+  </header>
 
-<section class="metric-grid">
-  <article class="metric-card"><span>新增问题</span><strong><%= counts.new %></strong></article>
-  <article class="metric-card"><span>持续问题</span><strong><%= counts.persistent %></strong></article>
-  <article class="metric-card"><span>重新出现</span><strong><%= counts.regressed %></strong></article>
-  <article class="metric-card"><span>已修复</span><strong><%= counts.fixed %></strong></article>
-</section>
-
-<%
-  const sections = [
-    { title: '新增问题', key: 'new', items: groups.new, help: '当前审计首次出现，且不是历史已解决问题的重新出现。' },
-    { title: '持续问题', key: 'persistent', items: groups.persistent, help: '当前审计与上一审计都持续存在。' },
-    { title: '重新出现', key: 'regressed', items: groups.regressed, help: '此前已经被确定性审计验证为解决，但本次再次检测到。' },
-    { title: '已修复', key: 'fixed', items: groups.fixed, help: '上一审计存在，但当前审计已经不再检测到。' }
-  ];
-%>
-
-<% for (const section of sections) { %>
   <section class="panel">
     <div class="panel-header">
       <div>
-        <h2><%= section.title %> <span class="muted">(<%= section.items.length %>)</span></h2>
-        <p class="muted"><%= section.help %></p>
+        <h2>Audit Compare</h2>
+        <p class="muted">变化来自持久化 Audit Occurrence 与稳定 Issue 生命周期，不通过临时比较 HTML 文本推断。</p>
       </div>
     </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>问题</th><th>严重度</th><th>分类</th><th>受影响页面</th><th>Issue 状态</th></tr></thead>
-        <tbody>
-          <% for (const item of section.items) { %>
-            <tr>
-              <td><a href="/seo/issues/<%= item.id %>"><%= item.title %></a><br><span class="muted"><%= item.ruleCode %></span></td>
-              <td><strong><%= item.severity %></strong></td>
-              <td><%= item.category %></td>
-              <td><%= item.affectedPagesCount %></td>
-              <td><%= item.status %></td>
-            </tr>
-          <% } %>
-          <% if (!section.items.length) { %><tr><td colspan="5" class="muted">这一组没有问题。</td></tr><% } %>
-        </tbody>
-      </table>
-    </div>
+    <dl class="detail-grid">
+      <div><dt>当前审计</dt><dd><%= current.id %></dd></div>
+      <div><dt>上一审计</dt><dd><%= previous.id %></dd></div>
+      <div><dt>当前 SEO Score</dt><dd><%= current.seoScore?.score ?? '—' %></dd></div>
+      <div><dt>上一 SEO Score</dt><dd><%= previous.seoScore?.score ?? '—' %></dd></div>
+    </dl>
   </section>
-<% } %>
 
-<section class="panel">
-  <p class="muted">P2 Compare 只展示确定性审计结果。DeepSeek 不参与 NEW / PERSISTENT / REGRESSED / FIXED 的事实判定。</p>
+  <section class="analysis-metric-grid">
+    <article class="metric-card"><span>新增问题</span><strong><%= counts.new %></strong></article>
+    <article class="metric-card"><span>持续问题</span><strong><%= counts.persistent %></strong></article>
+    <article class="metric-card"><span>重新出现</span><strong><%= counts.regressed %></strong></article>
+    <article class="metric-card"><span>已修复</span><strong><%= counts.fixed %></strong></article>
+  </section>
+
+  <%
+    const sections = [
+      { title: '新增问题', key: 'new', items: groups.new, help: '当前审计首次出现，且不是历史已解决问题的重新出现。' },
+      { title: '持续问题', key: 'persistent', items: groups.persistent, help: '当前审计与上一审计都持续存在。' },
+      { title: '重新出现', key: 'regressed', items: groups.regressed, help: '此前已经被确定性审计验证为解决，但本次再次检测到。' },
+      { title: '已修复', key: 'fixed', items: groups.fixed, help: '上一审计存在，但当前审计已经不再检测到。' }
+    ];
+  %>
+
+  <% for (const section of sections) { %>
+    <section class="panel analysis-table-panel">
+      <div class="panel-header">
+        <div>
+          <h2><%= section.title %> <span class="muted">(<%= section.items.length %>)</span></h2>
+          <p class="muted"><%= section.help %></p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>问题</th><th>严重度</th><th>分类</th><th>受影响页面</th><th>Issue 状态</th></tr></thead>
+          <tbody>
+            <% for (const item of section.items) { %>
+              <tr>
+                <td><a href="/seo/issues/<%= item.id %>"><%= item.title %></a><br><span class="muted"><%= item.ruleCode %></span></td>
+                <td><strong><%= item.severity %></strong></td>
+                <td><%= item.category %></td>
+                <td><%= item.affectedPagesCount %></td>
+                <td><%= item.status %></td>
+              </tr>
+            <% } %>
+            <% if (!section.items.length) { %><tr><td colspan="5" class="muted">这一组没有问题。</td></tr><% } %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  <% } %>
+
+  <aside class="analysis-evidence-note">
+    SEO 对比只展示确定性审计结果。DeepSeek 不参与 NEW / PERSISTENT / REGRESSED / FIXED 的事实判定。
+  </aside>
 </section>

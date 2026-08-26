@@ -1,5 +1,6 @@
 <% const pct = (value) => value == null ? '—' : `${(value * 100).toFixed(1)}%`; %>
-<section class="page-header">
+<div class="analysis-center" data-ui="visibility-center">
+<section class="page-header analysis-hero">
   <div>
     <p class="eyebrow">AI Visibility · P6</p>
     <h1>AI Visibility</h1>
@@ -12,7 +13,9 @@
   </div>
 </section>
 
-<section class="panel">
+<%- include('../partials/geo-center-nav', { project, geoCenterActive: 'visibility' }) %>
+
+<section class="panel analysis-evidence-note">
   <div class="panel-header">
     <div>
       <h2>官方 API 可见性采样</h2>
@@ -23,12 +26,12 @@
 </section>
 
 <% if (visibilitySummary) { %>
-<section class="panel">
+<section class="panel analysis-table-panel" data-ui="visibility-metrics-summary">
   <div class="panel-header">
     <div><h2>最新 Visibility 指标</h2><p class="muted">全部来自同一个最新 COMPLETED P6-C snapshot；UNKNOWN / NO_DATA 不会按 0 计算。</p></div>
     <span class="badge"><%= visibilitySummary.snapshot.formulaVersion %></span>
   </div>
-  <section class="metric-grid compact">
+  <section class="metric-grid compact analysis-metric-grid">
     <article class="metric-card"><div class="metric-title">Owned Mention Rate</div><div class="metric-value"><%= pct(visibilitySummary.mentionRate?.ratio ?? null) %></div><div class="metric-caption"><%= visibilitySummary.mentionRate?.status ?? 'NO_DATA' %></div></article>
     <article class="metric-card"><div class="metric-title">Owned Citation Rate</div><div class="metric-value"><%= pct(visibilitySummary.citationRate?.ratio ?? null) %></div><div class="metric-caption"><%= visibilitySummary.citationRate?.status ?? 'NO_DATA' %></div></article>
     <article class="metric-card"><div class="metric-title">Owned Mention SOV</div><div class="metric-value"><%= pct(visibilitySummary.ownedSov?.ratio ?? null) %></div><div class="metric-caption"><%= visibilitySummary.ownedSov?.status ?? 'NO_DATA' %></div></article>
@@ -51,7 +54,7 @@
 <section class="panel"><div class="panel-header"><div><h2>Visibility 指标</h2><p class="muted">尚无完成的 P6-C metric snapshot。页面访问不会触发采样或指标计算。</p></div></div></section>
 <% } %>
 
-<section class="metric-grid compact">
+<section class="metric-grid compact analysis-metric-grid">
   <article class="metric-card">
     <div class="metric-title">Provider 配置</div>
     <div class="metric-value"><%= providers.length %></div>
@@ -91,7 +94,7 @@
   </div>
 </section>
 
-<section class="panel">
+<section class="panel analysis-table-panel">
   <div class="panel-header"><div><h2>Provider API 配置</h2><p class="muted">P6-A 仅支持 channel=API；消费者 UI 自动化不在本阶段范围。</p></div></div>
   <div class="table-wrap"><table>
     <thead><tr><th>Provider</th><th>Model</th><th>Channel</th><th>Grounding</th><th>状态</th><th>并发</th></tr></thead>
@@ -104,7 +107,7 @@
   </table></div>
 </section>
 
-<section class="panel">
+<section class="panel analysis-table-panel">
   <div class="panel-header"><div><h2>最近采样运行</h2><p class="muted">这里展示采样状态与观察数量，不在渲染阶段重新推导提及/引用事实。</p></div></div>
   <div class="table-wrap"><table>
     <thead><tr><th>运行</th><th>类型</th><th>状态</th><th>观察数</th><th>预算上限</th><th>创建时间</th></tr></thead>
@@ -121,3 +124,4 @@
     </tbody>
   </table></div>
 </section>
+</div>

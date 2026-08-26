@@ -80,7 +80,11 @@ test('drills from SEO audit to deterministic issue detail', async ({ page }) => 
   await page.goto(`/projects/${project.id}/seo`);
   const main = page.getByRole('main');
   await expect(main.getByRole('heading', { level: 1, name: 'SEO 审计' })).toBeVisible();
+  await expect(main.locator('[data-ui="seo-center"]')).toBeVisible();
+  await expect(main.locator('[data-ui="seo-score-summary"]')).toContainText('92.5');
+  await expect(main.locator('[data-ui="seo-evidence-table"]')).toBeVisible();
   await expect(main.getByText('92.5', { exact: true }).first()).toBeVisible();
+  await expect(main.getByText('关键词排名')).toHaveCount(0);
 
   await main.getByRole('link', { name: 'Missing title' }).first().click();
   const issueMain = page.getByRole('main');

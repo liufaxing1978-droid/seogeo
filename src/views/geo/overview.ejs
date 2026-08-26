@@ -1,4 +1,5 @@
-<section class="page-header">
+<div class="analysis-center" data-ui="geo-readiness-center">
+<section class="page-header analysis-hero">
   <div>
     <p class="eyebrow">GEO</p>
     <h1>GEO 概览</h1>
@@ -18,6 +19,8 @@
   </div>
 </section>
 
+<%- include('../partials/geo-center-nav', { project, geoCenterActive: 'readiness' }) %>
+
 <% if (!audit) { %>
   <section class="panel">
     <h2>尚无 GEO 审计</h2>
@@ -30,7 +33,7 @@
   <% const brandComponent = componentByCode.get('BRAND'); %>
   <% const contentGeo = componentByCode.get('CONTENT_GEO'); %>
 
-  <section class="metric-grid compact">
+  <section class="metric-grid compact analysis-metric-grid" data-ui="geo-readiness-summary">
     <article class="metric-card">
       <div class="metric-title">GEO Readiness</div>
       <div class="metric-value"><%= score ? score.score : '--' %></div>
@@ -176,8 +179,9 @@
     </div>
   </section>
 
-  <section class="panel">
+  <section class="panel analysis-evidence-note">
     <h2>AI Visibility 与 GEO Readiness 是两个指标</h2>
     <p class="muted">当前 P3 的 GEO Readiness 来自站内可验证事实。AI Visibility 需要真实的 Prompt × Platform 重复采样，将在 P6 高级版单独计算；当前状态为“尚未采样”，不会以 0 分代替未知。</p>
   </section>
 <% } %>
+</div>

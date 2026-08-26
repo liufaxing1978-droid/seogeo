@@ -168,7 +168,11 @@ describe('P6-C metrics and SOV web UI', () => {
     expect(response.text).not.toContain('PRIVATE SCOPE MUST NOT RENDER');
     const mainMatch = response.text.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
     expect(mainMatch).not.toBeNull();
-    expect(mainMatch?.[1] ?? '').not.toMatch(/趋势|趋势线|delta|alert|告警|历史曲线|AI narrative/i);
+    const mainWithoutAnalysisSubnav = (mainMatch?.[1] ?? '').replace(
+      /<nav\b[^>]*aria-label="GEO 与 AI Visibility 二级导航"[^>]*>[\s\S]*?<\/nav>/i,
+      ''
+    );
+    expect(mainWithoutAnalysisSubnav).not.toMatch(/趋势|趋势线|delta|alert|告警|历史曲线|AI narrative/i);
   });
 
   it('gates Standard before restricted metric reads', async () => {

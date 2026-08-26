@@ -1,0 +1,17 @@
+<%
+  const centerActive = (typeof geoCenterActive !== 'undefined' && geoCenterActive) ? geoCenterActive : activeNav;
+%>
+<nav class="analysis-subnav" aria-label="GEO 与 AI Visibility 二级导航" data-ui="geo-center-nav">
+  <a href="/projects/<%= project.id %>/geo"<% if (centerActive === 'readiness') { %> aria-current="page"<% } %>>GEO Readiness</a>
+  <a href="/projects/<%= project.id %>/geo/citability"<% if (centerActive === 'citability') { %> aria-current="page"<% } %>>Citability</a>
+  <a href="/projects/<%= project.id %>/geo/entities"<% if (centerActive === 'entities') { %> aria-current="page"<% } %>>Entity</a>
+  <a href="/projects/<%= project.id %>/geo/ai-crawlers"<% if (centerActive === 'ai-crawlers') { %> aria-current="page"<% } %>>AI Crawler</a>
+  <span class="analysis-subnav-divider" aria-hidden="true"></span>
+  <a href="/projects/<%= project.id %>/visibility"<% if (centerActive === 'visibility') { %> aria-current="page"<% } %>>AI Visibility</a>
+  <a href="/projects/<%= project.id %>/visibility/history"<% if (centerActive === 'visibility-history') { %> aria-current="page"<% } %>>历史</a>
+  <a href="/projects/<%= project.id %>/visibility/alerts"<% if (centerActive === 'visibility-alerts') { %> aria-current="page"<% } %>>告警</a>
+  <a href="/projects/<%= project.id %>/visibility/prompts"<% if (centerActive === 'visibility-prompts') { %> aria-current="page"<% } %>>Prompt</a>
+  <a href="/projects/<%= project.id %>/visibility/citations"<% if (centerActive === 'visibility-citations') { %> aria-current="page"<% } %>>引用</a>
+  <a href="/projects/<%= project.id %>/visibility/subjects"<% if (centerActive === 'visibility-subjects') { %> aria-current="page"<% } %>>主体</a>
+  <a href="/projects/<%= project.id %>/visibility/metrics"<% if (centerActive === 'visibility-metrics') { %> aria-current="page"<% } %>>指标</a>
+</nav>

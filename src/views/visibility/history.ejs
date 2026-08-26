@@ -20,6 +20,8 @@
   </div>
 </section>
 
+<%- include('../partials/geo-center-nav', { project }) %>
+
 <section class="metric-grid compact">
   <% for (const [label, points] of metricCards) { const point = latestPoint(points); %>
     <article class="metric-card">
