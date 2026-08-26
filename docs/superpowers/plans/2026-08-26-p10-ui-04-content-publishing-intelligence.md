@@ -90,3 +90,5 @@ Verification sequence:
 ## Completion rule
 
 UI-04 is complete only when the exact PR head is green and the diff is limited to the planned documentation, EJS partial/views, CSS, layout stylesheet registration, and tests. Stop after UI-04; UI-05 remains a separate P10 work package.
+
+Verification must always be attached to the final PR head; superseded CI runs are not completion evidence.
