@@ -55,7 +55,7 @@ describe('P10 UI-01 shell design system contract', () => {
     expect(layout).toContain('class="skip-link"');
     expect(layout).toContain('href="#main-content"');
     expect(layout).toContain("include('partials/icon-sprite')");
-    expect(layout).toContain('data-ui="nav-backdrop"');
+    expect(layout).toContain('data-nav-backdrop');
     expect(layout).toContain('id="main-content"');
   });
 
