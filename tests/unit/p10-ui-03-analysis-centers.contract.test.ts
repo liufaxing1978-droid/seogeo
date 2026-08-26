@@ -43,6 +43,33 @@ describe('P10 UI-03 analysis-center productization contract', () => {
     expect(nav).not.toContain('href="#"');
   });
 
+  it('mounts the shared GEO / Visibility navigation on every planned subpage', () => {
+    const geoPages = [
+      ['src/views/geo/overview.ejs', 'readiness'],
+      ['src/views/geo/citability.ejs', 'citability'],
+      ['src/views/geo/entities.ejs', 'entities'],
+      ['src/views/geo/ai-crawlers.ejs', 'ai-crawlers'],
+    ] as const;
+    const visibilityPages = [
+      'src/views/visibility/index.ejs',
+      'src/views/visibility/history.ejs',
+      'src/views/visibility/alerts.ejs',
+      'src/views/visibility/prompts.ejs',
+      'src/views/visibility/citations.ejs',
+      'src/views/visibility/subjects.ejs',
+      'src/views/visibility/metrics.ejs',
+    ] as const;
+
+    for (const [path, active] of geoPages) {
+      const page = source(path);
+      expect(page).toContain("include('../partials/geo-center-nav'");
+      expect(page).toContain(`geoCenterActive: '${active}'`);
+    }
+    for (const path of visibilityPages) {
+      expect(source(path)).toContain("include('../partials/geo-center-nav'");
+    }
+  });
+
   it('keeps GEO Readiness separate from persisted AI Visibility metrics', () => {
     const geo = source('src/views/geo/overview.ejs');
     const visibility = source('src/views/visibility/index.ejs');
@@ -67,6 +94,15 @@ describe('P10 UI-03 analysis-center productization contract', () => {
     expect(ai).toContain('AI 只分析已保存事实');
     expect(ai).toContain('不展示 API Key');
     expect(ai).toContain('provider reasoning');
+  });
+
+  it('uses the approved AI advisory workspace markers', () => {
+    const ai = source('src/views/ai/index.ejs');
+
+    expect(ai).toContain('data-ui="ai-analysis-center"');
+    expect(ai).toContain('data-ui="ai-advisory-boundary"');
+    expect(ai).toContain('data-ui="ai-analysis-actions"');
+    expect(ai).toContain('data-ui="ai-task-history"');
   });
 
   it('productizes AI analysis without turning advisory output into deterministic facts', () => {
