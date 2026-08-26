@@ -8,6 +8,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-26-p10-ui-productization-design.md`
 
+**Final verification PR:** `#169` from `codex/p10-ui-04-final`.
+
 ## Non-negotiable boundaries
 
 - P10 UI-04 only. No UI-05, no P11, and no production deployment in this plan.
