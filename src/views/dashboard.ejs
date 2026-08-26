@@ -92,9 +92,8 @@
 
       <div class="dashboard-focus-actions" aria-label="焦点项目快捷入口">
         <a href="/projects/<%= focusProject.id %>/seo">SEO 审计</a>
-        <a href="/projects/<%= focusProject.id %>/geo">GEO 概览</a>
+        <a href="/projects/<%= focusProject.id %>/geo">GEO / 可见度</a>
         <% if (focusProject.planLevel !== 'STANDARD') { %>
-          <a href="/projects/<%= focusProject.id %>/visibility">AI Visibility</a>
           <a href="/projects/<%= focusProject.id %>/ai">DeepSeek 分析</a>
         <% } %>
       </div>
