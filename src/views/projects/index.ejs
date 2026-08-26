@@ -1,26 +1,79 @@
-<section class="page-heading">
-  <div><p class="eyebrow">项目</p><h2>项目列表</h2><p class="muted">管理需要审计和监控的网站。</p></div>
-  <a class="button" href="/projects/new">+ 新建项目</a>
-</section>
-<section class="panel table-panel">
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>项目</th><th>域名</th><th>套餐</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead>
-      <tbody>
-      <% if (!projects.length) { %>
-        <tr><td colspan="6" class="empty-cell">暂无项目</td></tr>
-      <% } %>
-      <% projects.forEach((project) => { %>
-        <tr>
-          <td><strong><%= project.name %></strong><br><span class="muted small"><%= project.slug %></span></td>
-          <td><%= project.primaryDomain %></td>
-          <td><span class="badge <%= project.planLevel === 'STANDARD' ? 'neutral' : 'premium' %>"><%= project.planLevel %></span></td>
-          <td><span class="badge success"><%= project.status %></span></td>
-          <td><%= new Date(project.updatedAt).toLocaleString('zh-CN') %></td>
-          <td><a href="/projects/<%= project.id %>">查看</a></td>
-        </tr>
-      <% }) %>
-      </tbody>
-    </table>
-  </div>
+<section class="project-center" data-ui="project-center">
+  <section class="page-heading project-center-heading">
+    <div>
+      <p class="eyebrow">项目中心</p>
+      <h2>项目中心</h2>
+      <p class="muted">只展示当前账号有权访问的项目。SEO / GEO 评分来自最新持久化事实；尚无评分时显示 --。</p>
+    </div>
+    <a class="button" href="/projects/new">+ 新建项目</a>
+  </section>
+
+  <section class="project-summary-grid" data-ui="project-summary-grid" aria-label="项目摘要">
+    <article class="project-summary-card">
+      <span>项目总数</span>
+      <strong><%= projectSummary.total %></strong>
+      <small>当前账号可访问</small>
+    </article>
+    <article class="project-summary-card">
+      <span>ACTIVE</span>
+      <strong><%= projectSummary.active %></strong>
+      <small>当前启用项目</small>
+    </article>
+    <article class="project-summary-card">
+      <span>ADVANCED</span>
+      <strong><%= projectSummary.advanced %></strong>
+      <small>高级套餐项目</small>
+    </article>
+    <article class="project-summary-card">
+      <span>ENTERPRISE</span>
+      <strong><%= projectSummary.enterprise %></strong>
+      <small>企业套餐项目</small>
+    </article>
+  </section>
+
+  <section class="panel project-table-panel">
+    <div class="panel-title-row project-table-heading">
+      <div>
+        <h3>项目列表</h3>
+        <p class="muted">授权范围、项目顺序与现有 ProjectService 保持一致。</p>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="project-table" data-ui="project-table">
+        <thead>
+          <tr>
+            <th>项目</th>
+            <th>域名</th>
+            <th>套餐</th>
+            <th>状态</th>
+            <th>SEO</th>
+            <th>GEO</th>
+            <th>更新时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+        <% if (!projectRows.length) { %>
+          <tr><td colspan="8" class="empty-cell">暂无可访问项目</td></tr>
+        <% } %>
+        <% projectRows.forEach((row) => { const project = row.project; %>
+          <tr>
+            <td>
+              <strong><%= project.name %></strong>
+              <br>
+              <span class="muted small"><%= project.slug %></span>
+            </td>
+            <td><%= project.primaryDomain %></td>
+            <td><span class="badge <%= project.planLevel === 'STANDARD' ? 'neutral' : 'premium' %>"><%= project.planLevel %></span></td>
+            <td><span class="badge <%= project.status === 'ACTIVE' ? 'success' : 'neutral' %>"><%= project.status %></span></td>
+            <td><strong class="project-score"><%= row.facts.seoScore !== null ? row.facts.seoScore : '--' %></strong></td>
+            <td><strong class="project-score"><%= row.facts.geoScore !== null ? row.facts.geoScore : '--' %></strong></td>
+            <td><%= new Date(project.updatedAt).toLocaleString('zh-CN') %></td>
+            <td><a class="project-open-link" href="/projects/<%= project.id %>">查看项目</a></td>
+          </tr>
+        <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </section>
 </section>
