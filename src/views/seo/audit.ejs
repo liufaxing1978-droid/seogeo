@@ -1,110 +1,115 @@
-<section class="page-header">
-  <div>
-    <p class="eyebrow">SEO</p>
-    <h1>SEO 审计</h1>
-    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
-  </div>
-  <div class="actions">
-    <% if (latestCompletedCrawl) { %>
-      <form action="/projects/<%= project.id %>/seo/run" method="post">
-        <button class="button" type="submit">运行 SEO 审计</button>
-      </form>
-    <% } else { %>
-      <a class="button secondary" href="/projects/<%= project.id %>/crawls">先运行抓取</a>
-    <% } %>
-    <a class="button secondary" href="/projects/<%= project.id %>/seo/issues">问题中心</a>
-  </div>
+<section class="analysis-center seo-center" data-ui="seo-center">
+  <header class="analysis-hero">
+    <div>
+      <p class="eyebrow">SEO 中心</p>
+      <h1>SEO 审计</h1>
+      <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
+    </div>
+    <div class="actions">
+      <% if (latestCompletedCrawl) { %>
+        <form action="/projects/<%= project.id %>/seo/run" method="post">
+          <button class="button" type="submit">运行 SEO 审计</button>
+        </form>
+      <% } else { %>
+        <a class="button secondary" href="/projects/<%= project.id %>/crawls">先运行抓取</a>
+      <% } %>
+      <a class="button secondary" href="/projects/<%= project.id %>/seo/issues">问题中心</a>
+    </div>
+  </header>
+
+  <% if (!audit) { %>
+    <section class="panel">
+      <h2>尚无 SEO 审计</h2>
+      <p class="muted">P2 只读取已经完成的抓取事实。完成一次抓取后即可生成确定性的 SEO 审计。</p>
+    </section>
+  <% } else { %>
+    <section class="analysis-score-grid" aria-label="SEO 审计摘要">
+      <article class="metric-card analysis-primary-metric" data-ui="seo-score-summary">
+        <div class="metric-title">SEO Score</div>
+        <div class="metric-value"><%= score ? score.score : '--' %></div>
+        <div class="metric-caption">
+          <% if (score && score.change !== null) { %>
+            较上次 <%= score.change > 0 ? '+' : '' %><%= score.change %>
+          <% } else { %>
+            首次可解释评分
+          <% } %>
+        </div>
+      </article>
+
+      <div class="analysis-severity-grid" data-ui="seo-severity-summary">
+        <article class="metric-card"><div class="metric-title">Critical</div><div class="metric-value"><%= severityCounts.CRITICAL %></div><div class="metric-caption">CRITICAL</div></article>
+        <article class="metric-card"><div class="metric-title">High</div><div class="metric-value"><%= severityCounts.HIGH %></div><div class="metric-caption">HIGH</div></article>
+        <article class="metric-card"><div class="metric-title">Medium</div><div class="metric-value"><%= severityCounts.MEDIUM %></div><div class="metric-caption">MEDIUM</div></article>
+        <article class="metric-card"><div class="metric-title">Low</div><div class="metric-value"><%= severityCounts.LOW %></div><div class="metric-caption">LOW</div></article>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>审计运行</h2>
+          <p class="muted">状态 <strong><%= audit.status %></strong> · Engine <%= audit.engineVersion %></p>
+        </div>
+        <a class="button secondary" href="/crawls/<%= audit.crawlRun.id %>">查看来源抓取</a>
+      </div>
+      <dl class="detail-grid">
+        <div><dt>来源 Crawl</dt><dd><%= audit.crawlRun.runType %></dd></div>
+        <div><dt>页面事实</dt><dd><%= audit.eligiblePages %></dd></div>
+        <div><dt>规则评估</dt><dd><%= audit.rulesEvaluated %></dd></div>
+        <div><dt>完成时间</dt><dd><%= audit.finishedAt ? new Date(audit.finishedAt).toLocaleString('zh-CN') : '运行中' %></dd></div>
+      </dl>
+    </section>
+
+    <section class="panel analysis-table-panel" data-ui="seo-evidence-table">
+      <div class="panel-header">
+        <div><h2>评分组件</h2><p class="muted">每一项扣分都可追溯到确定性规则和受影响范围。</p></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>规则</th><th>严重度</th><th>范围</th><th>影响比例</th><th>权重</th><th>扣分</th></tr></thead>
+          <tbody>
+            <% for (const component of components) { %>
+              <tr>
+                <td><strong><%= component.ruleName %></strong><br><span class="muted"><%= component.ruleCode %></span></td>
+                <td><span class="badge"><%= component.severity %></span></td>
+                <td><%= component.scopeLabel %></td>
+                <td><%= Math.round(component.pageImpactFactor * 100) %>%</td>
+                <td><%= component.weight %></td>
+                <td><strong><%= component.penalty %></strong></td>
+              </tr>
+            <% } %>
+            <% if (!components.length) { %><tr><td colspan="6" class="muted">本次审计没有产生扣分组件。</td></tr><% } %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel analysis-table-panel" data-ui="seo-issues-table">
+      <div class="panel-header">
+        <div><h2>主要问题</h2><p class="muted">Issue 由 FAIL 规则结果聚合，不由 AI 推断。</p></div>
+        <a href="/projects/<%= project.id %>/seo/issues">查看全部</a>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>问题</th><th>严重度</th><th>状态</th><th>范围</th><th>变化</th></tr></thead>
+          <tbody>
+            <% for (const issue of topIssues) { %>
+              <tr>
+                <td><a href="/seo/issues/<%= issue.id %>"><%= issue.title %></a><br><span class="muted"><%= issue.ruleCode %></span></td>
+                <td><strong><%= issue.severity %></strong></td>
+                <td><%= issue.status %></td>
+                <td><%= issue.detectionType === 'CRAWL_FACT' ? '全站' : `${issue.affectedPagesCount} 页面` %></td>
+                <td><%= issue.comparison %></td>
+              </tr>
+            <% } %>
+            <% if (!topIssues.length) { %><tr><td colspan="5" class="muted">本次审计没有检测到 SEO 问题。</td></tr><% } %>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <aside class="analysis-evidence-note">
+      SEO 问题成立、受影响页面和 SEO Score 均来自确定性规则。AI 分析中心可基于已保存审计事实生成解释与建议，但不参与这些事实的判定。
+    </aside>
+  <% } %>
 </section>
-
-<% if (!audit) { %>
-  <section class="panel">
-    <h2>尚无 SEO 审计</h2>
-    <p class="muted">P2 只读取已经完成的抓取事实。完成一次抓取后即可生成确定性的 SEO 审计。</p>
-  </section>
-<% } else { %>
-  <section class="metric-grid compact">
-    <article class="metric-card">
-      <div class="metric-title">SEO Score</div>
-      <div class="metric-value"><%= score ? score.score : '--' %></div>
-      <div class="metric-caption">
-        <% if (score && score.change !== null) { %>
-          较上次 <%= score.change > 0 ? '+' : '' %><%= score.change %>
-        <% } else { %>
-          首次可解释评分
-        <% } %>
-      </div>
-    </article>
-    <article class="metric-card"><div class="metric-title">Critical</div><div class="metric-value"><%= severityCounts.CRITICAL %></div><div class="metric-caption">CRITICAL</div></article>
-    <article class="metric-card"><div class="metric-title">High</div><div class="metric-value"><%= severityCounts.HIGH %></div><div class="metric-caption">HIGH</div></article>
-    <article class="metric-card"><div class="metric-title">Medium</div><div class="metric-value"><%= severityCounts.MEDIUM %></div><div class="metric-caption">MEDIUM</div></article>
-    <article class="metric-card"><div class="metric-title">Low</div><div class="metric-value"><%= severityCounts.LOW %></div><div class="metric-caption">LOW</div></article>
-  </section>
-
-  <section class="panel">
-    <div class="panel-header">
-      <div>
-        <h2>审计运行</h2>
-        <p class="muted">状态 <strong><%= audit.status %></strong> · Engine <%= audit.engineVersion %></p>
-      </div>
-      <a class="button secondary" href="/crawls/<%= audit.crawlRun.id %>">查看来源抓取</a>
-    </div>
-    <dl class="detail-grid">
-      <div><dt>来源 Crawl</dt><dd><%= audit.crawlRun.runType %></dd></div>
-      <div><dt>页面事实</dt><dd><%= audit.eligiblePages %></dd></div>
-      <div><dt>规则评估</dt><dd><%= audit.rulesEvaluated %></dd></div>
-      <div><dt>完成时间</dt><dd><%= audit.finishedAt ? new Date(audit.finishedAt).toLocaleString('zh-CN') : '运行中' %></dd></div>
-    </dl>
-  </section>
-
-  <section class="panel">
-    <div class="panel-header">
-      <div><h2>评分组件</h2><p class="muted">每一项扣分都可追溯到确定性规则和受影响范围。</p></div>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>规则</th><th>严重度</th><th>范围</th><th>影响比例</th><th>权重</th><th>扣分</th></tr></thead>
-        <tbody>
-          <% for (const component of components) { %>
-            <tr>
-              <td><strong><%= component.ruleName %></strong><br><span class="muted"><%= component.ruleCode %></span></td>
-              <td><span class="badge"><%= component.severity %></span></td>
-              <td><%= component.scopeLabel %></td>
-              <td><%= Math.round(component.pageImpactFactor * 100) %>%</td>
-              <td><%= component.weight %></td>
-              <td><strong><%= component.penalty %></strong></td>
-            </tr>
-          <% } %>
-          <% if (!components.length) { %><tr><td colspan="6" class="muted">本次审计没有产生扣分组件。</td></tr><% } %>
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="panel">
-    <div class="panel-header">
-      <div><h2>主要问题</h2><p class="muted">Issue 由 FAIL 规则结果聚合，不由 AI 推断。</p></div>
-      <a href="/projects/<%= project.id %>/seo/issues">查看全部</a>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>问题</th><th>严重度</th><th>状态</th><th>范围</th><th>变化</th></tr></thead>
-        <tbody>
-          <% for (const issue of topIssues) { %>
-            <tr>
-              <td><a href="/seo/issues/<%= issue.id %>"><%= issue.title %></a><br><span class="muted"><%= issue.ruleCode %></span></td>
-              <td><strong><%= issue.severity %></strong></td>
-              <td><%= issue.status %></td>
-              <td><%= issue.detectionType === 'CRAWL_FACT' ? '全站' : `${issue.affectedPagesCount} 页面` %></td>
-              <td><%= issue.comparison %></td>
-            </tr>
-          <% } %>
-          <% if (!topIssues.length) { %><tr><td colspan="5" class="muted">本次审计没有检测到 SEO 问题。</td></tr><% } %>
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="panel">
-    <p class="muted">P2 的问题成立、受影响页面和 SEO Score 均来自确定性规则。AI 分析将在后续通过独立 AI Gateway 接入，不参与这里的事实判定。</p>
-  </section>
-<% } %>
