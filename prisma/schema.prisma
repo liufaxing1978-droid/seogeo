@@ -173,6 +173,7 @@ model Project {
   entityRelations EntityRelation[]
   geoScores       GeoScore[]
   markets         ProjectMarket[]
+  memberships     ProjectMembership[]
 
   @@index([primaryDomain])
   @@index([status])

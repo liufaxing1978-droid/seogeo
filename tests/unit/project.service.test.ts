@@ -21,7 +21,9 @@ const project = {
 function repository(): ProjectRepository {
   return {
     create: async () => project,
+    createForOwner: async () => project,
     list: async () => [project],
+    listForUser: async () => [project],
     findById: async (id) => id === project.id ? project : null,
     update: async () => project
   };

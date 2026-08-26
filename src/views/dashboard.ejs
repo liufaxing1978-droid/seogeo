@@ -1,76 +1,153 @@
-<section class="page-heading">
-  <div>
-    <p class="eyebrow">平台总览</p>
-    <h2>SEO + GEO 总控台</h2>
-    <p class="muted">只展示已持久化的项目事实；Visibility 保持项目级口径，不计算跨项目平均值。</p>
-  </div>
-  <div class="actions"><a class="button secondary" href="/projects">项目列表</a><a class="button" href="/projects/new">新建项目</a></div>
-</section>
+<% const focus = portfolio.projects[0] ?? null; %>
+<% const focusProject = focus?.project ?? null; %>
+<% const focusFacts = focus?.facts ?? null; %>
+<% const visibilityRatio = focusFacts?.visibility?.mentionRate?.ratio ?? null; %>
+<% const missingSeoCount = portfolio.projects.filter(({ facts }) => facts.seoScore === null).length; %>
+<% const missingGeoCount = portfolio.projects.filter(({ facts }) => facts.geoScore === null).length; %>
 
-<section class="metric-grid compact">
-  <article class="metric-card"><div class="metric-title">项目数</div><div class="metric-value"><%= portfolio.projectCount %></div><div class="metric-caption">当前有界项目集</div></article>
-  <article class="metric-card"><div class="metric-title">Advanced / Enterprise</div><div class="metric-value"><%= portfolio.advancedProjectCount %></div><div class="metric-caption">具备 P6 读取资格</div></article>
-  <article class="metric-card"><div class="metric-title">Critical Issues</div><div class="metric-value"><%= portfolio.criticalIssueCount %></div><div class="metric-caption">未解决 CRITICAL SEO 问题</div></article>
-</section>
-
-<% if (portfolio.enterpriseGrowthProjects.length > 0) { %>
-<section class="panel" aria-label="Enterprise Growth Portfolio">
-  <div class="panel-header">
-    <div><h3>Enterprise Growth Portfolio</h3><p>仅聚合 Enterprise 项目的安全 P7-A 摘要；按 CRITICAL 风险、Top Growth Score 和稳定项目键排序。</p></div>
-    <span class="badge premium">Enterprise</span>
-  </div>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>项目</th><th>Top Growth Score</th><th>CRITICAL</th><th>Resolved</th><th>GSC</th><th>数据日期</th></tr></thead>
-      <tbody>
-        <% portfolio.enterpriseGrowthProjects.forEach((row) => { %>
-          <tr data-growth-project="<%= row.projectId %>">
-            <td><a href="/projects/<%= row.projectId %>"><strong><%= row.projectName %></strong></a><br><span class="muted"><%= row.primaryDomain %></span></td>
-            <td><%= row.topEligibleScore === null ? '暂无可排名机会' : row.topEligibleScore %></td>
-            <td><%= row.criticalCount %></td>
-            <td><%= row.resolvedCount %></td>
-            <td><span class="badge <%= row.connectionStatus === 'CONNECTED' ? 'success' : 'neutral' %>"><%= row.connectionStatus %></span></td>
-            <td><%= row.latestCompletedDate || 'NO_DATA' %></td>
-          </tr>
-        <% }) %>
-      </tbody>
-    </table>
-  </div>
-</section>
-<% } %>
-
-<section class="panel">
-  <div class="panel-header"><div><h3>项目组合</h3><p>每个项目显示自己的最新持久化事实，不合并 Visibility 比率。</p></div><span class="badge neutral">最多 50 个项目</span></div>
-  <% if (portfolio.projects.length === 0) { %>
-    <div class="empty-state">尚无项目。创建项目后，这里会显示真实 SEO / GEO / Visibility 状态。</div>
-  <% } else { %>
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>项目</th><th>套餐</th><th>SEO</th><th>GEO</th><th>Critical</th><th>Growth</th><th>Owned Mention Rate</th></tr></thead>
-        <tbody>
-          <% portfolio.projects.forEach(({ project, facts }) => { %>
-            <tr>
-              <td><a href="/projects/<%= project.id %>"><strong><%= project.name %></strong></a><br><span class="muted"><%= project.primaryDomain %></span></td>
-              <td><span class="badge <%= project.planLevel === 'STANDARD' ? 'neutral' : 'premium' %>"><%= project.planLevel %></span></td>
-              <td><%= facts.seoScore === null ? '--' : facts.seoScore.toFixed(1) %></td>
-              <td><%= facts.geoScore === null ? '--' : facts.geoScore.toFixed(1) %></td>
-              <td><%= facts.criticalIssueCount %></td>
-              <td><%= facts.growth.topEligibleScore === null ? '暂无可排名机会' : facts.growth.topEligibleScore %></td>
-              <td>
-                <% if (project.planLevel === 'STANDARD') { %>
-                  <span class="badge neutral">高级版</span>
-                <% } else if (!facts.visibility) { %>
-                  <span class="muted">暂无快照</span>
-                <% } else if (facts.visibility.mentionRate.ratio === null) { %>
-                  <span class="badge neutral"><%= facts.visibility.mentionRate.status %></span>
-                <% } else { %>
-                  <%= (facts.visibility.mentionRate.ratio * 100).toFixed(1) %>%
-                <% } %>
-              </td>
-            </tr>
-          <% }) %>
-        </tbody>
-      </table>
+<section class="dashboard-overview" data-ui="dashboard-overview">
+  <section class="dashboard-hero">
+    <div>
+      <p class="eyebrow">P10 · Platform Overview</p>
+      <h2>SEO + GEO 智能总控台</h2>
+      <p class="muted">统一查看项目 SEO、GEO、AI Visibility 与增长事实。所有数值均来自已持久化项目数据；缺失数据明确显示为空，不推测、不跨项目伪造平均值。</p>
     </div>
-  <% } %>
+    <div class="dashboard-hero-actions">
+      <a class="button secondary" href="/projects">查看项目</a>
+      <a class="button" href="/projects/new">新建项目</a>
+    </div>
+  </section>
+
+  <section class="dashboard-command-grid" aria-label="核心指标">
+    <article class="command-card" data-ui="seo-score">
+      <div class="command-kicker">SEO Score</div>
+      <div class="command-value"><%= focusFacts?.seoScore === null || typeof focusFacts?.seoScore === 'undefined' ? '--' : focusFacts.seoScore.toFixed(1) %></div>
+      <div class="command-caption"><%= focusProject ? `${focusProject.name} · 最新持久化 SEO 事实` : '暂无项目数据' %></div>
+    </article>
+    <article class="command-card" data-ui="geo-visibility">
+      <div class="command-kicker">GEO Visibility</div>
+      <div class="command-value gold"><%= visibilityRatio === null ? '--' : `${(visibilityRatio * 100).toFixed(1)}%` %></div>
+      <div class="command-caption"><%= focusProject ? `${focusProject.name} · Owned Mention Rate` : '暂无项目数据' %></div>
+    </article>
+    <article class="command-card" data-ui="ai-tasks">
+      <div class="command-kicker">AI Tasks</div>
+      <div class="command-value">--</div>
+      <div class="command-caption">Dashboard 尚未提供 AI 任务聚合事实，因此不推测任务数量。</div>
+    </article>
+    <article class="command-card" data-ui="project-status">
+      <div class="command-kicker">Project Status</div>
+      <div class="command-value success"><%= portfolio.projectCount %></div>
+      <div class="command-caption"><%= portfolio.advancedProjectCount %> 个 Advanced / Enterprise 项目</div>
+    </article>
+  </section>
+
+  <section class="dashboard-grid p10-grid">
+    <div class="dashboard-stack">
+      <article class="panel" data-ui="task-center">
+        <div class="panel-title-row">
+          <div><h3>任务中心</h3><p class="muted small">由当前持久化事实推导的待处理事项。</p></div>
+          <span class="badge neutral">Fact-based</span>
+        </div>
+        <ul class="task-list">
+          <% if (portfolio.criticalIssueCount > 0) { %>
+            <li class="task-item"><span class="task-indicator"></span><div class="task-copy"><strong>处理 <%= portfolio.criticalIssueCount %> 个 CRITICAL SEO 问题</strong><span>优先进入对应项目的问题中心确认与处置。</span></div></li>
+          <% } %>
+          <% if (missingSeoCount > 0) { %>
+            <li class="task-item"><span class="task-indicator"></span><div class="task-copy"><strong><%= missingSeoCount %> 个项目暂无 SEO Score</strong><span>完成抓取与 SEO 审计后即可形成可展示事实。</span></div></li>
+          <% } %>
+          <% if (missingGeoCount > 0) { %>
+            <li class="task-item"><span class="task-indicator"></span><div class="task-copy"><strong><%= missingGeoCount %> 个项目暂无 GEO Score</strong><span>运行 GEO 分析以补齐实体与可引用性数据。</span></div></li>
+          <% } %>
+          <% if (portfolio.criticalIssueCount === 0 && missingSeoCount === 0 && missingGeoCount === 0) { %>
+            <li class="task-item"><span class="task-indicator success"></span><div class="task-copy"><strong>当前没有由 Dashboard 事实触发的待办</strong><span>继续观察项目最新审计、Visibility 与增长结果。</span></div></li>
+          <% } %>
+        </ul>
+      </article>
+
+      <% if (portfolio.enterpriseGrowthProjects.length > 0) { %>
+      <section class="panel" aria-label="Enterprise Growth Portfolio">
+        <div class="panel-header">
+          <div><h3>Enterprise Growth Portfolio</h3><p>仅聚合 Enterprise 项目的安全 P7-A 摘要；按 CRITICAL 风险、Top Growth Score 和稳定项目键排序。</p></div>
+          <span class="badge premium">Enterprise</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>项目</th><th>Top Growth Score</th><th>CRITICAL</th><th>Resolved</th><th>GSC</th><th>数据日期</th></tr></thead>
+            <tbody>
+              <% portfolio.enterpriseGrowthProjects.forEach((row) => { %>
+                <tr data-growth-project="<%= row.projectId %>">
+                  <td><a href="/projects/<%= row.projectId %>"><strong><%= row.projectName %></strong></a><br><span class="muted"><%= row.primaryDomain %></span></td>
+                  <td><%= row.topEligibleScore === null ? '暂无可排名机会' : row.topEligibleScore %></td>
+                  <td><%= row.criticalCount %></td>
+                  <td><%= row.resolvedCount %></td>
+                  <td><span class="badge <%= row.connectionStatus === 'CONNECTED' ? 'success' : 'neutral' %>"><%= row.connectionStatus %></span></td>
+                  <td><%= row.latestCompletedDate || 'NO_DATA' %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <% } %>
+    </div>
+
+    <div class="dashboard-stack">
+      <article class="panel" data-ui="quick-actions">
+        <div class="panel-title-row"><div><h3>快捷操作</h3><p class="muted small">只链接到系统中已经存在的真实页面。</p></div></div>
+        <div class="quick-action-list">
+          <a class="quick-action" href="/projects"><strong>项目中心</strong><span>查看全部项目和当前事实。</span></a>
+          <a class="quick-action" href="/projects/new"><strong>新建项目</strong><span>创建新的 SEO / GEO 项目。</span></a>
+          <% if (focusProject) { %>
+            <a class="quick-action" href="/projects/<%= focusProject.id %>/seo"><strong>SEO 审计</strong><span>进入 <%= focusProject.name %> 的审计页面。</span></a>
+            <a class="quick-action" href="/projects/<%= focusProject.id %>/geo"><strong>GEO 概览</strong><span>查看实体、Citability 与 GEO 事实。</span></a>
+            <a class="quick-action" href="/projects/<%= focusProject.id %>/ai"><strong>DeepSeek 分析</strong><span>进入项目 AI 分析中心。</span></a>
+            <a class="quick-action" href="/projects/<%= focusProject.id %>/reports"><strong>报告</strong><span>查看项目报告与输出。</span></a>
+          <% } %>
+        </div>
+      </article>
+
+      <article class="panel" data-ui="activity-feed">
+        <div class="panel-title-row"><div><h3>活动动态</h3><p class="muted small">坚持只显示有数据来源的活动。</p></div><span class="badge neutral">No fabrication</span></div>
+        <div class="empty-state p10-empty">当前 Dashboard Repository 尚未提供统一活动事件流，因此这里不生成虚拟记录。后续接入持久化事件后直接展示真实活动。</div>
+      </article>
+
+      <div class="dashboard-fact-note">当前焦点项目按 Dashboard Repository 的稳定项目顺序取第一项；核心指标不会对不同项目的 Visibility 比率做无意义的跨项目平均。</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-header"><div><h3>项目组合</h3><p>每个项目显示自己的最新持久化事实，不合并 Visibility 比率。</p></div><span class="badge neutral">最多 50 个项目</span></div>
+    <% if (portfolio.projects.length === 0) { %>
+      <div class="empty-state">尚无项目。创建项目后，这里会显示真实 SEO / GEO / Visibility 状态。</div>
+    <% } else { %>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>项目</th><th>套餐</th><th>SEO</th><th>GEO</th><th>Critical</th><th>Growth</th><th>Owned Mention Rate</th></tr></thead>
+          <tbody>
+            <% portfolio.projects.forEach(({ project, facts }) => { %>
+              <tr>
+                <td><a href="/projects/<%= project.id %>"><strong><%= project.name %></strong></a><br><span class="muted"><%= project.primaryDomain %></span></td>
+                <td><span class="badge <%= project.planLevel === 'STANDARD' ? 'neutral' : 'premium' %>"><%= project.planLevel %></span></td>
+                <td><%= facts.seoScore === null ? '--' : facts.seoScore.toFixed(1) %></td>
+                <td><%= facts.geoScore === null ? '--' : facts.geoScore.toFixed(1) %></td>
+                <td><%= facts.criticalIssueCount %></td>
+                <td><%= facts.growth.topEligibleScore === null ? '暂无可排名机会' : facts.growth.topEligibleScore %></td>
+                <td>
+                  <% if (project.planLevel === 'STANDARD') { %>
+                    <span class="badge neutral">高级版</span>
+                  <% } else if (!facts.visibility) { %>
+                    <span class="muted">暂无快照</span>
+                  <% } else if (facts.visibility.mentionRate.ratio === null) { %>
+                    <span class="badge neutral"><%= facts.visibility.mentionRate.status %></span>
+                  <% } else { %>
+                    <%= (facts.visibility.mentionRate.ratio * 100).toFixed(1) %>%
+                  <% } %>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
 </section>

@@ -136,6 +136,6 @@ describe('GEO overview UI', () => {
     expect(response.text).toContain(`href="/projects/${project.id}/geo/citability"`);
     expect(response.text).toContain(`href="/projects/${project.id}/geo/entities"`);
     expect(response.text).toContain(`href="/projects/${project.id}/geo/ai-crawlers"`);
-    expect(response.text).toContain('GEO Readiness · P3');
+    expect(response.text).toContain('当前 P3 的 GEO Readiness 来自站内可验证事实');
   });
 });

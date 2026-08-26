@@ -1,6 +1,8 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { createAuthRoutes } from './auth/auth.routes.js';
+import { authenticationMiddleware } from './auth/authentication.js';
 import { errorHandler } from './core/http.js';
 import { createAiRoutes } from './modules/ai/ai.routes.js';
 import type { AiTaskService } from './modules/ai/ai.service.js';
@@ -44,6 +46,7 @@ import {
   createOptimizationOrchestrationRoutes,
   type OptimizationOrchestrationApiPort
 } from './modules/optimization-orchestration/orchestration.routes.js';
+import { createProjectMembershipRoutes } from './modules/projects/project-membership.routes.js';
 import { projectRoutes } from './modules/projects/project.routes.js';
 import {
   createPublicationRoutes,
@@ -105,6 +108,9 @@ export function createApp(options: AppOptions = {}) {
   app.use(express.urlencoded({ extended: true }));
   app.use('/assets', express.static(assetsDir));
   app.use('/health', healthRoutes);
+  app.use(authenticationMiddleware);
+  app.use('/auth', createAuthRoutes());
+  app.use('/api/projects', createProjectMembershipRoutes());
   app.use('/api/projects', projectRoutes);
   app.use('/api', createMarketRoutes(options.marketService));
   app.use('/api', createCrawlRoutes(options.crawlService));

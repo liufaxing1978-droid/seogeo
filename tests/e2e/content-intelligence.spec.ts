@@ -1,6 +1,14 @@
 import { expect, test } from '@playwright/test';
+import { authenticateE2e } from './e2e-auth.js';
 
-test('opens Standard-plan Content Center without invoking AI or network refresh', async ({ page }) => {
+test('opens Standard-plan Content Center without invoking AI or network refresh', async ({ page, context }) => {
+  await authenticateE2e(context, {
+    role: 'OWNER',
+    planLevel: 'STANDARD',
+    userStatus: 'ACTIVE',
+    membershipStatus: 'ACTIVE',
+  });
+
   const suffix = Date.now();
   await page.goto('/projects/new');
   await page.getByLabel('项目名称').fill('Content Intelligence Smoke');

@@ -1,6 +1,14 @@
 import { expect, test } from '@playwright/test';
+import { authenticateE2e } from './e2e-auth.js';
 
-test('opens Advanced AI Visibility, configures Prompt Monitor, and leaves sampling run empty', async ({ page }) => {
+test('opens Advanced AI Visibility, configures Prompt Monitor, and leaves sampling run empty', async ({ page, context }) => {
+  await authenticateE2e(context, {
+    role: 'OWNER',
+    planLevel: 'ADVANCED',
+    userStatus: 'ACTIVE',
+    membershipStatus: 'ACTIVE',
+  });
+
   const suffix = Date.now();
   await page.goto('/projects/new');
   await page.getByLabel('项目名称').fill('AI Visibility Smoke');

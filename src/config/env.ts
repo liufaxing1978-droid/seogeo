@@ -19,7 +19,7 @@ const schema = z.object({
     .min(1)
     .default('postgresql://postgres:postgres@localhost:5432/seogeo'),
   REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
-  SESSION_SECRET: z.string().min(8).default('development-secret'),
+  SESSION_SECRET: z.string().min(1).default('development-secret'),
   CRAWLER_USER_AGENT: z.string().min(1).max(300).default('SEOGEO-Bot/0.1 (+https://seo.xingshantang.org)'),
   CRAWLER_MAX_PAGES: z.coerce.number().int().min(1).max(5000).default(500),
   CRAWLER_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(4),
@@ -40,4 +40,10 @@ const schema = z.object({
   OAUTH_CREDENTIAL_KEY_VERSION: z.string().min(1).default('v1')
 });
 
-export const env = schema.parse(process.env);
+const parsed = schema.parse(process.env);
+
+if (parsed.NODE_ENV === 'production' && parsed.SESSION_SECRET.length < 32) {
+  throw new Error('SESSION_SECRET must be at least 32 characters in production');
+}
+
+export const env = parsed;
