@@ -9,11 +9,14 @@
   <link rel="stylesheet" href="/assets/css/p10.css">
 </head>
 <body>
+  <a class="skip-link" href="#main-content">跳到主要内容</a>
+  <%- include('partials/icon-sprite') %>
   <div class="app-shell" data-ui="app-shell">
-    <%- include('partials/sidebar', { activeNav }) %>
+    <%- include('partials/sidebar', { activeNav, currentProjectId }) %>
+    <button class="nav-backdrop" type="button" data-ui="nav-backdrop" aria-label="关闭导航" tabindex="-1"></button>
     <div class="workspace">
-      <%- include('partials/topbar', { title }) %>
-      <main class="workspace-main" id="main-content">
+      <%- include('partials/topbar', { title, currentProjectId }) %>
+      <main class="workspace-main" id="main-content" tabindex="-1">
         <%- include(bodyTemplate) %>
       </main>
     </div>
