@@ -28,5 +28,5 @@ test('registers a competitor from the project-scoped competitor center', async (
 
   await expect(page.getByText('Reference Site')).toBeVisible();
   await expect(page.getByText(`reference-${suffix}.example.com`)).toBeVisible();
-  await expect(page.getByRole('link', { name: '竞争对手' })).toHaveClass(/active/);
+  await expect(page.getByRole('link', { name: '竞品情报', exact: true })).toHaveAttribute('aria-current', 'page');
 });
