@@ -82,10 +82,11 @@ describe('production runtime environment contract', () => {
     process.env.TRUST_PROXY_HOPS = '1';
 
     const { env } = await loadEnvModule();
+    const runtimeEnv = env as unknown as Record<string, unknown>;
 
     expect(env.DATABASE_URL).toBe('postgresql://postgres:postgres@127.0.0.1:5432/seogeo');
     expect(env.REDIS_URL).toBe('redis://127.0.0.1:6379');
     expect(env.SESSION_SECRET).toBe('s'.repeat(32));
-    expect(env.TRUST_PROXY_HOPS).toBe(1);
+    expect(runtimeEnv.TRUST_PROXY_HOPS).toBe(1);
   });
 });
