@@ -72,7 +72,7 @@ test('renders P6-C metrics with zero-vs-unknown semantics, SOV, provenance and a
 
     await page.goto(`/projects/${project.id}/visibility/metrics?snapshotId=${snapshot.id}`);
     await expect(page.getByRole('main').getByRole('heading', { level: 1, name: 'Visibility 指标' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Visibility 指标' })).toHaveClass(/active/);
+    await expect(page.getByRole('navigation').getByRole('link', { name: 'GEO / 可见度', exact: true })).toHaveAttribute('aria-current', 'page');
 
     const mentionCard = page.locator('.metric-card').filter({ hasText: 'Owned Mention Rate' });
     const citationCard = page.locator('.metric-card').filter({ hasText: 'Owned Citation Rate' });
