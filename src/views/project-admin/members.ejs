@@ -86,8 +86,10 @@
                       <button class="button danger compact" type="submit">撤销</button>
                     </form>
                   </div>
+                <% } else if (item.status === 'REVOKED' && manageable) { %>
+                  <span class="muted">可通过下方邮箱入口重新激活</span>
                 <% } else if (item.status === 'REVOKED') { %>
-                  <span class="muted">可通过邮箱重新激活</span>
+                  <span class="muted">当前角色不可重新激活此成员</span>
                 <% } else { %>
                   <span class="muted">当前角色不可管理此成员</span>
                 <% } %>
