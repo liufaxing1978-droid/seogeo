@@ -251,6 +251,11 @@
   margin-bottom: 0;
 }
 
+.operations-page.admin-center .operations-metrics strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .operations-page .authority-boundary-grid + .operations-status {
   margin-top: 0;
 }
