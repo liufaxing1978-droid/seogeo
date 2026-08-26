@@ -1,11 +1,12 @@
 <% const inboxTotal = Object.values(overview.inboxCounts).reduce((sum, value) => sum + value, 0); %>
 <section
-  class="operations-page"
+  class="operations-page admin-center"
+  data-ui="optimization-operations-center"
   data-operations-root
   data-project-id="<%= project.id %>"
   data-policy-updated-at="<%= policy?.updatedAt ?? '' %>"
 >
-  <section class="page-header operations-hero">
+  <section class="page-header operations-hero admin-center-hero">
     <div>
       <p class="eyebrow">P9-F · Autonomous Operations Center</p>
       <h1>自动优化中心</h1>
@@ -17,10 +18,23 @@
     </div>
   </section>
 
+  <section class="authority-boundary-grid" data-ui="optimization-authority-boundary">
+    <article class="authority-card">
+      <p class="eyebrow">Persisted facts</p>
+      <h2>事实、策略、身份分层</h2>
+      <p>Overview、Inbox、Quota、Pipeline、Experiment outcomes 与 Feedback 只读取已持久化事实；Autopilot Policy 是运行策略，Actor identity 由现有 resolver 单独决定。</p>
+    </article>
+    <article class="authority-card authority-card-warning">
+      <p class="eyebrow">Execution authority</p>
+      <h2>运行策略不等于执行授权</h2>
+      <p>页面不会因为 Policy Enabled 或角色标签而获得新的执行能力。既有低风险边界、验证、审批、Draft PR、<strong>人工合并与部署边界保持不变</strong>，UI 不提供自动 merge / deploy / rollback 权限。</p>
+    </article>
+  </section>
+
   <p class="muted operations-status" data-refresh-status>快照生成时间：<%= overview.generatedAt.toISOString() %></p>
   <p class="muted operations-status" data-run-status aria-live="polite"></p>
 
-  <section class="metric-grid operations-metrics" aria-label="Operations overview metrics">
+  <section class="metric-grid operations-metrics admin-metric-grid" aria-label="Operations overview metrics">
     <article class="metric-card">
       <span class="metric-label">Effective Autopilot</span>
       <strong data-metric-effective-state><%= overview.effectiveAutopilotState %></strong>
