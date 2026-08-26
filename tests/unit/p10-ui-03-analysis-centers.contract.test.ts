@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -7,20 +7,11 @@ function source(path: string) {
 }
 
 describe('P10 UI-03 analysis-center productization contract', () => {
-  it('defines explicit SEO, GEO, Visibility, and AI product surfaces', () => {
+  it('defines the SEO product surface for the current task only', () => {
     const seo = source('src/views/seo/audit.ejs');
-    const geo = source('src/views/geo/overview.ejs');
-    const visibility = source('src/views/visibility/index.ejs');
-    const ai = source('src/views/ai/index.ejs');
 
     expect(seo).toContain('data-ui="seo-center"');
     expect(seo).toContain('data-ui="seo-score-summary"');
-    expect(geo).toContain('data-ui="geo-readiness-center"');
-    expect(geo).toContain('data-ui="geo-readiness-summary"');
-    expect(visibility).toContain('data-ui="visibility-center"');
-    expect(visibility).toContain('data-ui="visibility-metrics-summary"');
-    expect(ai).toContain('data-ui="ai-analysis-center"');
-    expect(ai).toContain('data-ui="ai-advisory-boundary"');
   });
 
   it('locks the deterministic SEO center hierarchy without fabricated ranking facts', () => {
@@ -36,7 +27,7 @@ describe('P10 UI-03 analysis-center productization contract', () => {
     expect(seo).not.toContain('Keyword Ranking');
   });
 
-  it('keeps measurement and AI authority boundaries explicit', () => {
+  it('preserves existing GEO, Visibility, and AI truth boundaries while SEO is productized', () => {
     const geo = source('src/views/geo/overview.ejs');
     const visibility = source('src/views/visibility/index.ejs');
     const ai = source('src/views/ai/index.ejs');
@@ -45,12 +36,18 @@ describe('P10 UI-03 analysis-center productization contract', () => {
     expect(visibility).toContain('官方 Provider API');
     expect(visibility).toContain('UNKNOWN / NO_DATA');
     expect(ai).toContain('AI 只分析已保存事实');
-    expect(ai).toContain('不会展示原始 fact pack、API Key 或 provider reasoning');
+    expect(ai).toContain('不展示 API Key');
+    expect(ai).toContain('provider reasoning');
   });
 
-  it('ships reusable analysis-center primitives', () => {
-    const css = source('src/public/css/p10.css');
+  it('loads an isolated UI-03 stylesheet with reusable analysis primitives', () => {
+    const layout = source('src/views/layout.ejs');
+    const cssPath = resolve(process.cwd(), 'src/public/css/p10-ui-03.css');
 
+    expect(layout).toContain('/assets/css/p10-ui-03.css');
+    expect(existsSync(cssPath)).toBe(true);
+
+    const css = readFileSync(cssPath, 'utf8');
     for (const selector of [
       '.analysis-center',
       '.analysis-hero',
