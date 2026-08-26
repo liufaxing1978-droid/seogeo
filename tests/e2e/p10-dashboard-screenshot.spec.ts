@@ -18,6 +18,9 @@ test('captures the live rendered P10 dashboard acceptance view', async ({ page, 
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto('/');
 
+    await expect(page.locator('[data-ui="sidebar"]')).toBeVisible();
+    await expect(page.locator('[data-ui="topbar"]')).toBeVisible();
+    await expect(page.getByRole('link', { name: '仪表盘', exact: true })).toHaveAttribute('aria-current', 'page');
     await expect(page.locator('[data-ui="dashboard-overview"]')).toBeVisible();
     await expect(page.locator('[data-ui="seo-score"]')).toBeVisible();
     await expect(page.locator('[data-ui="geo-visibility"]')).toBeVisible();
