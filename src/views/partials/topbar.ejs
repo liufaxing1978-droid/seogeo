@@ -1,17 +1,26 @@
 <header class="topbar" data-ui="topbar">
-  <div>
-    <p class="eyebrow">SEO GEO Intelligence Platform</p>
-    <h1><%= title %></h1>
+  <div class="topbar-leading">
+    <button class="nav-toggle" type="button" data-ui="nav-toggle" aria-label="打开导航" aria-controls="primary-navigation" aria-expanded="false">
+      <svg class="ui-icon" aria-hidden="true"><use href="#icon-menu"></use></svg>
+    </button>
+    <div class="topbar-title">
+      <p class="eyebrow">SEO GEO Intelligence Platform</p>
+      <h1><%= title %></h1>
+    </div>
   </div>
   <div class="topbar-actions">
-    <span class="status-dot" aria-hidden="true"></span>
-    <span>P10 · Identity &amp; RBAC</span>
-    <% if (typeof auth !== 'undefined' && auth) { %>
-      <span class="badge success">已认证</span>
-    <% } else { %>
-      <span class="badge neutral">访客</span>
+    <% if (typeof currentProjectId === 'string' && currentProjectId) { %>
+      <a class="project-context-link" href="/projects/<%= currentProjectId %>">当前项目</a>
+      <a class="project-switch-link" href="/projects">
+        <svg class="ui-icon" aria-hidden="true"><use href="#icon-switch"></use></svg>
+        <span>切换项目</span>
+      </a>
     <% } %>
-    <button class="icon-button" type="button" aria-label="通知" title="通知">●</button>
-    <div class="avatar" aria-label="SEO GEO">SG</div>
+    <% if (typeof auth !== 'undefined' && auth) { %>
+      <span class="auth-chip" data-ui="auth-session" aria-label="已认证用户会话">
+        <svg class="ui-icon" aria-hidden="true"><use href="#icon-user"></use></svg>
+        <span>已认证</span>
+      </span>
+    <% } %>
   </div>
 </header>
