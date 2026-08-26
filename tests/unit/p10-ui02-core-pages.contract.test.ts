@@ -50,4 +50,23 @@ describe('P10 UI-02 core pages contract', () => {
     expect(projectIndex).toContain("'--'");
     expect(css).toContain('.project-center');
   });
+
+  it('productizes Dashboard from portfolio facts without invented aggregate metrics', () => {
+    const dashboard = source('src/views/dashboard.ejs');
+    const css = source('src/public/css/p10.css');
+
+    expect(dashboard).toContain('data-ui="dashboard-summary-grid"');
+    expect(dashboard).toContain('portfolio.projectCount');
+    expect(dashboard).toContain('portfolio.advancedProjectCount');
+    expect(dashboard).toContain('portfolio.criticalIssueCount');
+    expect(dashboard).toContain('data-ui="dashboard-focus-project"');
+    expect(dashboard).toContain('focusFacts?.seoScore');
+    expect(dashboard).toContain('focusFacts?.geoScore');
+    expect(dashboard).toContain('visibilityRatio');
+    expect(dashboard).not.toContain('P10 · Platform Overview');
+    expect(dashboard).not.toContain('AI Tasks');
+    expect(dashboard).toContain('当前 Dashboard Repository 尚未提供统一活动事件流');
+    expect(css).toContain('.dashboard-summary-grid');
+    expect(css).toContain('.dashboard-focus-project');
+  });
 });
