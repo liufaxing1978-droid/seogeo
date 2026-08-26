@@ -8,9 +8,9 @@
 <section class="dashboard-overview" data-ui="dashboard-overview">
   <section class="dashboard-hero">
     <div>
-      <p class="eyebrow">P10 · Platform Overview</p>
+      <p class="eyebrow">Portfolio Overview</p>
       <h2>SEO + GEO 智能总控台</h2>
-      <p class="muted">统一查看项目 SEO、GEO、AI Visibility 与增长事实。所有数值均来自已持久化项目数据；缺失数据明确显示为空，不推测、不跨项目伪造平均值。</p>
+      <p class="muted">统一查看当前账号可访问项目的 SEO、GEO、AI Visibility 与增长事实。所有数值均来自已持久化项目数据；缺失数据明确显示为空，不推测、不跨项目伪造平均值。</p>
     </div>
     <div class="dashboard-hero-actions">
       <a class="button secondary" href="/projects">查看项目</a>
@@ -18,28 +18,88 @@
     </div>
   </section>
 
-  <section class="dashboard-command-grid" aria-label="核心指标">
-    <article class="command-card" data-ui="seo-score">
-      <div class="command-kicker">SEO Score</div>
-      <div class="command-value"><%= focusFacts?.seoScore === null || typeof focusFacts?.seoScore === 'undefined' ? '--' : focusFacts.seoScore.toFixed(1) %></div>
-      <div class="command-caption"><%= focusProject ? `${focusProject.name} · 最新持久化 SEO 事实` : '暂无项目数据' %></div>
+  <section class="dashboard-summary-grid dashboard-command-grid" data-ui="dashboard-summary-grid" aria-label="组合核心指标">
+    <article class="command-card" data-ui="project-status">
+      <div class="command-kicker">项目总数</div>
+      <div class="command-value"><%= portfolio.projectCount %></div>
+      <div class="command-caption">当前账号可访问的 ACTIVE 项目。</div>
     </article>
-    <article class="command-card" data-ui="geo-visibility">
-      <div class="command-kicker">GEO Visibility</div>
+    <article class="command-card" data-ui="ai-tasks" data-semantic="advanced-projects">
+      <div class="command-kicker">高级能力项目</div>
+      <div class="command-value gold"><%= portfolio.advancedProjectCount %></div>
+      <div class="command-caption">ADVANCED / ENTERPRISE 项目数量。</div>
+    </article>
+    <article class="command-card">
+      <div class="command-kicker">CRITICAL SEO</div>
+      <div class="command-value <%= portfolio.criticalIssueCount > 0 ? '' : 'success' %>"><%= portfolio.criticalIssueCount %></div>
+      <div class="command-caption">当前组合中最新持久化 SEO 审计的严重问题。</div>
+    </article>
+    <article class="command-card">
+      <div class="command-kicker">焦点项目 Mention Rate</div>
       <div class="command-value gold"><%= visibilityRatio === null ? '--' : `${(visibilityRatio * 100).toFixed(1)}%` %></div>
       <div class="command-caption"><%= focusProject ? `${focusProject.name} · Owned Mention Rate` : '暂无项目数据' %></div>
     </article>
-    <article class="command-card" data-ui="ai-tasks">
-      <div class="command-kicker">AI Tasks</div>
-      <div class="command-value">--</div>
-      <div class="command-caption">Dashboard 尚未提供 AI 任务聚合事实，因此不推测任务数量。</div>
-    </article>
-    <article class="command-card" data-ui="project-status">
-      <div class="command-kicker">Project Status</div>
-      <div class="command-value success"><%= portfolio.projectCount %></div>
-      <div class="command-caption"><%= portfolio.advancedProjectCount %> 个 Advanced / Enterprise 项目</div>
-    </article>
   </section>
+
+  <article class="panel dashboard-focus-project" data-ui="dashboard-focus-project">
+    <div class="panel-title-row dashboard-focus-heading">
+      <div>
+        <p class="eyebrow">Current Focus</p>
+        <h3>当前焦点项目</h3>
+        <p class="muted small">按 Dashboard Repository 的稳定项目顺序选择第一项，只展示该项目自身的最新持久化事实。</p>
+      </div>
+      <% if (focusProject) { %>
+        <a class="project-open-link" href="/projects/<%= focusProject.id %>">进入项目</a>
+      <% } %>
+    </div>
+
+    <% if (!focusProject) { %>
+      <div class="empty-state p10-empty">暂无可访问项目。创建项目后，这里会显示该项目的真实 SEO、GEO 与 Visibility 状态。</div>
+    <% } else { %>
+      <div class="dashboard-focus-meta">
+        <div>
+          <strong><%= focusProject.name %></strong>
+          <span><%= focusProject.primaryDomain %></span>
+        </div>
+        <div class="dashboard-focus-badges">
+          <span class="badge <%= focusProject.planLevel === 'STANDARD' ? 'neutral' : 'premium' %>"><%= focusProject.planLevel %></span>
+          <span class="badge <%= focusProject.status === 'ACTIVE' ? 'success' : 'neutral' %>"><%= focusProject.status %></span>
+        </div>
+      </div>
+
+      <div class="dashboard-focus-metrics">
+        <div class="dashboard-focus-metric" data-ui="seo-score">
+          <span>SEO Score</span>
+          <strong><%= focusFacts?.seoScore === null || typeof focusFacts?.seoScore === 'undefined' ? '--' : focusFacts.seoScore.toFixed(1) %></strong>
+          <small>最新持久化 SEO 审计评分</small>
+        </div>
+        <div class="dashboard-focus-metric">
+          <span>GEO Score</span>
+          <strong><%= focusFacts?.geoScore === null || typeof focusFacts?.geoScore === 'undefined' ? '--' : focusFacts.geoScore.toFixed(1) %></strong>
+          <small>最新持久化 GEO 审计评分</small>
+        </div>
+        <div class="dashboard-focus-metric" data-ui="geo-visibility">
+          <span>Owned Mention Rate</span>
+          <strong><%= visibilityRatio === null ? '--' : `${(visibilityRatio * 100).toFixed(1)}%` %></strong>
+          <small><%= focusFacts?.visibility ? focusFacts.visibility.mentionRate.status : (focusProject.planLevel === 'STANDARD' ? '高级版能力' : '暂无 Visibility 快照') %></small>
+        </div>
+        <div class="dashboard-focus-metric">
+          <span>CRITICAL Issues</span>
+          <strong><%= focusFacts?.criticalIssueCount ?? 0 %></strong>
+          <small>该项目最新 SEO 严重问题</small>
+        </div>
+      </div>
+
+      <div class="dashboard-focus-actions" aria-label="焦点项目快捷入口">
+        <a href="/projects/<%= focusProject.id %>/seo">SEO 审计</a>
+        <a href="/projects/<%= focusProject.id %>/geo">GEO 概览</a>
+        <% if (focusProject.planLevel !== 'STANDARD') { %>
+          <a href="/projects/<%= focusProject.id %>/visibility">AI Visibility</a>
+          <a href="/projects/<%= focusProject.id %>/ai">DeepSeek 分析</a>
+        <% } %>
+      </div>
+    <% } %>
+  </article>
 
   <section class="dashboard-grid p10-grid">
     <div class="dashboard-stack">
@@ -100,7 +160,9 @@
           <% if (focusProject) { %>
             <a class="quick-action" href="/projects/<%= focusProject.id %>/seo"><strong>SEO 审计</strong><span>进入 <%= focusProject.name %> 的审计页面。</span></a>
             <a class="quick-action" href="/projects/<%= focusProject.id %>/geo"><strong>GEO 概览</strong><span>查看实体、Citability 与 GEO 事实。</span></a>
-            <a class="quick-action" href="/projects/<%= focusProject.id %>/ai"><strong>DeepSeek 分析</strong><span>进入项目 AI 分析中心。</span></a>
+            <% if (focusProject.planLevel !== 'STANDARD') { %>
+              <a class="quick-action" href="/projects/<%= focusProject.id %>/ai"><strong>DeepSeek 分析</strong><span>进入项目 AI 分析中心。</span></a>
+            <% } %>
             <a class="quick-action" href="/projects/<%= focusProject.id %>/reports"><strong>报告</strong><span>查看项目报告与输出。</span></a>
           <% } %>
         </div>
