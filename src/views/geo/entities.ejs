@@ -7,6 +7,8 @@
   <a class="button secondary" href="/projects/<%= project.id %>/geo">返回 GEO 概览</a>
 </section>
 
+<%- include('../partials/geo-center-nav', { project, geoCenterActive: 'entities' }) %>
+
 <section class="panel">
   <h2>确定性实体</h2>
   <p class="muted">这里只展示 JSON-LD、og:site_name 等已保存的结构化事实。P3 不扫描正文做自由文本 NER，也不使用 DeepSeek 猜测实体。</p>
