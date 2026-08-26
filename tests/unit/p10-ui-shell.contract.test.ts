@@ -58,4 +58,15 @@ describe('P10 UI-01 shell design system contract', () => {
     expect(layout).toContain('data-ui="nav-backdrop"');
     expect(layout).toContain('id="main-content"');
   });
+
+  it('uses the approved first-level information architecture without dead links', () => {
+    const sidebar = source('src/views/partials/sidebar.ejs');
+    for (const label of ['仪表盘','项目中心','SEO 中心','GEO / 可见度','AI 分析中心','内容与发布','竞品情报','报告中心','优化运营','成员与权限','设置']) {
+      expect(sidebar).toContain(label);
+    }
+    expect(sidebar).toContain('id="primary-navigation"');
+    expect(sidebar).toContain('aria-current="page"');
+    expect(sidebar).toContain('aria-disabled="true"');
+    expect(sidebar).not.toContain('href="#"');
+  });
 });
