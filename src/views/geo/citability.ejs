@@ -7,6 +7,8 @@
   <a class="button secondary" href="/projects/<%= project.id %>/geo">返回 GEO 概览</a>
 </section>
 
+<%- include('../partials/geo-center-nav', { project, geoCenterActive: 'citability' }) %>
+
 <% if (!audit) { %>
   <section class="panel"><h2>尚无 Citability 数据</h2><p class="muted">先完成 GEO 审计后再查看页面级可引用性事实。</p></section>
 <% } else { %>
