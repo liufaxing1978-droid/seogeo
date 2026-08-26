@@ -12,7 +12,8 @@
     competitors: 'competitors', reports: 'reports',
     'search-console': 'optimization', growth: 'optimization', 'growth-topics': 'optimization',
     'growth-cannibalization': 'optimization', 'growth-new-content': 'optimization',
-    'optimization-operations': 'optimization', 'optimization-experiments': 'optimization'
+    'optimization-operations': 'optimization', 'optimization-experiments': 'optimization',
+    members: 'members', settings: 'settings'
   };
   const activeCenter = centerByActiveNav[activeNav] || '';
   const items = [
@@ -25,8 +26,8 @@
     { key: 'competitors', label: '竞品情报', icon: 'competitors', href: projectHref('/competitors') },
     { key: 'reports', label: '报告中心', icon: 'reports', href: projectHref('/reports') },
     { key: 'optimization', label: '优化运营', icon: 'optimization', href: projectHref('/optimization') },
-    { key: 'members', label: '成员与权限', icon: 'members', disabled: true },
-    { key: 'settings', label: '设置', icon: 'settings', disabled: true }
+    { key: 'members', label: '成员与权限', icon: 'members', href: projectHref('/members') },
+    { key: 'settings', label: '设置', icon: 'settings', href: projectHref('/settings') }
   ];
 %>
 <aside class="sidebar" id="primary-navigation" data-ui="sidebar" aria-label="主导航">
@@ -41,17 +42,10 @@
   </div>
   <nav class="primary-nav">
     <% for (const item of items) { %>
-      <% if (item.disabled) { %>
-        <span class="nav-item is-disabled" aria-disabled="true" title="将在对应 UI 单元启用">
-          <svg class="ui-icon" aria-hidden="true"><use href="#icon-<%= item.icon %>"></use></svg>
-          <span><%= item.label %></span>
-        </span>
-      <% } else { %>
-        <a class="nav-item <%= activeCenter === item.key ? 'active' : '' %>" href="<%= item.href %>" <%- activeCenter === item.key ? 'aria-current="page"' : '' %>>
-          <svg class="ui-icon" aria-hidden="true"><use href="#icon-<%= item.icon %>"></use></svg>
-          <span><%= item.label %></span>
-        </a>
-      <% } %>
+      <a class="nav-item <%= activeCenter === item.key ? 'active' : '' %>" href="<%= item.href %>" <%- activeCenter === item.key ? 'aria-current="page"' : '' %>>
+        <svg class="ui-icon" aria-hidden="true"><use href="#icon-<%= item.icon %>"></use></svg>
+        <span><%= item.label %></span>
+      </a>
     <% } %>
   </nav>
 </aside>

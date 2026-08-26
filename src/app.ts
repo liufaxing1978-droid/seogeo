@@ -46,6 +46,7 @@ import {
   createOptimizationOrchestrationRoutes,
   type OptimizationOrchestrationApiPort
 } from './modules/optimization-orchestration/orchestration.routes.js';
+import { createProjectAdminWebRoutes } from './modules/projects/project-admin.web.routes.js';
 import { createProjectMembershipRoutes } from './modules/projects/project-membership.routes.js';
 import { projectRoutes } from './modules/projects/project.routes.js';
 import {
@@ -153,6 +154,7 @@ export function createApp(options: AppOptions = {}) {
     options.operationsActorResolver,
   ));
   app.use('/', optimizationExperimentWebRoutes);
+  app.use('/', createProjectAdminWebRoutes());
   app.use('/', webRoutes);
   app.use(errorHandler);
   return app;

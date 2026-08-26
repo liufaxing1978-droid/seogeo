@@ -90,7 +90,7 @@ describe('admin web UI', () => {
       expect(response.text).toContain(text);
     }
     expect(response.text).toContain('aria-current="page"');
-    expect(response.text).toContain('aria-disabled="true"');
+    expect(response.text).not.toContain('aria-disabled="true"');
     expect(response.text).toContain('尚无项目');
     expect(response.text).toContain('所有数值均来自已持久化项目数据');
   });

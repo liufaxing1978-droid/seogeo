@@ -68,7 +68,10 @@ describe('P10 UI-01 shell design system contract', () => {
     }
     expect(sidebar).toContain('id="primary-navigation"');
     expect(sidebar).toContain('aria-current="page"');
-    expect(sidebar).toContain('aria-disabled="true"');
+    // UI-05 is the approved unit that turns these formerly disabled IA placeholders into real routes.
+    expect(sidebar).toContain("href: projectHref('/members')");
+    expect(sidebar).toContain("href: projectHref('/settings')");
+    expect(sidebar).not.toContain('disabled: true');
     expect(sidebar).not.toContain('href="#"');
   });
 
