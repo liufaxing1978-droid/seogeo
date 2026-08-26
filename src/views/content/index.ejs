@@ -1,41 +1,69 @@
-<section class="page-header">
-  <div>
-    <p class="eyebrow">Content Intelligence · P5-A</p>
-    <h1>内容中心</h1>
-    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
-  </div>
-  <div class="actions">
-    <form action="/projects/<%= project.id %>/content/refresh" method="post"><button class="button" type="submit">刷新内容事实</button></form>
-  </div>
-</section>
+<section class="product-center" data-ui="content-production-center">
+  <%- include('../partials/content-publishing-nav', { project, contentPublishingActive: 'content' }) %>
 
-<section class="panel">
-  <h2>确定性事实优先</h2>
-  <p class="muted">本页的页面事实、Signals 与 Opportunities 来自已保存的抓取/SEO/GEO 数据。DeepSeek 只生成 Brief 与优化建议，不会修改这些事实或宣称问题已经修复。</p>
-</section>
+  <section class="product-center-hero">
+    <div>
+      <p class="eyebrow">Content Intelligence · P5-A</p>
+      <h1>内容中心</h1>
+      <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
+    </div>
+    <div class="actions">
+      <form action="/projects/<%= project.id %>/content/refresh" method="post"><button class="button" type="submit">刷新内容事实</button></form>
+    </div>
+  </section>
 
-<section class="metric-grid compact">
-  <article class="metric-card"><div class="metric-title">内容文档</div><div class="metric-value"><%= documents.length %></div><div class="metric-caption">已物化页面</div></article>
-  <article class="metric-card"><div class="metric-title">待处理机会</div><div class="metric-value"><%= openOpportunities.length %></div><div class="metric-caption">OPEN / IN_PROGRESS</div></article>
-  <article class="metric-card"><div class="metric-title">AI Brief</div><div class="metric-value"><%= briefs.length %></div><div class="metric-caption">建议性输出</div></article>
-</section>
+  <section class="truth-boundary-card" data-ui="content-fact-boundary">
+    <div>
+      <p class="eyebrow">Source of Truth</p>
+      <h2>确定性事实优先</h2>
+      <p class="muted">本页的页面事实、Signals 与 Opportunities 来自已保存的抓取/SEO/GEO 数据。DeepSeek 只生成 Brief 与优化建议，不会修改这些事实或宣称问题已经修复。</p>
+    </div>
+    <p class="boundary-note"><strong>AI 仅作为内容生成与建议辅助</strong>，不会替代抓取、审核、批准、发布或真实站点验证事实。</p>
+  </section>
 
-<section class="panel">
-  <div class="panel-header"><div><h2>内容清单</h2><p class="muted">最新 PageSnapshot 的确定性内容事实。</p></div></div>
-  <div class="table-wrap"><table><thead><tr><th>页面</th><th>字数</th><th>标题结构</th><th>内链</th><th>机会</th><th>更新时间</th></tr></thead><tbody>
-  <% for (const doc of documents) { %><tr>
-    <td><a href="/projects/<%= project.id %>/content/documents/<%= doc.id %>"><strong><%= doc.title ?? doc.canonicalUrl %></strong></a><div class="muted"><%= doc.canonicalUrl %></div></td>
-    <td><%= doc.wordCount ?? 'UNKNOWN' %></td><td><%= doc.headingCount ?? 'UNKNOWN' %></td><td><%= doc.internalLinkCount ?? 'UNKNOWN' %></td>
-    <td><%= doc._count.opportunities %></td><td><%= new Date(doc.extractedAt).toLocaleString('zh-CN') %></td>
-  </tr><% } %>
-  <% if (!documents.length) { %><tr><td colspan="6" class="muted">尚无内容事实。先完成抓取，然后点击“刷新内容事实”。</td></tr><% } %>
-  </tbody></table></div>
-</section>
+  <section class="workflow-panel" data-ui="content-state-machine">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">Publishing lifecycle</p>
+        <h2>内容到验证的完整状态链</h2>
+      </div>
+      <p class="muted">流程参考，不把内容事实页的聚合数据伪装成发布状态统计。</p>
+    </div>
+    <div class="workflow-strip" aria-label="内容发布完整状态链">
+      <span><strong>draft</strong><small>草稿</small></span>
+      <span><strong>generated</strong><small>已生成</small></span>
+      <span><strong>reviewed</strong><small>已审核</small></span>
+      <span><strong>operator_reviewed</strong><small>人工复核</small></span>
+      <span><strong>approved</strong><small>已批准</small></span>
+      <span><strong>publishing</strong><small>发布中</small></span>
+      <span><strong>published</strong><small>已发布</small></span>
+      <span><strong>verified</strong><small>已验证</small></span>
+    </div>
+  </section>
 
-<section class="panel">
-  <h2>优先机会</h2>
-  <div class="table-wrap"><table><thead><tr><th>优先级</th><th>类别</th><th>建议目标</th><th>页面</th><th>状态</th></tr></thead><tbody>
-  <% for (const opp of openOpportunities) { %><tr><td><span class="badge"><%= opp.priority %></span></td><td><%= opp.category %></td><td><%= opp.summary %></td><td><a href="/projects/<%= project.id %>/content/documents/<%= opp.document.id %>"><%= opp.document.title ?? opp.document.canonicalUrl %></a></td><td><%= opp.status %></td></tr><% } %>
-  <% if (!openOpportunities.length) { %><tr><td colspan="5" class="muted">当前没有待处理机会。</td></tr><% } %>
-  </tbody></table></div>
+  <section class="product-metric-grid">
+    <article class="metric-card"><div class="metric-title">内容文档</div><div class="metric-value"><%= documents.length %></div><div class="metric-caption">已物化页面</div></article>
+    <article class="metric-card"><div class="metric-title">待处理机会</div><div class="metric-value"><%= openOpportunities.length %></div><div class="metric-caption">OPEN / IN_PROGRESS</div></article>
+    <article class="metric-card"><div class="metric-title">AI Brief</div><div class="metric-value"><%= briefs.length %></div><div class="metric-caption">建议性输出</div></article>
+  </section>
+
+  <section class="panel product-table-panel" data-ui="content-fact-table">
+    <div class="panel-header"><div><h2>内容清单</h2><p class="muted">最新 PageSnapshot 的确定性内容事实。</p></div></div>
+    <div class="table-wrap"><table><thead><tr><th>页面</th><th>字数</th><th>标题结构</th><th>内链</th><th>机会</th><th>更新时间</th></tr></thead><tbody>
+    <% for (const doc of documents) { %><tr>
+      <td><a href="/projects/<%= project.id %>/content/documents/<%= doc.id %>"><strong><%= doc.title ?? doc.canonicalUrl %></strong></a><div class="muted"><%= doc.canonicalUrl %></div></td>
+      <td><%= doc.wordCount ?? 'UNKNOWN' %></td><td><%= doc.headingCount ?? 'UNKNOWN' %></td><td><%= doc.internalLinkCount ?? 'UNKNOWN' %></td>
+      <td><%= doc._count.opportunities %></td><td><%= new Date(doc.extractedAt).toLocaleString('zh-CN') %></td>
+    </tr><% } %>
+    <% if (!documents.length) { %><tr><td colspan="6" class="muted">尚无内容事实。先完成抓取，然后点击“刷新内容事实”。</td></tr><% } %>
+    </tbody></table></div>
+  </section>
+
+  <section class="panel product-table-panel" data-ui="content-opportunity-table">
+    <div class="panel-header"><div><h2>优先机会</h2><p class="muted">只呈现当前数据库里的 OPEN / IN_PROGRESS 机会。</p></div></div>
+    <div class="table-wrap"><table><thead><tr><th>优先级</th><th>类别</th><th>建议目标</th><th>页面</th><th>状态</th></tr></thead><tbody>
+    <% for (const opp of openOpportunities) { %><tr><td><span class="badge"><%= opp.priority %></span></td><td><%= opp.category %></td><td><%= opp.summary %></td><td><a href="/projects/<%= project.id %>/content/documents/<%= opp.document.id %>"><%= opp.document.title ?? opp.document.canonicalUrl %></a></td><td><%= opp.status %></td></tr><% } %>
+    <% if (!openOpportunities.length) { %><tr><td colspan="5" class="muted">当前没有待处理机会。</td></tr><% } %>
+    </tbody></table></div>
+  </section>
 </section>

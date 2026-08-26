@@ -1,39 +1,51 @@
-<section class="page-header">
-  <div>
-    <p class="eyebrow">Reporting · P6-D</p>
-    <h1>报告中心</h1>
-    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
-  </div>
-  <div class="actions">
-    <form action="/projects/<%= project.id %>/reports" method="post"><button class="button secondary" type="submit">生成项目报告 V1</button></form>
-    <form action="/projects/<%= project.id %>/reports/v2" method="post"><button class="button" type="submit">生成项目报告 V2</button></form>
-  </div>
-</section>
+<section class="product-center" data-ui="report-center">
+  <section class="product-center-hero">
+    <div>
+      <p class="eyebrow">Reporting · P6-D</p>
+      <h1>报告中心</h1>
+      <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
+    </div>
+    <div class="actions">
+      <form action="/projects/<%= project.id %>/reports" method="post"><button class="button secondary" type="submit">生成项目报告 V1</button></form>
+      <form action="/projects/<%= project.id %>/reports/v2" method="post"><button class="button" type="submit">生成项目报告 V2</button></form>
+    </div>
+  </section>
 
-<section class="panel">
-  <h2>可复现快照</h2>
-  <p class="muted">PROJECT_REPORT_V1 保持兼容且不可变；PROJECT_REPORT_V2 在套餐允许时额外冻结已持久化的 AI Visibility 历史、比较与告警事实。两种生成入口都只读取数据库快照，不触发采样、提取、指标计算或 DeepSeek。</p>
-</section>
+  <section class="snapshot-boundary-grid" data-ui="report-snapshot-boundary">
+    <article class="snapshot-boundary-card fact-snapshot">
+      <p class="eyebrow">Fact Snapshot</p>
+      <h2>事实快照</h2>
+      <p>报告只读取数据库快照。PROJECT_REPORT_V1 保持兼容且不可变；PROJECT_REPORT_V2 在套餐允许时额外冻结已持久化的 AI Visibility 历史、比较与告警事实。</p>
+      <p class="muted">生成入口不触发采样、提取、指标计算或 DeepSeek，也不会补造快照中不存在的指标。</p>
+    </article>
+    <article class="snapshot-boundary-card advisory-snapshot">
+      <p class="eyebrow">Advisory Snapshot</p>
+      <h2>建议层</h2>
+      <p>Executive AI 仅在已有任务关联时作为解释与建议层展示，不改变 Fact Snapshot，也不能把建议写成新的测量事实。</p>
+      <p class="muted">是否存在 Executive AI 关联直接读取 <code>executiveAiTaskId</code>；未生成时保持“未生成”。</p>
+    </article>
+  </section>
 
-<section class="metric-grid compact">
-  <article class="metric-card"><div class="metric-title">报告快照</div><div class="metric-value"><%= reports.length %></div><div class="metric-caption">历史可追溯</div></article>
-  <article class="metric-card"><div class="metric-title">兼容版本</div><div class="metric-value">V1</div><div class="metric-caption">PROJECT_REPORT_V1</div></article>
-  <article class="metric-card"><div class="metric-title">当前版本</div><div class="metric-value">V2</div><div class="metric-caption">PROJECT_REPORT_V2</div></article>
-  <article class="metric-card"><div class="metric-title">导出</div><div class="metric-value">JSON</div><div class="metric-caption">原始快照</div></article>
-</section>
+  <section class="product-metric-grid four-up">
+    <article class="metric-card"><div class="metric-title">报告快照</div><div class="metric-value"><%= reports.length %></div><div class="metric-caption">历史可追溯</div></article>
+    <article class="metric-card"><div class="metric-title">兼容版本</div><div class="metric-value">V1</div><div class="metric-caption">PROJECT_REPORT_V1</div></article>
+    <article class="metric-card"><div class="metric-title">当前版本</div><div class="metric-value">V2</div><div class="metric-caption">PROJECT_REPORT_V2</div></article>
+    <article class="metric-card"><div class="metric-title">导出</div><div class="metric-value">JSON</div><div class="metric-caption">原始快照</div></article>
+  </section>
 
-<section class="panel">
-  <div class="panel-header"><div><h2>报告历史</h2><p class="muted">每次生成都会创建新的不可变快照。</p></div></div>
-  <div class="table-wrap"><table><thead><tr><th>版本</th><th>类型</th><th>生成时间</th><th>Executive AI</th><th>操作</th></tr></thead><tbody>
-  <% for (const report of reports) { %>
-    <tr>
-      <td><strong><%= report.reportVersion %></strong></td>
-      <td><%= report.reportType %></td>
-      <td><%= new Date(report.createdAt).toLocaleString('zh-CN') %></td>
-      <td><%= report.executiveAiTaskId ? '已关联' : '未生成' %></td>
-      <td><a href="/projects/<%= project.id %>/reports/<%= report.id %>">查看报告</a></td>
-    </tr>
-  <% } %>
-  <% if (!reports.length) { %><tr><td colspan="5" class="muted">尚无报告。可按需生成 V1 兼容快照或 V2 可见度快照。</td></tr><% } %>
-  </tbody></table></div>
+  <section class="panel product-table-panel" data-ui="report-history">
+    <div class="panel-header"><div><h2>报告历史</h2><p class="muted">每次生成都会创建新的不可变快照；事实和建议关联保持可追溯。</p></div></div>
+    <div class="table-wrap"><table><thead><tr><th>版本</th><th>类型</th><th>生成时间</th><th>Executive AI</th><th>操作</th></tr></thead><tbody>
+    <% for (const report of reports) { %>
+      <tr>
+        <td><strong><%= report.reportVersion %></strong></td>
+        <td><%= report.reportType %></td>
+        <td><%= new Date(report.createdAt).toLocaleString('zh-CN') %></td>
+        <td><%= report.executiveAiTaskId ? '已关联' : '未生成' %></td>
+        <td><a href="/projects/<%= project.id %>/reports/<%= report.id %>">查看报告</a></td>
+      </tr>
+    <% } %>
+    <% if (!reports.length) { %><tr><td colspan="5" class="muted">尚无报告。可按需生成 V1 兼容快照或 V2 可见度快照。</td></tr><% } %>
+    </tbody></table></div>
+  </section>
 </section>
