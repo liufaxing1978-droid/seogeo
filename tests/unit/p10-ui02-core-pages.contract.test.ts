@@ -26,4 +26,28 @@ describe('P10 UI-02 core pages contract', () => {
     expect(login).not.toContain('注册');
     expect(css).toContain('.auth-login-page');
   });
+
+  it('builds Project Center from authorized projects and persisted project facts', () => {
+    const routes = source('src/web/routes.ts');
+    const projectIndex = source('src/views/projects/index.ejs');
+    const css = source('src/public/css/p10.css');
+
+    expect(routes).toContain('projectService.listForUser(req.auth!.userId)');
+    expect(routes).toContain('dashboardRepository.getProjectFacts(project)');
+    expect(routes).toContain('projectRows');
+    expect(routes).toContain('projectSummary');
+
+    expect(projectIndex).toContain('data-ui="project-center"');
+    expect(projectIndex).toContain('data-ui="project-summary-grid"');
+    expect(projectIndex).toContain('data-ui="project-table"');
+    expect(projectIndex).toContain('projectSummary.total');
+    expect(projectIndex).toContain('projectSummary.active');
+    expect(projectIndex).toContain('projectSummary.advanced');
+    expect(projectIndex).toContain('projectSummary.enterprise');
+    expect(projectIndex).toContain('projectRows.forEach');
+    expect(projectIndex).toContain('row.facts.seoScore');
+    expect(projectIndex).toContain('row.facts.geoScore');
+    expect(projectIndex).toContain("'--'");
+    expect(css).toContain('.project-center');
+  });
 });
