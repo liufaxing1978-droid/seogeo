@@ -83,4 +83,13 @@ describe('P10 UI-01 shell design system contract', () => {
     expect(topbar).not.toContain('aria-label="通知"');
     expect(topbar).not.toContain('class="avatar"');
   });
+
+  it('provides progressive-enhancement drawer behavior', () => {
+    const js = source('src/public/js/app.js');
+    expect(js).toContain("querySelector('[data-ui=\"nav-toggle\"]')");
+    expect(js).toContain("classList.toggle('nav-open'");
+    expect(js).toContain("setAttribute('aria-expanded'");
+    expect(js).toContain("event.key === 'Escape'");
+    expect(js).toContain("matchMedia('(min-width: 1024px)')");
+  });
 });
