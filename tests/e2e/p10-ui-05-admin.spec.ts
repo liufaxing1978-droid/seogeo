@@ -89,6 +89,13 @@ test('preserves Optimization Operations executor hooks while showing the P10 aut
     await expect(main.locator('[data-run-optimization]')).toBeVisible();
     await expect(main.locator('[data-policy-form]')).toBeVisible();
     await expect(page.getByRole('link', { name: '优化运营', exact: true })).toHaveAttribute('aria-current', 'page');
+
+    const effectiveState = main.locator('[data-metric-effective-state]');
+    const effectiveStateFits = await effectiveState.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth + 1,
+    );
+    expect(effectiveStateFits).toBe(true);
+
     await page.screenshot({ path: 'p10-ui-05-optimization.png', fullPage: false });
   } finally {
     await auth.cleanup();
