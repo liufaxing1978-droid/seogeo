@@ -69,6 +69,25 @@ describe('P10 UI-03 analysis-center productization contract', () => {
     expect(ai).toContain('provider reasoning');
   });
 
+  it('productizes AI analysis without turning advisory output into deterministic facts', () => {
+    const ai = source('src/views/ai/index.ejs');
+    const task = source('src/views/ai/task-show.ejs');
+
+    expect(ai).toContain('data-ui="ai-analysis-center"');
+    expect(ai).toContain('data-ui="ai-readiness-summary"');
+    expect(ai).toContain('data-ui="ai-boundary-note"');
+    expect(ai).toContain('data-ui="ai-task-table"');
+    expect(ai).toContain("latestSeoAudit ? 'READY' : '--'");
+    expect(ai).toContain("latestGeoAudit ? 'READY' : '--'");
+    expect(ai).toContain('P4 不计算');
+    expect(task).toContain('data-ui="ai-task-detail"');
+    expect(task).toContain('data-ui="ai-result-summary"');
+    expect(task).toContain('AI 建议，不会自动改写确定性 SEO/GEO/Entity 数据');
+    expect(task).toContain("task.status === 'FAILED'");
+    expect(ai).not.toContain('自动执行优化');
+    expect(ai).not.toContain('AI 排名');
+  });
+
   it('loads an isolated UI-03 stylesheet with reusable analysis primitives', () => {
     const layout = source('src/views/layout.ejs');
     const cssPath = resolve(process.cwd(), 'src/public/css/p10-ui-03.css');
