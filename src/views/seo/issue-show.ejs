@@ -1,100 +1,102 @@
-<section class="page-header">
-  <div>
-    <p class="eyebrow">SEO Issue</p>
-    <h1><%= issue.title %></h1>
-    <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
-  </div>
-  <div class="actions">
-    <a class="button secondary" href="/projects/<%= project.id %>/seo/issues">返回问题中心</a>
-    <a class="button secondary" href="/projects/<%= project.id %>/seo">SEO 审计</a>
-  </div>
-</section>
-
-<section class="panel">
-  <div class="panel-header"><h2>规则事实</h2></div>
-  <dl class="detail-grid">
-    <div><dt>Rule Code</dt><dd><strong><%= rule.ruleCode %></strong></dd></div>
-    <div><dt>规则版本</dt><dd><%= ruleVersion ? `规则版本 ${ruleVersion.version}` : '无历史版本' %></dd></div>
-    <div><dt>严重度</dt><dd><%= issue.currentSeverity %></dd></div>
-    <div><dt>分类</dt><dd><%= issue.category %></dd></div>
-    <div><dt>当前状态</dt><dd><%= issue.status %></dd></div>
-    <div><dt>最近变化</dt><dd><%= latestOccurrence?.comparison ?? '—' %></dd></div>
-    <div><dt>首次发现</dt><dd><%= new Date(issue.firstSeenAt).toLocaleString('zh-CN') %></dd></div>
-    <div><dt>最近发现</dt><dd><%= new Date(issue.lastSeenAt).toLocaleString('zh-CN') %></dd></div>
-  </dl>
-</section>
-
-<section class="dashboard-grid">
-  <article class="panel panel-wide">
-    <h2>检测说明</h2>
-    <p><%= rule.description %></p>
-    <% if (ruleVersion) { %>
-      <h3>SEO 影响</h3>
-      <p><%= ruleVersion.seoImpact %></p>
-      <h3>确定性修复指南</h3>
-      <p><%= ruleVersion.fixGuide %></p>
-    <% } %>
-  </article>
-  <article class="panel">
-    <h2>工作状态</h2>
-    <p class="muted">“已解决”只能由下一次确定性审计验证，不能人工声明。</p>
-    <form action="/seo/issues/<%= issue.id %>/status" method="post">
-      <label for="status">状态</label>
-      <select id="status" name="status">
-        <% ['OPEN','IN_PROGRESS','PARTIALLY_FIXED','IGNORED'].forEach((status) => { %>
-          <option value="<%= status %>" <%= issue.status === status ? 'selected' : '' %>><%= status %></option>
-        <% }) %>
-      </select>
-      <button class="button" type="submit">更新状态</button>
-    </form>
-  </article>
-</section>
-
-<section class="panel">
-  <div class="panel-header">
+<section class="analysis-center">
+  <header class="analysis-hero">
     <div>
-      <h2>受影响页面</h2>
-      <p class="muted"><%= ruleVersion?.detectionType === 'CRAWL_FACT' ? '该问题属于全站抓取事实，不对应伪造的页面 URL。' : `共 ${affectedPages.length} 个页面` %></p>
+      <p class="eyebrow">SEO Issue</p>
+      <h1><%= issue.title %></h1>
+      <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
     </div>
-  </div>
-  <% if (ruleVersion?.detectionType === 'CRAWL_FACT') { %>
-    <p class="muted">全站级规则没有 Page 关联；证据来自 robots.txt、sitemap.xml 或其他 CrawlRun 事实。</p>
-  <% } else { %>
+    <div class="actions">
+      <a class="button secondary" href="/projects/<%= project.id %>/seo/issues">返回问题中心</a>
+      <a class="button secondary" href="/projects/<%= project.id %>/seo">SEO 审计</a>
+    </div>
+  </header>
+
+  <section class="panel">
+    <div class="panel-header"><h2>规则事实</h2></div>
+    <dl class="detail-grid">
+      <div><dt>Rule Code</dt><dd><strong><%= rule.ruleCode %></strong></dd></div>
+      <div><dt>规则版本</dt><dd><%= ruleVersion ? `规则版本 ${ruleVersion.version}` : '无历史版本' %></dd></div>
+      <div><dt>严重度</dt><dd><%= issue.currentSeverity %></dd></div>
+      <div><dt>分类</dt><dd><%= issue.category %></dd></div>
+      <div><dt>当前状态</dt><dd><%= issue.status %></dd></div>
+      <div><dt>最近变化</dt><dd><%= latestOccurrence?.comparison ?? '—' %></dd></div>
+      <div><dt>首次发现</dt><dd><%= new Date(issue.firstSeenAt).toLocaleString('zh-CN') %></dd></div>
+      <div><dt>最近发现</dt><dd><%= new Date(issue.lastSeenAt).toLocaleString('zh-CN') %></dd></div>
+    </dl>
+  </section>
+
+  <section class="dashboard-grid">
+    <article class="panel panel-wide">
+      <h2>检测说明</h2>
+      <p><%= rule.description %></p>
+      <% if (ruleVersion) { %>
+        <h3>SEO 影响</h3>
+        <p><%= ruleVersion.seoImpact %></p>
+        <h3>确定性修复指南</h3>
+        <p><%= ruleVersion.fixGuide %></p>
+      <% } %>
+    </article>
+    <article class="panel">
+      <h2>工作状态</h2>
+      <p class="muted">“已解决”只能由下一次确定性审计验证，不能人工声明。</p>
+      <form action="/seo/issues/<%= issue.id %>/status" method="post">
+        <label for="status">状态</label>
+        <select id="status" name="status">
+          <% ['OPEN','IN_PROGRESS','PARTIALLY_FIXED','IGNORED'].forEach((status) => { %>
+            <option value="<%= status %>" <%= issue.status === status ? 'selected' : '' %>><%= status %></option>
+          <% }) %>
+        </select>
+        <button class="button" type="submit">更新状态</button>
+      </form>
+    </article>
+  </section>
+
+  <section class="panel analysis-table-panel">
+    <div class="panel-header">
+      <div>
+        <h2>受影响页面</h2>
+        <p class="muted"><%= ruleVersion?.detectionType === 'CRAWL_FACT' ? '该问题属于全站抓取事实，不对应伪造的页面 URL。' : `共 ${affectedPages.length} 个页面` %></p>
+      </div>
+    </div>
+    <% if (ruleVersion?.detectionType === 'CRAWL_FACT') { %>
+      <p class="muted">全站级规则没有 Page 关联；证据来自 robots.txt、sitemap.xml 或其他 CrawlRun 事实。</p>
+    <% } else { %>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>URL</th><th>结果</th><th>证据</th></tr></thead>
+          <tbody>
+            <% for (const item of affectedPages) { %>
+              <tr>
+                <td><a href="/pages/<%= item.page.id %>"><%= item.page.normalizedUrl %></a></td>
+                <td><%= item.ruleResult.outcome %></td>
+                <td><code><%= JSON.stringify(item.ruleResult.evidence ?? {}) %></code></td>
+              </tr>
+            <% } %>
+            <% if (!affectedPages.length) { %><tr><td colspan="3" class="muted">当前 occurrence 没有受影响页面。</td></tr><% } %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+
+  <section class="panel analysis-table-panel">
+    <div class="panel-header"><h2>历史 occurrence</h2></div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>URL</th><th>结果</th><th>证据</th></tr></thead>
+        <thead><tr><th>审计</th><th>规则版本</th><th>严重度</th><th>变化</th><th>受影响</th><th>时间</th></tr></thead>
         <tbody>
-          <% for (const item of affectedPages) { %>
+          <% for (const occurrence of issue.occurrences) { %>
             <tr>
-              <td><a href="/pages/<%= item.page.id %>"><%= item.page.normalizedUrl %></a></td>
-              <td><%= item.ruleResult.outcome %></td>
-              <td><code><%= JSON.stringify(item.ruleResult.evidence ?? {}) %></code></td>
+              <td><%= occurrence.auditRun.id %></td>
+              <td>v<%= occurrence.ruleVersion.version %></td>
+              <td><%= occurrence.severity %></td>
+              <td><%= occurrence.comparison %></td>
+              <td><%= occurrence.ruleVersion.detectionType === 'CRAWL_FACT' ? '全站' : occurrence.affectedPagesCount %></td>
+              <td><%= new Date(occurrence.createdAt).toLocaleString('zh-CN') %></td>
             </tr>
           <% } %>
-          <% if (!affectedPages.length) { %><tr><td colspan="3" class="muted">当前 occurrence 没有受影响页面。</td></tr><% } %>
         </tbody>
       </table>
     </div>
-  <% } %>
-</section>
-
-<section class="panel">
-  <div class="panel-header"><h2>历史 occurrence</h2></div>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>审计</th><th>规则版本</th><th>严重度</th><th>变化</th><th>受影响</th><th>时间</th></tr></thead>
-      <tbody>
-        <% for (const occurrence of issue.occurrences) { %>
-          <tr>
-            <td><%= occurrence.auditRun.id %></td>
-            <td>v<%= occurrence.ruleVersion.version %></td>
-            <td><%= occurrence.severity %></td>
-            <td><%= occurrence.comparison %></td>
-            <td><%= occurrence.ruleVersion.detectionType === 'CRAWL_FACT' ? '全站' : occurrence.affectedPagesCount %></td>
-            <td><%= new Date(occurrence.createdAt).toLocaleString('zh-CN') %></td>
-          </tr>
-        <% } %>
-      </tbody>
-    </table>
-  </div>
+  </section>
 </section>
