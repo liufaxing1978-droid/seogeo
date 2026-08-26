@@ -1,4 +1,5 @@
-<section class="page-header">
+<div class="analysis-center" data-ui="ai-analysis-center">
+<section class="page-header analysis-hero">
   <div>
     <p class="eyebrow">DeepSeek Intelligence · P4</p>
     <h1>DeepSeek AI 分析中心</h1>
@@ -10,12 +11,12 @@
   </div>
 </section>
 
-<section class="panel">
+<section class="panel analysis-evidence-note" data-ui="ai-boundary-note">
   <h2>AI 只分析已保存事实</h2>
   <p class="muted">DeepSeek 不负责产生抓取、HTTP、robots、SEO/GEO 评分或 AI 平台可见性事实。P4 只读取已经完成的确定性审计，生成解释、优先级和建议，并保留模型与 Prompt 版本。</p>
 </section>
 
-<section class="metric-grid compact">
+<section class="metric-grid compact analysis-metric-grid" data-ui="ai-readiness-summary">
   <article class="metric-card">
     <div class="metric-title">SEO 分析</div>
     <div class="metric-value"><%= latestSeoAudit ? 'READY' : '--' %></div>
@@ -59,7 +60,7 @@
   </article>
 </section>
 
-<section class="panel">
+<section class="panel analysis-table-panel" data-ui="ai-task-table">
   <div class="panel-header">
     <div>
       <h2>AI 任务</h2>
@@ -87,3 +88,4 @@
     </table>
   </div>
 </section>
+</div>
