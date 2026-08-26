@@ -2,6 +2,8 @@
 
 These images are visual targets for P10 UI productization. They define hierarchy, density, layout character and component style. They do **not** define application data, permissions, workflow semantics or backend capabilities.
 
+The complete downloadable Codex design package contains the JPEG files listed below under `docs/ui/reference/`. Before Codex begins implementation, copy those JPEGs into the same repository path if they are not already present on the implementation branch. `SHA256SUMS.txt` is the integrity manifest for that exact reference set.
+
 | File | Target |
 |---|---|
 | `01-login.jpg` | Login |
@@ -25,5 +27,3 @@ These images are visual targets for P10 UI productization. They define hierarchy
 5. Never collapse domain states when doing so changes meaning.
 6. Preserve RBAC, project scope, CSRF and feature gates.
 7. Do not resize the application around one screenshot viewport.
-
-`SHA256SUMS.txt` records the exact reference files committed with this design package.
