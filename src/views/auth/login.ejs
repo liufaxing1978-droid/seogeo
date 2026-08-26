@@ -1,25 +1,62 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign in · SEOGEO</title>
+  <title>登录 · SEO GEO</title>
+  <link rel="stylesheet" href="/assets/css/app.css">
+  <link rel="stylesheet" href="/assets/css/p10.css">
 </head>
-<body>
-  <main>
-    <h1>Sign in</h1>
-    <form method="post" action="/auth/login" autocomplete="on">
-      <input type="hidden" name="returnPath" value="<%= returnPath %>">
-      <label>
-        Email
-        <input type="email" name="email" autocomplete="username" required>
-      </label>
-      <label>
-        Password
-        <input type="password" name="password" autocomplete="current-password" required>
-      </label>
-      <button type="submit">Sign in</button>
-    </form>
+<body class="auth-login-page">
+  <main class="auth-login-shell" data-ui="login-page">
+    <section class="auth-login-marketing" data-ui="login-marketing" aria-labelledby="login-product-title">
+      <div class="auth-login-brand" aria-label="SEO GEO">
+        <span class="auth-login-brand-mark" aria-hidden="true">SG</span>
+        <span>SEO GEO</span>
+      </div>
+
+      <div class="auth-login-message">
+        <p class="auth-login-eyebrow">SEO · GEO INTELLIGENCE</p>
+        <h1 id="login-product-title">让搜索事实与 AI 可见性<br>进入同一个工作台</h1>
+        <p class="auth-login-lead">从项目事实、SEO 审计到 GEO 可见性与受控优化，所有界面只呈现系统已经持久化的数据。</p>
+
+        <ul class="auth-login-benefits" aria-label="平台能力">
+          <li><span aria-hidden="true">✓</span><strong>多项目事实视图</strong><small>统一查看项目状态与已有采集结果</small></li>
+          <li><span aria-hidden="true">✓</span><strong>SEO 与 GEO 统一工作台</strong><small>未知数据保持未知，不用虚拟数字补齐界面</small></li>
+          <li><span aria-hidden="true">✓</span><strong>受控优化与人工审批边界</strong><small>保留既有权限、审批与发布安全约束</small></li>
+        </ul>
+      </div>
+
+      <p class="auth-login-trust">真实数据优先 · 未采集值不会被当作 0</p>
+    </section>
+
+    <section class="auth-login-form-side" aria-label="账户登录">
+      <div class="auth-login-card" data-ui="login-card">
+        <div class="auth-login-card-heading">
+          <p class="auth-login-eyebrow">欢迎回来</p>
+          <h2>登录 SEO GEO</h2>
+          <p>使用已有账户进入工作台。</p>
+        </div>
+
+        <form method="post" action="/auth/login" autocomplete="on" class="auth-login-form">
+          <input type="hidden" name="returnPath" value="<%= returnPath %>">
+
+          <label class="auth-login-field">
+            <span>邮箱</span>
+            <input type="email" name="email" autocomplete="username" inputmode="email" required placeholder="name@example.com">
+          </label>
+
+          <label class="auth-login-field">
+            <span>密码</span>
+            <input type="password" name="password" autocomplete="current-password" required placeholder="输入密码">
+          </label>
+
+          <button type="submit" class="auth-login-submit">登录</button>
+        </form>
+
+        <p class="auth-login-footnote">账户与访问权限由系统管理员配置。</p>
+      </div>
+    </section>
   </main>
 </body>
 </html>
