@@ -56,6 +56,21 @@ body{background:var(--ui-bg);color:var(--ui-text)}
 .sidebar nav a{color:var(--ui-text-secondary);border:1px solid transparent;transition:background var(--ui-transition-fast),color var(--ui-transition-fast),border-color var(--ui-transition-fast)}
 .sidebar nav a:hover,.sidebar nav a.active{background:var(--ui-primary-soft);border-color:#dbe7ff;color:var(--ui-primary)}
 .sidebar nav a.active{box-shadow:none}
+
+/* P10 UI-01 primary product-center navigation. */
+.sidebar{width:var(--ui-sidebar-width);background:var(--ui-surface);border-right:1px solid var(--ui-border);color:var(--ui-text);padding:18px 14px;box-shadow:none}
+.sidebar-header{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.brand{display:flex;align-items:center;gap:10px;color:var(--ui-text);margin:0;font-size:inherit;font-weight:inherit}
+.brand .brand-mark{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;background:var(--ui-primary);color:#fff;font-size:12px;font-weight:750;letter-spacing:-.02em}
+.brand .brand-copy{color:var(--ui-text);font-size:16px;font-weight:750;letter-spacing:-.025em}
+.primary-nav{display:grid;gap:4px;margin-top:24px}
+.sidebar .nav-item{min-height:42px;display:flex;align-items:center;gap:11px;border:1px solid transparent;border-radius:11px;padding:0 12px;margin:0;color:var(--ui-text-secondary);font-size:14px;font-weight:600;transition:background var(--ui-transition-fast),color var(--ui-transition-fast),border-color var(--ui-transition-fast)}
+.sidebar .nav-item:hover{background:var(--ui-surface-subtle);border-color:transparent;color:var(--ui-text)}
+.sidebar .nav-item.active{background:var(--ui-primary-soft);border-color:#dbe7ff;color:var(--ui-primary);box-shadow:none}
+.sidebar .nav-item.is-disabled{color:var(--ui-text-tertiary);cursor:not-allowed;user-select:none}
+.sidebar .nav-item.is-disabled:hover{background:transparent;color:var(--ui-text-tertiary)}
+.sidebar-close{display:none;width:34px;height:34px;border:1px solid var(--ui-border);border-radius:var(--ui-radius-control);background:var(--ui-surface);color:var(--ui-text-secondary);align-items:center;justify-content:center;padding:0;cursor:pointer}
+
 .workspace{background:var(--ui-bg)}
 .topbar{height:var(--ui-topbar-height);background:var(--ui-surface-elevated);backdrop-filter:blur(18px);border-bottom:1px solid var(--ui-border);padding:0 32px}
 .topbar h1{font-size:20px;letter-spacing:-.02em}.eyebrow{color:var(--ui-primary)}.topbar-actions{color:var(--ui-text-secondary)}
