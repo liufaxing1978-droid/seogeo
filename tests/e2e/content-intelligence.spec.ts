@@ -24,6 +24,6 @@ test('opens Standard-plan Content Center without invoking AI or network refresh'
   await page.goto(`/projects/${projectId}/content`);
   await expect(page.getByRole('main').getByRole('heading', { level: 1, name: '内容中心' })).toBeVisible();
   await expect(page.getByText('确定性事实优先')).toBeVisible();
-  await expect(page.getByRole('link', { name: '内容中心' })).toHaveClass(/active/);
+  await expect(page.getByRole('link', { name: '内容与发布', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByText(/尚无内容事实/)).toBeVisible();
 });

@@ -73,9 +73,24 @@ describe('admin web UI', () => {
     const fixture = await seed('ADVANCED', 'REVOKED');
     const response = await request(app).get('/').set('Cookie', fixture.sessionCookie);
     expect(response.status).toBe(200);
-    for (const text of ['SEO GEO', '概览', '项目', 'SEO', 'GEO', 'AI Visibility', 'DeepSeek', '报告', '系统']) {
+    for (const text of [
+      'SEO GEO',
+      '仪表盘',
+      '项目中心',
+      'SEO 中心',
+      'GEO / 可见度',
+      'AI 分析中心',
+      '内容与发布',
+      '竞品情报',
+      '报告中心',
+      '优化运营',
+      '成员与权限',
+      '设置',
+    ]) {
       expect(response.text).toContain(text);
     }
+    expect(response.text).toContain('aria-current="page"');
+    expect(response.text).toContain('aria-disabled="true"');
     expect(response.text).toContain('尚无项目');
     expect(response.text).toContain('所有数值均来自已持久化项目数据');
   });

@@ -176,20 +176,22 @@ test('navigates Search Console settings and all P7-A Growth Center views', async
   await page.goto(`/projects/${projectId}/search-console`);
   await expect(page.getByRole('heading', { level: 1, name: 'Google Search Console', exact: true })).toBeVisible();
   await expect(page.getByText('NOT_CONNECTED', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '优化运营', exact: true })).toHaveAttribute('aria-current', 'page');
 
-  await page.getByRole('link', { name: 'Growth Center', exact: true }).click();
+  await page.goto(`/projects/${projectId}/growth`);
   await expect(page.getByRole('heading', { level: 1, name: 'Growth Opportunity Center', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '优化运营', exact: true })).toHaveAttribute('aria-current', 'page');
   await page.getByRole('link', { name: '六壬历史', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Growth Opportunity', exact: true })).toBeVisible();
   expect(page.url()).toContain(normal.id);
 
-  await page.getByRole('link', { name: 'Topic Clusters', exact: true }).click();
+  await page.goto(`/projects/${projectId}/growth/topics`);
   await expect(page.getByRole('heading', { level: 1, name: 'Topic Clusters', exact: true })).toBeVisible();
 
-  await page.getByRole('link', { name: 'Cannibalization', exact: true }).click();
+  await page.goto(`/projects/${projectId}/growth/cannibalization`);
   await expect(page.getByRole('heading', { level: 1, name: 'Keyword Cannibalization', exact: true })).toBeVisible();
 
-  await page.getByRole('link', { name: 'New Content', exact: true }).click();
+  await page.goto(`/projects/${projectId}/growth/new-content`);
   await expect(page.getByRole('heading', { level: 1, name: 'New Content Opportunities', exact: true })).toBeVisible();
   await expect(page.getByText('建议评估新建专门内容页')).toBeVisible();
 });

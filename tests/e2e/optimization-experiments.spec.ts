@@ -437,13 +437,14 @@ test('renders persisted experiments read-only and makes lower-is-better position
   const fixture = await seedEvaluatedExperiment('SEARCH');
 
   await page.goto(`/projects/${fixture.project.id}/growth/new-content`);
-  const experimentLink = page.getByRole('link', { name: /优化实验/ });
-  await expect(experimentLink).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'New Content Opportunities', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '优化运营', exact: true })).toHaveAttribute('aria-current', 'page');
 
   const before = await projectReadCounts(fixture.project.id);
-  await experimentLink.click();
+  await page.goto(`/projects/${fixture.project.id}/optimization/experiments`);
 
   await expect(page.getByRole('heading', { level: 1, name: '优化实验', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '优化运营', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByText('EVALUATED', { exact: true })).toBeVisible();
   await expect(page.getByText(fixture.targetUrl, { exact: true })).toBeVisible();
 

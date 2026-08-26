@@ -28,7 +28,7 @@ test('generates and opens a project report without invoking DeepSeek', async ({ 
   await page.getByRole('link', { name: '查看报告' }).first().click();
   await expect(page.getByText('确定性事实', { exact: true })).toBeVisible();
   await expect(page.getByText('AI 建议 / Executive Summary', { exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: '报告', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('link', { name: '报告中心', exact: true })).toHaveAttribute('aria-current', 'page');
 });
 
 test('generates PROJECT_REPORT_V2 from persisted Advanced visibility facts without leaking private snapshot fields', async ({ page }) => {

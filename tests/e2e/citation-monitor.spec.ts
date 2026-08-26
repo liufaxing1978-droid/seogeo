@@ -24,13 +24,14 @@ test('opens Citation Monitor, configures owned subject, and keeps metrics on the
   await page.goto(`/projects/${projectId}/visibility/citations`);
   await expect(page.getByRole('main').getByRole('heading', { level: 1, name: 'Citation 监控' })).toBeVisible();
   await expect(page.getByText('UNKNOWN 与 NOT_ELIGIBLE 不等于零', { exact: false })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Citation 监控' })).toHaveClass(/active/);
-  await expect(page.getByRole('navigation').getByRole('link', { name: 'Visibility 指标' })).toBeVisible();
+  const geoCenter = page.getByRole('navigation').getByRole('link', { name: 'GEO / 可见度', exact: true });
+  await expect(geoCenter).toHaveAttribute('aria-current', 'page');
+  await expect(geoCenter).toHaveAttribute('href', `/projects/${projectId}/geo`);
   await expect(page.getByRole('main').getByText('Mention Rate')).toHaveCount(0);
   await expect(page.getByRole('main').getByText('Citation Rate')).toHaveCount(0);
   await expect(page.getByRole('main').getByText('Share of Voice')).toHaveCount(0);
 
-  await page.getByRole('link', { name: '监控主体' }).first().click();
+  await page.goto(`/projects/${projectId}/visibility/subjects`);
   await expect(page.getByRole('main').getByRole('heading', { level: 1, name: '监控主体' })).toBeVisible();
   await expect(page.getByRole('cell', { name: `citation-monitor-${suffix}.example.com`, exact: true }).first()).toBeVisible();
 
