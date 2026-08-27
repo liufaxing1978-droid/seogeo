@@ -6,6 +6,14 @@ function readRepoFile(path: string): string {
 }
 
 describe('Release-01 staging operations runbook contract', () => {
+  it('hands worker signals directly to the Node runtime', () => {
+    const packageJson = JSON.parse(readRepoFile('package.json')) as {
+      scripts?: Record<string, string>;
+    };
+
+    expect(packageJson.scripts?.['start:worker']).toBe('exec node dist/src/worker.js');
+  });
+
   it('documents the staging deployment sequence and health checks', () => {
     const staging = readRepoFile('docs/development/release-01-staging-runbook.md');
 
