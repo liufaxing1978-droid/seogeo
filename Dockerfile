@@ -17,7 +17,7 @@ ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
-RUN npx playwright install --with-deps chromium
+RUN node node_modules/playwright/cli.js install --with-deps chromium
 
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
