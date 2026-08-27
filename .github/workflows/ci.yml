@@ -198,7 +198,7 @@ jobs:
           docker run --rm --network none --entrypoint sh "seogeo:$ARTIFACT_SHA" -lc '
             test -f dist/src/server.js
             test -f dist/src/worker.js
-            node -e "const p=require(\"./package.json\"); if (p.scripts.start !== \"node dist/src/server.js\") process.exit(1); if (p.scripts[\"start:worker\"] !== \"node dist/src/worker.js\") process.exit(1)"
+            node -e "const p=require(\"./package.json\"); if (p.scripts.start !== \"node dist/src/server.js\") process.exit(1); if (p.scripts[\"start:worker\"] !== \"exec node dist/src/worker.js\") process.exit(1)"
           '
       - name: Verify Prisma CLI is absent from runtime image
         run: |

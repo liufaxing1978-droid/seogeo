@@ -38,12 +38,12 @@ describe('Release-01 Worker runtime lifecycle', () => {
     expect(source).not.toContain('process.exit(');
   });
 
-  it('exposes a dedicated production Worker command', async () => {
+  it('exposes a signal-safe dedicated production Worker command', async () => {
     const packageJson = JSON.parse(await readFile('package.json', 'utf8')) as {
       scripts?: Record<string, string>;
     };
 
-    expect(packageJson.scripts?.['start:worker']).toBe('node dist/src/worker.js');
+    expect(packageJson.scripts?.['start:worker']).toBe('exec node dist/src/worker.js');
     expect(packageJson.scripts?.start).toBe('node dist/src/server.js');
   });
 });

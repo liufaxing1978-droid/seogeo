@@ -10,7 +10,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/server.js",
-    "start:worker": "node dist/src/worker.js",
+    "start:worker": "exec node dist/src/worker.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
