@@ -16,7 +16,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --legacy-peer-deps
+RUN npm ci --omit=dev --legacy-peer-deps \
+  && rm -rf node_modules/prisma node_modules/.bin/prisma
 RUN node node_modules/playwright/cli.js install --with-deps chromium
 
 COPY --from=build /app/dist ./dist
