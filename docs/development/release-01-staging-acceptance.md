@@ -1,6 +1,6 @@
 # Release-01 Staging Acceptance Record
 
-Status: **STAGING ACCEPTANCE IN PROGRESS — Gate 25 pending**
+Status: **STAGING READY — Release-01 P0-P10 staging only**
 Scope: P0-P10 Release-01 staging acceptance evidence  
 Production deployment: **NOT AUTHORIZED BY THIS DOCUMENT**
 
@@ -12,13 +12,15 @@ Release-01 remains staging-only. It does not authorize P11 and does not authoriz
 
 ## 2. Repository-side integrated identity
 
-Repository integration is complete and has post-merge evidence for the repaired staging candidate:
+Repository integration is complete and has post-merge evidence for both the repaired staging candidate and its acceptance checkpoint:
 
-- Integrated main: `main@68881188c62028051c136de77cad4b7f2f1d38ca`
+- Accepted deployed candidate: `main@68881188c62028051c136de77cad4b7f2f1d38ca`
+- Gates 5–24 checkpoint: `main@7cd090c91cef5c61261881de79dfd68541b2b2ef`, PR #178
 - Runtime compatibility fix: PR #175
 - Crawl API RBAC/CSRF fix: PR #176
 - Worker signal-forwarding fix: PR #177
-- Main CI: CI #2263, workflow run `33087173292`
+- Accepted-candidate CI: CI #2263, workflow run `33087173292`
+- Checkpoint main CI: CI #2266, workflow run `33090471138`
 - `verify`: PASS — Prisma validate/generate/migrate, Typecheck, full Vitest, Build
 - `production-audit`: PASS
 - `e2e`: PASS — Chromium browser smoke suite and screenshot artifacts
@@ -28,7 +30,7 @@ Repository integration is complete and has post-merge evidence for the repaired 
 
 Repository-side evidence alone does not establish external staging identity. The exact deployed `main` SHA and its green CI are therefore recorded together with the external evidence below; they must not be silently combined with evidence from another artifact.
 
-External staging identity for Gates 5–24:
+External staging identity for Gates 5–25:
 
 - Exact deployed source SHA: `68881188c62028051c136de77cad4b7f2f1d38ca`.
 - Runtime image: exact-SHA tag with local immutable ID `sha256:393475ec44099a186c2e15341dc5ec21600415b9987f973b26f2d3c2cf148dc1`.
@@ -36,8 +38,9 @@ External staging identity for Gates 5–24:
 - Candidate backup: `20260827T152441Z-68881188/pre-migration.dump`, SHA-256 `fc664284dc682f79268f37f39a2155b6ddd2cd347ab5925af53c7bb5de0ef453`.
 - Public staging origin: `https://seogeo-staging.43-128-23-16.sslip.io`.
 - Operator: Codex in an operator-authorized staging session.
-- Evidence window: `2026-08-27T10:50Z` through `2026-08-27T15:42Z`.
-- Previous immutable candidates were not classified as known-good after staging exposed runtime, RBAC, and shutdown defects. Gate 25 therefore remains pending until this Gates 5–24 checkpoint establishes `68881188...` as the rollback baseline.
+- Evidence window: `2026-08-27T10:50Z` through `2026-08-27T16:07Z`.
+- Gate 25 rehearsal source: checkpoint runtime `7cd090c91cef5c61261881de79dfd68541b2b2ef`, immutable ID `sha256:563fb5c769b299b69bf22299c9af97b87134fde4ec5a75be813e4741d29a318a`.
+- Gate 25 rollback target and final active artifact: accepted candidate `68881188c62028051c136de77cad4b7f2f1d38ca` for both Web and Worker.
 
 Server connection details and credentials are supplied out-of-band to the operator/Codex session and must never be committed to this repository or pasted into this acceptance record.
 
@@ -59,7 +62,7 @@ These statements remain true throughout acceptance:
 
 ## 4. Twenty-five acceptance gates
 
-Attach concrete evidence to every checked item. Repository-side gates 1–4 are checked from post-merge main CI #2263. Gates 5–24 below were exercised against real staging. Gate 25 remains fail-closed until the rollback rehearsal is complete.
+Attach concrete evidence to every checked item. Repository-side gates 1–4 are checked from accepted-candidate main CI #2263. Gates 5–25 below were exercised against real staging.
 
 1. [x] Integrated `main` CI `verify` is green, including Prisma validation/generation/migrations, Typecheck, full Vitest, and Build. Evidence: CI #2263 / run `33087173292`, `main@68881188c62028051c136de77cad4b7f2f1d38ca`.
 2. [x] Integrated `main` CI `production-audit` is green for the deployable runtime dependency tree. Evidence: CI #2263 / run `33087173292`.
@@ -85,7 +88,7 @@ Attach concrete evidence to every checked item. Repository-side gates 1–4 are 
 22. [x] Settings exposes no secrets/tokens/credential-bearing connection strings and does not represent configuration presence as live provider health. Evidence: rendered Settings matched none of the real secret/connection values; provider states remained `NOT_CONFIGURED` and UI states configuration is not health.
 23. [x] A Worker restart demonstrates queue recovery/continuation and successful representative work without changing semantic or authorization authority. Evidence: corrected Worker logged SIGTERM shutdown and exited 0; work enqueued while stopped remained `QUEUED`; restart completed it on the second poll with one page succeeded.
 24. [x] A staging PostgreSQL backup is created for the candidate and the documented restore procedure is successfully exercised against a clearly isolated non-production target. Evidence: PostgreSQL 17 archive list/restore passed; isolated target contained 41 migrations plus representative identity/evidence rows; loopback-only readiness returned `ok`; active staging stayed ready and was not overwritten.
-25. [ ] The previous known-good immutable application artifact can be redeployed for both Web and Worker according to `release-01-rollback.md`, with post-rollback health and queue checks recorded.
+25. [x] The previous known-good immutable application artifact can be redeployed for both Web and Worker according to `release-01-rollback.md`, with post-rollback health and queue checks recorded. Evidence: both roles rolled back from the checkpoint artifact to exact `68881188...`; live/ready were `ok`; session 200, invalid Origin 403, anonymous members 401, and last-owner mutation 409 remained intact; post-rollback crawl completed with one success and zero failures; both roles used the same image with zero restarts; all 41 forward migrations remained and no down-migration ran.
 
 ## 5. External evidence notes
 
@@ -123,9 +126,9 @@ Do not mark a gate complete from intention, configuration presence, mocked provi
 
 Current staging status is:
 
-**STAGING ACCEPTANCE IN PROGRESS — Gate 25 pending**
+**STAGING READY — Release-01 P0-P10 staging only**
 
-This means the exact repaired candidate has green integrated-main CI and real external evidence for Gates 5–24. It does **not** mean Gate 25 has passed, and it is not yet the final `STAGING READY` decision.
+This means the exact repaired candidate has green integrated-main CI and real external evidence for all 25 Gates, including isolated restore and immutable application rollback rehearsals. The final active Staging Web and Worker remain on the accepted `68881188...` artifact.
 
 Only after all 25 items are backed by evidence for the exact externally deployed staging candidate may Release-01 be described as **STAGING READY**.
 
