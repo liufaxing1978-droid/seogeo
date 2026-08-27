@@ -10,14 +10,25 @@ This document is the evidence record for the exact Release-01 staging candidate.
 
 Release-01 remains staging-only. It does not authorize P11 and does not authorize Production deployment.
 
-## 2. Candidate identity
+## 2. Repository-side candidate identity
 
-Complete these fields for the exact external staging candidate before acceptance:
+Repository-side handoff evidence was collected for this exact implementation candidate:
 
-- Candidate SHA: `<record exact commit>`
-- CI workflow run: `<record run id>`
-- Runtime image identity/digest: `<record immutable identity>`
-- Migration image identity/digest: `<record immutable identity>`
+- Candidate SHA: `4a17fbfe0761662afaddb81fe58baee1527bce10`
+- Base SHA: `1c258e0becc64c39148dcfea45722254a1eed217`
+- Pull request: `#173` (`docs/release-01-production-readiness` -> `main`), still Draft and unmerged
+- Exact-head CI: `#2249`, workflow run `33033331080`
+- `verify`: PASS — Prisma validate/generate/migrate, Typecheck, full Vitest, Build
+- `production-audit`: PASS
+- `e2e`: PASS — Chromium browser smoke suite
+- `deployment-artifact`: PASS — exact source SHA, runtime image build, migration image build, offline runtime-content check, and runtime Prisma CLI absence
+- Diff audit: 25 changed files, limited to approved Release-01 runtime/env/proxy/process/packaging/CI/tests/runbooks/spec-plan scope; no Prisma schema/feature migration, P11 feature, UI redesign, autonomous deploy/rollback, or default-branch direct-write implementation was introduced
+- Local isolated checkout note: the execution environment could not resolve `github.com` for `git clone`, so no claim of an additional local clone run is made; exact-head GitHub Actions is the authoritative repository verification evidence
+
+The repository-side evidence above does not fill in external staging identity. Before external acceptance, record separately:
+
+- Runtime image identity/digest: `<record immutable staging identity>`
+- Migration image identity/digest: `<record immutable staging identity>`
 - Previous known-good application artifact: `<record immutable identity>`
 - PostgreSQL backup identifier/checksum: `<record backup evidence>`
 - Staging public HTTPS origin: `<record staging URL>`
@@ -25,7 +36,7 @@ Complete these fields for the exact external staging candidate before acceptance
 - Acceptance started at UTC: `<record timestamp>`
 - Acceptance completed at UTC: `<record timestamp>`
 
-Every evidence item must belong to the same candidate identity. Do not combine CI from one SHA with images or staging processes from another SHA.
+Do not combine CI from one implementation SHA with externally deployed images or processes from another implementation SHA without recording the relationship explicitly.
 
 ## 3. Frozen truth and authority boundaries
 
@@ -45,12 +56,12 @@ These statements remain true throughout acceptance:
 
 ## 4. Twenty-five acceptance gates
 
-Attach concrete evidence to every checked item. All 25 gates must be checked before external staging acceptance can be declared.
+Attach concrete evidence to every checked item. Repository-side gates 1–4 are checked from exact-head CI #2249. Gates 5–25 remain unchecked until the required real staging/external operation is exercised. All 25 gates must be checked before external staging acceptance can be declared.
 
-1. [ ] Exact candidate CI `verify` is green, including Prisma validation/generation/migrations, Typecheck, full Vitest, and Build.
-2. [ ] Exact candidate CI `production-audit` is green for the deployable runtime dependency tree.
-3. [ ] Exact candidate CI `e2e` is green, including the existing Chromium browser smoke suite.
-4. [ ] Production-mode environment validation rejects missing required infrastructure values (`DATABASE_URL`, `REDIS_URL`, and a valid `SESSION_SECRET`).
+1. [x] Exact candidate CI `verify` is green, including Prisma validation/generation/migrations, Typecheck, full Vitest, and Build. Evidence: CI #2249 / run `33033331080`, candidate `4a17fbfe0761662afaddb81fe58baee1527bce10`.
+2. [x] Exact candidate CI `production-audit` is green for the deployable runtime dependency tree. Evidence: CI #2249 / run `33033331080`.
+3. [x] Exact candidate CI `e2e` is green, including the existing Chromium browser smoke suite. Evidence: CI #2249 / run `33033331080`.
+4. [x] Production-mode environment validation rejects missing required infrastructure values (`DATABASE_URL`, `REDIS_URL`, and a valid `SESSION_SECRET`). Evidence: exact-head `verify` full Vitest in CI #2249 includes the Release-01 environment fail-fast contract.
 5. [ ] The one-shot Migration role completes `prisma migrate deploy` successfully for the staging database before the application candidate is accepted.
 6. [ ] The Web role starts separately and `GET /health/live` succeeds through the intended staging path.
 7. [ ] `GET /health/ready` succeeds with real staging PostgreSQL and Redis dependencies available.
@@ -73,14 +84,14 @@ Attach concrete evidence to every checked item. All 25 gates must be checked bef
 24. [ ] A staging PostgreSQL backup is created for the candidate and the documented restore procedure is successfully exercised against a clearly isolated non-production target.
 25. [ ] The previous known-good immutable application artifact can be redeployed for both Web and Worker according to `release-01-rollback.md`, with post-rollback health and queue checks recorded.
 
-## 5. Evidence notes
+## 5. External evidence notes
 
-For each gate, record a short evidence reference such as:
+For each external gate, record a short evidence reference such as:
 
-- exact CI run/job URL or run ID;
-- candidate SHA/image digest;
+- immutable image digest;
 - staging request timestamp and response status;
 - sanitized log excerpt identifier;
+- provider observation identifier/state;
 - backup file/snapshot ID and checksum;
 - restore rehearsal target/result;
 - rollback target SHA and post-rollback health result.
@@ -95,17 +106,17 @@ Any failed or unverifiable gate blocks Release-01 external staging acceptance. R
 - database recovery concern → `release-01-backup-restore.md`;
 - application rollback → `release-01-rollback.md`.
 
-Do not mark a gate complete from intention, configuration presence, mocked provider state, local-only success, or a different candidate SHA.
+Do not mark a gate complete from intention, configuration presence, mocked provider state, local-only success, or a different external candidate identity.
 
 ## 7. Final decision
 
-Current repository-side status remains:
+Current repository-side status is:
 
 **STAGING DEPLOYABLE — external staging acceptance pending**
 
-The phrase above means the repository may contain a reproducible staging artifact and operating procedure; it does **not** mean an external staging environment has been deployed or that the 25 gates above have been exercised.
+This means the repository has exact-head CI evidence, reproducible Web/Worker/Migration packaging, and operator runbooks. It does **not** mean an external staging environment has been deployed or that gates 5–25 have been exercised.
 
-Only after all 25 items are backed by evidence for the exact external candidate may Release-01 be described as **STAGING READY**.
+Only after all 25 items are backed by evidence for the exact external staging candidate may Release-01 be described as **STAGING READY**.
 
 Even then:
 
