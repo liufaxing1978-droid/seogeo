@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createAuthRoutes } from './auth/auth.routes.js';
 import { authenticationMiddleware } from './auth/authentication.js';
+import { env } from './config/env.js';
 import { errorHandler } from './core/http.js';
 import { createAiRoutes } from './modules/ai/ai.routes.js';
 import type { AiTaskService } from './modules/ai/ai.service.js';
@@ -72,6 +73,7 @@ import type { VisibilityMetricsQueue } from './modules/visibility/visibility-met
 import { createVisibilityMetricsWebRoutes } from './modules/visibility/visibility-metrics.web.routes.js';
 import { createVisibilityHistoryRoutes } from './modules/visibility/visibility-history.routes.js';
 import { visibilityHistoryWebRoutes } from './modules/visibility/visibility-history.web.routes.js';
+import { configureTrustProxy } from './runtime/trust-proxy.js';
 import { webRoutes } from './web/routes.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -102,6 +104,7 @@ export interface AppOptions {
 
 export function createApp(options: AppOptions = {}) {
   const app = express();
+  configureTrustProxy(app, env.TRUST_PROXY_HOPS);
   app.disable('x-powered-by');
   app.set('view engine', 'ejs');
   app.set('views', path.join(here, 'views'));

@@ -20,6 +20,7 @@ const schema = z.object({
     .default('postgresql://postgres:postgres@localhost:5432/seogeo'),
   REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
   SESSION_SECRET: z.string().min(1).default('development-secret'),
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
   CRAWLER_USER_AGENT: z.string().min(1).max(300).default('SEOGEO-Bot/0.1 (+https://seo.xingshantang.org)'),
   CRAWLER_MAX_PAGES: z.coerce.number().int().min(1).max(5000).default(500),
   CRAWLER_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(4),
@@ -40,10 +41,27 @@ const schema = z.object({
   OAUTH_CREDENTIAL_KEY_VERSION: z.string().min(1).default('v1')
 });
 
-const parsed = schema.parse(process.env);
+export type RuntimeEnv = z.infer<typeof schema>;
 
-if (parsed.NODE_ENV === 'production' && parsed.SESSION_SECRET.length < 32) {
-  throw new Error('SESSION_SECRET must be at least 32 characters in production');
+export function parseEnv(input: NodeJS.ProcessEnv): RuntimeEnv {
+  const parsed = schema.parse(input);
+
+  if (parsed.NODE_ENV === 'production') {
+    if (!input.DATABASE_URL?.trim()) {
+      throw new Error('DATABASE_URL is required in production');
+    }
+    if (!input.REDIS_URL?.trim()) {
+      throw new Error('REDIS_URL is required in production');
+    }
+    if (!input.SESSION_SECRET?.trim()) {
+      throw new Error('SESSION_SECRET is required in production');
+    }
+    if (parsed.SESSION_SECRET.length < 32) {
+      throw new Error('SESSION_SECRET must be at least 32 characters in production');
+    }
+  }
+
+  return parsed;
 }
 
-export const env = parsed;
+export const env = parseEnv(process.env);
