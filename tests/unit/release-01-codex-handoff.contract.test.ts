@@ -6,11 +6,11 @@ function readRepoFile(path: string): string {
 }
 
 describe('Release-01 Codex staging handoff contract', () => {
-  it('records an exact integrated main identity instead of stale Draft PR state', () => {
+  it('records an exact accepted main candidate instead of stale Draft PR state', () => {
     const acceptance = readRepoFile('docs/development/release-01-staging-acceptance.md');
 
-    expect(acceptance).toMatch(/Integrated main: `main@[0-9a-f]{40}`/u);
-    expect(acceptance).toMatch(/Main CI: CI #\d+, workflow run `\d+`/u);
+    expect(acceptance).toMatch(/Accepted deployed candidate: `main@[0-9a-f]{40}`/u);
+    expect(acceptance).toMatch(/Accepted-candidate CI: CI #\d+, workflow run `\d+`/u);
     expect(acceptance).toContain('PR #173');
     expect(acceptance).not.toContain('still Draft and unmerged');
   });
