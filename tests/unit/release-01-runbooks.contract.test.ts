@@ -43,7 +43,7 @@ describe('Release-01 staging operations runbook contract', () => {
     const acceptance = readRepoFile('docs/development/release-01-staging-acceptance.md');
 
     expect(acceptance).toContain('PR_CREATED != DEPLOYED != VERIFIED');
-    expect(acceptance).toContain('STAGING DEPLOYABLE — external staging acceptance pending');
+    expect(acceptance).toContain('Production deployment: **NOT AUTHORIZED BY THIS DOCUMENT**');
     expect(acceptance).toContain('not-configured/not-sampled');
 
     const gateCount = acceptance.match(/^\s*\d+\.\s+\[[ x-]\]/gmu)?.length ?? 0;
