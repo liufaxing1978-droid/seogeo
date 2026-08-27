@@ -6,37 +6,39 @@ Production deployment: **NOT AUTHORIZED BY THIS DOCUMENT**
 
 ## 1. Purpose
 
-This document is the evidence record for the exact Release-01 staging candidate. It is intentionally fail-closed: an unchecked gate is not treated as passed, missing provider credentials are not treated as successful sampling, and repository/CI readiness is not represented as an external staging deployment.
+This document is the evidence record for Release-01 staging acceptance. It is intentionally fail-closed: an unchecked gate is not treated as passed, missing provider credentials are not treated as successful sampling, and repository/CI readiness is not represented as an external staging deployment.
 
 Release-01 remains staging-only. It does not authorize P11 and does not authorize Production deployment.
 
-## 2. Repository-side candidate identity
+## 2. Repository-side integrated identity
 
-Repository-side handoff evidence was collected for this exact implementation candidate:
+Repository integration is complete and has post-merge evidence:
 
-- Candidate SHA: `4a17fbfe0761662afaddb81fe58baee1527bce10`
-- Base SHA: `1c258e0becc64c39148dcfea45722254a1eed217`
-- Pull request: `#173` (`docs/release-01-production-readiness` -> `main`), still Draft and unmerged
-- Exact-head CI: `#2249`, workflow run `33033331080`
+- Integrated main: `main@d33e8f4e16876f0d50c7c4e5c9313a9270b87f32`
+- PR #173 merged into `main`
+- Main CI: CI #2251, workflow run `33037317158`
 - `verify`: PASS — Prisma validate/generate/migrate, Typecheck, full Vitest, Build
 - `production-audit`: PASS
-- `e2e`: PASS — Chromium browser smoke suite
+- `e2e`: PASS — Chromium browser smoke suite and screenshot artifacts
 - `deployment-artifact`: PASS — exact source SHA, runtime image build, migration image build, offline runtime-content check, and runtime Prisma CLI absence
-- Diff audit: 25 changed files, limited to approved Release-01 runtime/env/proxy/process/packaging/CI/tests/runbooks/spec-plan scope; no Prisma schema/feature migration, P11 feature, UI redesign, autonomous deploy/rollback, or default-branch direct-write implementation was introduced
-- Local isolated checkout note: the execution environment could not resolve `github.com` for `git clone`, so no claim of an additional local clone run is made; exact-head GitHub Actions is the authoritative repository verification evidence
+- Original Release-01 PR head: `25ea91078fa43e1bf1547075ad0e42990d3075e4`
+- Original Release-01 base before integration: `1c258e0becc64c39148dcfea45722254a1eed217`
+- Diff audit remained limited to approved Release-01 runtime/env/proxy/process/packaging/CI/tests/runbooks/spec-plan scope; no Prisma schema/feature migration, P11 feature, UI redesign, autonomous deploy/rollback, or default-branch direct-write implementation was introduced
 
-The repository-side evidence above does not fill in external staging identity. Before external acceptance, record separately:
+The repository-side evidence above does not fill in external staging identity. Codex must freeze the exact `main` SHA it will actually deploy and verify that SHA has green repository CI before external acceptance begins. If `main` has moved beyond the integrated baseline above, do not silently combine the old CI identity with a newer deployed artifact.
 
-- Runtime image identity/digest: `<record immutable staging identity>`
-- Migration image identity/digest: `<record immutable staging identity>`
-- Previous known-good application artifact: `<record immutable identity>`
-- PostgreSQL backup identifier/checksum: `<record backup evidence>`
-- Staging public HTTPS origin: `<record staging URL>`
-- Operator: `<record operator>`
-- Acceptance started at UTC: `<record timestamp>`
-- Acceptance completed at UTC: `<record timestamp>`
+Before external acceptance, record separately and without secrets:
 
-Do not combine CI from one implementation SHA with externally deployed images or processes from another implementation SHA without recording the relationship explicitly.
+- exact deployed source SHA;
+- runtime image identity/digest;
+- migration image identity/digest;
+- previous known-good application artifact;
+- PostgreSQL backup identifier/checksum;
+- staging public HTTPS origin;
+- operator;
+- acceptance start/completion timestamps in UTC.
+
+Server connection details and credentials are supplied out-of-band to the operator/Codex session and must never be committed to this repository or pasted into this acceptance record.
 
 ## 3. Frozen truth and authority boundaries
 
@@ -56,12 +58,12 @@ These statements remain true throughout acceptance:
 
 ## 4. Twenty-five acceptance gates
 
-Attach concrete evidence to every checked item. Repository-side gates 1–4 are checked from exact-head CI #2249. Gates 5–25 remain unchecked until the required real staging/external operation is exercised. All 25 gates must be checked before external staging acceptance can be declared.
+Attach concrete evidence to every checked item. Repository-side gates 1–4 are checked from post-merge main CI #2251. Gates 5–25 remain unchecked until the required real staging/external operation is exercised. All 25 gates must be checked before external staging acceptance can be declared.
 
-1. [x] Exact candidate CI `verify` is green, including Prisma validation/generation/migrations, Typecheck, full Vitest, and Build. Evidence: CI #2249 / run `33033331080`, candidate `4a17fbfe0761662afaddb81fe58baee1527bce10`.
-2. [x] Exact candidate CI `production-audit` is green for the deployable runtime dependency tree. Evidence: CI #2249 / run `33033331080`.
-3. [x] Exact candidate CI `e2e` is green, including the existing Chromium browser smoke suite. Evidence: CI #2249 / run `33033331080`.
-4. [x] Production-mode environment validation rejects missing required infrastructure values (`DATABASE_URL`, `REDIS_URL`, and a valid `SESSION_SECRET`). Evidence: exact-head `verify` full Vitest in CI #2249 includes the Release-01 environment fail-fast contract.
+1. [x] Integrated `main` CI `verify` is green, including Prisma validation/generation/migrations, Typecheck, full Vitest, and Build. Evidence: CI #2251 / run `33037317158`, `main@d33e8f4e16876f0d50c7c4e5c9313a9270b87f32`.
+2. [x] Integrated `main` CI `production-audit` is green for the deployable runtime dependency tree. Evidence: CI #2251 / run `33037317158`.
+3. [x] Integrated `main` CI `e2e` is green, including the Chromium browser smoke suite. Evidence: CI #2251 / run `33037317158`.
+4. [x] Production-mode environment validation rejects missing required infrastructure values (`DATABASE_URL`, `REDIS_URL`, and a valid `SESSION_SECRET`). Evidence: CI #2251 full Vitest includes the Release-01 environment fail-fast contract.
 5. [ ] The one-shot Migration role completes `prisma migrate deploy` successfully for the staging database before the application candidate is accepted.
 6. [ ] The Web role starts separately and `GET /health/live` succeeds through the intended staging path.
 7. [ ] `GET /health/ready` succeeds with real staging PostgreSQL and Redis dependencies available.
@@ -86,7 +88,7 @@ Attach concrete evidence to every checked item. Repository-side gates 1–4 are 
 
 ## 5. External evidence notes
 
-For each external gate, record a short evidence reference such as:
+For each external gate, record a short sanitized evidence reference such as:
 
 - immutable image digest;
 - staging request timestamp and response status;
@@ -96,11 +98,19 @@ For each external gate, record a short evidence reference such as:
 - restore rehearsal target/result;
 - rollback target SHA and post-rollback health result.
 
-Never paste API keys, OAuth client secrets, access tokens, `SESSION_SECRET`, credential-encryption keys, or credential-bearing database/Redis URLs into this record.
+Never paste API keys, OAuth client secrets, access tokens, `SESSION_SECRET`, credential-encryption keys, login credentials, or credential-bearing database/Redis URLs into this record.
 
-## 6. Failure handling
+## 6. Execution ownership
 
-Any failed or unverifiable gate blocks Release-01 external staging acceptance. Record the failure, preserve evidence, and follow the relevant runbook:
+External staging execution for Gates 5–25 is handed off to Codex using `release-01-codex-staging-handoff.md`. This changes only who performs the operational steps; it does not change any authority or truth boundary.
+
+Codex may execute operator-approved staging commands and collect evidence. It must not invent evidence, weaken a failed gate, start P11, deploy Production, or grant DeepSeek/autopilot merge/deploy/rollback authority.
+
+Any acceptance-record update after external execution must still go through a branch/PR rather than a direct default-branch write.
+
+## 7. Failure handling
+
+Any failed or unverifiable gate blocks Release-01 external staging acceptance. Record the failure, preserve sanitized evidence, and follow the relevant runbook:
 
 - deployment/runtime failure → `release-01-staging-runbook.md`;
 - database recovery concern → `release-01-backup-restore.md`;
@@ -108,15 +118,15 @@ Any failed or unverifiable gate blocks Release-01 external staging acceptance. R
 
 Do not mark a gate complete from intention, configuration presence, mocked provider state, local-only success, or a different external candidate identity.
 
-## 7. Final decision
+## 8. Final decision
 
 Current repository-side status is:
 
 **STAGING DEPLOYABLE — external staging acceptance pending**
 
-This means the repository has exact-head CI evidence, reproducible Web/Worker/Migration packaging, and operator runbooks. It does **not** mean an external staging environment has been deployed or that gates 5–25 have been exercised.
+This means the repository has integrated-main CI evidence, reproducible Web/Worker/Migration packaging, and operator runbooks. It does **not** mean an external staging environment has been deployed or that Gates 5–25 have been exercised.
 
-Only after all 25 items are backed by evidence for the exact external staging candidate may Release-01 be described as **STAGING READY**.
+Only after all 25 items are backed by evidence for the exact externally deployed staging candidate may Release-01 be described as **STAGING READY**.
 
 Even then:
 
