@@ -16,7 +16,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --legacy-peer-deps
 RUN node node_modules/playwright/cli.js install --with-deps chromium
 
 COPY --from=build /app/dist ./dist
