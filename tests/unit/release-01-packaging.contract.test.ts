@@ -28,7 +28,7 @@ describe('Release-01 deployment packaging contract', () => {
     expect(dockerfile).toContain('src/views');
     expect(dockerfile).toContain('src/public');
     expect(dockerfile).toContain('vendor/third-party-skills');
-    expect(dockerfile).toMatch(/playwright install[^\n]*chromium/u);
+    expect(dockerfile).toContain('node node_modules/playwright/cli.js install --with-deps chromium');
     expect(dockerfile).toContain('CMD ["npm", "start"]');
   });
 
