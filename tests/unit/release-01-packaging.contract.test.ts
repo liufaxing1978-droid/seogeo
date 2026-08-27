@@ -65,4 +65,12 @@ describe('Release-01 deployment packaging contract', () => {
     expect(lines).not.toContain('src/public');
     expect(lines).not.toContain('vendor/third-party-skills');
   });
+
+  it('gates both Docker targets in a dedicated CI deployment artifact job', () => {
+    const workflow = readRepoFile('.github/workflows/ci.yml');
+
+    expect(workflow).toContain('deployment-artifact:');
+    expect(workflow).toContain('docker build --target runtime');
+    expect(workflow).toContain('docker build --target migration');
+  });
 });
