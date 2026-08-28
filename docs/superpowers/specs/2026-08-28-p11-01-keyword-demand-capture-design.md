@@ -23,14 +23,14 @@ The system may discover or suggest keywords, but operator-authored strategic key
 For example:
 
 ```text
-符纸                      CORE
-├── 符纸是什么             LONG_TAIL / INFORMATIONAL
-├── 符纸有什么作用         LONG_TAIL / INFORMATIONAL
+符纸                      CORE / INFORMATIONAL
+├── 符纸是什么             QUESTION / INFORMATIONAL
+├── 符纸有什么作用         QUESTION / INFORMATIONAL
 ├── 符纸种类               LONG_TAIL / INFORMATIONAL
-├── 六壬符纸               LONG_TAIL / SPECIALIST
-├── 民间信仰符纸           LONG_TAIL / SPECIALIST
-├── 香港符纸文化           LONG_TAIL / LOCAL
-└── 符纸与符咒的区别       LONG_TAIL / COMPARISON
+├── 六壬符纸               LONG_TAIL / INFORMATIONAL
+├── 民间信仰符纸           LONG_TAIL / INFORMATIONAL
+├── 香港符纸文化           LOCAL / LOCAL
+└── 符纸与符咒的区别       LONG_TAIL / INFORMATIONAL
 ```
 
 The tree is a planning structure, not a claim that every child term has proven search volume or ranking opportunity.
@@ -80,7 +80,7 @@ P11-01 should integrate with existing boundaries rather than duplicate them:
 - existing project membership, RBAC, CSRF, audit, and last-owner protections should be reused rather than reimplemented.
 - existing EJS/web layout patterns should be reused for the P11 keyword-center surface.
 
-P11-01 should introduce a focused new module under `src/modules/keywords` (or the repository's closest established naming convention), with a clear service boundary.
+P11-01 should introduce a focused new module under `src/modules/keywords`, with a clear repository/service boundary.
 
 ## 6. Keyword Taxonomy
 
@@ -95,7 +95,7 @@ Initial keyword types:
 - `LOCAL` — geographic/localized demand;
 - `COMMERCIAL` — commercial or conversion-oriented demand.
 
-A keyword has one primary type in P11-01. More complex multi-label classification is deferred unless implementation evidence proves it necessary.
+A keyword has one primary type in P11-01. More complex multi-label classification is deferred.
 
 ### 6.2 Search intent
 
@@ -126,9 +126,9 @@ A keyword may be `locked=true`.
 
 Lock semantics:
 
-- a locked keyword remains editable only through an explicit operator mutation that acknowledges the lock;
-- AI workflows cannot delete, archive, re-parent, rename, change priority, or change type/intent on a locked keyword;
-- bulk mutation paths must preserve lock semantics;
+- AI workflows can never rename, archive, re-parent, delete, change priority, change type, change intent, lock, or unlock an authoritative keyword;
+- a locked keyword's destructive/strategic fields may change only through an explicit authenticated human mutation that acknowledges the lock;
+- bulk mutations must apply the same lock rule per keyword;
 - locking does not prevent read-only coverage analysis.
 
 This protects keywords such as `符纸` when the operator has explicitly declared them strategic even if AI later considers them difficult or low-confidence.
@@ -150,7 +150,7 @@ Suggested fields:
 - `priority KeywordPriority`
 - `status KeywordStatus` (`ACTIVE`, `DISABLED`, `ARCHIVED`)
 - `locked Boolean default false`
-- `source KeywordSource` (`MANUAL`, `AI_ACCEPTED`, future provider/import sources)
+- `source KeywordSource` (`MANUAL`, `AI_ACCEPTED` initially)
 - `language String?`
 - `targetCountry String?`
 - `notes String?`
@@ -158,11 +158,13 @@ Suggested fields:
 - `createdAt`
 - `updatedAt`
 
-Required uniqueness:
+Identity rule:
 
-- unique `(projectId, normalizedText)` for active logical identity unless an existing normalization convention requires a different key.
+- unique `(projectId, normalizedText)` across all statuses;
+- archiving does **not** free the normalized keyword for recreation;
+- reusing an archived term restores/reactivates the existing logical keyword through an explicit restore path rather than creating a second identity.
 
-Normalization must be deterministic and conservative: trim surrounding whitespace, normalize repeated spaces, and apply Unicode normalization. It must not silently convert distinct Chinese terms into a single semantic keyword.
+Normalization must be deterministic and conservative: trim surrounding whitespace, normalize repeated spaces, and apply Unicode normalization. It must not silently convert semantically distinct Chinese terms into one keyword.
 
 ### 7.2 `KeywordRelation`
 
@@ -181,9 +183,10 @@ Rules:
 - a keyword cannot parent itself;
 - cycles are forbidden;
 - duplicate edges are forbidden;
-- deleting/archiving a parent must not silently delete child keywords.
+- a child has at most one canonical `PARENT_CHILD` parent in P11-01;
+- archiving a parent must not silently archive/delete its children; children become root/orphaned for display until explicitly re-parented.
 
-P11-01 should support one canonical parent per keyword for the UI tree unless current product evidence requires DAG semantics. Related-but-not-parent relationships can be deferred.
+Related-but-not-parent relationships are deferred.
 
 ### 7.3 `KeywordGroup`
 
@@ -198,11 +201,11 @@ Suggested fields:
 - `createdAt`
 - `updatedAt`
 
-A join table may associate keywords with groups. A keyword may belong to more than one group if useful, but group membership must not replace the canonical parent/child tree.
+A join table may associate keywords with groups. A keyword may belong to more than one group, but group membership does not replace the canonical parent/child tree.
 
 ### 7.4 `KeywordSuggestion`
 
-AI output must remain non-authoritative until accepted.
+AI output remains non-authoritative until accepted.
 
 Suggested fields:
 
@@ -214,7 +217,7 @@ Suggested fields:
 - `suggestedIntent KeywordIntent?`
 - `rationale String?`
 - `status` (`PENDING`, `ACCEPTED`, `REJECTED`, `EXPIRED`)
-- `model/provider metadata` sufficient for traceability without secrets
+- model/provider metadata sufficient for traceability without secrets
 - `createdAt`
 - `decidedAt?`
 - `decidedByUserId?`
@@ -229,9 +232,9 @@ Recommended initial design:
 
 - compute coverage through a focused `KeywordCoverageService`;
 - return page matches with evidence and a coverage classification;
-- persist only when existing report/snapshot patterns require a durable run artifact.
+- do not persist a new historical coverage schema in P11-01A unless repository inspection during implementation proves a current snapshot pattern requires it.
 
-If persistence is needed for historical comparison, introduce a small immutable `KeywordCoverageRun` + result model in the implementation plan rather than adding ad hoc columns to `Keyword`.
+Historical keyword coverage runs are deferred to a later increment.
 
 ## 8. Content Coverage Semantics
 
@@ -252,7 +255,7 @@ Deterministic evidence may include latest persisted:
 - available extracted text/content representation already persisted by the current content/crawl pipeline;
 - relevant existing entity/topic facts where stable and already authoritative.
 
-The implementation plan must inspect current persisted content fields before deciding the exact matcher. It must not trigger an uncontrolled fresh crawl merely to render the keyword page.
+The implementation plan must inspect current persisted content fields before deciding exact scoring thresholds. Rendering the keyword center must not trigger a fresh crawl or provider request.
 
 ### 8.2 Coverage classes
 
@@ -260,7 +263,7 @@ Initial coverage classes:
 
 - `STRONG` — clear dedicated/relevant page evidence;
 - `PARTIAL` — related content exists but the keyword is weakly or indirectly covered;
-- `NONE` — no meaningful observed coverage;
+- `NONE` — no meaningful observed coverage despite sufficient crawl evidence;
 - `UNKNOWN` — insufficient crawl/content evidence to make a deterministic statement.
 
 `UNKNOWN` is required. Missing crawl data must never be mislabeled as `NONE`.
@@ -272,7 +275,7 @@ A content gap is generated only when:
 - keyword status is active;
 - coverage is `NONE` or a defined weak `PARTIAL` state;
 - sufficient crawl evidence exists;
-- the system records the evidence used.
+- the system returns the evidence used.
 
 A content gap is a recommendation input, not an instruction to auto-publish.
 
@@ -287,9 +290,9 @@ Input may include:
 - selected seed keyword;
 - operator-selected market/language;
 - existing accepted child keywords to reduce duplicates;
-- project industry/topic context that is already allowed to be exposed to the advisory model.
+- project industry/topic context already allowed to be exposed to the advisory model.
 
-Output is parsed into structured suggestions.
+Output is parsed into structured suggestions and persisted only as advisory `KeywordSuggestion` records.
 
 ### Phase B — human decision
 
@@ -300,13 +303,27 @@ The operator may:
 - accept individually;
 - accept selected suggestions in bulk;
 - reject;
-- edit the proposed text before acceptance.
+- edit proposed text before acceptance.
 
 Only accepted candidates enter the authoritative keyword library.
 
-The AI provider must never mutate the database directly from model output.
+The AI provider must never mutate authoritative keyword records directly from model output.
 
-## 10. Manual Keyword Mutation Contract
+## 10. Authorization Contract
+
+P11-01 reuses the existing capability model and does **not** add a new project role or broad authorization concept.
+
+- keyword-center reads require `PROJECT_READ`;
+- manual create/edit/status/parent/group/lock mutations require `CONTENT_WRITE`;
+- AI suggestion generation requires both `AI_RUN` and project read access;
+- accepting/editing an AI suggestion into the authoritative library requires `CONTENT_WRITE` in addition to the AI suggestion being visible to the user;
+- rejecting a suggestion requires `CONTENT_WRITE` because it mutates project-owned workflow state;
+- web mutations require CSRF;
+- server-side capability checks are authoritative regardless of UI visibility.
+
+This means existing `VIEWER` users can read the keyword center, while roles that already possess `CONTENT_WRITE` can manage the keyword library. No P10 membership semantics change is required.
+
+## 11. Manual Keyword Mutation Contract
 
 Manual creation is the primary path.
 
@@ -324,20 +341,18 @@ Create request supports at minimum:
 
 Mutation service rules:
 
-- require authenticated project membership;
-- require the existing appropriate project-write capability;
-- require CSRF for web mutations;
+- require authenticated project membership and the capability from Section 10;
 - validate project ownership of all referenced parent/group IDs;
 - normalize keyword text before uniqueness checks;
 - use database constraints plus service validation for concurrency safety;
 - reject cycles;
 - reject cross-project relationships;
-- fail closed on locked-keyword destructive mutations;
-- record audit events using the existing audit pattern where available.
+- fail closed on locked-keyword destructive mutations unless the human request explicitly acknowledges the lock;
+- record audit events using the existing audit pattern.
 
-## 11. Error Contract
+## 12. Error Contract
 
-The implementation plan should define stable application error codes, including equivalents of:
+The implementation plan should define stable application error codes following current repository conventions, covering at least:
 
 - `KEYWORD_DUPLICATE`
 - `KEYWORD_NOT_FOUND`
@@ -350,9 +365,9 @@ The implementation plan should define stable application error codes, including 
 - `KEYWORD_SUGGESTION_ALREADY_DECIDED`
 - `KEYWORD_COVERAGE_INSUFFICIENT_DATA`
 
-Exact naming should follow current repository error conventions after inspection. HTTP responses must not leak existence of resources across unauthorized projects.
+HTTP responses must not leak existence of resources across unauthorized projects.
 
-## 12. UI Design
+## 13. UI Design
 
 P11-01 adds a project-scoped **关键词中心** page using the existing P10 visual shell.
 
@@ -365,7 +380,7 @@ Primary page regions:
 5. add/edit keyword controls;
 6. AI expansion panel.
 
-### 12.1 Summary cards
+### 13.1 Summary cards
 
 Show deterministic counts such as:
 
@@ -378,36 +393,20 @@ Show deterministic counts such as:
 
 Do not show fabricated search volume or rank.
 
-### 12.2 Library table
+### 13.2 Library table
 
-Columns should include:
+Columns should include keyword, type, intent, priority, parent/topic, coverage, lock state, status, and actions.
 
-- keyword;
-- type;
-- intent;
-- priority;
-- parent/topic;
-- coverage;
-- lock state;
-- status;
-- actions.
+Filters include text search, type, priority, coverage, status, and locked/unlocked.
 
-Filters:
-
-- text search;
-- type;
-- priority;
-- coverage;
-- status;
-- locked/unlocked.
-
-### 12.3 Keyword detail
+### 13.3 Keyword detail
 
 Selecting `符纸` should show:
 
 ```text
 符纸
 Type: CORE
+Intent: INFORMATIONAL
 Priority: HIGH
 Locked: Yes
 Coverage: PARTIAL
@@ -425,15 +424,15 @@ Gap recommendation
 - Dedicated core topic page is weak/missing
 ```
 
-The UI must visually distinguish facts from suggestions.
+The UI must visually distinguish persisted facts from AI recommendations.
 
-### 12.4 AI suggestion panel
+### 13.4 AI suggestion panel
 
 The AI panel must label candidates as **建议 / Advisory** and require selection + acceptance.
 
-No one-click flow may both generate and silently persist all model output without a review step.
+No one-click flow may both generate and silently persist all model output into the authoritative keyword library without a review step.
 
-## 13. Search Demand Example
+## 14. Search Demand Example
 
 For an operator-created core keyword `符纸`, a normal P11-01 flow is:
 
@@ -442,7 +441,7 @@ Operator adds 符纸
         ↓
 Authoritative Keyword record
         ↓
-Optional lock = true
+Optional strategic lock
         ↓
 Coverage service evaluates persisted site facts
         ↓
@@ -465,18 +464,9 @@ This is the foundation for the later business goal: when customers search for re
 
 P11-01 does not promise that adding a keyword causes Google/Baidu/AI systems to rank or cite the site.
 
-## 14. Ranking and GEO Truth Boundaries
+## 15. Ranking and GEO Truth Boundaries
 
-The UI may reserve future fields or navigation for:
-
-- Google ranking;
-- Baidu ranking;
-- Bing ranking;
-- Search Console query evidence;
-- official-provider AI visibility observations;
-- future consumer answer-surface observations where legally/technically supported.
-
-However, P11-01 must display those as unavailable/not sampled unless real provider-backed evidence exists.
+The UI may reserve future navigation for Google, Baidu, Bing, Search Console, and AI visibility evidence, but P11-01 must show those as unavailable/not sampled unless real provider-backed evidence exists.
 
 Specifically:
 
@@ -486,39 +476,25 @@ Specifically:
 - configuration != health;
 - suggestion != demand proof.
 
-## 15. Security and Authorization
+## 16. Security and Concurrency
 
-P11-01 must reuse existing application security boundaries:
+P11-01 must reuse existing authentication, project membership, RBAC, CSRF, and audit boundaries.
 
-- authentication required;
-- project membership required;
-- existing server-side RBAC capability checks;
-- CSRF required for browser mutations;
-- no authorization decisions based solely on hidden UI controls;
-- cross-project IDs rejected/fail closed;
-- audit events for keyword mutations and suggestion decisions;
-- no provider/API secrets rendered in keyword views;
-- AI prompts must not include secrets or unrelated private configuration.
+Additional requirements:
 
-Bulk operations must apply the same authorization and lock checks as single-item mutations.
-
-## 16. Concurrency and Idempotency
-
-P11-01 must behave predictably under duplicate clicks and concurrent requests.
-
-Requirements:
-
-- unique project+normalized-keyword identity enforced by the database;
-- accepting the same AI suggestion twice cannot create duplicate keywords;
-- relation creation must be idempotent or reject duplicates deterministically;
-- cycle detection must be protected against race conditions as far as practical with transaction boundaries;
-- locked destructive mutations must re-check the current database state inside the mutation transaction rather than trusting stale UI state.
+- cross-project IDs are rejected/fail closed;
+- no provider/API secrets are rendered in keyword views or prompts;
+- bulk operations apply authorization and lock checks per item;
+- unique project+normalized-keyword identity is database-enforced;
+- accepting the same suggestion twice cannot create duplicate keywords;
+- relation creation is idempotent or rejects duplicates deterministically;
+- cycle validation and locked mutation checks re-read current state inside the mutation transaction rather than trusting stale UI state.
 
 ## 17. Observability
 
-Minimum logs/metrics should support diagnosing:
+Minimum operational signals should support diagnosing:
 
-- keyword created/updated/archived;
+- keyword created/updated/archived/restored;
 - lock/unlock events;
 - relation creation/removal;
 - coverage evaluation failures;
@@ -526,26 +502,25 @@ Minimum logs/metrics should support diagnosing:
 - suggestion acceptance/rejection;
 - authorization failures at normal existing application granularity.
 
-Logs must not contain secrets or full provider credentials.
+Logs must not contain secrets or provider credentials.
 
 ## 18. Test Strategy
 
 Implementation follows **RED → minimal GREEN → exact-head full CI**.
 
-Required test areas:
-
 ### 18.1 Schema/repository
 
-- normalized uniqueness per project;
-- same text allowed in different projects;
+- normalized uniqueness per project across all statuses;
+- same keyword allowed in different projects;
+- archived duplicate creation rejected in favor of restore;
 - relation same-project constraint;
+- one canonical parent per child;
 - duplicate relation prevention.
 
 ### 18.2 Service
 
 - manual create/edit/archive/restore;
-- lock semantics;
-- explicit unlock/destructive behavior;
+- lock semantics and explicit human lock acknowledgement;
 - parent self rejection;
 - cycle rejection;
 - cross-project reference rejection;
@@ -559,17 +534,18 @@ Required test areas:
 - partial match;
 - no match with sufficient crawl evidence;
 - unknown when crawl evidence is insufficient;
-- archived/disabled pages handled according to existing active-page semantics;
-- no fresh-provider/crawl invention during a read-only page render.
+- inactive pages handled according to existing active-page semantics;
+- keyword-center reads trigger no fresh crawl/provider request.
 
 ### 18.4 Web/API authorization
 
 - anonymous rejected;
 - non-member does not learn project/resource existence;
-- read-only role cannot mutate;
-- authorized role can mutate;
+- `VIEWER` can read but cannot mutate;
+- role with `CONTENT_WRITE` can mutate;
+- AI generation requires `AI_RUN`;
 - CSRF enforced;
-- locked keyword mutation blocked server-side.
+- locked keyword mutation blocked server-side without explicit acknowledgement.
 
 ### 18.5 UI / E2E
 
@@ -578,31 +554,31 @@ Required test areas:
 - lock it;
 - add/accept one child keyword;
 - tree renders correctly;
-- coverage state renders with fact/suggestion distinction;
+- coverage renders with fact/suggestion distinction;
 - responsive layout remains usable.
 
 ### 18.6 Full regression
 
-Exact-head gates must preserve the repository's existing `verify`, `production-audit`, `e2e`, and any required deployment-artifact/runtime gates.
+Exact-head gates must preserve existing `verify`, `production-audit`, `e2e`, and required deployment-artifact/runtime gates.
 
 ## 19. Implementation Decomposition
 
-P11 should not be implemented as one giant branch. The recommended sequence is:
+P11-01 should not be implemented as one giant branch.
 
 ### P11-01A — Keyword domain foundation
 
 - schema/migration;
 - enums/types;
 - repository/service;
-- manual CRUD/status/lock;
+- manual create/edit/status/lock/restore;
 - parent/child relation safety;
-- focused authorization tests.
+- authorization/audit tests.
 
 ### P11-01B — Coverage engine
 
 - deterministic coverage resolver against current persisted page facts;
 - evidence model;
-- STRONG/PARTIAL/NONE/UNKNOWN;
+- `STRONG/PARTIAL/NONE/UNKNOWN`;
 - gap derivation;
 - tests.
 
@@ -623,7 +599,7 @@ P11 should not be implemented as one giant branch. The recommended sequence is:
 - advisory labeling;
 - full regression.
 
-Each subtask should obtain its own exact-head evidence before integration.
+Each subtask obtains its own exact-head evidence before integration.
 
 ## 20. Future P11 Increments
 
