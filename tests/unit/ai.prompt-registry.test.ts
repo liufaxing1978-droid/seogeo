@@ -5,7 +5,7 @@ import {
 } from '../../src/modules/ai/prompts/prompt-registry.js';
 
 describe('versioned AI prompt registry', () => {
-  it('defines immutable v1 prompt identities for P4 through P9-A intelligence', () => {
+  it('defines immutable v1 prompt identities for P4 through P11 keyword intelligence', () => {
     expect(PROMPT_DEFINITIONS.map((prompt) => prompt.id)).toEqual([
       'seo-audit-analysis-v1',
       'geo-readiness-analysis-v1',
@@ -17,6 +17,7 @@ describe('versioned AI prompt registry', () => {
       'visibility-trend-analysis-v1',
       'growth-opportunity-explanation-v1',
       'optimization-plan-ranking-v1',
+      'keyword-expansion-v1',
       'publication-content-brief-v1',
       'publication-article-generation-v1',
       'distribution-canonical-repost-v1',
@@ -53,6 +54,7 @@ describe('versioned AI prompt registry', () => {
   it('uses FAST for bounded analysis/drafting/adaptation and REASONING for semantic work', () => {
     for (const promptId of [
       'seo-audit-analysis-v1',
+      'keyword-expansion-v1',
       'publication-article-generation-v1',
       'distribution-canonical-repost-v1',
       'distribution-adapted-article-v1',
@@ -87,6 +89,22 @@ describe('versioned AI prompt registry', () => {
     expect(prompt.system).toMatch(/UNKNOWN/);
     expect(prompt.system).toMatch(/PARTIAL/);
     expect(prompt.system).toMatch(/advisory/i);
+  });
+
+  it('keeps keyword expansion bounded, advisory, and non-authoritative', () => {
+    const prompt = getPromptDefinition('keyword-expansion-v1');
+    expect(prompt.mode).toBe('FAST');
+    expect(prompt.responseFormat).toBe('JSON');
+    expect(prompt.system).toMatch(/advisory/i);
+    expect(prompt.system).toMatch(/at most 20/i);
+    expect(prompt.system).toMatch(/search volume/i);
+    expect(prompt.system).toMatch(/ranking/i);
+    expect(prompt.system).toMatch(/traffic/i);
+    expect(prompt.system).toMatch(/commercial value/i);
+    expect(prompt.system).toMatch(/seed keyword/i);
+    expect(prompt.system).toMatch(/existing accepted children/i);
+    expect(prompt.system).toMatch(/context/i);
+    expect(prompt.system).toMatch(/authoritative strategy/i);
   });
 
   it('fails closed for an unknown prompt id', () => {
