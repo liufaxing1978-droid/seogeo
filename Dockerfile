@@ -14,6 +14,9 @@ COPY . .
 RUN DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build npx prisma generate
 RUN npm run build
 
+FROM build AS migration
+CMD ["npx", "prisma", "migrate", "deploy"]
+
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 
@@ -33,6 +36,3 @@ COPY --from=build /app/src/public ./dist/src/public
 COPY --from=build /app/vendor/third-party-skills ./vendor/third-party-skills
 
 CMD ["npm", "start"]
-
-FROM build AS migration
-CMD ["npx", "prisma", "migrate", "deploy"]
