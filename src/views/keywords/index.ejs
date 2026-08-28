@@ -1,0 +1,320 @@
+<%
+  const keywordById = new Map(keywordCenter.keywords.map((item) => [item.id, item]));
+  const groupById = new Map(keywordCenter.groups.map((item) => [item.id, item]));
+  const typeLabels = {
+    CORE: '核心词',
+    LONG_TAIL: '长尾词',
+    BRAND: '品牌词',
+    QUESTION: '问题词',
+    LOCAL: '地域词',
+    COMMERCIAL: '商业词',
+  };
+  const intentLabels = {
+    INFORMATIONAL: '信息型',
+    NAVIGATIONAL: '导航型',
+    COMMERCIAL_INVESTIGATION: '商业调研',
+    TRANSACTIONAL: '交易型',
+    LOCAL: '本地型',
+    UNKNOWN: '未分类',
+  };
+  const coverageLabels = {
+    STRONG: '强覆盖',
+    PARTIAL: '部分覆盖',
+    NONE: '未覆盖',
+    UNKNOWN: '证据不足',
+  };
+  const statusLabels = { ACTIVE: '启用', DISABLED: '停用', ARCHIVED: '已归档' };
+%>
+
+<section class="keyword-center" data-ui="keyword-center">
+  <header class="keyword-center__hero">
+    <div>
+      <p class="keyword-center__eyebrow">Search Demand Capture</p>
+      <h2>关键词中心</h2>
+      <p>管理核心关键词与长尾关键词，并用站内已持久化页面事实检查内容覆盖。所有排名数据在正式接入搜索提供方前均保持未知。</p>
+    </div>
+    <div class="keyword-center__rank-note" data-ui="keyword-ranking-status">
+      <span>搜索排名</span>
+      <strong>排名数据：未接入</strong>
+    </div>
+  </header>
+
+  <section class="keyword-summary" aria-label="关键词概览">
+    <article class="keyword-summary__card"><span>启用关键词</span><strong><%= keywordCenter.summary.active %></strong></article>
+    <article class="keyword-summary__card"><span>战略锁定</span><strong><%= keywordCenter.summary.locked %></strong></article>
+    <article class="keyword-summary__card keyword-summary__card--strong"><span>强覆盖</span><strong><%= keywordCenter.summary.strong %></strong></article>
+    <article class="keyword-summary__card keyword-summary__card--partial"><span>部分覆盖</span><strong><%= keywordCenter.summary.partial %></strong></article>
+    <article class="keyword-summary__card"><span>未覆盖</span><strong><%= keywordCenter.summary.none %></strong></article>
+    <article class="keyword-summary__card"><span>证据不足</span><strong><%= keywordCenter.summary.unknown %></strong></article>
+  </section>
+
+  <% if (canWriteKeywords) { %>
+    <section class="keyword-panel keyword-panel--create" data-ui="keyword-create-panel">
+      <div class="keyword-panel__heading">
+        <div>
+          <p class="keyword-panel__kicker">手动关键词</p>
+          <h3>添加关键词</h3>
+        </div>
+        <p>手动输入始终是主入口；AI 建议只能作为候选，不会自动写入关键词库。</p>
+      </div>
+      <form class="keyword-create-form" data-ui="keyword-create-form" method="post" action="/projects/<%= keywordCenter.project.id %>/keywords">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <label class="keyword-field keyword-field--wide">
+          <span>关键词</span>
+          <input name="text" type="text" required maxlength="240" placeholder="例如：符纸">
+        </label>
+        <label class="keyword-field">
+          <span>类型</span>
+          <select name="type" required>
+            <option value="CORE">核心词</option>
+            <option value="LONG_TAIL">长尾词</option>
+            <option value="BRAND">品牌词</option>
+            <option value="QUESTION">问题词</option>
+            <option value="LOCAL">地域词</option>
+            <option value="COMMERCIAL">商业词</option>
+          </select>
+        </label>
+        <label class="keyword-field">
+          <span>搜索意图</span>
+          <select name="intent">
+            <option value="">未分类</option>
+            <option value="INFORMATIONAL">信息型</option>
+            <option value="NAVIGATIONAL">导航型</option>
+            <option value="COMMERCIAL_INVESTIGATION">商业调研</option>
+            <option value="TRANSACTIONAL">交易型</option>
+            <option value="LOCAL">本地型</option>
+            <option value="UNKNOWN">未知</option>
+          </select>
+        </label>
+        <label class="keyword-field">
+          <span>优先级</span>
+          <select name="priority">
+            <option value="HIGH">高</option>
+            <option value="MEDIUM" selected>中</option>
+            <option value="LOW">低</option>
+          </select>
+        </label>
+        <label class="keyword-field">
+          <span>父关键词</span>
+          <select name="parentKeywordId">
+            <option value="">无</option>
+            <% keywordCenter.keywords.filter((item) => item.status !== 'ARCHIVED').forEach((item) => { %>
+              <option value="<%= item.id %>"><%= item.text %></option>
+            <% }) %>
+          </select>
+        </label>
+        <label class="keyword-check">
+          <input type="checkbox" name="locked" value="true">
+          <span>战略锁定</span>
+        </label>
+        <button class="keyword-button keyword-button--primary" type="submit">添加到关键词库</button>
+      </form>
+    </section>
+  <% } %>
+
+  <section class="keyword-panel" data-ui="keyword-coverage-panel">
+    <div class="keyword-panel__heading">
+      <div>
+        <p class="keyword-panel__kicker">Coverage Facts</p>
+        <h3>站内内容覆盖</h3>
+      </div>
+      <p>仅使用最新持久化抓取快照中的标题、H1、Meta Description 与 URL path；不会为了查看本页主动发起抓取。</p>
+    </div>
+
+    <% if (keywordCenter.keywords.length === 0) { %>
+      <div class="keyword-empty">尚未添加关键词。先建立核心词，再逐步补充长尾词和问题词。</div>
+    <% } else { %>
+      <div class="keyword-table-wrap">
+        <table class="keyword-table">
+          <thead>
+            <tr>
+              <th>关键词</th>
+              <th>类型 / 意图</th>
+              <th>优先级</th>
+              <th>内容覆盖</th>
+              <th>父关键词 / 分组</th>
+              <th>状态</th>
+              <% if (canWriteKeywords) { %><th>操作</th><% } %>
+            </tr>
+          </thead>
+          <tbody>
+            <% keywordCenter.keywords.forEach((keyword) => {
+              const parent = keyword.parentKeywordId ? keywordById.get(keyword.parentKeywordId) : null;
+              const keywordGroups = keyword.groupIds.map((id) => groupById.get(id)).filter(Boolean);
+              const topMatch = keyword.coverage.matches[0];
+            %>
+              <tr data-ui="keyword-row" data-keyword-id="<%= keyword.id %>">
+                <td>
+                  <div class="keyword-name">
+                    <strong><%= keyword.text %></strong>
+                    <span><%= keyword.source === 'MANUAL' ? '手动' : 'AI 已接受' %></span>
+                    <% if (keyword.locked) { %><span class="keyword-lock">已锁定</span><% } %>
+                  </div>
+                </td>
+                <td>
+                  <div class="keyword-meta-stack">
+                    <span><%= typeLabels[keyword.type] || keyword.type %></span>
+                    <small><%= keyword.intent ? (intentLabels[keyword.intent] || keyword.intent) : '未分类' %></small>
+                  </div>
+                </td>
+                <td><span class="keyword-priority keyword-priority--<%= keyword.priority.toLowerCase() %>"><%= keyword.priority === 'HIGH' ? '高' : keyword.priority === 'LOW' ? '低' : '中' %></span></td>
+                <td>
+                  <div class="keyword-coverage keyword-coverage--<%= keyword.coverage.status.toLowerCase() %>">
+                    <strong><%= coverageLabels[keyword.coverage.status] %></strong>
+                    <% if (topMatch) { %>
+                      <a href="<%= topMatch.url %>" target="_blank" rel="noreferrer"><%= topMatch.url %></a>
+                      <small>证据分 <%= topMatch.score %> · 标题 <%= topMatch.titleMatch ? '✓' : '—' %> · H1 <%= topMatch.h1Match ? '✓' : '—' %></small>
+                    <% } else { %>
+                      <small><%= keyword.coverage.reason === 'NO_ACTIVE_PAGE_EVIDENCE' ? '暂无启用页面证据' : keyword.coverage.reason === 'NO_USABLE_SNAPSHOT_EVIDENCE' ? '暂无可用抓取快照' : '已有页面证据，但未发现匹配' %></small>
+                    <% } %>
+                  </div>
+                </td>
+                <td>
+                  <div class="keyword-meta-stack">
+                    <span>父词：<%= parent ? parent.text : '—' %></span>
+                    <small>分组：<%= keywordGroups.length ? keywordGroups.map((group) => group.name).join('、') : '—' %></small>
+                  </div>
+                </td>
+                <td><span class="keyword-status keyword-status--<%= keyword.status.toLowerCase() %>"><%= statusLabels[keyword.status] %></span></td>
+                <% if (canWriteKeywords) { %>
+                  <td>
+                    <details class="keyword-actions">
+                      <summary>管理</summary>
+                      <div class="keyword-actions__body">
+                        <% if (keyword.status !== 'ARCHIVED') { %>
+                          <form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/update">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <% if (keyword.locked) { %><input type="hidden" name="acknowledgeLock" value="true"><% } %>
+                            <label><span>关键词</span><input name="text" value="<%= keyword.text %>" required></label>
+                            <label><span>类型</span>
+                              <select name="type">
+                                <% Object.entries(typeLabels).forEach(([value, label]) => { %>
+                                  <option value="<%= value %>" <%= keyword.type === value ? 'selected' : '' %>><%= label %></option>
+                                <% }) %>
+                              </select>
+                            </label>
+                            <label><span>意图</span>
+                              <select name="intent">
+                                <option value="" <%= !keyword.intent ? 'selected' : '' %>>未分类</option>
+                                <% Object.entries(intentLabels).forEach(([value, label]) => { %>
+                                  <option value="<%= value %>" <%= keyword.intent === value ? 'selected' : '' %>><%= label %></option>
+                                <% }) %>
+                              </select>
+                            </label>
+                            <label><span>优先级</span>
+                              <select name="priority">
+                                <option value="HIGH" <%= keyword.priority === 'HIGH' ? 'selected' : '' %>>高</option>
+                                <option value="MEDIUM" <%= keyword.priority === 'MEDIUM' ? 'selected' : '' %>>中</option>
+                                <option value="LOW" <%= keyword.priority === 'LOW' ? 'selected' : '' %>>低</option>
+                              </select>
+                            </label>
+                            <button class="keyword-button" type="submit">保存编辑</button>
+                          </form>
+
+                          <form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/lock">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <input type="hidden" name="locked" value="<%= keyword.locked ? 'false' : 'true' %>">
+                            <% if (keyword.locked) { %><input type="hidden" name="acknowledgeLock" value="true"><% } %>
+                            <button class="keyword-button" type="submit"><%= keyword.locked ? '解除锁定' : '战略锁定' %></button>
+                          </form>
+
+                          <form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/parent">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <% if (keyword.locked) { %><input type="hidden" name="acknowledgeLock" value="true"><% } %>
+                            <label><span>设置父关键词</span>
+                              <select name="parentKeywordId" required>
+                                <option value="">选择父关键词</option>
+                                <% keywordCenter.keywords.filter((item) => item.id !== keyword.id && item.status !== 'ARCHIVED').forEach((item) => { %>
+                                  <option value="<%= item.id %>" <%= keyword.parentKeywordId === item.id ? 'selected' : '' %>><%= item.text %></option>
+                                <% }) %>
+                              </select>
+                            </label>
+                            <button class="keyword-button" type="submit">设置父词</button>
+                          </form>
+
+                          <% if (keyword.parentKeywordId) { %>
+                            <form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/parent/remove">
+                              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                              <% if (keyword.locked) { %><input type="hidden" name="acknowledgeLock" value="true"><% } %>
+                              <button class="keyword-button" type="submit">移除父词</button>
+                            </form>
+                          <% } %>
+
+                          <form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/groups">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <% if (keyword.locked) { %><input type="hidden" name="acknowledgeLock" value="true"><% } %>
+                            <fieldset>
+                              <legend>关键词分组</legend>
+                              <% if (!keywordCenter.groups.length) { %><small>尚无分组</small><% } %>
+                              <% keywordCenter.groups.forEach((group) => { %>
+                                <label class="keyword-check"><input type="checkbox" name="groupIds" value="<%= group.id %>" <%= keyword.groupIds.includes(group.id) ? 'checked' : '' %>><span><%= group.name %></span></label>
+                              <% }) %>
+                            </fieldset>
+                            <button class="keyword-button" type="submit">保存分组</button>
+                          </form>
+
+                          <form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/archive">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <% if (keyword.locked) { %><input type="hidden" name="acknowledgeLock" value="true"><% } %>
+                            <button class="keyword-button keyword-button--danger" type="submit">归档</button>
+                          </form>
+                        <% } else { %>
+                          <form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/restore">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <% if (keyword.locked) { %><input type="hidden" name="acknowledgeLock" value="true"><% } %>
+                            <button class="keyword-button" type="submit">恢复关键词</button>
+                          </form>
+                        <% } %>
+                      </div>
+                    </details>
+                  </td>
+                <% } %>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+
+  <div class="keyword-center__lower-grid">
+    <section class="keyword-panel">
+      <div class="keyword-panel__heading">
+        <div><p class="keyword-panel__kicker">Topic Groups</p><h3>关键词分组</h3></div>
+      </div>
+      <% if (keywordCenter.groups.length) { %>
+        <div class="keyword-chip-list">
+          <% keywordCenter.groups.forEach((group) => { %><span class="keyword-chip"><%= group.name %></span><% }) %>
+        </div>
+      <% } else { %>
+        <p class="keyword-empty keyword-empty--compact">尚未建立分组。</p>
+      <% } %>
+      <% if (canWriteKeywords) { %>
+        <form class="keyword-inline-form" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <label class="keyword-field"><span>新分组</span><input name="name" required placeholder="例如：符纸专题"></label>
+          <button class="keyword-button" type="submit">创建分组</button>
+        </form>
+      <% } %>
+    </section>
+
+    <section class="keyword-panel" data-ui="keyword-suggestions">
+      <div class="keyword-panel__heading">
+        <div><p class="keyword-panel__kicker">AI Advisory</p><h3>AI 长尾建议</h3></div>
+        <span class="keyword-advisory-badge">仅建议</span>
+      </div>
+      <% if (!keywordCenter.suggestions.length) { %>
+        <p class="keyword-empty keyword-empty--compact">暂无 AI 建议。建议不会自动创建、发布或修改关键词。</p>
+      <% } else { %>
+        <ul class="keyword-suggestion-list">
+          <% keywordCenter.suggestions.forEach((suggestion) => { %>
+            <li>
+              <div><strong><%= suggestion.suggestedText %></strong><small><%= suggestion.rationale || '未提供理由' %></small></div>
+              <span><%= suggestion.status %></span>
+            </li>
+          <% }) %>
+        </ul>
+      <% } %>
+    </section>
+  </div>
+</section>
