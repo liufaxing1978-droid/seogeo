@@ -1,3 +1,4 @@
+import { AiTaskType } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
 import {
   KeywordExpansionOutputSchema,
@@ -5,6 +6,10 @@ import {
 } from '../../src/modules/keywords/keyword-ai.js';
 
 describe('keyword expansion structured output', () => {
+  it('has a durable KEYWORD_EXPANSION AI task type', () => {
+    expect((AiTaskType as unknown as Record<string, string>).KEYWORD_EXPANSION).toBe('KEYWORD_EXPANSION');
+  });
+
   it('de-duplicates normalized suggestions and excludes the seed', () => {
     const output = parseKeywordExpansionOutput(JSON.stringify({
       suggestions: [
