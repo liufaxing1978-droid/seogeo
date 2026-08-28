@@ -39,7 +39,7 @@
     </div>
   </header>
 
-  <section class="keyword-summary" aria-label="关键词概览">
+  <section class="keyword-summary" aria-label="需求概览">
     <article class="keyword-summary__card"><span>启用关键词</span><strong><%= keywordCenter.summary.active %></strong></article>
     <article class="keyword-summary__card"><span>战略锁定</span><strong><%= keywordCenter.summary.locked %></strong></article>
     <article class="keyword-summary__card keyword-summary__card--strong"><span>强覆盖</span><strong><%= keywordCenter.summary.strong %></strong></article>
@@ -95,7 +95,7 @@
           </select>
         </label>
         <label class="keyword-field">
-          <span>父关键词</span>
+          <span>父词</span>
           <select name="parentKeywordId">
             <option value="">无</option>
             <% keywordCenter.keywords.filter((item) => item.status !== 'ARCHIVED').forEach((item) => { %>
@@ -107,7 +107,7 @@
           <input type="checkbox" name="locked" value="true">
           <span>战略锁定</span>
         </label>
-        <button class="keyword-button keyword-button--primary" type="submit">添加到关键词库</button>
+        <button class="keyword-button keyword-button--primary" type="submit">添加关键词</button>
       </form>
     </section>
   <% } %>
@@ -124,7 +124,7 @@
     <% if (keywordCenter.keywords.length === 0) { %>
       <div class="keyword-empty">尚未添加关键词。先建立核心词，再逐步补充长尾词和问题词。</div>
     <% } else { %>
-      <div class="keyword-table-wrap">
+      <div class="keyword-table-wrap" data-ui="keyword-library">
         <table class="keyword-table">
           <thead>
             <tr>
@@ -159,7 +159,7 @@
                 </td>
                 <td><span class="keyword-priority keyword-priority--<%= keyword.priority.toLowerCase() %>"><%= keyword.priority === 'HIGH' ? '高' : keyword.priority === 'LOW' ? '低' : '中' %></span></td>
                 <td>
-                  <div class="keyword-coverage keyword-coverage--<%= keyword.coverage.status.toLowerCase() %>">
+                  <div class="keyword-coverage keyword-coverage--<%= keyword.coverage.status.toLowerCase() %>" data-ui="keyword-coverage">
                     <strong><%= coverageLabels[keyword.coverage.status] %></strong>
                     <% if (topMatch) { %>
                       <a href="<%= topMatch.url %>" target="_blank" rel="noreferrer"><%= topMatch.url %></a>
@@ -221,9 +221,9 @@
                           <form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/parent">
                             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                             <% if (keyword.locked) { %><input type="hidden" name="acknowledgeLock" value="true"><% } %>
-                            <label><span>设置父关键词</span>
+                            <label><span>设置父词</span>
                               <select name="parentKeywordId" required>
-                                <option value="">选择父关键词</option>
+                                <option value="">选择父词</option>
                                 <% keywordCenter.keywords.filter((item) => item.id !== keyword.id && item.status !== 'ARCHIVED').forEach((item) => { %>
                                   <option value="<%= item.id %>" <%= keyword.parentKeywordId === item.id ? 'selected' : '' %>><%= item.text %></option>
                                 <% }) %>
