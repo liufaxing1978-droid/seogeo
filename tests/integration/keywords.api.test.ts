@@ -155,4 +155,114 @@ describe('P11-01 keyword JSON API authorization', () => {
       await fixture.cleanup();
     }
   });
+
+  it('exposes the complete manual keyword command surface with lock acknowledgement', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OPERATOR',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const app = createApp();
+      const csrf = csrfFor(fixture);
+      const api = `/api/v1/projects/${fixture.project.id}`;
+
+      const parent = await request(app)
+        .post(`${api}/keywords`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ text: '符纸', type: 'CORE', priority: 'HIGH' })
+        .expect(201);
+
+      const child = await request(app)
+        .post(`${api}/keywords`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ text: '六壬符纸', type: 'LONG_TAIL' })
+        .expect(201);
+
+      const updated = await request(app)
+        .patch(`${api}/keywords/${child.body.data.id}`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ priority: 'HIGH', status: 'DISABLED', notes: '专题词' })
+        .expect(200);
+      expect(updated.body.data).toMatchObject({ priority: 'HIGH', status: 'DISABLED', notes: '专题词' });
+
+      const locked = await request(app)
+        .put(`${api}/keywords/${child.body.data.id}/lock`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ locked: true })
+        .expect(200);
+      expect(locked.body.data.locked).toBe(true);
+
+      const blocked = await request(app)
+        .put(`${api}/keywords/${child.body.data.id}/parent`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ parentKeywordId: parent.body.data.id })
+        .expect(409);
+      expect(blocked.body.error.code).toBe('KEYWORD_LOCKED');
+
+      await request(app)
+        .put(`${api}/keywords/${child.body.data.id}/parent`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ parentKeywordId: parent.body.data.id, acknowledgeLock: true })
+        .expect(200);
+
+      const group = await request(app)
+        .post(`${api}/keyword-groups`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ name: '符纸专题', description: '专题内容集群' })
+        .expect(201);
+
+      const groups = await request(app)
+        .put(`${api}/keywords/${child.body.data.id}/groups`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ groupIds: [group.body.data.id], acknowledgeLock: true })
+        .expect(200);
+      expect(groups.body.data).toEqual(
+        expect.arrayContaining([expect.objectContaining({ groupId: group.body.data.id })]),
+      );
+
+      await request(app)
+        .delete(`${api}/keywords/${child.body.data.id}/parent`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ acknowledgeLock: true })
+        .expect(200);
+
+      const archived = await request(app)
+        .post(`${api}/keywords/${child.body.data.id}/archive`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ acknowledgeLock: true })
+        .expect(200);
+      expect(archived.body.data.status).toBe('ARCHIVED');
+
+      const restored = await request(app)
+        .post(`${api}/keywords/${child.body.data.id}/restore`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ acknowledgeLock: true })
+        .expect(200);
+      expect(restored.body.data.status).toBe('ACTIVE');
+
+      const unlocked = await request(app)
+        .put(`${api}/keywords/${child.body.data.id}/lock`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ locked: false, acknowledgeLock: true })
+        .expect(200);
+      expect(unlocked.body.data.locked).toBe(false);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
 });
