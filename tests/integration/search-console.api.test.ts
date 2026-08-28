@@ -92,6 +92,33 @@ describe('P7-A Search Console REST API', () => {
     }
   });
 
+  it('accepts Google callback metadata while consuming the authorization code and state', async () => {
+    const completeGoogleOAuth = async (code: string, state: string) => ({
+      projectId: 'f0cc3a7c-86ee-4f2a-b3d6-1e8649d37a1b',
+      code,
+      state,
+      status: 'CONNECTED'
+    });
+    const app = createApp({
+      searchConsoleService: { completeGoogleOAuth } as unknown as SearchConsoleService
+    });
+
+    await request(app)
+      .get('/api/search-console/oauth/callback')
+      .query({
+        code: 'google-authorisation-code',
+        state: 'google-oauth-state-value',
+        scope: 'https://www.googleapis.com/auth/webmasters.readonly',
+        iss: 'https://accounts.google.com'
+      })
+      .expect(200)
+      .expect(({ body }) => expect(body.data).toMatchObject({
+        code: 'google-authorisation-code',
+        state: 'google-oauth-state-value',
+        status: 'CONNECTED'
+      }));
+  });
+
   it('gates project routes before touching the injected Search Console service', async () => {
     const missingProject = '00000000-0000-0000-0000-000000000098';
     let serviceCalls = 0;
