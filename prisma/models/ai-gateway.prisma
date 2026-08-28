@@ -12,6 +12,7 @@ enum AiTaskType {
   PUBLICATION_ARTICLE_GENERATION
   PUBLICATION_CONTENT_ADAPTATION
   OPTIMIZATION_PLAN_RANKING
+  KEYWORD_EXPANSION
 }
 
 enum AiTaskStatus {
@@ -77,51 +78,32 @@ model AiTaskRun {
   finishedAt     DateTime?
   errorCode      String?
   errorMessage   String?
+  httpStatus     Int?
+  latencyMs      Int?
+  promptTokens   Int?
+  completionTokens Int?
+  totalTokens    Int?
+  cacheHitTokens Int?
+  cacheMissTokens Int?
+  reasoningTokens Int?
+  responseId     String?
+  finishedContent String?
 
-  task   AiTask            @relation(fields: [aiTaskId], references: [id], onDelete: Cascade)
-  calls  AiProviderCall[]
-  result AiAnalysisResult?
+  task AiTask @relation(fields: [aiTaskId], references: [id], onDelete: Cascade)
 
   @@unique([aiTaskId, attemptNo])
-  @@index([aiTaskId, status])
+  @@index([status, startedAt])
 }
 
-model AiProviderCall {
-  id                   String   @id @default(uuid()) @db.Uuid
-  aiTaskRunId          String   @db.Uuid
-  attemptNo            Int
-  httpStatus           Int?
-  providerResponseId   String?
-  latencyMs            Int?
-  promptTokens         Int?
-  completionTokens     Int?
-  totalTokens          Int?
-  cacheHitTokens       Int?
-  cacheMissTokens      Int?
-  reasoningTokens      Int?
-  finishReason         String?
-  errorCode            String?
-  createdAt            DateTime @default(now())
+model AiTaskResult {
+  id            String   @id @default(uuid()) @db.Uuid
+  aiTaskId      String   @unique @db.Uuid
+  outputJson    Json
+  summary       String?
+  provider      AiProviderName
+  model         String
+  responseId    String?
+  createdAt     DateTime @default(now())
 
-  run AiTaskRun @relation(fields: [aiTaskRunId], references: [id], onDelete: Cascade)
-
-  @@unique([aiTaskRunId, attemptNo])
-  @@index([createdAt])
-}
-
-model AiAnalysisResult {
-  id               String         @id @default(uuid()) @db.Uuid
-  aiTaskRunId      String         @unique @db.Uuid
-  resultType       AiTaskType
-  summary          String
-  structuredOutput Json
-  sourceReferences Json
-  provider         AiProviderName
-  model            String
-  promptVersion    String
-  createdAt        DateTime       @default(now())
-
-  run AiTaskRun @relation(fields: [aiTaskRunId], references: [id], onDelete: Cascade)
-
-  @@index([createdAt])
+  task AiTask @relation(fields: [aiTaskId], references: [id], onDelete: Cascade)
 }
