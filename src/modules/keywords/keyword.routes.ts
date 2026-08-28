@@ -152,7 +152,7 @@ export function createKeywordRoutes(service: KeywordService = keywordService) {
         const data = await service.setParent({
           actorUserId: req.auth!.userId,
           projectId: routeParam(req.params.projectId),
-          keywordId: routeParam(req.params.keywordId),
+          childKeywordId: routeParam(req.params.keywordId),
           parentKeywordId: req.body?.parentKeywordId,
           acknowledgeLock: req.body?.acknowledgeLock ?? false,
         });
@@ -171,7 +171,7 @@ export function createKeywordRoutes(service: KeywordService = keywordService) {
         const data = await service.removeParent({
           actorUserId: req.auth!.userId,
           projectId: routeParam(req.params.projectId),
-          keywordId: routeParam(req.params.keywordId),
+          childKeywordId: routeParam(req.params.keywordId),
           acknowledgeLock: req.body?.acknowledgeLock ?? false,
         });
         res.json({ data });
