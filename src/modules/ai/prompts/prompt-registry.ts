@@ -11,6 +11,7 @@ export type PromptId =
   | 'visibility-trend-analysis-v1'
   | 'growth-opportunity-explanation-v1'
   | 'optimization-plan-ranking-v1'
+  | 'keyword-expansion-v1'
   | 'publication-content-brief-v1'
   | 'publication-article-generation-v1'
   | 'distribution-canonical-repost-v1'
@@ -113,6 +114,31 @@ Every returned source reference must be a subset of the supplied source referenc
         sourceReferences: ['GROWTH_OPPORTUNITY_SNAPSHOT:<id>']
       }],
       sourceReferences: ['GROWTH_OPPORTUNITY_SNAPSHOT:<id>']
+    },
+    facts
+  )
+});
+
+const KEYWORD_EXPANSION_PROMPT: PromptDefinition = Object.freeze({
+  id: 'keyword-expansion-v1',
+  version: 'v1',
+  mode: 'FAST',
+  responseFormat: 'JSON',
+  system: `${FACT_GUARDRAILS}
+Generate advisory keyword expansion suggestions from the supplied facts and context only.
+Return at most 20 suggestions.
+Do not claim or infer search volume, ranking performance, traffic, commercial value, market demand, citation visibility, or any other unavailable measurement.
+Do not repeat the seed keyword or any existing accepted children.
+Suggestions are context-bounded candidates for human review only and are not authoritative strategy, accepted keywords, ranking facts, or execution instructions.`,
+  buildUserMessage: (facts: unknown) => buildUserMessage(
+    'Generate bounded advisory keyword expansion candidates from the supplied seed keyword, existing accepted children and context.',
+    {
+      suggestions: [{
+        text: 'Suggested long-tail keyword',
+        type: 'LONG_TAIL',
+        intent: 'INFORMATIONAL',
+        rationale: 'Why this candidate follows from the supplied seed and context.'
+      }]
     },
     facts
   )
@@ -279,6 +305,7 @@ export const PROMPT_DEFINITIONS: readonly PromptDefinition[] = Object.freeze([
   VISIBILITY_TREND_PROMPT,
   GROWTH_OPPORTUNITY_EXPLANATION_PROMPT,
   OPTIMIZATION_PLAN_RANKING_PROMPT,
+  KEYWORD_EXPANSION_PROMPT,
   PUBLICATION_CONTENT_BRIEF_PROMPT,
   PUBLICATION_ARTICLE_GENERATION_PROMPT,
   DISTRIBUTION_CANONICAL_REPOST_PROMPT,
