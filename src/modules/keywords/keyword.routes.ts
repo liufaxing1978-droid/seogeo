@@ -6,6 +6,10 @@ import {
   requireProjectMembership,
 } from '../../auth/project-access.js';
 import { NotFoundError } from '../../core/errors.js';
+import {
+  keywordCoverageService,
+  type KeywordCoverageService,
+} from './keyword-coverage.service.js';
 import { keywordService, type KeywordService } from './keyword.service.js';
 
 function routeParam(value: string | string[]): string {
@@ -14,7 +18,10 @@ function routeParam(value: string | string[]): string {
   return normalized;
 }
 
-export function createKeywordRoutes(service: KeywordService = keywordService) {
+export function createKeywordRoutes(
+  service: KeywordService = keywordService,
+  coverageService: KeywordCoverageService = keywordCoverageService,
+) {
   const router = Router();
   const keywordMutationGuards = [
     requireAuthentication(),
@@ -31,6 +38,24 @@ export function createKeywordRoutes(service: KeywordService = keywordService) {
     async (req, res, next) => {
       try {
         res.json({ data: await service.list(routeParam(req.params.projectId)) });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.get(
+    '/projects/:projectId/keywords/:keywordId/coverage',
+    requireAuthentication(),
+    requireProjectMembership(),
+    requireProjectCapability('PROJECT_READ'),
+    async (req, res, next) => {
+      try {
+        const data = await coverageService.evaluateKeyword(
+          routeParam(req.params.projectId),
+          routeParam(req.params.keywordId),
+        );
+        res.json({ data });
       } catch (error) {
         next(error);
       }
