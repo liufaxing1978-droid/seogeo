@@ -80,6 +80,7 @@ webRoutes.get('/projects', requireAuthentication(), async (req, res, next) => {
     render(res, 'projects/index', {
       title: '项目中心',
       activeNav: 'projects',
+      currentProjectId: projects.length === 1 ? projects[0].id : null,
       projectRows,
       projectSummary
     });
