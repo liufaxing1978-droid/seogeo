@@ -24,7 +24,7 @@ const emptyBodySchema = z.object({}).strict();
 const callbackQuerySchema = z.object({
   code: z.string().min(1).max(4096),
   state: z.string().min(16).max(4096)
-}).strict();
+});
 const propertyBodySchema = z.object({
   propertyUri: z.string().trim().min(1).max(2048)
 }).strict();
