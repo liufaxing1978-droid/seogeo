@@ -73,10 +73,23 @@ const COMPETITOR_GAP_PROMPT: PromptDefinition = Object.freeze({
   buildUserMessage: (facts: unknown) => buildUserMessage('Explain and prioritize the supplied deterministic competitor gaps.', { summary: 'Gap summary', priorities: [{ priority: 'HIGH', metric: 'averageWordCount', explanation: 'What the deterministic gap means', action: 'Concrete action', sourceRefs: ['COMPETITOR_COMPARISON:<id>'] }], unavailableClaims: ['search rankings'], sourceReferences: ['COMPETITOR_COMPARISON:<id>'] }, facts)
 });
 
+function reportSourceReference(facts: unknown): string {
+  const report = facts && typeof facts === 'object' && !Array.isArray(facts)
+    ? (facts as Record<string, unknown>).report
+    : null;
+  const sourceRef = report && typeof report === 'object' && !Array.isArray(report)
+    ? (report as Record<string, unknown>).sourceRef
+    : null;
+  return typeof sourceRef === 'string' ? sourceRef : 'REPORT_SNAPSHOT:UNAVAILABLE';
+}
+
 const PROJECT_REPORT_SUMMARY_PROMPT: PromptDefinition = Object.freeze({
   id: 'project-report-summary-v1', version: 'v1', mode: 'REASONING', responseFormat: 'JSON',
   system: `${FACT_GUARDRAILS}\nSummarize a persisted project report. Deterministic report facts are authoritative. Any supplied advisory AI material must stay labeled advisory. Do not invent AI Visibility, prompt rank, citation share, share of voice, search rankings or traffic. Treat null/UNKNOWN as unavailable evidence.`,
-  buildUserMessage: (facts: unknown) => buildUserMessage('Create an executive summary from the supplied persisted report snapshot.', { summary: 'Executive summary', keyFindings: [{ category: 'SEO', finding: 'Finding grounded in the report', sourceRefs: ['REPORT_SNAPSHOT:<id>'] }], priorities: [{ priority: 'HIGH', action: 'Action', rationale: 'Why it matters', sourceRefs: ['REPORT_SNAPSHOT:<id>'] }], unavailableFacts: ['AI Visibility'], sourceReferences: ['REPORT_SNAPSHOT:<id>'] }, facts)
+  buildUserMessage: (facts: unknown) => {
+    const sourceRef = reportSourceReference(facts);
+    return `${buildUserMessage('Create an executive summary from the supplied persisted report snapshot.', { summary: 'Executive summary', keyFindings: [{ category: 'SEO', finding: 'Finding grounded in the report', sourceRefs: [sourceRef] }], priorities: [{ priority: 'HIGH', action: 'Action', rationale: 'Why it matters', sourceRefs: [sourceRef] }], unavailableFacts: ['AI Visibility'], sourceReferences: [sourceRef] }, facts)}\n\nAll top-level fields in the example are required. Use [] for an empty list. Use only the exact source reference shown in the example.`;
+  }
 });
 
 const VISIBILITY_TREND_PROMPT: PromptDefinition = Object.freeze({
