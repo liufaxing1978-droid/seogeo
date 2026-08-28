@@ -29,6 +29,7 @@ import { healthRoutes } from './modules/health/health.routes.js';
 import type { KeywordCoverageService } from './modules/keywords/keyword-coverage.service.js';
 import { createKeywordRoutes } from './modules/keywords/keyword.routes.js';
 import type { KeywordService } from './modules/keywords/keyword.service.js';
+import { createKeywordWebRoutes } from './modules/keywords/keyword.web.routes.js';
 import { createMarketRoutes, type MarketApiPort } from './modules/market/market.routes.js';
 import {
   createOptimizationExperimentRoutes,
@@ -163,6 +164,7 @@ export function createApp(options: AppOptions = {}) {
     options.operationsActorResolver,
   ));
   app.use('/', optimizationExperimentWebRoutes);
+  app.use('/', createKeywordWebRoutes(options.keywordService, options.keywordCoverageService));
   app.use('/', createProjectAdminWebRoutes());
   app.use('/', webRoutes);
   app.use(errorHandler);
