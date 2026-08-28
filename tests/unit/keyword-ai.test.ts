@@ -17,6 +17,7 @@ const keywordExpansionFacts = keywordAiModule as unknown as {
       intent: string | null;
       language: string | null;
       targetCountry: string | null;
+      updatedAt: Date;
       notes?: string | null;
       priority?: string;
       status?: string;
@@ -44,7 +45,7 @@ const keywordExpansionFacts = keywordAiModule as unknown as {
       status?: string;
     }>;
   }): unknown;
-  keywordExpansionRequestKey(snapshot: unknown): string;
+  keywordExpansionRequestKey(seed: { id: string; updatedAt: Date }): string;
 };
 
 describe('keyword expansion structured output', () => {
@@ -95,7 +96,8 @@ describe('keyword expansion structured output', () => {
     })).toThrow();
   });
 
-  it('builds only the approved fact packet and a stable request key from authoritative keyword state', () => {
+  it('matches the approved narrow fact packet and seed-version request key', () => {
+    const updatedAt = new Date('2026-08-28T15:30:00.000Z');
     const childA = {
       id: '00000000-0000-4000-8000-000000000001',
       text: '符纸用途',
@@ -120,20 +122,23 @@ describe('keyword expansion structured output', () => {
       source: 'MANUAL',
       status: 'ACTIVE',
     };
-    const baseInput = {
-      seedKeyword: {
-        id: '00000000-0000-4000-8000-000000000000',
-        text: '符纸',
-        normalizedText: '符纸',
-        type: 'CORE',
-        intent: 'INFORMATIONAL',
-        language: 'zh-CN',
-        targetCountry: 'CN',
-        notes: 'private operator note',
-        priority: 'HIGH',
-        status: 'ACTIVE',
-        locked: true,
-      },
+    const seedKeyword = {
+      id: '00000000-0000-4000-8000-000000000000',
+      text: '符纸',
+      normalizedText: '符纸',
+      type: 'CORE',
+      intent: 'INFORMATIONAL',
+      language: 'zh-CN',
+      targetCountry: 'CN',
+      updatedAt,
+      notes: 'private operator note',
+      priority: 'HIGH',
+      status: 'ACTIVE',
+      locked: true,
+    };
+
+    const snapshot = keywordExpansionFacts.buildKeywordExpansionFactSnapshot({
+      seedKeyword,
       projectContext: {
         defaultLanguage: 'zh-CN',
         targetCountry: 'CN',
@@ -144,56 +149,25 @@ describe('keyword expansion structured output', () => {
         timezone: 'Asia/Shanghai',
       },
       existingAcceptedChildren: [childB, childA],
-    };
-
-    const snapshot = keywordExpansionFacts.buildKeywordExpansionFactSnapshot(baseInput);
+    });
 
     expect(snapshot).toEqual({
       seedKeyword: {
-        id: baseInput.seedKeyword.id,
+        id: seedKeyword.id,
         text: '符纸',
-        normalizedText: '符纸',
         type: 'CORE',
         intent: 'INFORMATIONAL',
-        language: 'zh-CN',
-        targetCountry: 'CN',
       },
+      existingAcceptedChildren: ['符纸用途', '符纸历史'],
       context: {
+        industry: '民间信仰',
         defaultLanguage: 'zh-CN',
         targetCountry: 'CN',
-        industry: '民间信仰',
       },
-      existingAcceptedChildren: [
-        {
-          id: childA.id,
-          text: '符纸用途',
-          normalizedText: '符纸用途',
-          type: 'LONG_TAIL',
-          intent: 'INFORMATIONAL',
-        },
-        {
-          id: childB.id,
-          text: '符纸历史',
-          normalizedText: '符纸历史',
-          type: 'LONG_TAIL',
-          intent: 'INFORMATIONAL',
-        },
-      ],
     });
 
-    const sameFactsDifferentInputOrder = keywordExpansionFacts.buildKeywordExpansionFactSnapshot({
-      ...baseInput,
-      existingAcceptedChildren: [childA, childB],
-    });
-    const key = keywordExpansionFacts.keywordExpansionRequestKey(snapshot);
-    const sameKey = keywordExpansionFacts.keywordExpansionRequestKey(sameFactsDifferentInputOrder);
-    expect(key).toMatch(/^keyword-expansion:[a-f0-9]{64}$/);
-    expect(sameKey).toBe(key);
-
-    const changedFacts = keywordExpansionFacts.buildKeywordExpansionFactSnapshot({
-      ...baseInput,
-      existingAcceptedChildren: [childA],
-    });
-    expect(keywordExpansionFacts.keywordExpansionRequestKey(changedFacts)).not.toBe(key);
+    expect(keywordExpansionFacts.keywordExpansionRequestKey(seedKeyword)).toBe(
+      `keyword-expand:${seedKeyword.id}:${updatedAt.toISOString()}:keyword-expansion-v1`,
+    );
   });
 });
