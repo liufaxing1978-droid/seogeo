@@ -71,13 +71,27 @@ export interface SetKeywordGroupsInput {
   acknowledgeLock?: boolean;
 }
 
+const KEYWORD_TRANSACTION_MAX_ATTEMPTS = 3;
+
 async function inKeywordTransaction<T>(
   work: (repo: KeywordRepository) => Promise<T>,
 ): Promise<T> {
-  return prisma.$transaction(
-    (tx) => work(new KeywordRepository(tx)),
-    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-  );
+  for (let attempt = 1; attempt <= KEYWORD_TRANSACTION_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await prisma.$transaction(
+        (tx) => work(new KeywordRepository(tx)),
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      const retryable = error instanceof Prisma.PrismaClientKnownRequestError
+        && error.code === 'P2034';
+      if (!retryable || attempt === KEYWORD_TRANSACTION_MAX_ATTEMPTS) {
+        throw error;
+      }
+    }
+  }
+
+  throw new AppError('Keyword transaction retry exhausted', 409, 'KEYWORD_WRITE_CONFLICT');
 }
 
 function keywordNotFound(): AppError {
@@ -214,10 +228,7 @@ export class KeywordService {
         return created;
       });
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError
-        && (error.code === 'P2002' || error.code === 'P2034')
-      ) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         return rereadDuplicateAfterConstraint(input.projectId, normalizedText);
       }
       throw error;
