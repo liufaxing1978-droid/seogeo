@@ -163,17 +163,23 @@ model Project {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  crawlRuns       CrawlRun[]
-  pages           Page[]
-  seoAuditRuns    SeoAuditRun[]
-  seoIssues       SeoIssue[]
-  seoScores       SeoScore[]
-  geoAuditRuns    GeoAuditRun[]
-  entities        Entity[]
-  entityRelations EntityRelation[]
-  geoScores       GeoScore[]
-  markets         ProjectMarket[]
-  memberships     ProjectMembership[]
+  crawlRuns                 CrawlRun[]
+  pages                     Page[]
+  seoAuditRuns              SeoAuditRun[]
+  seoIssues                 SeoIssue[]
+  seoScores                 SeoScore[]
+  geoAuditRuns              GeoAuditRun[]
+  entities                  Entity[]
+  entityRelations           EntityRelation[]
+  geoScores                 GeoScore[]
+  markets                   ProjectMarket[]
+  memberships               ProjectMembership[]
+  keywords                  Keyword[]
+  keywordRelations          KeywordRelation[]
+  keywordGroups             KeywordGroup[]
+  keywordGroupMemberships   KeywordGroupMembership[]
+  keywordSuggestions        KeywordSuggestion[]
+  keywordAuditEvents        KeywordAuditEvent[]
 
   @@index([primaryDomain])
   @@index([status])
@@ -777,7 +783,7 @@ model GeoScore {
   change         Float?
   formulaVersion String
   calculatedAt   DateTime @default(now())
-  engineVersion  String
+  engineVersion String
 
   geoAuditRun GeoAuditRun         @relation(fields: [geoAuditRunId], references: [id], onDelete: Cascade)
   project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
