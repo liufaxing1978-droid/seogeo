@@ -70,6 +70,7 @@ function expectedPromptId(task: AiTask): string {
     case 'PUBLICATION_CONTENT_BRIEF': return 'publication-content-brief-v1';
     case 'PUBLICATION_ARTICLE_GENERATION': return 'publication-article-generation-v1';
     case 'PUBLICATION_CONTENT_ADAPTATION': return promptIdForDistributionTask(task);
+    case 'KEYWORD_EXPANSION': return 'keyword-expansion-v1';
   }
 }
 
@@ -116,6 +117,7 @@ function resultSummary(task: AiTask, output: unknown): string {
     case 'PUBLICATION_CONTENT_BRIEF': return 'Advisory publication content brief generated.';
     case 'PUBLICATION_ARTICLE_GENERATION': return 'Advisory publication article draft generated.';
     case 'PUBLICATION_CONTENT_ADAPTATION': return 'Advisory distribution adaptation draft generated.';
+    case 'KEYWORD_EXPANSION': return 'Advisory keyword suggestions generated.';
   }
 }
 
