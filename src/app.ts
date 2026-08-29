@@ -65,6 +65,8 @@ import { reportWebRoutes } from './modules/reporting/report.web.routes.js';
 import { createSearchConsoleRoutes } from './modules/search-console/search-console.routes.js';
 import type { SearchConsoleService } from './modules/search-console/search-console.service.js';
 import { searchConsoleWebRoutes } from './modules/search-console/search-console.web.routes.js';
+import { createOfficialSearchSyncRoutes } from './modules/search-sync/official-search-sync.routes.js';
+import type { OfficialSearchBindingRepositoryPort } from './modules/search-sync/official-search-sync.types.js';
 import { createSeoRoutes } from './modules/seo/seo.routes.js';
 import type { SeoService } from './modules/seo/seo.service.js';
 import { createVisibilityRoutes } from './modules/visibility/visibility.routes.js';
@@ -95,6 +97,7 @@ export interface AppOptions {
   keywordCoverageService?: KeywordCoverageService;
   keywordSearchEvidenceService?: Pick<KeywordSearchEvidenceService, 'evaluateKeyword' | 'evaluateProject'>;
   searchConsoleService?: SearchConsoleService;
+  officialSearchBindingRepository?: OfficialSearchBindingRepositoryPort;
   growthApiRepository?: Partial<GrowthRestRepository>;
   optimizationOrchestrationApi?: OptimizationOrchestrationApiPort;
   optimizationExperimentApi?: OptimizationExperimentApiPort;
@@ -141,6 +144,7 @@ export function createApp(options: AppOptions = {}) {
     options.aiTaskService,
     options.keywordSearchEvidenceService,
   ));
+  app.use('/api/v1', createOfficialSearchSyncRoutes(options.officialSearchBindingRepository));
   app.use('/api/v1', createOptimizationOrchestrationRoutes(options.optimizationOrchestrationApi));
   app.use('/api/v1', createOptimizationOperationsRoutes(
     options.optimizationOperationsApi,
