@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
-import type { CreateAiTaskInput } from '../ai/ai.service.js';
+import { aiTaskService, type AiTaskService, type CreateAiTaskInput } from '../ai/ai.service.js';
 import { parseStructuredOutput } from '../ai/structured-output.js';
 import { projectRepository } from '../projects/project.repository.js';
 import { normalizeKeywordText } from './keyword-normalize.js';
@@ -141,4 +141,14 @@ export async function buildKeywordExpansionTaskInput(
     factSnapshot: factSnapshot as unknown as Prisma.InputJsonValue,
     sourceReferences: [{ type: 'KEYWORD', id: seed.id }] as Prisma.InputJsonValue,
   };
+}
+
+export async function createKeywordExpansionTask(
+  projectId: string,
+  seedKeywordId: string,
+  service: Pick<AiTaskService, 'createAndEnqueue'> = aiTaskService,
+) {
+  return service.createAndEnqueue(
+    await buildKeywordExpansionTaskInput(projectId, seedKeywordId),
+  );
 }
