@@ -23,6 +23,16 @@
     NONE: '未覆盖',
     UNKNOWN: '证据不足',
   };
+  const searchProviderLabels = {
+    GOOGLE_SEARCH_CONSOLE: 'Google Search Console',
+    BING_WEBMASTER: 'Bing Webmaster Tools',
+  };
+  const searchEvidenceStateLabels = {
+    OBSERVED: '已观察',
+    NOT_OBSERVED: '未观察',
+    UNKNOWN: '证据不足',
+    UNAVAILABLE: '不可用',
+  };
   const statusLabels = { ACTIVE: '启用', DISABLED: '停用', ARCHIVED: '已归档' };
   const suggestionStatusLabels = {
     PENDING: '待审核',
@@ -37,7 +47,7 @@
     <div>
       <p class="keyword-center__eyebrow">Search Demand Capture</p>
       <h2>关键词中心</h2>
-      <p>管理核心关键词与长尾关键词，并用站内已持久化页面事实检查内容覆盖。所有排名数据在正式接入搜索提供方前均保持未知。</p>
+      <p>管理核心关键词与长尾关键词，并用站内已持久化页面事实检查内容覆盖。实时当前排名数据仍未接入；下方搜索证据只展示已持久化的官方平台观测事实。</p>
     </div>
     <div class="keyword-center__rank-note" data-ui="keyword-ranking-status">
       <span>搜索排名</span>
@@ -138,6 +148,7 @@
               <th>类型 / 意图</th>
               <th>优先级</th>
               <th>内容覆盖</th>
+              <th>搜索证据</th>
               <th>父关键词 / 分组</th>
               <th>状态</th>
               <% if (canWriteKeywords) { %><th>操作</th><% } %>
@@ -173,6 +184,42 @@
                     <% } else { %>
                       <small><%= keyword.coverage.reason === 'NO_ACTIVE_PAGE_EVIDENCE' ? '暂无启用页面证据' : keyword.coverage.reason === 'NO_USABLE_SNAPSHOT_EVIDENCE' ? '暂无可用抓取快照' : '已有页面证据，但未发现匹配' %></small>
                     <% } %>
+                  </div>
+                </td>
+                <td>
+                  <div class="keyword-search-evidence" data-ui="keyword-search-evidence">
+                    <small class="keyword-search-evidence__window">证据窗口 <%= keyword.searchEvidence.dateFrom %> – <%= keyword.searchEvidence.dateTo %></small>
+                    <% keyword.searchEvidence.evidence.forEach((evidence) => { %>
+                      <article class="keyword-search-evidence__item keyword-search-evidence__item--<%= evidence.state.toLowerCase().replace('_', '-') %>" data-provider="<%= evidence.provider %>">
+                        <div class="keyword-search-evidence__head">
+                          <strong class="keyword-search-evidence__provider"><%= searchProviderLabels[evidence.provider] || evidence.provider %></strong>
+                          <span class="keyword-search-evidence__state"><%= searchEvidenceStateLabels[evidence.state] || evidence.state %></span>
+                        </div>
+                        <% if (evidence.kind === 'LANE') { %>
+                          <small class="keyword-search-evidence__source"><%= evidence.marketCode %> · <%= evidence.locale %> · <%= evidence.propertyRef %></small>
+                        <% } %>
+
+                        <% if (evidence.state === 'OBSERVED') { %>
+                          <div class="keyword-search-evidence__metrics">
+                            <% if (evidence.metrics.clicks !== null) { %><span>点击 <strong><%= evidence.metrics.clicks %></strong></span><% } %>
+                            <% if (evidence.metrics.impressions !== null) { %><span>展示 <strong><%= evidence.metrics.impressions %></strong></span><% } %>
+                            <% if (evidence.metrics.ctr !== null) { %><span>CTR <strong><%= (evidence.metrics.ctr * 100).toFixed(2) %>%</strong></span><% } %>
+                            <% if (evidence.metrics.searchConsoleAveragePosition !== null) { %><span>Search Console 平均位置 <strong><%= evidence.metrics.searchConsoleAveragePosition.toFixed(2) %></strong></span><% } %>
+                            <% if (evidence.metrics.bingAverageClickPosition !== null) { %><span>Bing 平均点击位置 <strong><%= evidence.metrics.bingAverageClickPosition.toFixed(2) %></strong></span><% } %>
+                            <% if (evidence.metrics.bingAverageImpressionPosition !== null) { %><span>Bing 平均展示位置 <strong><%= evidence.metrics.bingAverageImpressionPosition.toFixed(2) %></strong></span><% } %>
+                          </div>
+                          <% if (evidence.latestSourceDate) { %><small class="keyword-search-evidence__source">最新匹配证据 <%= evidence.latestSourceDate %></small><% } %>
+                        <% } else if (evidence.state === 'UNKNOWN' && evidence.kind === 'LANE') { %>
+                          <p class="keyword-search-evidence__truth">当前持久化数据不完整，未观察到该关键词不能解释为 0 搜索量或无排名。</p>
+                        <% } else if (evidence.state === 'UNKNOWN') { %>
+                          <p class="keyword-search-evidence__truth">当前没有已持久化的查询级证据，不能据此推断搜索量或排名。</p>
+                        <% } else if (evidence.state === 'NOT_OBSERVED') { %>
+                          <p class="keyword-search-evidence__truth">完整持久化查询证据中未观察到该关键词；这只表示当前证据窗口内未匹配。</p>
+                        <% } else if (evidence.state === 'UNAVAILABLE') { %>
+                          <p class="keyword-search-evidence__truth">官方平台能力尚未接入 / 当前接口不支持查询级证据</p>
+                        <% } %>
+                      </article>
+                    <% }) %>
                   </div>
                 </td>
                 <td>
