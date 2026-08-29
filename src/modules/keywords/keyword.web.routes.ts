@@ -9,6 +9,8 @@ import {
 } from '../../auth/project-access.js';
 import { env } from '../../config/env.js';
 import { AppError, NotFoundError } from '../../core/errors.js';
+import { aiTaskService, type AiTaskService } from '../ai/ai.service.js';
+import { createKeywordExpansionTask } from './keyword-ai.js';
 import {
   keywordCoverageService,
   type KeywordCoverageService,
@@ -50,6 +52,7 @@ function csrfTokenFor(req: any, res: any): string {
 export function createKeywordWebRoutes(
   service: KeywordService = keywordService,
   coverageService: KeywordCoverageService = keywordCoverageService,
+  aiService: Pick<AiTaskService, 'createAndEnqueue'> = aiTaskService,
 ) {
   const router = Router();
   const readGuards = [
@@ -62,6 +65,12 @@ export function createKeywordWebRoutes(
     requireCsrf(),
     requireProjectMembership(),
     requireProjectCapability('CONTENT_WRITE'),
+  ];
+  const aiRunGuards = [
+    requireAuthentication(),
+    requireCsrf(),
+    requireProjectMembership(),
+    requireProjectCapability('AI_RUN'),
   ];
   const webRepository = new KeywordWebRepository(coverageService);
 
@@ -80,6 +89,7 @@ export function createKeywordWebRoutes(
         bodyTemplate: 'keywords/index',
         csrfToken: csrfTokenFor(req, res),
         canWriteKeywords: hasProjectCapability(membership.role, 'CONTENT_WRITE'),
+        canRunKeywordAi: hasProjectCapability(membership.role, 'AI_RUN'),
         keywordCenter: model,
       });
     } catch (error) {
@@ -109,6 +119,62 @@ export function createKeywordWebRoutes(
       next(error);
     }
   });
+
+  router.post(
+    '/projects/:projectId/keywords/:keywordId/suggestions/generate',
+    ...aiRunGuards,
+    async (req, res, next) => {
+      try {
+        const projectId = routeParam(req.params.projectId);
+        await createKeywordExpansionTask(
+          projectId,
+          routeParam(req.params.keywordId),
+          aiService,
+        );
+        res.redirect(303, `/projects/${projectId}/keywords`);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    '/projects/:projectId/keyword-suggestions/:suggestionId/accept',
+    ...writeGuards,
+    async (req, res, next) => {
+      try {
+        const projectId = routeParam(req.params.projectId);
+        const editedText = optionalString(req.body?.editedText);
+        await service.acceptSuggestion({
+          actorUserId: req.auth!.userId,
+          projectId,
+          suggestionId: routeParam(req.params.suggestionId),
+          editedText: typeof editedText === 'string' ? editedText : undefined,
+        });
+        res.redirect(303, `/projects/${projectId}/keywords`);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    '/projects/:projectId/keyword-suggestions/:suggestionId/reject',
+    ...writeGuards,
+    async (req, res, next) => {
+      try {
+        const projectId = routeParam(req.params.projectId);
+        await service.rejectSuggestion({
+          actorUserId: req.auth!.userId,
+          projectId,
+          suggestionId: routeParam(req.params.suggestionId),
+        });
+        res.redirect(303, `/projects/${projectId}/keywords`);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
 
   router.post('/projects/:projectId/keywords/:keywordId/update', ...writeGuards, async (req, res, next) => {
     try {
