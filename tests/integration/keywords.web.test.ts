@@ -7,6 +7,8 @@ import { env } from '../../src/config/env.js';
 import { prisma } from '../../src/db/prisma.js';
 import type { AiTaskService } from '../../src/modules/ai/ai.service.js';
 import { keywordService } from '../../src/modules/keywords/keyword.service.js';
+import { SearchFactRepository } from '../../src/modules/search-facts/search-fact.repository.js';
+import { SEARCH_FACT_NORMALIZATION_VERSION } from '../../src/modules/search-facts/search-fact.types.js';
 import { seedAuthenticatedUser } from '../helpers/auth-fixture.js';
 
 function csrfFor(fixture: Awaited<ReturnType<typeof seedAuthenticatedUser>>) {
@@ -56,6 +58,142 @@ async function seedPendingSuggestion(
   return { seed, task, suggestion };
 }
 
+async function seedOfficialSearchEvidence(
+  fixture: Awaited<ReturnType<typeof seedAuthenticatedUser>>,
+) {
+  const repository = new SearchFactRepository(prisma);
+  const cutoff = new Date('2026-08-28T00:00:00.000Z');
+  const sourceDate = new Date('2026-08-28T00:00:00.000Z');
+  const suffix = randomUUID();
+  const domain = fixture.project.primaryDomain;
+
+  await repository.persistCompletedSnapshot(
+    {
+      projectId: fixture.project.id,
+      provider: 'GOOGLE_SEARCH_CONSOLE',
+      marketCode: 'GLOBAL',
+      locale: 'zh-CN',
+      propertyRef: `sc-domain:${domain}`,
+      propertyType: 'DOMAIN',
+      sourceKind: 'GSC_DAILY_SNAPSHOT',
+      sourceRef: `task7-google-observed-${suffix}`,
+      sourceCutoffAt: cutoff,
+      sourceCompleteness: 'TOP_ROWS_ONLY',
+      normalizationVersion: SEARCH_FACT_NORMALIZATION_VERSION,
+    },
+    [
+      {
+        factKey: `task7-google-query-page-${suffix}`,
+        factKind: 'QUERY_PAGE',
+        sourceObservationRef: `task7-google-observation-${suffix}`,
+        sourceDate,
+        query: '符纸',
+        normalizedQuery: 'provider-normalization-must-not-drive-matching',
+        queryNormalizationVersion: 'provider-v999',
+        page: `https://${domain}/fu-zhi`,
+        canonicalPage: `https://${domain}/fu-zhi`,
+        canonicalizationVersion: 'task7-test-v1',
+        metrics: [
+          {
+            metricSemantic: 'CLICKS',
+            numericValue: 6,
+            evidenceState: 'KNOWN_PRESENT',
+            sourceField: 'clicks',
+          },
+          {
+            metricSemantic: 'IMPRESSIONS',
+            numericValue: 150,
+            evidenceState: 'KNOWN_PRESENT',
+            sourceField: 'impressions',
+          },
+          {
+            metricSemantic: 'GOOGLE_SEARCH_CONSOLE_POSITION',
+            numericValue: 5.5,
+            evidenceState: 'KNOWN_PRESENT',
+            sourceField: 'position',
+          },
+        ],
+      },
+    ],
+    `task7-google-observed-input-${suffix}`,
+  );
+
+  await repository.persistCompletedSnapshot(
+    {
+      projectId: fixture.project.id,
+      provider: 'GOOGLE_SEARCH_CONSOLE',
+      marketCode: 'GLOBAL',
+      locale: 'zh-CN',
+      propertyRef: `sc-domain:empty-${domain}`,
+      propertyType: 'DOMAIN',
+      sourceKind: 'GSC_DAILY_SNAPSHOT',
+      sourceRef: `task7-google-empty-${suffix}`,
+      sourceCutoffAt: cutoff,
+      sourceCompleteness: 'TOP_ROWS_ONLY',
+      normalizationVersion: SEARCH_FACT_NORMALIZATION_VERSION,
+    },
+    [],
+    `task7-google-empty-input-${suffix}`,
+  );
+
+  await repository.persistCompletedSnapshot(
+    {
+      projectId: fixture.project.id,
+      provider: 'BING_WEBMASTER',
+      marketCode: 'GLOBAL',
+      locale: 'zh-CN',
+      propertyRef: `https://${domain}/`,
+      propertyType: 'SITE',
+      sourceKind: 'PROVIDER_OBSERVATION_BATCH',
+      sourceRef: `task7-bing-observed-${suffix}`,
+      sourceCutoffAt: cutoff,
+      sourceCompleteness: 'PROVIDER_UNSPECIFIED',
+      normalizationVersion: SEARCH_FACT_NORMALIZATION_VERSION,
+    },
+    [
+      {
+        factKey: `task7-bing-query-${suffix}`,
+        factKind: 'QUERY',
+        sourceObservationRef: `task7-bing-observation-${suffix}`,
+        sourceDate,
+        query: '符纸',
+        normalizedQuery: 'provider-normalization-must-not-drive-matching',
+        queryNormalizationVersion: 'provider-v999',
+        page: null,
+        canonicalPage: null,
+        canonicalizationVersion: null,
+        metrics: [
+          {
+            metricSemantic: 'CLICKS',
+            numericValue: 10,
+            evidenceState: 'KNOWN_PRESENT',
+            sourceField: 'clicks',
+          },
+          {
+            metricSemantic: 'IMPRESSIONS',
+            numericValue: 200,
+            evidenceState: 'KNOWN_PRESENT',
+            sourceField: 'impressions',
+          },
+          {
+            metricSemantic: 'BING_AVG_CLICK_POSITION',
+            numericValue: 3.2,
+            evidenceState: 'KNOWN_PRESENT',
+            sourceField: 'avgClickPosition',
+          },
+          {
+            metricSemantic: 'BING_AVG_IMPRESSION_POSITION',
+            numericValue: null,
+            evidenceState: 'UNKNOWN',
+            sourceField: 'avgImpressionPosition',
+          },
+        ],
+      },
+    ],
+    `task7-bing-observed-input-${suffix}`,
+  );
+}
+
 describe('P11-01 keyword center web UI', () => {
   it('renders keyword facts without fabricated ranking', async () => {
     const fixture = await seedAuthenticatedUser({
@@ -87,6 +225,45 @@ describe('P11-01 keyword center web UI', () => {
       expect(response.text).not.toContain('Google 排名：1');
       expect(response.text).toContain('data-ui="keyword-center"');
     } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('renders persisted official search evidence with truthful provider semantics', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OWNER',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      await keywordService.createManual({
+        actorUserId: fixture.user.id,
+        projectId: fixture.project.id,
+        text: '符纸',
+        type: 'CORE',
+        priority: 'HIGH',
+      });
+      await seedOfficialSearchEvidence(fixture);
+
+      const response = await request(createApp())
+        .get(`/projects/${fixture.project.id}/keywords`)
+        .set('Cookie', fixture.sessionCookie)
+        .expect(200);
+
+      expect(response.text).toContain('搜索证据');
+      expect(response.text).toContain('data-ui="keyword-search-evidence"');
+      expect(response.text).toContain('data-provider="GOOGLE_SEARCH_CONSOLE"');
+      expect(response.text).toContain('data-provider="BING_WEBMASTER"');
+      expect(response.text).toContain('Google Search Console');
+      expect(response.text).toContain('Search Console 平均位置');
+      expect(response.text).toContain('当前持久化数据不完整，未观察到该关键词不能解释为 0 搜索量或无排名。');
+      expect(response.text).toContain('官方平台能力尚未接入 / 当前接口不支持查询级证据');
+      expect(response.text).not.toContain('Google 当前排名');
+      expect(response.text).not.toContain('排名 0');
+    } finally {
+      await prisma.searchFactSnapshot.deleteMany({ where: { projectId: fixture.project.id } });
       await fixture.cleanup();
     }
   });
