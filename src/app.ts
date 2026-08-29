@@ -133,7 +133,11 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/v1', createAiRoutes(options.aiTaskService));
   app.use('/api/v1', createContentRoutes(options.contentService, options.aiTaskService));
   app.use('/api/v1', createCompetitorRoutes(options.competitorService, options.aiTaskService));
-  app.use('/api/v1', createKeywordRoutes(options.keywordService, options.keywordCoverageService));
+  app.use('/api/v1', createKeywordRoutes(
+    options.keywordService,
+    options.keywordCoverageService,
+    options.aiTaskService,
+  ));
   app.use('/api/v1', createOptimizationOrchestrationRoutes(options.optimizationOrchestrationApi));
   app.use('/api/v1', createOptimizationOperationsRoutes(
     options.optimizationOperationsApi,
