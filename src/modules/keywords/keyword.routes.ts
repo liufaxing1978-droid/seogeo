@@ -6,6 +6,8 @@ import {
   requireProjectMembership,
 } from '../../auth/project-access.js';
 import { NotFoundError } from '../../core/errors.js';
+import { aiTaskService, type AiTaskService } from '../ai/ai.service.js';
+import { createKeywordExpansionTask } from './keyword-ai.js';
 import {
   keywordCoverageService,
   type KeywordCoverageService,
@@ -21,6 +23,7 @@ function routeParam(value: string | string[]): string {
 export function createKeywordRoutes(
   service: KeywordService = keywordService,
   coverageService: KeywordCoverageService = keywordCoverageService,
+  aiService: Pick<AiTaskService, 'createAndEnqueue'> = aiTaskService,
 ) {
   const router = Router();
   const keywordMutationGuards = [
@@ -28,6 +31,12 @@ export function createKeywordRoutes(
     requireCsrf(),
     requireProjectMembership(),
     requireProjectCapability('CONTENT_WRITE'),
+  ];
+  const keywordAiGuards = [
+    requireAuthentication(),
+    requireCsrf(),
+    requireProjectMembership(),
+    requireProjectCapability('AI_RUN'),
   ];
 
   router.get(
@@ -55,6 +64,58 @@ export function createKeywordRoutes(
           routeParam(req.params.projectId),
           routeParam(req.params.keywordId),
         );
+        res.json({ data });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    '/projects/:projectId/keywords/:keywordId/suggestions/generate',
+    ...keywordAiGuards,
+    async (req, res, next) => {
+      try {
+        const task = await createKeywordExpansionTask(
+          routeParam(req.params.projectId),
+          routeParam(req.params.keywordId),
+          aiService,
+        );
+        res.status(202).json({ data: { aiTaskId: task.id } });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    '/projects/:projectId/keyword-suggestions/:suggestionId/accept',
+    ...keywordMutationGuards,
+    async (req, res, next) => {
+      try {
+        const data = await service.acceptSuggestion({
+          actorUserId: req.auth!.userId,
+          projectId: routeParam(req.params.projectId),
+          suggestionId: routeParam(req.params.suggestionId),
+          editedText: req.body?.editedText,
+        });
+        res.json({ data });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    '/projects/:projectId/keyword-suggestions/:suggestionId/reject',
+    ...keywordMutationGuards,
+    async (req, res, next) => {
+      try {
+        const data = await service.rejectSuggestion({
+          actorUserId: req.auth!.userId,
+          projectId: routeParam(req.params.projectId),
+          suggestionId: routeParam(req.params.suggestionId),
+        });
         res.json({ data });
       } catch (error) {
         next(error);
