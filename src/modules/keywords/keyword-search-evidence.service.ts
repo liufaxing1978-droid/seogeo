@@ -120,19 +120,19 @@ function resolveRange(
   };
 }
 
-function parseProvider(value: unknown): SearchProviderCode | undefined {
+export function parseSearchEvidenceProviderFilter(value: unknown): SearchProviderCode | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'string' || !providerSet.has(value)) throw filterError();
   return value as SearchProviderCode;
 }
 
-function parseMarket(value: unknown): MarketCode | undefined {
+export function parseSearchEvidenceMarketFilter(value: unknown): MarketCode | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'string' || !marketSet.has(value)) throw filterError();
   return value as MarketCode;
 }
 
-function parseOptionalText(value: unknown): string | undefined {
+export function parseSearchEvidenceOptionalTextFilter(value: unknown): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'string') throw filterError();
   const normalized = value.trim();
@@ -144,11 +144,17 @@ function normalizeFilters(filters: KeywordSearchEvidenceFilters): KeywordSearchE
   return {
     ...(filters.from !== undefined ? { from: filters.from } : {}),
     ...(filters.to !== undefined ? { to: filters.to } : {}),
-    ...(parseProvider(filters.provider) ? { provider: parseProvider(filters.provider) } : {}),
-    ...(parseMarket(filters.marketCode) ? { marketCode: parseMarket(filters.marketCode) } : {}),
-    ...(parseOptionalText(filters.locale) ? { locale: parseOptionalText(filters.locale) } : {}),
-    ...(parseOptionalText(filters.propertyRef)
-      ? { propertyRef: parseOptionalText(filters.propertyRef) }
+    ...(parseSearchEvidenceProviderFilter(filters.provider)
+      ? { provider: parseSearchEvidenceProviderFilter(filters.provider) }
+      : {}),
+    ...(parseSearchEvidenceMarketFilter(filters.marketCode)
+      ? { marketCode: parseSearchEvidenceMarketFilter(filters.marketCode) }
+      : {}),
+    ...(parseSearchEvidenceOptionalTextFilter(filters.locale)
+      ? { locale: parseSearchEvidenceOptionalTextFilter(filters.locale) }
+      : {}),
+    ...(parseSearchEvidenceOptionalTextFilter(filters.propertyRef)
+      ? { propertyRef: parseSearchEvidenceOptionalTextFilter(filters.propertyRef) }
       : {}),
   };
 }
