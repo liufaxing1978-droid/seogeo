@@ -168,7 +168,11 @@ export function createApp(options: AppOptions = {}) {
     options.operationsActorResolver,
   ));
   app.use('/', optimizationExperimentWebRoutes);
-  app.use('/', createKeywordWebRoutes(options.keywordService, options.keywordCoverageService));
+  app.use('/', createKeywordWebRoutes(
+    options.keywordService,
+    options.keywordCoverageService,
+    options.aiTaskService,
+  ));
   app.use('/', createProjectAdminWebRoutes());
   app.use('/', webRoutes);
   app.use(errorHandler);
