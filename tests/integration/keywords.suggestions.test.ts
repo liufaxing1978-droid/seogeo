@@ -1,8 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import type { Keyword, KeywordSuggestion } from '@prisma/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import request from 'supertest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { deriveCsrfToken } from '../../src/auth/csrf.js';
+import { createApp } from '../../src/app.js';
+import { env } from '../../src/config/env.js';
 import { prisma } from '../../src/db/prisma.js';
+import type { AiTaskService } from '../../src/modules/ai/ai.service.js';
 import { KeywordService } from '../../src/modules/keywords/keyword.service.js';
+import { seedAuthenticatedUser } from '../helpers/auth-fixture.js';
 
 const projectIds: string[] = [];
 const actorUserId = randomUUID();
@@ -20,6 +26,14 @@ type SuggestionService = KeywordService & {
     suggestionId: string;
   }): Promise<KeywordSuggestion>;
 };
+
+function csrfFor(fixture: Awaited<ReturnType<typeof seedAuthenticatedUser>>): string {
+  return deriveCsrfToken(
+    env.SESSION_SECRET,
+    fixture.csrfInput.sessionId,
+    fixture.csrfInput.tokenHash,
+  );
+}
 
 async function createProject(label: string) {
   const suffix = randomUUID();
@@ -69,6 +83,45 @@ async function seedSuggestion(
       suggestedIntent: 'INFORMATIONAL',
       rationale: '更窄的相关主题',
       status: options.status ?? 'PENDING',
+      provider: 'DEEPSEEK',
+      model: 'fixture-model',
+      aiTaskId: task.id,
+    },
+  });
+  return { seed, task, suggestion };
+}
+
+async function seedAuthenticatedSuggestion(
+  fixture: Awaited<ReturnType<typeof seedAuthenticatedUser>>,
+  text = '六壬符纸',
+) {
+  const service = new KeywordService();
+  const seed = await service.createManual({
+    actorUserId: fixture.user.id,
+    projectId: fixture.project.id,
+    text: `符纸-${randomUUID()}`,
+    type: 'CORE',
+    intent: 'INFORMATIONAL',
+  });
+  const task = await prisma.aiTask.create({
+    data: {
+      projectId: fixture.project.id,
+      taskType: 'KEYWORD_EXPANSION',
+      requestKey: `keyword-api-suggestion:${randomUUID()}`,
+      promptVersion: 'keyword-expansion-v1',
+      factSnapshot: { seedKeyword: { id: seed.id, text: seed.text } },
+      sourceReferences: [{ type: 'KEYWORD', id: seed.id }],
+    },
+  });
+  const suggestion = await prisma.keywordSuggestion.create({
+    data: {
+      projectId: fixture.project.id,
+      seedKeywordId: seed.id,
+      suggestedText: text,
+      normalizedText: text.normalize('NFKC').trim().toLocaleLowerCase('und'),
+      suggestedType: 'LONG_TAIL',
+      suggestedIntent: 'INFORMATIONAL',
+      rationale: '更窄的相关主题',
       provider: 'DEEPSEEK',
       model: 'fixture-model',
       aiTaskId: task.id,
@@ -242,5 +295,193 @@ describe('KeywordService suggestion decision semantics', () => {
       projectId: local.id,
       suggestionId: suggestion.id,
     })).rejects.toMatchObject({ code: 'KEYWORD_SUGGESTION_NOT_FOUND' });
+  });
+});
+
+describe('Keyword suggestion API authorization and commands', () => {
+  it('requires AI_RUN to generate keyword suggestions', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'VIEWER',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const { seed } = await seedAuthenticatedSuggestion(fixture);
+      const response = await request(createApp())
+        .post(`/api/v1/projects/${fixture.project.id}/keywords/${seed.id}/suggestions/generate`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrfFor(fixture))
+        .expect(403);
+
+      expect(response.body.error.code).toBe('PROJECT_CAPABILITY_REQUIRED');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('requires CSRF for keyword suggestion generation', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OPERATOR',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const { seed } = await seedAuthenticatedSuggestion(fixture);
+      const response = await request(createApp())
+        .post(`/api/v1/projects/${fixture.project.id}/keywords/${seed.id}/suggestions/generate`)
+        .set('Cookie', fixture.sessionCookie)
+        .expect(403);
+
+      expect(response.body.error.code).toBe('CSRF_INVALID');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('queues generation through the injected AI task service and returns 202', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OPERATOR',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const { seed } = await seedAuthenticatedSuggestion(fixture);
+      const taskId = randomUUID();
+      const createAndEnqueue = vi.fn(async () => ({ id: taskId }));
+      const aiTaskService = { createAndEnqueue } as unknown as AiTaskService;
+      const response = await request(createApp({ aiTaskService }))
+        .post(`/api/v1/projects/${fixture.project.id}/keywords/${seed.id}/suggestions/generate`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrfFor(fixture))
+        .expect(202);
+
+      expect(response.body.data).toEqual({ aiTaskId: taskId });
+      expect(createAndEnqueue).toHaveBeenCalledTimes(1);
+      expect(createAndEnqueue).toHaveBeenCalledWith(expect.objectContaining({
+        projectId: fixture.project.id,
+        taskType: 'KEYWORD_EXPANSION',
+        promptVersion: 'keyword-expansion-v1',
+      }));
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('requires CONTENT_WRITE to accept a suggestion', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'VIEWER',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const { suggestion } = await seedAuthenticatedSuggestion(fixture);
+      const response = await request(createApp())
+        .post(`/api/v1/projects/${fixture.project.id}/keyword-suggestions/${suggestion.id}/accept`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrfFor(fixture))
+        .send({ editedText: '六壬符纸' })
+        .expect(403);
+
+      expect(response.body.error.code).toBe('PROJECT_CAPABILITY_REQUIRED');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('requires CSRF to reject a suggestion', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OPERATOR',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const { suggestion } = await seedAuthenticatedSuggestion(fixture);
+      const response = await request(createApp())
+        .post(`/api/v1/projects/${fixture.project.id}/keyword-suggestions/${suggestion.id}/reject`)
+        .set('Cookie', fixture.sessionCookie)
+        .expect(403);
+
+      expect(response.body.error.code).toBe('CSRF_INVALID');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('lets an OPERATOR accept and reject pending suggestions', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OPERATOR',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const first = await seedAuthenticatedSuggestion(fixture, '六壬符纸');
+      const second = await seedAuthenticatedSuggestion(fixture, '符纸怎么用');
+      const app = createApp();
+      const csrf = csrfFor(fixture);
+
+      const accepted = await request(app)
+        .post(`/api/v1/projects/${fixture.project.id}/keyword-suggestions/${first.suggestion.id}/accept`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ editedText: '六壬符纸' })
+        .expect(200);
+      expect(accepted.body.data).toMatchObject({
+        text: '六壬符纸',
+        source: 'AI_ACCEPTED',
+      });
+
+      const rejected = await request(app)
+        .post(`/api/v1/projects/${fixture.project.id}/keyword-suggestions/${second.suggestion.id}/reject`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .expect(200);
+      expect(rejected.body.data).toMatchObject({
+        id: second.suggestion.id,
+        status: 'REJECTED',
+      });
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('fails closed for a foreign suggestion identifier', async () => {
+    const local = await seedAuthenticatedUser({
+      role: 'OPERATOR',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+    const foreign = await seedAuthenticatedUser({
+      role: 'OPERATOR',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const { suggestion } = await seedAuthenticatedSuggestion(foreign);
+      const response = await request(createApp())
+        .post(`/api/v1/projects/${local.project.id}/keyword-suggestions/${suggestion.id}/accept`)
+        .set('Cookie', local.sessionCookie)
+        .set('X-CSRF-Token', csrfFor(local))
+        .expect(404);
+
+      expect(response.body.error.code).toBe('KEYWORD_SUGGESTION_NOT_FOUND');
+    } finally {
+      await foreign.cleanup();
+      await local.cleanup();
+    }
   });
 });
