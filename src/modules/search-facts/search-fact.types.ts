@@ -94,6 +94,33 @@ export type SearchFactReadFilter = {
   sourceDateTo?: Date;
 };
 
+export type SearchFactSnapshotReadFilter = {
+  projectId: string;
+  provider?: SearchFactProviderCode;
+  marketCode?: MarketCode;
+  locale?: string;
+  propertyRef?: string;
+  sourceCutoffFrom?: Date;
+  sourceCutoffTo?: Date;
+};
+
+export type SearchFactSnapshotView = {
+  snapshotId: string;
+  projectId: string;
+  provider: SearchFactProviderCode;
+  marketCode: MarketCode;
+  locale: string;
+  propertyRef: string;
+  propertyType: string;
+  sourceKind: SearchFactSourceKind;
+  sourceRef: string;
+  sourceCutoffAt: Date;
+  sourceCompleteness: SearchFactCompleteness;
+  normalizationVersion: string;
+  factCount: number;
+  completedAt: Date;
+};
+
 export type SearchFactMetricView = {
   metricSemantic: SearchFactMetricSemantic;
   numericValue: number | null;
