@@ -12,6 +12,13 @@ import {
   keywordCoverageService,
   type KeywordCoverageService,
 } from './keyword-coverage.service.js';
+import {
+  keywordSearchEvidenceService,
+  parseSearchEvidenceMarketFilter,
+  parseSearchEvidenceOptionalTextFilter,
+  parseSearchEvidenceProviderFilter,
+  type KeywordSearchEvidenceService,
+} from './keyword-search-evidence.service.js';
 import { keywordService, type KeywordService } from './keyword.service.js';
 
 function routeParam(value: string | string[]): string {
@@ -24,6 +31,7 @@ export function createKeywordRoutes(
   service: KeywordService = keywordService,
   coverageService: KeywordCoverageService = keywordCoverageService,
   aiService: Pick<AiTaskService, 'createAndEnqueue'> = aiTaskService,
+  searchEvidenceService: Pick<KeywordSearchEvidenceService, 'evaluateKeyword'> = keywordSearchEvidenceService,
 ) {
   const router = Router();
   const keywordMutationGuards = [
@@ -63,6 +71,44 @@ export function createKeywordRoutes(
         const data = await coverageService.evaluateKeyword(
           routeParam(req.params.projectId),
           routeParam(req.params.keywordId),
+        );
+        res.json({ data });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.get(
+    '/projects/:projectId/keywords/:keywordId/search-evidence',
+    requireAuthentication(),
+    requireProjectMembership(),
+    requireProjectCapability('PROJECT_READ'),
+    async (req, res, next) => {
+      try {
+        const data = await searchEvidenceService.evaluateKeyword(
+          routeParam(req.params.projectId),
+          routeParam(req.params.keywordId),
+          {
+            ...(req.query.from !== undefined
+              ? { from: parseSearchEvidenceOptionalTextFilter(req.query.from) }
+              : {}),
+            ...(req.query.to !== undefined
+              ? { to: parseSearchEvidenceOptionalTextFilter(req.query.to) }
+              : {}),
+            ...(req.query.provider !== undefined
+              ? { provider: parseSearchEvidenceProviderFilter(req.query.provider) }
+              : {}),
+            ...(req.query.marketCode !== undefined
+              ? { marketCode: parseSearchEvidenceMarketFilter(req.query.marketCode) }
+              : {}),
+            ...(req.query.locale !== undefined
+              ? { locale: parseSearchEvidenceOptionalTextFilter(req.query.locale) }
+              : {}),
+            ...(req.query.propertyRef !== undefined
+              ? { propertyRef: parseSearchEvidenceOptionalTextFilter(req.query.propertyRef) }
+              : {}),
+          },
         );
         res.json({ data });
       } catch (error) {
