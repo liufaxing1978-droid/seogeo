@@ -24,6 +24,12 @@
     UNKNOWN: '证据不足',
   };
   const statusLabels = { ACTIVE: '启用', DISABLED: '停用', ARCHIVED: '已归档' };
+  const suggestionStatusLabels = {
+    PENDING: '待审核',
+    ACCEPTED: '已接受',
+    REJECTED: '已拒绝',
+    EXPIRED: '已过期',
+  };
 %>
 
 <section class="keyword-center" data-ui="keyword-center">
@@ -298,22 +304,68 @@
       <% } %>
     </section>
 
-    <section class="keyword-panel" data-ui="keyword-suggestions">
+    <section class="keyword-panel keyword-panel--advisory" data-ui="keyword-advisory-panel">
       <div class="keyword-panel__heading">
-        <div><p class="keyword-panel__kicker">AI Advisory</p><h3>AI 长尾建议</h3></div>
-        <span class="keyword-advisory-badge">仅建议</span>
+        <div>
+          <p class="keyword-panel__kicker">Advisory · AI 仅供建议</p>
+          <h3>AI 长尾建议</h3>
+        </div>
+        <span class="keyword-advisory-badge">人工审核后生效</span>
       </div>
+      <p class="keyword-advisory-copy">DeepSeek 只生成候选建议，不会自动写入关键词库。只有具备内容写入权限的人员明确点击“接受并加入词库”后，候选词才成为正式关键词。</p>
+
+      <% if (canRunKeywordAi) { %>
+        <div class="keyword-advisory-seeds" aria-label="生成长尾建议">
+          <% const expansionSeeds = keywordCenter.keywords.filter((item) => item.status !== 'ARCHIVED'); %>
+          <% if (!expansionSeeds.length) { %>
+            <p class="keyword-empty keyword-empty--compact">先添加一个关键词，再生成长尾建议。</p>
+          <% } else { %>
+            <% expansionSeeds.forEach((keyword) => { %>
+              <form data-ui="keyword-suggestion-generate" method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/suggestions/generate">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button class="keyword-button" type="submit">为「<%= keyword.text %>」生成建议</button>
+              </form>
+            <% }) %>
+          <% } %>
+        </div>
+      <% } %>
+
       <% if (!keywordCenter.suggestions.length) { %>
         <p class="keyword-empty keyword-empty--compact">暂无 AI 建议。建议不会自动创建、发布或修改关键词。</p>
       <% } else { %>
-        <ul class="keyword-suggestion-list">
-          <% keywordCenter.suggestions.forEach((suggestion) => { %>
-            <li>
-              <div><strong><%= suggestion.suggestedText %></strong><small><%= suggestion.rationale || '未提供理由' %></small></div>
-              <span><%= suggestion.status %></span>
-            </li>
+        <div class="keyword-suggestion-list">
+          <% keywordCenter.suggestions.forEach((suggestion) => {
+            const seedKeyword = keywordById.get(suggestion.seedKeywordId);
+          %>
+            <article class="keyword-suggestion-card keyword-suggestion-card--<%= suggestion.status.toLowerCase() %>" data-suggestion-id="<%= suggestion.id %>">
+              <div class="keyword-suggestion-card__head">
+                <div>
+                  <strong><%= suggestion.suggestedText %></strong>
+                  <small>来源核心词：<%= seedKeyword ? seedKeyword.text : '—' %></small>
+                </div>
+                <span class="keyword-suggestion-status"><%= suggestionStatusLabels[suggestion.status] || suggestion.status %></span>
+              </div>
+              <p><%= suggestion.rationale || '未提供理由' %></p>
+
+              <% if (suggestion.status === 'PENDING' && canWriteKeywords) { %>
+                <div class="keyword-suggestion-actions">
+                  <form data-ui="keyword-suggestion-accept" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-suggestions/<%= suggestion.id %>/accept">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <label class="keyword-field">
+                      <span>接受前可编辑</span>
+                      <input name="editedText" value="<%= suggestion.suggestedText %>" required maxlength="240">
+                    </label>
+                    <button class="keyword-button keyword-button--primary" type="submit">接受并加入词库</button>
+                  </form>
+                  <form data-ui="keyword-suggestion-reject" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-suggestions/<%= suggestion.id %>/reject">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <button class="keyword-button keyword-button--danger" type="submit">拒绝</button>
+                  </form>
+                </div>
+              <% } %>
+            </article>
           <% }) %>
-        </ul>
+        </div>
       <% } %>
     </section>
   </div>
