@@ -3,6 +3,8 @@ import type {
   NormalizedSearchFactDraft,
   SearchFactMaterializeIdentity,
   SearchFactReadFilter,
+  SearchFactSnapshotReadFilter,
+  SearchFactSnapshotView,
   SearchFactView
 } from './search-fact.types.js';
 
@@ -85,6 +87,28 @@ const assertReadFilter = (filter: SearchFactReadFilter): void => {
     (filter.sourceDateFrom &&
       filter.sourceDateTo &&
       filter.sourceDateFrom.getTime() > filter.sourceDateTo.getTime())
+  ) {
+    throw new Error('SEARCH_FACT_INVALID_READ_FILTER');
+  }
+};
+
+const assertSnapshotReadFilter = (filter: SearchFactSnapshotReadFilter): void => {
+  if (filter.projectId.trim().length === 0) {
+    throw new Error('SEARCH_FACT_INVALID_READ_FILTER');
+  }
+
+  for (const value of [filter.locale, filter.propertyRef]) {
+    if (value !== undefined && value.trim().length === 0) {
+      throw new Error('SEARCH_FACT_INVALID_READ_FILTER');
+    }
+  }
+
+  if (
+    (filter.sourceCutoffFrom && Number.isNaN(filter.sourceCutoffFrom.getTime())) ||
+    (filter.sourceCutoffTo && Number.isNaN(filter.sourceCutoffTo.getTime())) ||
+    (filter.sourceCutoffFrom &&
+      filter.sourceCutoffTo &&
+      filter.sourceCutoffFrom.getTime() > filter.sourceCutoffTo.getTime())
   ) {
     throw new Error('SEARCH_FACT_INVALID_READ_FILTER');
   }
@@ -191,6 +215,58 @@ export class SearchFactRepository {
         }
       });
     });
+  }
+
+  async listCompletedSnapshots(
+    filter: SearchFactSnapshotReadFilter
+  ): Promise<SearchFactSnapshotView[]> {
+    assertSnapshotReadFilter(filter);
+
+    const sourceCutoffAt =
+      filter.sourceCutoffFrom || filter.sourceCutoffTo
+        ? {
+            ...(filter.sourceCutoffFrom ? { gte: filter.sourceCutoffFrom } : {}),
+            ...(filter.sourceCutoffTo ? { lte: filter.sourceCutoffTo } : {})
+          }
+        : undefined;
+
+    const rows = await this.db.searchFactSnapshot.findMany({
+      where: {
+        projectId: filter.projectId,
+        status: 'COMPLETED',
+        completedAt: { not: null },
+        ...(filter.provider ? { provider: filter.provider } : {}),
+        ...(filter.marketCode ? { marketCode: filter.marketCode } : {}),
+        ...(filter.locale !== undefined ? { locale: filter.locale } : {}),
+        ...(filter.propertyRef !== undefined ? { propertyRef: filter.propertyRef } : {}),
+        ...(sourceCutoffAt ? { sourceCutoffAt } : {})
+      },
+      orderBy: [
+        { provider: 'asc' },
+        { marketCode: 'asc' },
+        { locale: 'asc' },
+        { propertyRef: 'asc' },
+        { sourceCutoffAt: 'desc' },
+        { id: 'asc' }
+      ]
+    });
+
+    return rows.map((row) => ({
+      snapshotId: row.id,
+      projectId: row.projectId,
+      provider: row.provider,
+      marketCode: row.marketCode,
+      locale: row.locale,
+      propertyRef: row.propertyRef,
+      propertyType: row.propertyType,
+      sourceKind: row.sourceKind,
+      sourceRef: row.sourceRef,
+      sourceCutoffAt: row.sourceCutoffAt,
+      sourceCompleteness: row.sourceCompleteness,
+      normalizationVersion: row.normalizationVersion,
+      factCount: row.factCount,
+      completedAt: row.completedAt!
+    }));
   }
 
   async listCompletedFacts(filter: SearchFactReadFilter): Promise<SearchFactView[]> {
