@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { prisma } from '../../src/db/prisma.js';
 import { keywordService } from '../../src/modules/keywords/keyword.service.js';
+import { SearchFactRepository } from '../../src/modules/search-facts/search-fact.repository.js';
+import { SEARCH_FACT_NORMALIZATION_VERSION } from '../../src/modules/search-facts/search-fact.types.js';
 import { authenticateE2e } from './e2e-auth.js';
 
 async function seedBrowserSuggestion(
@@ -43,6 +45,69 @@ async function seedBrowserSuggestion(
   return { seed, task, suggestion };
 }
 
+async function seedBrowserSearchEvidence(
+  auth: Awaited<ReturnType<typeof authenticateE2e>>,
+  keywordText: string,
+) {
+  const suffix = randomUUID();
+  const now = new Date();
+  const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const sourceDate = new Date(todayUtc.getTime() - 86_400_000);
+  const propertyRef = `sc-domain:${auth.project.primaryDomain}`;
+  const repository = new SearchFactRepository(prisma);
+
+  await repository.persistCompletedSnapshot(
+    {
+      projectId: auth.project.id,
+      provider: 'GOOGLE_SEARCH_CONSOLE',
+      marketCode: 'GLOBAL',
+      locale: 'zh-CN',
+      propertyRef,
+      propertyType: 'DOMAIN',
+      sourceKind: 'GSC_DAILY_SNAPSHOT',
+      sourceRef: `task8-google-${suffix}`,
+      sourceCutoffAt: sourceDate,
+      sourceCompleteness: 'TOP_ROWS_ONLY',
+      normalizationVersion: SEARCH_FACT_NORMALIZATION_VERSION,
+    },
+    [
+      {
+        factKey: `task8-google-query-page-${suffix}`,
+        factKind: 'QUERY_PAGE',
+        sourceObservationRef: `task8-google-observation-${suffix}`,
+        sourceDate,
+        query: keywordText,
+        normalizedQuery: `task8-provider-normalized-${suffix}`,
+        queryNormalizationVersion: 'task8-provider-v1',
+        page: `https://${auth.project.primaryDomain}/fu-zhi`,
+        canonicalPage: `https://${auth.project.primaryDomain}/fu-zhi`,
+        canonicalizationVersion: 'task8-test-v1',
+        metrics: [
+          {
+            metricSemantic: 'CLICKS',
+            numericValue: 6,
+            evidenceState: 'KNOWN_PRESENT',
+            sourceField: 'clicks',
+          },
+          {
+            metricSemantic: 'IMPRESSIONS',
+            numericValue: 150,
+            evidenceState: 'KNOWN_PRESENT',
+            sourceField: 'impressions',
+          },
+          {
+            metricSemantic: 'GOOGLE_SEARCH_CONSOLE_POSITION',
+            numericValue: 5.5,
+            evidenceState: 'KNOWN_PRESENT',
+            sourceField: 'position',
+          },
+        ],
+      },
+    ],
+    `task8-google-input-${suffix}`,
+  );
+}
+
 test('operator captures 符纸 demand and sees truthful coverage', async ({ page, context }) => {
   const auth = await authenticateE2e(context, {
     role: 'OWNER',
@@ -63,6 +128,38 @@ test('operator captures 符纸 demand and sees truthful coverage', async ({ page
     await expect(page.locator('[data-ui="keyword-library"]')).toContainText('锁定');
     await expect(page.locator('[data-ui="keyword-coverage"]')).toContainText(/证据不足|内容缺口|部分覆盖|覆盖较强/);
   } finally {
+    await auth.cleanup();
+  }
+});
+
+test('renders persisted Google search evidence without fabricating current rank', async ({ page, context }) => {
+  const auth = await authenticateE2e(context, {
+    role: 'OWNER',
+    planLevel: 'ENTERPRISE',
+    userStatus: 'ACTIVE',
+    membershipStatus: 'ACTIVE',
+  });
+
+  try {
+    const keyword = await keywordService.createManual({
+      actorUserId: auth.user.id,
+      projectId: auth.project.id,
+      text: '符纸',
+      type: 'CORE',
+      priority: 'HIGH',
+    });
+    await seedBrowserSearchEvidence(auth, keyword.text);
+
+    await page.goto(`/projects/${auth.project.id}/keywords`);
+    const row = page.locator(`[data-keyword-id="${keyword.id}"]`);
+    const evidence = row.locator('[data-ui="keyword-search-evidence"]');
+
+    await expect(row).toBeVisible();
+    await expect(evidence).toContainText('Google Search Console');
+    await expect(evidence).toContainText('Search Console 平均位置');
+    await expect(evidence).not.toContainText('Google 当前排名');
+  } finally {
+    await prisma.searchFactSnapshot.deleteMany({ where: { projectId: auth.project.id } });
     await auth.cleanup();
   }
 });
@@ -121,6 +218,14 @@ test('keeps keyword center navigation usable without horizontal overflow at 820p
   });
 
   try {
+    const keyword = await keywordService.createManual({
+      actorUserId: auth.user.id,
+      projectId: auth.project.id,
+      text: '符纸',
+      type: 'CORE',
+    });
+    await seedBrowserSearchEvidence(auth, keyword.text);
+
     await page.setViewportSize({ width: 820, height: 1000 });
     await page.goto(`/projects/${auth.project.id}/keywords`);
 
@@ -139,9 +244,13 @@ test('keeps keyword center navigation usable without horizontal overflow at 820p
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(sidebar).not.toBeInViewport();
 
+    const evidence = page.locator(`[data-keyword-id="${keyword.id}"] [data-ui="keyword-search-evidence"]`);
+    await expect(evidence).toContainText('Google Search Console');
+
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
   } finally {
+    await prisma.searchFactSnapshot.deleteMany({ where: { projectId: auth.project.id } });
     await auth.cleanup();
   }
 });
