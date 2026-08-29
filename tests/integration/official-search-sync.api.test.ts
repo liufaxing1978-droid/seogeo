@@ -72,7 +72,7 @@ describe('P11-02B official search provider binding API authorization', () => {
         .send({
           provider: 'BING_WEBMASTER',
           propertyRef: 'https://xingshantang.org/',
-          marketCode: 'US',
+          marketCode: 'GLOBAL',
           locale: 'zh-Hant',
         })
         .expect(403);
@@ -197,7 +197,7 @@ describe('P11-02B official search provider binding API authorization', () => {
         projectId: foreignProject.id,
         provider: 'BING_WEBMASTER',
         propertyRef: 'https://foreign.example.com/',
-        marketCode: 'US',
+        marketCode: 'GLOBAL',
         locale: 'en-US',
       },
     });
