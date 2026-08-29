@@ -28,6 +28,7 @@ import { createGrowthWebRoutes } from './modules/growth/growth.web.routes.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import type { KeywordCoverageService } from './modules/keywords/keyword-coverage.service.js';
 import { createKeywordRoutes } from './modules/keywords/keyword.routes.js';
+import type { KeywordSearchEvidenceService } from './modules/keywords/keyword-search-evidence.service.js';
 import type { KeywordService } from './modules/keywords/keyword.service.js';
 import { createKeywordWebRoutes } from './modules/keywords/keyword.web.routes.js';
 import { createMarketRoutes, type MarketApiPort } from './modules/market/market.routes.js';
@@ -92,6 +93,7 @@ export interface AppOptions {
   competitorService?: CompetitorService;
   keywordService?: KeywordService;
   keywordCoverageService?: KeywordCoverageService;
+  keywordSearchEvidenceService?: Pick<KeywordSearchEvidenceService, 'evaluateKeyword'>;
   searchConsoleService?: SearchConsoleService;
   growthApiRepository?: Partial<GrowthRestRepository>;
   optimizationOrchestrationApi?: OptimizationOrchestrationApiPort;
@@ -137,6 +139,7 @@ export function createApp(options: AppOptions = {}) {
     options.keywordService,
     options.keywordCoverageService,
     options.aiTaskService,
+    options.keywordSearchEvidenceService,
   ));
   app.use('/api/v1', createOptimizationOrchestrationRoutes(options.optimizationOrchestrationApi));
   app.use('/api/v1', createOptimizationOperationsRoutes(
