@@ -242,11 +242,11 @@ export class SearchFactRepository {
         ...(sourceCutoffAt ? { sourceCutoffAt } : {})
       },
       orderBy: [
+        { sourceCutoffAt: 'desc' },
         { provider: 'asc' },
         { marketCode: 'asc' },
         { locale: 'asc' },
         { propertyRef: 'asc' },
-        { sourceCutoffAt: 'desc' },
         { id: 'asc' }
       ]
     });
