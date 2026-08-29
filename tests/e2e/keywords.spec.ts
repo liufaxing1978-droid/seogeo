@@ -85,7 +85,7 @@ test('operator explicitly accepts or rejects advisory keyword suggestions', asyn
     await expect(advisory).toContainText('AI 长尾建议');
     await expect(advisory).toContainText('Advisory');
     await expect(advisory).toContainText('不会自动写入关键词库');
-    await expect(page.locator('[data-ui="keyword-suggestion-generate"]')).toBeVisible();
+    await expect(page.locator('[data-ui="keyword-suggestion-generate"]').first()).toBeVisible();
 
     const acceptCard = page.locator(`[data-suggestion-id="${acceptedFixture.suggestion.id}"]`);
     await acceptCard.locator('input[name="editedText"]').fill('六壬符纸专题');
