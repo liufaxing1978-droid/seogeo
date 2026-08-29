@@ -31,6 +31,7 @@ enum KeywordStatus {
 enum KeywordSource {
   MANUAL
   AI_ACCEPTED
+  SEARCH_DISCOVERY_ACCEPTED
 }
 
 enum KeywordSuggestionStatus {
@@ -38,6 +39,12 @@ enum KeywordSuggestionStatus {
   ACCEPTED
   REJECTED
   EXPIRED
+}
+
+enum KeywordDiscoveryStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
 }
 
 model Keyword {
@@ -143,6 +150,24 @@ model KeywordSuggestion {
   @@unique([projectId, seedKeywordId, normalizedText])
   @@index([projectId, status, createdAt])
   @@index([aiTaskId])
+}
+
+model KeywordDiscoveryCandidate {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  projectId          String                 @db.Uuid
+  normalizedQuery    String
+  representativeText String
+  status             KeywordDiscoveryStatus @default(PENDING)
+  acceptedKeywordId  String?                @db.Uuid
+  firstObservedAt    DateTime
+  lastObservedAt     DateTime
+  decidedAt          DateTime?
+  decidedByUserId    String?                @db.Uuid
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  @@unique([projectId, normalizedQuery], map: "KeywordDiscoveryCandidate_identity_key")
+  @@index([projectId, status, lastObservedAt], map: "KeywordDiscoveryCandidate_review_idx")
 }
 
 model KeywordAuditEvent {
