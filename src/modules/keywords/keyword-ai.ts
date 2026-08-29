@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, type AiTask } from '@prisma/client';
 import { z } from 'zod';
 import { NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
@@ -151,4 +151,44 @@ export async function createKeywordExpansionTask(
   return service.createAndEnqueue(
     await buildKeywordExpansionTaskInput(projectId, seedKeywordId),
   );
+}
+
+function extractSeedKeywordId(task: AiTask): string {
+  const snapshot = task.factSnapshot as Record<string, unknown>;
+  const seed = snapshot.seedKeyword as Record<string, unknown> | undefined;
+  if (typeof seed?.id !== 'string' || !seed.id) {
+    throw new NotFoundError('Keyword not found', 'KEYWORD_NOT_FOUND');
+  }
+  return seed.id;
+}
+
+export async function materializeKeywordSuggestions(
+  task: AiTask,
+  output: KeywordExpansionOutput,
+  providerMeta: { model: string; responseId: string | null },
+  tx: Prisma.TransactionClient,
+): Promise<void> {
+  const seedId = extractSeedKeywordId(task);
+  const seed = await tx.keyword.findFirst({
+    where: { id: seedId, projectId: task.projectId },
+  });
+  if (!seed) throw new NotFoundError('Keyword not found', 'KEYWORD_NOT_FOUND');
+
+  await tx.keywordSuggestion.createMany({
+    data: output.suggestions.map((item) => ({
+      projectId: task.projectId,
+      seedKeywordId: seed.id,
+      suggestedText: item.text.trim(),
+      normalizedText: normalizeKeywordText(item.text),
+      suggestedType: item.type,
+      suggestedIntent: item.intent,
+      rationale: item.rationale,
+      status: 'PENDING',
+      provider: 'DEEPSEEK',
+      model: providerMeta.model,
+      aiTaskId: task.id,
+      responseId: providerMeta.responseId,
+    })),
+    skipDuplicates: true,
+  });
 }
