@@ -41,7 +41,7 @@ describe('OfficialSearchSyncRepository lane bindings', () => {
       projectId: foreign.id,
       provider: 'BING_WEBMASTER',
       propertyRef: 'https://foreign.example.com/',
-      marketCode: 'US',
+      marketCode: 'GLOBAL',
       locale: 'en-US',
     });
 
@@ -82,7 +82,7 @@ describe('OfficialSearchSyncRepository lane bindings', () => {
       projectId: foreign.id,
       provider: 'BING_WEBMASTER',
       propertyRef: 'https://foreign.example.com/',
-      marketCode: 'US',
+      marketCode: 'GLOBAL',
       locale: 'en-US',
     });
 
