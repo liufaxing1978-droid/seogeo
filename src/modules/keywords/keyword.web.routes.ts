@@ -15,6 +15,10 @@ import {
   keywordCoverageService,
   type KeywordCoverageService,
 } from './keyword-coverage.service.js';
+import {
+  keywordSearchEvidenceService,
+  type KeywordSearchEvidenceService,
+} from './keyword-search-evidence.service.js';
 import { keywordService, type KeywordService } from './keyword.service.js';
 import { KeywordWebRepository } from './keyword.web.repository.js';
 
@@ -53,6 +57,7 @@ export function createKeywordWebRoutes(
   service: KeywordService = keywordService,
   coverageService: KeywordCoverageService = keywordCoverageService,
   aiService: Pick<AiTaskService, 'createAndEnqueue'> = aiTaskService,
+  searchEvidenceService: Pick<KeywordSearchEvidenceService, 'evaluateProject'> = keywordSearchEvidenceService,
 ) {
   const router = Router();
   const readGuards = [
@@ -72,7 +77,7 @@ export function createKeywordWebRoutes(
     requireProjectMembership(),
     requireProjectCapability('AI_RUN'),
   ];
-  const webRepository = new KeywordWebRepository(coverageService);
+  const webRepository = new KeywordWebRepository(coverageService, undefined, searchEvidenceService);
 
   router.get('/projects/:projectId/keywords', ...readGuards, async (req, res, next) => {
     try {
