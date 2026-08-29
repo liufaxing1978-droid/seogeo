@@ -1,5 +1,5 @@
 import type { CreateAiTaskInput } from '../../src/modules/ai/ai.service.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../src/db/prisma.js';
 import * as keywordAiModule from '../../src/modules/keywords/keyword-ai.js';
 import { keywordService } from '../../src/modules/keywords/keyword.service.js';
@@ -7,6 +7,11 @@ import { seedAuthenticatedUser } from '../helpers/auth-fixture.js';
 
 const keywordAi = keywordAiModule as unknown as {
   buildKeywordExpansionTaskInput(projectId: string, seedKeywordId: string): Promise<CreateAiTaskInput>;
+  createKeywordExpansionTask(
+    projectId: string,
+    seedKeywordId: string,
+    service: { createAndEnqueue(input: CreateAiTaskInput): Promise<unknown> },
+  ): Promise<unknown>;
 };
 
 describe('P11-01 keyword AI task authority', () => {
@@ -85,6 +90,42 @@ describe('P11-01 keyword AI task authority', () => {
         },
         sourceReferences: [{ type: 'KEYWORD', id: seed.id }],
       });
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('delegates creation and enqueueing to the existing AI task service boundary', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OWNER',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const seed = await keywordService.createManual({
+        actorUserId: fixture.user.id,
+        projectId: fixture.project.id,
+        text: '符纸',
+        type: 'CORE',
+        intent: 'INFORMATIONAL',
+      });
+      const expectedInput = await keywordAi.buildKeywordExpansionTaskInput(fixture.project.id, seed.id);
+      const returnedTask = { id: 'fixture-keyword-expansion-task' };
+      const service = {
+        createAndEnqueue: vi.fn(async (_input: CreateAiTaskInput) => returnedTask),
+      };
+
+      const result = await keywordAi.createKeywordExpansionTask(
+        fixture.project.id,
+        seed.id,
+        service,
+      );
+
+      expect(service.createAndEnqueue).toHaveBeenCalledTimes(1);
+      expect(service.createAndEnqueue).toHaveBeenCalledWith(expectedInput);
+      expect(result).toBe(returnedTask);
     } finally {
       await fixture.cleanup();
     }
