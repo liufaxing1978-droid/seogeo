@@ -4,6 +4,11 @@ import {
   keywordCoverageService,
   type KeywordCoverageService,
 } from './keyword-coverage.service.js';
+import {
+  keywordSearchEvidenceService,
+  type KeywordSearchEvidenceResult,
+  type KeywordSearchEvidenceService,
+} from './keyword-search-evidence.service.js';
 import { KeywordRepository } from './keyword.repository.js';
 import type { KeywordCoverageResult, KeywordListRecord } from './keyword.types.js';
 
@@ -11,6 +16,7 @@ export interface KeywordCenterKeywordRecord extends KeywordListRecord {
   parentKeywordId: string | null;
   groupIds: string[];
   coverage: KeywordCoverageResult;
+  searchEvidence: KeywordSearchEvidenceResult;
 }
 
 export interface KeywordCenterViewModel {
@@ -43,6 +49,7 @@ export class KeywordWebRepository {
   constructor(
     private readonly coverageService: KeywordCoverageService = keywordCoverageService,
     private readonly keywordRepository = new KeywordRepository(),
+    private readonly searchEvidenceService: Pick<KeywordSearchEvidenceService, 'evaluateProject'> = keywordSearchEvidenceService,
   ) {}
 
   async load(projectId: string): Promise<KeywordCenterViewModel> {
@@ -85,7 +92,10 @@ export class KeywordWebRepository {
       throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
     }
 
-    const coverageByKeyword = await this.coverageService.evaluateProject(projectId, keywords);
+    const [coverageByKeyword, searchEvidenceByKeyword] = await Promise.all([
+      this.coverageService.evaluateProject(projectId, keywords),
+      this.searchEvidenceService.evaluateProject(projectId, keywords),
+    ]);
     const parentByChild = new Map(relations.map((item) => [item.childKeywordId, item.parentKeywordId]));
     const groupsByKeyword = new Map<string, string[]>();
     for (const membership of memberships) {
@@ -94,25 +104,33 @@ export class KeywordWebRepository {
       groupsByKeyword.set(membership.keywordId, ids);
     }
 
-    const rows: KeywordCenterKeywordRecord[] = keywords.map((keyword) => ({
-      id: keyword.id,
-      projectId: keyword.projectId,
-      text: keyword.text,
-      normalizedText: keyword.normalizedText,
-      type: keyword.type,
-      intent: keyword.intent,
-      priority: keyword.priority,
-      status: keyword.status,
-      locked: keyword.locked,
-      source: keyword.source,
-      parentKeywordId: parentByChild.get(keyword.id) ?? null,
-      groupIds: groupsByKeyword.get(keyword.id) ?? [],
-      coverage: coverageByKeyword.get(keyword.id) ?? {
-        status: 'UNKNOWN',
-        reason: 'NO_ACTIVE_PAGE_EVIDENCE',
-        matches: [],
-      },
-    }));
+    const rows: KeywordCenterKeywordRecord[] = keywords.map((keyword) => {
+      const searchEvidence = searchEvidenceByKeyword.get(keyword.id);
+      if (!searchEvidence) {
+        throw new Error(`Keyword search evidence result missing for keyword ${keyword.id}`);
+      }
+
+      return {
+        id: keyword.id,
+        projectId: keyword.projectId,
+        text: keyword.text,
+        normalizedText: keyword.normalizedText,
+        type: keyword.type,
+        intent: keyword.intent,
+        priority: keyword.priority,
+        status: keyword.status,
+        locked: keyword.locked,
+        source: keyword.source,
+        parentKeywordId: parentByChild.get(keyword.id) ?? null,
+        groupIds: groupsByKeyword.get(keyword.id) ?? [],
+        coverage: coverageByKeyword.get(keyword.id) ?? {
+          status: 'UNKNOWN',
+          reason: 'NO_ACTIVE_PAGE_EVIDENCE',
+          matches: [],
+        },
+        searchEvidence,
+      };
+    });
 
     const summary = rows.reduce(
       (acc, row) => {
