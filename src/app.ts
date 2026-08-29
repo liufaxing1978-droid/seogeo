@@ -93,7 +93,7 @@ export interface AppOptions {
   competitorService?: CompetitorService;
   keywordService?: KeywordService;
   keywordCoverageService?: KeywordCoverageService;
-  keywordSearchEvidenceService?: Pick<KeywordSearchEvidenceService, 'evaluateKeyword'>;
+  keywordSearchEvidenceService?: Pick<KeywordSearchEvidenceService, 'evaluateKeyword' | 'evaluateProject'>;
   searchConsoleService?: SearchConsoleService;
   growthApiRepository?: Partial<GrowthRestRepository>;
   optimizationOrchestrationApi?: OptimizationOrchestrationApiPort;
@@ -175,6 +175,7 @@ export function createApp(options: AppOptions = {}) {
     options.keywordService,
     options.keywordCoverageService,
     options.aiTaskService,
+    options.keywordSearchEvidenceService,
   ));
   app.use('/', createProjectAdminWebRoutes());
   app.use('/', webRoutes);
