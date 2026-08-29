@@ -1,4 +1,6 @@
 import type { CreateAiTaskInput } from '../../src/modules/ai/ai.service.js';
+import { AiRepository } from '../../src/modules/ai/ai.repository.js';
+import { executeAiTask, type AiCompletionGateway } from '../../src/modules/ai/ai.worker.js';
 import { describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../src/db/prisma.js';
 import * as keywordAiModule from '../../src/modules/keywords/keyword-ai.js';
@@ -126,6 +128,80 @@ describe('P11-01 keyword AI task authority', () => {
       expect(service.createAndEnqueue).toHaveBeenCalledTimes(1);
       expect(service.createAndEnqueue).toHaveBeenCalledWith(expectedInput);
       expect(result).toBe(returnedTask);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('materializes only pending suggestions and never creates authoritative AI_ACCEPTED keywords', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OWNER',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const seed = await keywordService.createManual({
+        actorUserId: fixture.user.id,
+        projectId: fixture.project.id,
+        text: '符纸',
+        type: 'CORE',
+        intent: 'INFORMATIONAL',
+      });
+      const input = await keywordAi.buildKeywordExpansionTaskInput(fixture.project.id, seed.id);
+      const task = await prisma.aiTask.create({ data: input });
+      const gateway: AiCompletionGateway = {
+        complete: vi.fn(async () => ({
+          provider: 'DEEPSEEK' as const,
+          model: 'deepseek-v4-flash',
+          responseId: 'keyword-expansion-response',
+          content: JSON.stringify({
+            suggestions: [
+              {
+                text: '六壬符纸',
+                type: 'LONG_TAIL',
+                intent: 'INFORMATIONAL',
+                rationale: '更窄的相关主题',
+              },
+              {
+                text: '符纸怎么用',
+                type: 'QUESTION',
+                intent: 'INFORMATIONAL',
+                rationale: '用户常见问题',
+              },
+            ],
+          }),
+          finishReason: 'stop',
+          latencyMs: 120,
+          usage: {
+            promptTokens: 80,
+            completionTokens: 40,
+            totalTokens: 120,
+            cacheHitTokens: 0,
+            cacheMissTokens: 80,
+            reasoningTokens: null,
+          },
+        })),
+      };
+
+      await executeAiTask(task.id, { repository: new AiRepository(), gateway });
+
+      const suggestions = await prisma.keywordSuggestion.findMany({
+        where: { aiTaskId: task.id },
+        orderBy: { suggestedText: 'asc' },
+      });
+      expect(suggestions).toHaveLength(2);
+      expect(suggestions.every((item) => item.status === 'PENDING')).toBe(true);
+      expect(suggestions.map((item) => item.provider)).toEqual(['DEEPSEEK', 'DEEPSEEK']);
+      expect(suggestions.map((item) => item.model)).toEqual(['deepseek-v4-flash', 'deepseek-v4-flash']);
+      expect(suggestions.map((item) => item.responseId)).toEqual([
+        'keyword-expansion-response',
+        'keyword-expansion-response',
+      ]);
+      expect(await prisma.keyword.count({
+        where: { projectId: fixture.project.id, source: 'AI_ACCEPTED' },
+      })).toBe(0);
     } finally {
       await fixture.cleanup();
     }
