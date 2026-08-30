@@ -315,4 +315,29 @@ describe('OfficialSearchSyncService Google orchestration', () => {
       searchFactSnapshotIds: [],
     });
   });
+
+  it('does not claim completion in the started lifecycle event or emit provider secrets', async () => {
+    const harness = createHarness();
+
+    await harness.service.sync({
+      projectId: PROJECT_ID,
+      bindingId: BINDING_ID,
+      dateFrom: '2026-08-29',
+      dateTo: '2026-08-29',
+    });
+
+    const events = harness.observability.emit.mock.calls.map(([event]) => event);
+    const started = events.find((event) => event.event === 'official_search.sync.started');
+    expect(started).toEqual({
+      event: 'official_search.sync.started',
+      projectId: PROJECT_ID,
+      bindingId: BINDING_ID,
+      provider: 'GOOGLE_SEARCH_CONSOLE',
+      dateFrom: '2026-08-29',
+      dateTo: '2026-08-29',
+    });
+    expect(JSON.stringify(events)).not.toMatch(
+      /credentialRef|accessToken|refreshToken|apiKey|authorization|queryText/i,
+    );
+  });
 });
