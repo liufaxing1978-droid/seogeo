@@ -8,6 +8,10 @@ export const OFFICIAL_SEARCH_SYNC_OBSERVABILITY_EVENTS = [
   'official_search.sync.started',
   'official_search.sync.completed',
   'official_search.sync.failed',
+  'keyword_discovery.refresh.completed',
+  'keyword_discovery.refresh.failed',
+  'keyword_discovery.accepted',
+  'keyword_discovery.rejected',
 ] as const;
 
 export type OfficialSearchSyncObservabilityEventName =
@@ -17,6 +21,7 @@ export type OfficialSearchSyncObservabilityEvent = {
   event: OfficialSearchSyncObservabilityEventName;
   projectId?: string;
   bindingId?: string;
+  candidateId?: string;
   provider?: OfficialSearchBindingProvider;
   dateFrom?: string;
   dateTo?: string;
@@ -34,6 +39,7 @@ export type OfficialSearchSyncObservabilitySink = (
 const STRING_FIELDS = [
   'projectId',
   'bindingId',
+  'candidateId',
   'provider',
   'dateFrom',
   'dateTo',

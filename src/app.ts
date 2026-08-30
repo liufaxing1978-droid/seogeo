@@ -27,6 +27,8 @@ import { createGrowthRoutes, type GrowthRestRepository } from './modules/growth/
 import { createGrowthWebRoutes } from './modules/growth/growth.web.routes.js';
 import { healthRoutes } from './modules/health/health.routes.js';
 import type { KeywordCoverageService } from './modules/keywords/keyword-coverage.service.js';
+import { createKeywordDiscoveryRoutes } from './modules/keywords/keyword-discovery.routes.js';
+import type { KeywordDiscoveryService } from './modules/keywords/keyword-discovery.service.js';
 import { createKeywordRoutes } from './modules/keywords/keyword.routes.js';
 import type { KeywordSearchEvidenceService } from './modules/keywords/keyword-search-evidence.service.js';
 import type { KeywordService } from './modules/keywords/keyword.service.js';
@@ -97,6 +99,7 @@ export interface AppOptions {
   keywordService?: KeywordService;
   keywordCoverageService?: KeywordCoverageService;
   keywordSearchEvidenceService?: Pick<KeywordSearchEvidenceService, 'evaluateKeyword' | 'evaluateProject'>;
+  keywordDiscoveryService?: Pick<KeywordDiscoveryService, 'list' | 'refresh' | 'accept' | 'reject'>;
   searchConsoleService?: SearchConsoleService;
   officialSearchBindingRepository?: OfficialSearchBindingRepositoryPort;
   officialSearchSyncService?: Pick<OfficialSearchSyncService, 'sync'>;
@@ -146,6 +149,7 @@ export function createApp(options: AppOptions = {}) {
     options.aiTaskService,
     options.keywordSearchEvidenceService,
   ));
+  app.use('/api/v1', createKeywordDiscoveryRoutes(options.keywordDiscoveryService));
   app.use('/api/v1', createOfficialSearchSyncRoutes(
     options.officialSearchBindingRepository,
     options.officialSearchSyncService,

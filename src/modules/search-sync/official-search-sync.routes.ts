@@ -9,6 +9,8 @@ import {
 import { env } from '../../config/env.js';
 import { NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
+import { KeywordDiscoveryRepository } from '../keywords/keyword-discovery.repository.js';
+import { KeywordDiscoveryService } from '../keywords/keyword-discovery.service.js';
 import {
   GoogleSearchConsoleClient,
   type GoogleOAuthConfig,
@@ -128,6 +130,9 @@ function createDefaultOfficialSearchSyncService(
     },
     googleDependencies: lazyGoogleDependencies,
     materializer: new SearchFactMaterializer(prisma),
+    discoveryService: new KeywordDiscoveryService({
+      repository: new KeywordDiscoveryRepository(prisma),
+    }),
   });
 }
 
