@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { deriveCsrfToken } from '../../src/auth/csrf.js';
 import { createApp } from '../../src/app.js';
 import { env } from '../../src/config/env.js';
@@ -12,6 +12,17 @@ function csrfFor(fixture: Awaited<ReturnType<typeof seedAuthenticatedUser>>): st
     fixture.csrfInput.sessionId,
     fixture.csrfInput.tokenHash,
   );
+}
+
+function appWithSyncService(sync: (command: {
+  projectId: string;
+  bindingId: string;
+  dateFrom: string;
+  dateTo: string;
+}) => Promise<unknown>) {
+  return createApp({
+    officialSearchSyncService: { sync },
+  } as unknown as Parameters<typeof createApp>[0]);
 }
 
 describe('P11-02B official search provider binding API authorization', () => {
@@ -223,6 +234,115 @@ describe('P11-02B official search provider binding API authorization', () => {
     } finally {
       await prisma.searchProviderLaneBinding.deleteMany({ where: { projectId: foreignProject.id } });
       await prisma.project.delete({ where: { id: foreignProject.id } }).catch(() => undefined);
+      await fixture.cleanup();
+    }
+  });
+});
+
+describe('P11-02B official search sync command API authorization', () => {
+  const body = {
+    bindingId: '00000000-0000-4000-8000-000000000222',
+    dateFrom: '2026-08-29',
+    dateTo: '2026-08-29',
+  };
+
+  function completedOutcome() {
+    return {
+      provider: 'GOOGLE_SEARCH_CONSOLE' as const,
+      state: 'COMPLETED' as const,
+      dateFrom: body.dateFrom,
+      dateTo: body.dateTo,
+      sourceRefs: ['gsc:2026-08-29'],
+      searchFactSnapshotIds: ['00000000-0000-4000-8000-000000000333'],
+      discoveryState: 'NOT_RUN' as const,
+      reason: null,
+    };
+  }
+
+  it('requires authentication before CSRF and does not invoke sync', async () => {
+    const sync = vi.fn(async () => completedOutcome());
+
+    const response = await request(appWithSyncService(sync))
+      .post('/api/v1/projects/00000000-0000-4000-8000-000000000111/search-sync')
+      .send(body)
+      .expect(401);
+
+    expect(response.body.error.code).toBe('AUTHENTICATION_REQUIRED');
+    expect(sync).not.toHaveBeenCalled();
+  });
+
+  it('requires CSRF before project membership/capability checks', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'ADMIN',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+    const sync = vi.fn(async () => completedOutcome());
+
+    try {
+      const response = await request(appWithSyncService(sync))
+        .post(`/api/v1/projects/${fixture.project.id}/search-sync`)
+        .set('Cookie', fixture.sessionCookie)
+        .send(body)
+        .expect(403);
+
+      expect(response.body.error.code).toBe('CSRF_INVALID');
+      expect(sync).not.toHaveBeenCalled();
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('requires PROJECT_SETTINGS_WRITE before invoking sync', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OPERATOR',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+    const sync = vi.fn(async () => completedOutcome());
+
+    try {
+      const response = await request(appWithSyncService(sync))
+        .post(`/api/v1/projects/${fixture.project.id}/search-sync`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrfFor(fixture))
+        .send(body)
+        .expect(403);
+
+      expect(response.body.error.code).toBe('PROJECT_CAPABILITY_REQUIRED');
+      expect(sync).not.toHaveBeenCalled();
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('passes the authorized bounded command to the injected sync service', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'ADMIN',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+    const outcome = completedOutcome();
+    const sync = vi.fn(async () => outcome);
+
+    try {
+      const response = await request(appWithSyncService(sync))
+        .post(`/api/v1/projects/${fixture.project.id}/search-sync`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrfFor(fixture))
+        .send(body)
+        .expect(200);
+
+      expect(response.body.data).toEqual(outcome);
+      expect(sync).toHaveBeenCalledTimes(1);
+      expect(sync).toHaveBeenCalledWith({
+        projectId: fixture.project.id,
+        ...body,
+      });
+    } finally {
       await fixture.cleanup();
     }
   });
