@@ -37,6 +37,13 @@ export type OfficialSearchSyncServiceDependencies = {
   bingProvider?: BingSearchProviderPort;
   bingSourcePersistence?: BingSourcePersistencePort;
   materializer: SearchFactMaterializePort;
+  discoveryService?: {
+    refresh(input: {
+      projectId: string;
+      dateFrom?: string;
+      dateTo?: string;
+    }): Promise<unknown>;
+  };
   observability?: Pick<OfficialSearchSyncObservability, 'emit'>;
   now?: () => Date;
 };
@@ -325,8 +332,9 @@ export class OfficialSearchSyncService {
       sourceRefs: [source.id],
       searchFactSnapshotIds: [snapshot.id],
     });
-    this.emitFinished(command, result, operationStartedAt);
-    return result;
+    const finalResult = await this.refreshDiscoveries(command, result);
+    this.emitFinished(command, finalResult, operationStartedAt);
+    return finalResult;
   }
 
   private async syncGoogle(
@@ -445,8 +453,52 @@ export class OfficialSearchSyncService {
       sourceRefs,
       searchFactSnapshotIds,
     });
-    this.emitFinished(command, result, operationStartedAt);
-    return result;
+    const finalResult = await this.refreshDiscoveries(command, result);
+    this.emitFinished(command, finalResult, operationStartedAt);
+    return finalResult;
+  }
+
+  private async refreshDiscoveries(
+    command: OfficialSearchSyncCommand,
+    result: OfficialSearchSyncOutcome,
+  ): Promise<OfficialSearchSyncOutcome> {
+    const discoveryService = this.dependencies.discoveryService;
+    if (!discoveryService || !result.provider) return result;
+
+    try {
+      await discoveryService.refresh({
+        projectId: command.projectId,
+        dateFrom: command.dateFrom,
+        dateTo: command.dateTo,
+      });
+      this.observability.emit({
+        event: 'keyword_discovery.refresh.completed',
+        projectId: command.projectId,
+        bindingId: command.bindingId,
+        provider: result.provider,
+        dateFrom: command.dateFrom,
+        dateTo: command.dateTo,
+      });
+      return {
+        ...result,
+        discoveryState: 'REFRESHED',
+      };
+    } catch {
+      this.observability.emit({
+        event: 'keyword_discovery.refresh.failed',
+        projectId: command.projectId,
+        bindingId: command.bindingId,
+        provider: result.provider,
+        dateFrom: command.dateFrom,
+        dateTo: command.dateTo,
+        reason: 'DISCOVERY_REFRESH_FAILED',
+      });
+      return {
+        ...result,
+        discoveryState: 'DISCOVERY_REFRESH_FAILED',
+        reason: 'DISCOVERY_REFRESH_FAILED',
+      };
+    }
   }
 
   private emitFinished(
