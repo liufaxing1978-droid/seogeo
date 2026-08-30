@@ -1,0 +1,67 @@
+<%- include('index') %>
+
+<section class="keyword-panel" data-ui="keyword-discovery">
+  <div class="keyword-panel__heading">
+    <div>
+      <p class="keyword-panel__kicker">Official Query Discovery</p>
+      <h3>真实搜索词</h3>
+    </div>
+    <span class="keyword-advisory-badge">本站官方搜索平台已观察</span>
+  </div>
+
+  <p class="keyword-advisory-copy">Priority is based on official search-platform evidence observed for this site; it is not global keyword search volume.</p>
+  <p class="keyword-advisory-copy">这些候选来自已持久化的官方查询证据；平均位置不是实时当前排名，缺失指标不会按 0 展示。</p>
+
+  <% if (!keywordDiscoveries.length) { %>
+    <p class="keyword-empty keyword-empty--compact">暂无待审核的真实搜索词候选。</p>
+  <% } else { %>
+    <div class="keyword-suggestion-list">
+      <% keywordDiscoveries.forEach((candidate) => { %>
+        <article class="keyword-suggestion-card keyword-suggestion-card--pending" data-ui="keyword-discovery-row" data-candidate-id="<%= candidate.candidateId || '' %>">
+          <div class="keyword-suggestion-card__head">
+            <div>
+              <strong><%= candidate.representativeText %></strong>
+              <small>观察窗口 <%= candidate.firstObservedAt %> – <%= candidate.lastObservedAt %></small>
+            </div>
+            <span class="keyword-suggestion-status">待人工审核</span>
+          </div>
+
+          <div class="keyword-search-evidence">
+            <% candidate.providers.forEach((evidence) => { %>
+              <article class="keyword-search-evidence__item" data-provider="<%= evidence.provider %>">
+                <div class="keyword-search-evidence__head">
+                  <strong class="keyword-search-evidence__provider"><%= evidence.provider === 'GOOGLE_SEARCH_CONSOLE' ? 'Google Search Console' : 'Bing Webmaster Tools' %></strong>
+                </div>
+                <div class="keyword-search-evidence__metrics">
+                  <span>展示 <strong><%= evidence.impressions === null ? '—' : evidence.impressions %></strong></span>
+                  <span>点击 <strong><%= evidence.clicks === null ? '—' : evidence.clicks %></strong></span>
+                  <% if (evidence.provider === 'GOOGLE_SEARCH_CONSOLE') { %>
+                    <span>Search Console 平均位置 <strong><%= evidence.searchConsoleAveragePosition === null ? '—' : evidence.searchConsoleAveragePosition.toFixed(2) %></strong></span>
+                  <% } else { %>
+                    <span>Bing 平均点击位置 <strong><%= evidence.bingAverageClickPosition === null ? '—' : evidence.bingAverageClickPosition.toFixed(2) %></strong></span>
+                    <span>Bing 平均展示位置 <strong><%= evidence.bingAverageImpressionPosition === null ? '—' : evidence.bingAverageImpressionPosition.toFixed(2) %></strong></span>
+                  <% } %>
+                </div>
+                <small class="keyword-search-evidence__source">最新匹配证据 <%= evidence.latestSourceDate %></small>
+              </article>
+            <% }) %>
+          </div>
+
+          <% if (candidate.candidateId && canWriteKeywords) { %>
+            <div class="keyword-suggestion-actions">
+              <form data-ui="keyword-discovery-accept" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-discoveries/<%= candidate.candidateId %>/accept">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="type" value="LONG_TAIL">
+                <button class="keyword-button keyword-button--primary" type="submit">加入关键词库</button>
+              </form>
+              <form data-ui="keyword-discovery-reject" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-discoveries/<%= candidate.candidateId %>/reject">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <button class="keyword-button keyword-button--danger" type="submit">忽略</button>
+              </form>
+            </div>
+          <% } %>
+        </article>
+      <% }) %>
+    </div>
+  <% } %>
+</section>
