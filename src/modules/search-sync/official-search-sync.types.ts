@@ -2,16 +2,22 @@ import type {
   MarketCode,
   SearchFactSnapshot,
   SearchProviderLaneBinding,
+  SearchProviderObservationBatch,
 } from '@prisma/client';
 import type {
   MaterializeBingSearchBatchInput,
   MaterializeGoogleSearchSnapshotInput,
 } from '../search-facts/search-fact.materializer.js';
+import type { PersistBingObservationBatchInput } from '../search-facts/search-provider-source.repository.js';
 import type {
   SearchConsoleSyncDependencies,
   SearchConsoleSyncInput,
   SearchConsoleSyncResult,
 } from '../search-console/search-console.worker.js';
+import type {
+  BingQueryObservation,
+  SearchProviderProperty,
+} from '../search-providers/search-provider.types.js';
 
 export type OfficialSearchBindingProvider =
   | 'GOOGLE_SEARCH_CONSOLE'
@@ -90,6 +96,17 @@ export type GoogleDailySyncPort = (
   input: SearchConsoleSyncInput,
   dependencies: SearchConsoleSyncDependencies,
 ) => Promise<SearchConsoleSyncResult>;
+
+export interface BingSearchProviderPort {
+  listProperties(): Promise<SearchProviderProperty[]>;
+  fetchQueryStats(siteUrl: string): Promise<BingQueryObservation[]>;
+}
+
+export interface BingSourcePersistencePort {
+  persistBingBatch(
+    input: PersistBingObservationBatchInput,
+  ): Promise<SearchProviderObservationBatch>;
+}
 
 export type SearchFactMaterializePort = {
   materializeGoogleSnapshot(

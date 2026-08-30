@@ -7,6 +7,8 @@ import {
   type OfficialSearchSyncObservability,
 } from './official-search-sync.observability.js';
 import type {
+  BingSearchProviderPort,
+  BingSourcePersistencePort,
   GoogleDailySyncPort,
   GoogleSearchPropertyRepositoryPort,
   OfficialSearchBindingRepositoryPort,
@@ -31,6 +33,8 @@ export type OfficialSearchSyncServiceDependencies = {
   googlePropertyRepository: GoogleSearchPropertyRepositoryPort;
   googleDailySync: GoogleDailySyncPort;
   googleDependencies: SearchConsoleSyncDependencies;
+  bingProvider: BingSearchProviderPort;
+  bingSourcePersistence: BingSourcePersistencePort;
   materializer: SearchFactMaterializePort;
   observability?: Pick<OfficialSearchSyncObservability, 'emit'>;
   now?: () => Date;
@@ -150,6 +154,10 @@ export class OfficialSearchSyncService {
       return result;
     }
 
+    if (provider === 'BING_WEBMASTER') {
+      return this.syncBing(command, binding, operationStartedAt);
+    }
+
     if (provider !== 'GOOGLE_SEARCH_CONSOLE') {
       const result = outcome({
         provider,
@@ -162,6 +170,66 @@ export class OfficialSearchSyncService {
     }
 
     return this.syncGoogle(command, binding, operationStartedAt);
+  }
+
+  private async syncBing(
+    command: OfficialSearchSyncCommand,
+    binding: Awaited<ReturnType<OfficialSearchBindingRepositoryPort['findBinding']>> & {},
+    operationStartedAt: Date,
+  ): Promise<OfficialSearchSyncOutcome> {
+    const properties = await this.dependencies.bingProvider.listProperties();
+    const property = properties.find((candidate) =>
+      candidate.provider === 'BING_WEBMASTER'
+      && candidate.propertyRef === binding.propertyRef
+      && candidate.propertyType === 'SITE'
+      && candidate.verified === true
+    );
+
+    if (!property) {
+      const result = outcome({
+        provider: 'BING_WEBMASTER',
+        state: 'UNAVAILABLE',
+        command,
+        reason: 'PROPERTY_UNAVAILABLE',
+      });
+      this.emitFinished(command, result, operationStartedAt);
+      return result;
+    }
+
+    const observations = (await this.dependencies.bingProvider.fetchQueryStats(binding.propertyRef))
+      .filter((observation) =>
+        observation.sourceDate >= command.dateFrom
+        && observation.sourceDate <= command.dateTo
+      )
+      .sort((left, right) =>
+        left.sourceDate.localeCompare(right.sourceDate)
+        || left.query.localeCompare(right.query)
+      );
+
+    const source = await this.dependencies.bingSourcePersistence.persistBingBatch({
+      projectId: command.projectId,
+      marketCode: binding.marketCode,
+      locale: binding.locale,
+      propertyRef: binding.propertyRef,
+      propertyType: property.propertyType,
+      sourceCutoffAt: new Date(`${command.dateTo}T00:00:00.000Z`),
+      observations,
+    });
+
+    const snapshot = await this.dependencies.materializer.materializeBingBatch({
+      batchId: source.id,
+      normalizationVersion: SEARCH_FACT_NORMALIZATION_VERSION,
+    });
+
+    const result = outcome({
+      provider: 'BING_WEBMASTER',
+      state: 'COMPLETED',
+      command,
+      sourceRefs: [source.id],
+      searchFactSnapshotIds: [snapshot.id],
+    });
+    this.emitFinished(command, result, operationStartedAt);
+    return result;
   }
 
   private async syncGoogle(
