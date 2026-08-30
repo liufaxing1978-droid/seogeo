@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SearchConsoleSyncError } from '../../src/modules/search-console/search-console.worker.js';
 import { SEARCH_FACT_NORMALIZATION_VERSION } from '../../src/modules/search-facts/search-fact.types.js';
+import type {
+  BingQueryObservation,
+  SearchProviderProperty,
+} from '../../src/modules/search-providers/search-provider.types.js';
 import { OfficialSearchSyncService } from '../../src/modules/search-sync/official-search-sync.service.js';
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
@@ -8,6 +12,7 @@ const BINDING_ID = '22222222-2222-4222-8222-222222222222';
 const PROPERTY_ID = '33333333-3333-4333-8333-333333333333';
 const CONNECTION_ID = '44444444-4444-4444-8444-444444444444';
 const PROPERTY_REF = 'sc-domain:xingshantang.org';
+const BING_PROPERTY_REF = 'https://xingshantang.org/';
 const NOW = new Date('2026-08-30T12:00:00.000Z');
 
 function googleBinding(overrides: Record<string, unknown> = {}) {
@@ -46,6 +51,10 @@ function createHarness(overrides: {
   properties?: ReturnType<typeof googleProperty>[];
   googleDailySync?: ReturnType<typeof vi.fn>;
   materializeGoogleSnapshot?: ReturnType<typeof vi.fn>;
+  bingProperties?: SearchProviderProperty[];
+  bingQueryStats?: BingQueryObservation[];
+  persistBingBatch?: ReturnType<typeof vi.fn>;
+  materializeBingBatch?: ReturnType<typeof vi.fn>;
 } = {}) {
   const bindingRepository = {
     findBinding: vi.fn().mockResolvedValue(
@@ -78,22 +87,44 @@ function createHarness(overrides: {
   const materializeGoogleSnapshot = overrides.materializeGoogleSnapshot ?? vi.fn(async ({ snapshotId }: { snapshotId: string }) => ({
     id: `search-fact-${snapshotId}`,
   }));
+  const bingProvider = {
+    listProperties: vi.fn().mockResolvedValue(
+      overrides.bingProperties ?? [{
+        provider: 'BING_WEBMASTER' as const,
+        propertyRef: BING_PROPERTY_REF,
+        propertyType: 'SITE' as const,
+        permissionState: 'VERIFIED',
+        verified: true,
+      }],
+    ),
+    fetchQueryStats: vi.fn().mockResolvedValue(overrides.bingQueryStats ?? []),
+  };
+  const persistBingBatch = overrides.persistBingBatch ?? vi.fn(async () => ({
+    id: 'bing-batch-1',
+  } as never));
+  const bingSourcePersistence = { persistBingBatch };
+  const materializeBingBatch = overrides.materializeBingBatch ?? vi.fn(async () => ({
+    id: 'search-fact-bing-batch-1',
+  } as never));
   const materializer = {
     materializeGoogleSnapshot,
-    materializeBingBatch: vi.fn(),
+    materializeBingBatch,
   };
   const observability = { emit: vi.fn() };
   const googleDependencies = { opaque: true } as never;
 
-  const service = new OfficialSearchSyncService({
+  const dependencies = {
     bindingRepository,
     googlePropertyRepository,
     googleDailySync,
     googleDependencies,
+    bingProvider,
+    bingSourcePersistence,
     materializer,
     observability,
     now: () => NOW,
-  });
+  };
+  const service = new OfficialSearchSyncService(dependencies);
 
   return {
     service,
@@ -101,6 +132,10 @@ function createHarness(overrides: {
     googlePropertyRepository,
     googleDailySync,
     materializeGoogleSnapshot,
+    bingProvider,
+    persistBingBatch,
+    bingSourcePersistence,
+    materializeBingBatch,
     materializer,
     observability,
     googleDependencies,
@@ -158,22 +193,101 @@ describe('OfficialSearchSyncService Google orchestration', () => {
     expect(inactive.googleDailySync).not.toHaveBeenCalled();
   });
 
-  it('keeps Bing unavailable until the Bing orchestration task is implemented', async () => {
+  it('orchestrates one bounded Bing query batch through existing source persistence and SearchFact materialization', async () => {
+    const bingQueryStats: BingQueryObservation[] = [
+      {
+        kind: 'QUERY_STATS',
+        provider: 'BING_WEBMASTER',
+        sourceDate: '2026-08-29',
+        query: 'zeta',
+        clicks: 2,
+        impressions: 20,
+        avgClickPosition: 3,
+        avgImpressionPosition: 5,
+        completeness: 'PROVIDER_UNSPECIFIED',
+      },
+      {
+        kind: 'QUERY_STATS',
+        provider: 'BING_WEBMASTER',
+        sourceDate: '2026-08-27',
+        query: 'outside',
+        clicks: 99,
+        impressions: 999,
+        avgClickPosition: 1,
+        avgImpressionPosition: 1,
+        completeness: 'PROVIDER_UNSPECIFIED',
+      },
+      {
+        kind: 'QUERY_STATS',
+        provider: 'BING_WEBMASTER',
+        sourceDate: '2026-08-28',
+        query: 'beta',
+        clicks: 1,
+        impressions: 10,
+        avgClickPosition: null,
+        avgImpressionPosition: 8,
+        completeness: 'PROVIDER_UNSPECIFIED',
+      },
+      {
+        kind: 'QUERY_STATS',
+        provider: 'BING_WEBMASTER',
+        sourceDate: '2026-08-28',
+        query: 'alpha',
+        clicks: 0,
+        impressions: 4,
+        avgClickPosition: null,
+        avgImpressionPosition: 10,
+        completeness: 'PROVIDER_UNSPECIFIED',
+      },
+    ];
     const harness = createHarness({
-      binding: googleBinding({ provider: 'BING_WEBMASTER' }),
+      binding: googleBinding({
+        provider: 'BING_WEBMASTER',
+        propertyRef: BING_PROPERTY_REF,
+      }),
+      bingQueryStats,
     });
 
     await expect(harness.service.sync({
       projectId: PROJECT_ID,
       bindingId: BINDING_ID,
-      dateFrom: '2026-08-29',
+      dateFrom: '2026-08-28',
       dateTo: '2026-08-29',
-    })).resolves.toMatchObject({
+    })).resolves.toEqual({
       provider: 'BING_WEBMASTER',
-      state: 'UNAVAILABLE',
-      reason: 'SYNC_NOT_CONFIGURED',
+      state: 'COMPLETED',
+      dateFrom: '2026-08-28',
+      dateTo: '2026-08-29',
+      sourceRefs: ['bing-batch-1'],
+      searchFactSnapshotIds: ['search-fact-bing-batch-1'],
+      discoveryState: 'NOT_RUN',
+      reason: null,
     });
 
+    expect(harness.bingProvider.listProperties).toHaveBeenCalledTimes(1);
+    expect(harness.bingProvider.fetchQueryStats).toHaveBeenCalledTimes(1);
+    expect(harness.bingProvider.fetchQueryStats).toHaveBeenCalledWith(BING_PROPERTY_REF);
+    expect(harness.persistBingBatch).toHaveBeenCalledTimes(1);
+    const persistInput = harness.persistBingBatch.mock.calls[0]?.[0];
+    expect(persistInput).toMatchObject({
+      projectId: PROJECT_ID,
+      marketCode: 'HK',
+      locale: 'zh-Hant',
+      propertyRef: BING_PROPERTY_REF,
+      propertyType: 'SITE',
+      sourceCutoffAt: new Date('2026-08-29T00:00:00.000Z'),
+    });
+    expect(persistInput?.observations).toEqual([
+      bingQueryStats[3],
+      bingQueryStats[2],
+      bingQueryStats[0],
+    ]);
+    expect(harness.materializeBingBatch).toHaveBeenCalledOnce();
+    expect(harness.materializeBingBatch).toHaveBeenCalledWith({
+      batchId: 'bing-batch-1',
+      normalizationVersion: SEARCH_FACT_NORMALIZATION_VERSION,
+    });
+    expect(harness.googlePropertyRepository.findActiveConnection).not.toHaveBeenCalled();
     expect(harness.googleDailySync).not.toHaveBeenCalled();
   });
 
