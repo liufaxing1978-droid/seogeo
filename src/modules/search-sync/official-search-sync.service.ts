@@ -33,8 +33,8 @@ export type OfficialSearchSyncServiceDependencies = {
   googlePropertyRepository: GoogleSearchPropertyRepositoryPort;
   googleDailySync: GoogleDailySyncPort;
   googleDependencies: SearchConsoleSyncDependencies;
-  bingProvider: BingSearchProviderPort;
-  bingSourcePersistence: BingSourcePersistencePort;
+  bingProvider?: BingSearchProviderPort;
+  bingSourcePersistence?: BingSourcePersistencePort;
   materializer: SearchFactMaterializePort;
   observability?: Pick<OfficialSearchSyncObservability, 'emit'>;
   now?: () => Date;
@@ -155,7 +155,25 @@ export class OfficialSearchSyncService {
     }
 
     if (provider === 'BING_WEBMASTER') {
-      return this.syncBing(command, binding, operationStartedAt);
+      const bingProvider = this.dependencies.bingProvider;
+      const bingSourcePersistence = this.dependencies.bingSourcePersistence;
+      if (!bingProvider || !bingSourcePersistence) {
+        const result = outcome({
+          provider,
+          state: 'UNAVAILABLE',
+          command,
+          reason: 'SYNC_NOT_CONFIGURED',
+        });
+        this.emitFinished(command, result, operationStartedAt);
+        return result;
+      }
+      return this.syncBing(
+        command,
+        binding,
+        operationStartedAt,
+        bingProvider,
+        bingSourcePersistence,
+      );
     }
 
     if (provider !== 'GOOGLE_SEARCH_CONSOLE') {
@@ -176,8 +194,10 @@ export class OfficialSearchSyncService {
     command: OfficialSearchSyncCommand,
     binding: Awaited<ReturnType<OfficialSearchBindingRepositoryPort['findBinding']>> & {},
     operationStartedAt: Date,
+    bingProvider: BingSearchProviderPort,
+    bingSourcePersistence: BingSourcePersistencePort,
   ): Promise<OfficialSearchSyncOutcome> {
-    const properties = await this.dependencies.bingProvider.listProperties();
+    const properties = await bingProvider.listProperties();
     const property = properties.find((candidate) =>
       candidate.provider === 'BING_WEBMASTER'
       && candidate.propertyRef === binding.propertyRef
@@ -196,7 +216,7 @@ export class OfficialSearchSyncService {
       return result;
     }
 
-    const observations = (await this.dependencies.bingProvider.fetchQueryStats(binding.propertyRef))
+    const observations = (await bingProvider.fetchQueryStats(binding.propertyRef))
       .filter((observation) =>
         observation.sourceDate >= command.dateFrom
         && observation.sourceDate <= command.dateTo
@@ -206,12 +226,12 @@ export class OfficialSearchSyncService {
         || left.query.localeCompare(right.query)
       );
 
-    const source = await this.dependencies.bingSourcePersistence.persistBingBatch({
+    const source = await bingSourcePersistence.persistBingBatch({
       projectId: command.projectId,
       marketCode: binding.marketCode,
       locale: binding.locale,
       propertyRef: binding.propertyRef,
-      propertyType: property.propertyType,
+      propertyType: 'SITE',
       sourceCutoffAt: new Date(`${command.dateTo}T00:00:00.000Z`),
       observations,
     });
