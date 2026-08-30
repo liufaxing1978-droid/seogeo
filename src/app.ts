@@ -29,6 +29,7 @@ import { healthRoutes } from './modules/health/health.routes.js';
 import type { KeywordCoverageService } from './modules/keywords/keyword-coverage.service.js';
 import { createKeywordDiscoveryRoutes } from './modules/keywords/keyword-discovery.routes.js';
 import type { KeywordDiscoveryService } from './modules/keywords/keyword-discovery.service.js';
+import { createKeywordDiscoveryWebRoutes } from './modules/keywords/keyword-discovery.web.routes.js';
 import { createKeywordRoutes } from './modules/keywords/keyword.routes.js';
 import type { KeywordSearchEvidenceService } from './modules/keywords/keyword-search-evidence.service.js';
 import type { KeywordService } from './modules/keywords/keyword.service.js';
@@ -184,6 +185,11 @@ export function createApp(options: AppOptions = {}) {
     options.operationsActorResolver,
   ));
   app.use('/', optimizationExperimentWebRoutes);
+  app.use('/', createKeywordDiscoveryWebRoutes(
+    options.keywordCoverageService,
+    options.keywordSearchEvidenceService,
+    options.keywordDiscoveryService,
+  ));
   app.use('/', createKeywordWebRoutes(
     options.keywordService,
     options.keywordCoverageService,
