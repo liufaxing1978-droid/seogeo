@@ -346,4 +346,91 @@ describe('P11-02B official search sync command API authorization', () => {
       await fixture.cleanup();
     }
   });
+
+  it('fails closed without Google OAuth configuration before provider network or daily-source writes', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'ADMIN',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+    const propertyUri = 'sc-domain:xingshantang.org';
+    const credential = await prisma.oAuthCredentialRecord.create({
+      data: {
+        projectId: fixture.project.id,
+        provider: 'GOOGLE_SEARCH_CONSOLE',
+        ciphertext: Buffer.from([1]),
+        iv: Buffer.alloc(12),
+        authTag: Buffer.alloc(16),
+        keyVersion: 'v1',
+      },
+    });
+    const connection = await prisma.searchConsoleConnection.create({
+      data: {
+        projectId: fixture.project.id,
+        credentialRef: credential.id,
+        status: 'CONNECTED',
+      },
+    });
+    const property = await prisma.searchConsoleProperty.create({
+      data: {
+        projectId: fixture.project.id,
+        connectionId: connection.id,
+        propertyUri,
+        propertyType: 'DOMAIN',
+        permissionState: 'siteOwner',
+        isActive: true,
+      },
+    });
+    const binding = await prisma.searchProviderLaneBinding.create({
+      data: {
+        projectId: fixture.project.id,
+        provider: 'GOOGLE_SEARCH_CONSOLE',
+        propertyRef: propertyUri,
+        marketCode: 'HK',
+        locale: 'zh-Hant',
+      },
+    });
+    const fetchSpy = vi.fn(async () => {
+      throw new Error('provider network must not run without OAuth configuration');
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    try {
+      const response = await request(createApp())
+        .post(`/api/v1/projects/${fixture.project.id}/search-sync`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrfFor(fixture))
+        .send({
+          bindingId: binding.id,
+          dateFrom: '2026-08-29',
+          dateTo: '2026-08-29',
+        })
+        .expect(200);
+
+      expect(response.body.data).toEqual({
+        provider: 'GOOGLE_SEARCH_CONSOLE',
+        state: 'UNAVAILABLE',
+        dateFrom: '2026-08-29',
+        dateTo: '2026-08-29',
+        sourceRefs: [],
+        searchFactSnapshotIds: [],
+        discoveryState: 'NOT_RUN',
+        reason: 'SYNC_NOT_CONFIGURED',
+      });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(await prisma.gscDailySnapshot.count({
+        where: { projectId: fixture.project.id, propertyId: property.id },
+      })).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+      await prisma.gscQueryPageFact.deleteMany({ where: { projectId: fixture.project.id } });
+      await prisma.gscDailySnapshot.deleteMany({ where: { projectId: fixture.project.id } });
+      await prisma.searchProviderLaneBinding.deleteMany({ where: { projectId: fixture.project.id } });
+      await prisma.searchConsoleProperty.deleteMany({ where: { projectId: fixture.project.id } });
+      await prisma.searchConsoleConnection.deleteMany({ where: { projectId: fixture.project.id } });
+      await prisma.oAuthCredentialRecord.deleteMany({ where: { projectId: fixture.project.id } });
+      await fixture.cleanup();
+    }
+  });
 });
