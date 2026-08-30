@@ -1,6 +1,7 @@
 import type { SearchConsoleSyncDependencies } from '../search-console/search-console.worker.js';
 import { SearchConsoleSyncError } from '../search-console/search-console.worker.js';
 import { SEARCH_FACT_NORMALIZATION_VERSION } from '../search-facts/search-fact.types.js';
+import { BingWebmasterTransportError } from '../search-providers/bing-webmaster.client.js';
 import { AppError } from '../../core/errors.js';
 import {
   officialSearchSyncObservability,
@@ -83,6 +84,21 @@ function enumerateUtcDateKeys(dateFrom: string, dateTo: string): string[] {
 
 function elapsedMs(startedAt: Date, endedAt: Date): number {
   return Math.max(0, endedAt.getTime() - startedAt.getTime());
+}
+
+function classifyBingProviderError(error: unknown): OfficialSearchSyncFailureReason {
+  if (!(error instanceof BingWebmasterTransportError)) {
+    return 'TRANSIENT_PROVIDER_ERROR';
+  }
+  if (error.httpStatus === 401) return 'TOKEN_REVOKED';
+  if (error.httpStatus === 403) return 'PERMISSION_DENIED';
+  if (error.httpStatus === 404) return 'PROPERTY_UNAVAILABLE';
+  if (error.httpStatus === 429) return 'RATE_LIMITED';
+  if (error.httpStatus !== null && error.httpStatus >= 500) {
+    return 'TRANSIENT_PROVIDER_ERROR';
+  }
+  if (/INVALID/i.test(error.code)) return 'INVALID_RESPONSE';
+  return 'TRANSIENT_PROVIDER_ERROR';
 }
 
 function outcome(input: {
@@ -197,7 +213,20 @@ export class OfficialSearchSyncService {
     bingProvider: BingSearchProviderPort,
     bingSourcePersistence: BingSourcePersistencePort,
   ): Promise<OfficialSearchSyncOutcome> {
-    const properties = await bingProvider.listProperties();
+    let properties;
+    try {
+      properties = await bingProvider.listProperties();
+    } catch (error) {
+      const result = outcome({
+        provider: 'BING_WEBMASTER',
+        state: 'FAILED',
+        command,
+        reason: classifyBingProviderError(error),
+      });
+      this.emitFinished(command, result, operationStartedAt);
+      return result;
+    }
+
     const property = properties.find((candidate) =>
       candidate.provider === 'BING_WEBMASTER'
       && candidate.propertyRef === binding.propertyRef
@@ -216,30 +245,78 @@ export class OfficialSearchSyncService {
       return result;
     }
 
-    const observations = (await bingProvider.fetchQueryStats(binding.propertyRef))
-      .filter((observation) =>
-        observation.sourceDate >= command.dateFrom
-        && observation.sourceDate <= command.dateTo
-      )
-      .sort((left, right) =>
-        left.sourceDate.localeCompare(right.sourceDate)
-        || left.query.localeCompare(right.query)
-      );
+    let observations;
+    try {
+      observations = (await bingProvider.fetchQueryStats(binding.propertyRef))
+        .filter((observation) =>
+          observation.sourceDate >= command.dateFrom
+          && observation.sourceDate <= command.dateTo
+        )
+        .sort((left, right) =>
+          left.sourceDate.localeCompare(right.sourceDate)
+          || left.query.localeCompare(right.query)
+        );
+    } catch (error) {
+      const result = outcome({
+        provider: 'BING_WEBMASTER',
+        state: 'FAILED',
+        command,
+        reason: classifyBingProviderError(error),
+      });
+      this.emitFinished(command, result, operationStartedAt);
+      return result;
+    }
 
-    const source = await bingSourcePersistence.persistBingBatch({
-      projectId: command.projectId,
-      marketCode: binding.marketCode,
-      locale: binding.locale,
-      propertyRef: binding.propertyRef,
-      propertyType: 'SITE',
-      sourceCutoffAt: new Date(`${command.dateTo}T00:00:00.000Z`),
-      observations,
-    });
+    if (observations.length === 0) {
+      const result = outcome({
+        provider: 'BING_WEBMASTER',
+        state: 'FAILED',
+        command,
+        reason: 'INVALID_RESPONSE',
+      });
+      this.emitFinished(command, result, operationStartedAt);
+      return result;
+    }
 
-    const snapshot = await this.dependencies.materializer.materializeBingBatch({
-      batchId: source.id,
-      normalizationVersion: SEARCH_FACT_NORMALIZATION_VERSION,
-    });
+    let source;
+    try {
+      source = await bingSourcePersistence.persistBingBatch({
+        projectId: command.projectId,
+        marketCode: binding.marketCode,
+        locale: binding.locale,
+        propertyRef: binding.propertyRef,
+        propertyType: 'SITE',
+        sourceCutoffAt: new Date(`${command.dateTo}T00:00:00.000Z`),
+        observations,
+      });
+    } catch {
+      const result = outcome({
+        provider: 'BING_WEBMASTER',
+        state: 'FAILED',
+        command,
+        reason: 'PERSISTENCE_FAILED',
+      });
+      this.emitFinished(command, result, operationStartedAt);
+      return result;
+    }
+
+    let snapshot;
+    try {
+      snapshot = await this.dependencies.materializer.materializeBingBatch({
+        batchId: source.id,
+        normalizationVersion: SEARCH_FACT_NORMALIZATION_VERSION,
+      });
+    } catch {
+      const result = outcome({
+        provider: 'BING_WEBMASTER',
+        state: 'FAILED',
+        command,
+        sourceRefs: [source.id],
+        reason: 'MATERIALIZATION_FAILED',
+      });
+      this.emitFinished(command, result, operationStartedAt);
+      return result;
+    }
 
     const result = outcome({
       provider: 'BING_WEBMASTER',
