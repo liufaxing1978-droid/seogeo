@@ -1,7 +1,7 @@
-import type {
-  KeywordDiscoveryCandidate,
-  PrismaClient,
-} from '@prisma/client';
+import { Prisma, type KeywordDiscoveryCandidate, type PrismaClient } from '@prisma/client';
+import { AppError } from '../../core/errors.js';
+import { prisma } from '../../db/prisma.js';
+import { KeywordRepository } from './keyword.repository.js';
 import type { SearchFactView } from '../search-facts/search-fact.types.js';
 
 export type KeywordDiscoveryRepositoryWindow = {
@@ -10,8 +10,21 @@ export type KeywordDiscoveryRepositoryWindow = {
   candidates: KeywordDiscoveryCandidate[];
 };
 
+type KeywordDiscoveryDb = PrismaClient | Prisma.TransactionClient;
+
+type DecisionRepositories = {
+  discovery: KeywordDiscoveryRepository;
+  keywords: KeywordRepository;
+};
+
+const KEYWORD_DISCOVERY_TRANSACTION_MAX_ATTEMPTS = 3;
+
+function isSerializationConflict(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
+}
+
 export class KeywordDiscoveryRepository {
-  constructor(private readonly db: PrismaClient) {}
+  constructor(private readonly db: KeywordDiscoveryDb = prisma) {}
 
   async loadWindow(input: {
     projectId: string;
@@ -116,5 +129,57 @@ export class KeywordDiscoveryRepository {
         lastObservedAt: input.lastObservedAt,
       },
     });
+  }
+
+  findCandidate(projectId: string, candidateId: string) {
+    return this.db.keywordDiscoveryCandidate.findFirst({
+      where: { id: candidateId, projectId },
+    });
+  }
+
+  updateDecision(input: {
+    projectId: string;
+    candidateId: string;
+    status: 'ACCEPTED' | 'REJECTED';
+    acceptedKeywordId?: string | null;
+    decidedAt: Date;
+    decidedByUserId: string;
+  }) {
+    return this.db.keywordDiscoveryCandidate.updateMany({
+      where: { id: input.candidateId, projectId: input.projectId },
+      data: {
+        status: input.status,
+        acceptedKeywordId: input.acceptedKeywordId ?? null,
+        decidedAt: input.decidedAt,
+        decidedByUserId: input.decidedByUserId,
+      },
+    });
+  }
+
+  async withSerializableTransaction<T>(
+    work: (repositories: DecisionRepositories) => Promise<T>,
+  ): Promise<T> {
+    const db = this.db as PrismaClient;
+    for (let attempt = 1; attempt <= KEYWORD_DISCOVERY_TRANSACTION_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        return await db.$transaction(
+          async (tx) => work({
+            discovery: new KeywordDiscoveryRepository(tx),
+            keywords: new KeywordRepository(tx),
+          }),
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+      } catch (error) {
+        if (!isSerializationConflict(error) || attempt === KEYWORD_DISCOVERY_TRANSACTION_MAX_ATTEMPTS) {
+          throw error;
+        }
+      }
+    }
+
+    throw new AppError(
+      'Keyword discovery transaction retry exhausted',
+      409,
+      'KEYWORD_DISCOVERY_WRITE_CONFLICT',
+    );
   }
 }

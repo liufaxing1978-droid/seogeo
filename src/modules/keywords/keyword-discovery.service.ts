@@ -1,12 +1,16 @@
-import type { KeywordDiscoveryCandidate } from '@prisma/client';
+import { Prisma, type KeywordDiscoveryCandidate } from '@prisma/client';
+import { AppError } from '../../core/errors.js';
+import { normalizeKeywordText } from './keyword-normalize.js';
 import { projectKeywordDiscoveryEvidence } from './keyword-discovery.js';
 import {
   KeywordDiscoveryRepository,
   type KeywordDiscoveryRepositoryWindow,
 } from './keyword-discovery.repository.js';
 import type {
+  AcceptKeywordDiscoveryInput,
   KeywordDiscoveryReadModel,
   KeywordDiscoveryRefreshResult,
+  RejectKeywordDiscoveryInput,
 } from './keyword-discovery.types.js';
 
 const DAY_MS = 86_400_000;
@@ -80,6 +84,26 @@ function nextRepresentative(
   if (projectedLast < currentLast) return candidate.representativeText;
   return [candidate.representativeText, projectedRepresentative]
     .sort((left, right) => left.localeCompare(right))[0]!;
+}
+
+function discoveryNotFound(): AppError {
+  return new AppError('Keyword discovery candidate not found', 404, 'KEYWORD_DISCOVERY_NOT_FOUND');
+}
+
+function discoveryAlreadyDecided(): AppError {
+  return new AppError('Keyword discovery candidate already decided', 409, 'KEYWORD_DISCOVERY_ALREADY_DECIDED');
+}
+
+function archivedKeywordRestoreRequired(): AppError {
+  return new AppError(
+    'Archived keyword must be restored rather than recreated',
+    409,
+    'KEYWORD_ARCHIVED_RESTORE_REQUIRED',
+  );
+}
+
+function isUniqueConflict(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
 export class KeywordDiscoveryService {
@@ -218,6 +242,100 @@ export class KeywordDiscoveryService {
         lastObservedAt: projection.lastObservedAt,
         providers: projection.providers,
       };
+    });
+  }
+
+  async accept(input: AcceptKeywordDiscoveryInput) {
+    return this.repository.withSerializableTransaction(async ({ discovery, keywords }) => {
+      const candidate = await discovery.findCandidate(input.projectId, input.candidateId);
+      if (!candidate) throw discoveryNotFound();
+
+      if (candidate.status === 'ACCEPTED') {
+        if (!candidate.acceptedKeywordId) throw discoveryAlreadyDecided();
+        const linked = await keywords.findKeyword(input.projectId, candidate.acceptedKeywordId);
+        if (!linked) throw discoveryAlreadyDecided();
+        return linked;
+      }
+      if (candidate.status !== 'PENDING') throw discoveryAlreadyDecided();
+
+      const rawText = candidate.representativeText.trim();
+      const normalizedText = normalizeKeywordText(rawText);
+      if (!normalizedText) {
+        throw new AppError('Keyword discovery text is required', 400, 'KEYWORD_DISCOVERY_TEXT_INVALID');
+      }
+
+      let keyword = await keywords.findByNormalized(input.projectId, normalizedText);
+      if (keyword?.status === 'ARCHIVED') throw archivedKeywordRestoreRequired();
+
+      if (!keyword) {
+        try {
+          keyword = await keywords.createKeyword({
+            projectId: input.projectId,
+            text: rawText,
+            normalizedText,
+            type: input.type,
+            intent: input.intent ?? 'UNKNOWN',
+            priority: input.priority ?? 'MEDIUM',
+            status: 'ACTIVE',
+            locked: false,
+            source: 'SEARCH_DISCOVERY_ACCEPTED',
+            language: input.language ?? null,
+            targetCountry: input.targetCountry ?? null,
+            notes: null,
+            createdByUserId: input.actorUserId,
+          });
+        } catch (error) {
+          if (!isUniqueConflict(error)) throw error;
+          keyword = await keywords.findByNormalized(input.projectId, normalizedText);
+          if (!keyword) throw error;
+          if (keyword.status === 'ARCHIVED') throw archivedKeywordRestoreRequired();
+        }
+      }
+
+      const decidedAt = this.now();
+      await discovery.updateDecision({
+        projectId: input.projectId,
+        candidateId: candidate.id,
+        status: 'ACCEPTED',
+        acceptedKeywordId: keyword.id,
+        decidedAt,
+        decidedByUserId: input.actorUserId,
+      });
+      await keywords.appendAudit(
+        input.projectId,
+        keyword.id,
+        input.actorUserId,
+        'KEYWORD_DISCOVERY_ACCEPTED',
+        {
+          candidateId: candidate.id,
+          source: 'SEARCH_DISCOVERY_ACCEPTED',
+        },
+      );
+
+      return keyword;
+    });
+  }
+
+  async reject(input: RejectKeywordDiscoveryInput): Promise<KeywordDiscoveryCandidate> {
+    return this.repository.withSerializableTransaction(async ({ discovery }) => {
+      const candidate = await discovery.findCandidate(input.projectId, input.candidateId);
+      if (!candidate) throw discoveryNotFound();
+      if (candidate.status === 'REJECTED') return candidate;
+      if (candidate.status === 'ACCEPTED') throw discoveryAlreadyDecided();
+
+      const decidedAt = this.now();
+      await discovery.updateDecision({
+        projectId: input.projectId,
+        candidateId: candidate.id,
+        status: 'REJECTED',
+        acceptedKeywordId: null,
+        decidedAt,
+        decidedByUserId: input.actorUserId,
+      });
+
+      const updated = await discovery.findCandidate(input.projectId, candidate.id);
+      if (!updated) throw discoveryNotFound();
+      return updated;
     });
   }
 }
