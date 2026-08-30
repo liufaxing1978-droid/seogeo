@@ -8,6 +8,7 @@ import {
 } from '../../auth/project-access.js';
 import { NotFoundError } from '../../core/errors.js';
 import { officialSearchSyncRepository } from './official-search-sync.repository.js';
+import type { OfficialSearchSyncService } from './official-search-sync.service.js';
 import type { OfficialSearchBindingRepositoryPort } from './official-search-sync.types.js';
 
 const marketCodeSchema = z.enum(['CN', 'GLOBAL', 'HK', 'TW', 'SG', 'MY']);
@@ -20,6 +21,11 @@ const bindingBodySchema = z.object({
 const bindingPatchSchema = z.object({
   isActive: z.boolean(),
 }).strict();
+const syncBodySchema = z.object({
+  bindingId: z.string().uuid(),
+  dateFrom: z.string().trim().min(1),
+  dateTo: z.string().trim().min(1),
+}).strict();
 
 function routeParam(value: string | string[]): string {
   const normalized = Array.isArray(value) ? value[0] : value;
@@ -29,6 +35,7 @@ function routeParam(value: string | string[]): string {
 
 export function createOfficialSearchSyncRoutes(
   repository: OfficialSearchBindingRepositoryPort = officialSearchSyncRepository,
+  syncService?: Pick<OfficialSearchSyncService, 'sync'>,
 ) {
   const router = Router();
   const readGuards = [
@@ -96,6 +103,24 @@ export function createOfficialSearchSyncRoutes(
           );
         }
         res.json({ data: updated });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    '/projects/:projectId/search-sync',
+    ...mutationGuards,
+    async (req, res, next) => {
+      try {
+        if (!syncService) {
+          throw new Error('Official search sync service is not configured');
+        }
+        const projectId = routeParam(req.params.projectId);
+        const body = syncBodySchema.parse(req.body);
+        const result = await syncService.sync({ projectId, ...body });
+        res.json({ data: result });
       } catch (error) {
         next(error);
       }
