@@ -51,7 +51,17 @@
             <div class="keyword-suggestion-actions">
               <form data-ui="keyword-discovery-accept" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-discoveries/<%= candidate.candidateId %>/accept">
                 <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                <input type="hidden" name="type" value="LONG_TAIL">
+                <label class="keyword-field">
+                  <span>关键词类型</span>
+                  <select name="type" required>
+                    <option value="CORE">核心词</option>
+                    <option value="LONG_TAIL" selected>长尾词</option>
+                    <option value="BRAND">品牌词</option>
+                    <option value="QUESTION">问题词</option>
+                    <option value="LOCAL">地域词</option>
+                    <option value="COMMERCIAL">商业词</option>
+                  </select>
+                </label>
                 <button class="keyword-button keyword-button--primary" type="submit">加入关键词库</button>
               </form>
               <form data-ui="keyword-discovery-reject" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-discoveries/<%= candidate.candidateId %>/reject">
