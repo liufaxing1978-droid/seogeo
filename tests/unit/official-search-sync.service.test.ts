@@ -1,10 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SearchConsoleSyncError } from '../../src/modules/search-console/search-console.worker.js';
 import { SEARCH_FACT_NORMALIZATION_VERSION } from '../../src/modules/search-facts/search-fact.types.js';
-import {
-  OfficialSearchSyncCommandError,
-  OfficialSearchSyncService,
-} from '../../src/modules/search-sync/official-search-sync.service.js';
+import { OfficialSearchSyncService } from '../../src/modules/search-sync/official-search-sync.service.js';
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const BINDING_ID = '22222222-2222-4222-8222-222222222222';
@@ -124,7 +121,7 @@ describe('OfficialSearchSyncService Google orchestration', () => {
       projectId: PROJECT_ID,
       bindingId: BINDING_ID,
       ...dates,
-    })).rejects.toMatchObject<Partial<OfficialSearchSyncCommandError>>({
+    })).rejects.toMatchObject({
       code: 'OFFICIAL_SEARCH_SYNC_RANGE_INVALID',
     });
 
