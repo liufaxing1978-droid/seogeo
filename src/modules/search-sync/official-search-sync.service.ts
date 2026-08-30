@@ -137,7 +137,6 @@ export class OfficialSearchSyncService {
       provider,
       dateFrom: command.dateFrom,
       dateTo: command.dateTo,
-      state: 'COMPLETED',
     });
 
     if (!binding.isActive) {
