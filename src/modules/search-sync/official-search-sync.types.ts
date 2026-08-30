@@ -1,4 +1,17 @@
-import type { MarketCode, SearchProviderLaneBinding } from '@prisma/client';
+import type {
+  MarketCode,
+  SearchFactSnapshot,
+  SearchProviderLaneBinding,
+} from '@prisma/client';
+import type {
+  MaterializeBingSearchBatchInput,
+  MaterializeGoogleSearchSnapshotInput,
+} from '../search-facts/search-fact.materializer.js';
+import type {
+  SearchConsoleSyncDependencies,
+  SearchConsoleSyncInput,
+  SearchConsoleSyncResult,
+} from '../search-console/search-console.worker.js';
 
 export type OfficialSearchBindingProvider =
   | 'GOOGLE_SEARCH_CONSOLE'
@@ -28,4 +41,74 @@ export type OfficialSearchBindingRepositoryPort = {
     bindingId: string,
     isActive: boolean,
   ): Promise<SearchProviderLaneBinding | null>;
+};
+
+export type OfficialSearchSyncCommand = {
+  projectId: string;
+  bindingId: string;
+  dateFrom: string;
+  dateTo: string;
+};
+
+export type OfficialSearchSyncState =
+  | 'COMPLETED'
+  | 'ALREADY_COMPLETED'
+  | 'UNAVAILABLE'
+  | 'FAILED';
+
+export type OfficialSearchSyncDiscoveryState =
+  | 'REFRESHED'
+  | 'DISCOVERY_REFRESH_FAILED'
+  | 'NOT_RUN';
+
+export type OfficialSearchSyncFailureReason =
+  | 'SYNC_NOT_CONFIGURED'
+  | 'BINDING_NOT_FOUND'
+  | 'BINDING_INACTIVE'
+  | 'PROPERTY_UNAVAILABLE'
+  | 'TOKEN_REVOKED'
+  | 'PERMISSION_DENIED'
+  | 'RATE_LIMITED'
+  | 'TRANSIENT_PROVIDER_ERROR'
+  | 'INVALID_RESPONSE'
+  | 'PERSISTENCE_FAILED'
+  | 'MATERIALIZATION_FAILED'
+  | 'DISCOVERY_REFRESH_FAILED';
+
+export type OfficialSearchSyncOutcome = {
+  provider: OfficialSearchBindingProvider | null;
+  state: OfficialSearchSyncState;
+  dateFrom: string;
+  dateTo: string;
+  sourceRefs: string[];
+  searchFactSnapshotIds: string[];
+  discoveryState: OfficialSearchSyncDiscoveryState;
+  reason: OfficialSearchSyncFailureReason | null;
+};
+
+export type GoogleDailySyncPort = (
+  input: SearchConsoleSyncInput,
+  dependencies: SearchConsoleSyncDependencies,
+) => Promise<SearchConsoleSyncResult>;
+
+export type SearchFactMaterializePort = {
+  materializeGoogleSnapshot(
+    input: MaterializeGoogleSearchSnapshotInput,
+  ): Promise<SearchFactSnapshot>;
+  materializeBingBatch(
+    input: MaterializeBingSearchBatchInput,
+  ): Promise<SearchFactSnapshot>;
+};
+
+export type GoogleSearchPropertyRepositoryPort = {
+  findActiveConnection(projectId: string): Promise<{ id: string } | null>;
+  listProperties(
+    projectId: string,
+    connectionId: string,
+  ): Promise<Array<{
+    id: string;
+    projectId: string;
+    propertyUri: string;
+    isActive: boolean;
+  }>>;
 };
