@@ -7,12 +7,14 @@ export const SEARCH_FACT_KINDS = Object.freeze([
   'QUERY_PAGE',
   'QUERY',
   'PAGE',
-  'SITE'
+  'SITE',
+  'QUERY_PAGE_RANK'
 ] as const);
 
 export const SEARCH_FACT_SOURCE_KINDS = Object.freeze([
   'GSC_DAILY_SNAPSHOT',
-  'PROVIDER_OBSERVATION_BATCH'
+  'PROVIDER_OBSERVATION_BATCH',
+  'REALTIME_SERP_OBSERVATION'
 ] as const);
 
 export const SEARCH_FACT_METRIC_SEMANTICS = Object.freeze([
@@ -21,7 +23,13 @@ export const SEARCH_FACT_METRIC_SEMANTICS = Object.freeze([
   'CTR',
   'GOOGLE_SEARCH_CONSOLE_POSITION',
   'BING_AVG_CLICK_POSITION',
-  'BING_AVG_IMPRESSION_POSITION'
+  'BING_AVG_IMPRESSION_POSITION',
+  'CURRENT_SERP_POSITION'
+] as const);
+
+export const REALTIME_SERP_SEARCH_FACT_PROVIDERS = Object.freeze([
+  'GOOGLE_SERP',
+  'BING_SERP'
 ] as const);
 
 export const SEARCH_FACT_EVIDENCE_STATES = Object.freeze([
@@ -38,7 +46,8 @@ export const SEARCH_FACT_COMPLETENESS = Object.freeze([
   'UNKNOWN'
 ] as const);
 
-export type SearchFactProviderCode = SearchProviderCode;
+export type RealtimeSerpSearchFactProvider = (typeof REALTIME_SERP_SEARCH_FACT_PROVIDERS)[number];
+export type SearchFactProviderCode = SearchProviderCode | RealtimeSerpSearchFactProvider;
 export type SearchFactKind = (typeof SEARCH_FACT_KINDS)[number];
 export type SearchFactSourceKind = (typeof SEARCH_FACT_SOURCE_KINDS)[number];
 export type SearchFactMetricSemantic = (typeof SEARCH_FACT_METRIC_SEMANTICS)[number];

@@ -5,6 +5,8 @@ enum SearchFactProvider {
   QIHOO_360_WEBMASTER
   SOGOU_WEBMASTER
   SHENMA_WEBMASTER
+  GOOGLE_SERP
+  BING_SERP
 }
 
 enum SearchFactSnapshotStatus {
@@ -19,6 +21,7 @@ enum SearchFactKind {
   QUERY
   PAGE
   SITE
+  QUERY_PAGE_RANK
 }
 
 enum SearchFactMetricSemantic {
@@ -28,6 +31,7 @@ enum SearchFactMetricSemantic {
   GOOGLE_SEARCH_CONSOLE_POSITION
   BING_AVG_CLICK_POSITION
   BING_AVG_IMPRESSION_POSITION
+  CURRENT_SERP_POSITION
 }
 
 enum SearchFactEvidenceState {
@@ -47,6 +51,7 @@ enum SearchFactCompleteness {
 enum SearchFactSourceKind {
   GSC_DAILY_SNAPSHOT
   PROVIDER_OBSERVATION_BATCH
+  REALTIME_SERP_OBSERVATION
 }
 
 model SearchProviderLaneBinding {
