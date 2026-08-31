@@ -39,7 +39,11 @@ const schema = z.object({
   GOOGLE_OAUTH_REDIRECT_URI: optionalUrl,
   OAUTH_CREDENTIAL_ENCRYPTION_KEY: optionalNonBlankString,
   OAUTH_CREDENTIAL_KEY_VERSION: z.string().min(1).default('v1'),
-  BING_WEBMASTER_API_KEY: optionalNonBlankString
+  BING_WEBMASTER_API_KEY: optionalNonBlankString,
+  DATAFORSEO_LOGIN: optionalNonBlankString,
+  DATAFORSEO_PASSWORD: optionalNonBlankString,
+  DATAFORSEO_BASE_URL: z.string().url().default('https://api.dataforseo.com'),
+  DATAFORSEO_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(30000)
 });
 
 export type RuntimeEnv = z.infer<typeof schema>;
