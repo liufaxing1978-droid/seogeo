@@ -38,7 +38,8 @@ const schema = z.object({
   GOOGLE_OAUTH_CLIENT_SECRET: optionalNonBlankString,
   GOOGLE_OAUTH_REDIRECT_URI: optionalUrl,
   OAUTH_CREDENTIAL_ENCRYPTION_KEY: optionalNonBlankString,
-  OAUTH_CREDENTIAL_KEY_VERSION: z.string().min(1).default('v1')
+  OAUTH_CREDENTIAL_KEY_VERSION: z.string().min(1).default('v1'),
+  BING_WEBMASTER_API_KEY: optionalNonBlankString
 });
 
 export type RuntimeEnv = z.infer<typeof schema>;
