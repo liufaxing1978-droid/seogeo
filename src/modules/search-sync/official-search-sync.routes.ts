@@ -28,6 +28,9 @@ import {
   type SearchConsoleSyncDependencies,
 } from '../search-console/search-console.worker.js';
 import { SearchFactMaterializer } from '../search-facts/search-fact.materializer.js';
+import { SearchProviderSourceRepository } from '../search-facts/search-provider-source.repository.js';
+import { BingSearchProviderAdapter } from '../search-providers/bing-search-provider.adapter.js';
+import { BingWebmasterClient } from '../search-providers/bing-webmaster.client.js';
 import { officialSearchSyncRepository } from './official-search-sync.repository.js';
 import { OfficialSearchSyncService } from './official-search-sync.service.js';
 import type { OfficialSearchBindingRepositoryPort } from './official-search-sync.types.js';
@@ -121,6 +124,13 @@ const lazyGoogleDependencies: SearchConsoleSyncDependencies = {
 function createDefaultOfficialSearchSyncService(
   repository: OfficialSearchBindingRepositoryPort,
 ): OfficialSearchSyncService {
+  const bingProvider = env.BING_WEBMASTER_API_KEY
+    ? new BingSearchProviderAdapter(
+        new BingWebmasterClient(),
+        { kind: 'API_KEY', apiKey: env.BING_WEBMASTER_API_KEY },
+      )
+    : undefined;
+
   return new OfficialSearchSyncService({
     bindingRepository: repository,
     googlePropertyRepository: searchConsoleRepository,
@@ -129,6 +139,10 @@ function createDefaultOfficialSearchSyncService(
       return syncSearchConsoleDay(input, dependencies);
     },
     googleDependencies: lazyGoogleDependencies,
+    bingProvider,
+    bingSourcePersistence: bingProvider
+      ? new SearchProviderSourceRepository(prisma)
+      : undefined,
     materializer: new SearchFactMaterializer(prisma),
     discoveryService: new KeywordDiscoveryService({
       repository: new KeywordDiscoveryRepository(prisma),
