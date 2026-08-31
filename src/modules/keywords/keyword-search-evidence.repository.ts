@@ -28,7 +28,7 @@ function endOfUtcDay(value: Date): Date {
   return new Date(value.getTime() + DAY_MS - 1);
 }
 
-function supportsPersistedQueryFacts(provider: SearchProviderCode): boolean {
+function supportsPersistedQueryFacts(provider: SearchFactSnapshotView['provider']): boolean {
   return provider === 'GOOGLE_SEARCH_CONSOLE' || provider === 'BING_WEBMASTER';
 }
 

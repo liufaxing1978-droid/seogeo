@@ -159,6 +159,12 @@ function normalizeFilters(filters: KeywordSearchEvidenceFilters): KeywordSearchE
   };
 }
 
+function isOfficialSearchProviderCode(
+  provider: SearchFactSnapshotView['provider'],
+): provider is SearchProviderCode {
+  return providerSet.has(provider);
+}
+
 function laneKey(snapshot: SearchFactSnapshotView): string {
   return [
     snapshot.provider,
@@ -210,6 +216,8 @@ function evidenceForKeyword(input: {
 
   for (const snapshots of grouped.values()) {
     const representative = latestSnapshot(snapshots);
+    if (!isOfficialSearchProviderCode(representative.provider)) continue;
+
     const snapshotIds = new Set(snapshots.map((snapshot) => snapshot.snapshotId));
     const laneFacts = input.window.facts.filter((fact) =>
       snapshotIds.has(fact.snapshotId)
