@@ -100,6 +100,8 @@ describe('admin web UI', () => {
     const list = await request(app).get('/projects').set('Cookie', fixture.sessionCookie);
     expect(list.status).toBe(200);
     for (const heading of ['项目', '域名', '套餐', '状态', '更新时间', '操作']) expect(list.text).toContain(heading);
+    expect(list.text).toContain(`href="/projects/${fixture.project.id}/seo"`);
+    expect(list.text).toContain(`href="/projects/${fixture.project.id}/geo"`);
 
     const form = await request(app).get('/projects/new').set('Cookie', fixture.sessionCookie);
     expect(form.status).toBe(200);

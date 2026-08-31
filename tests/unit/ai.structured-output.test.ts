@@ -15,6 +15,13 @@ describe('structured AI output validation', () => {
     });
   });
 
+  it('parses compliant JSON wrapped in a Markdown json code fence', () => {
+    expect(parseStructuredOutput('```json\n{"summary":"ok","priorities":[{"title":"Fix title"}]}\n```', schema)).toEqual({
+      summary: 'ok',
+      priorities: [{ title: 'Fix title' }]
+    });
+  });
+
   it('rejects malformed JSON with a stable INVALID_AI_OUTPUT error', () => {
     expect(() => parseStructuredOutput('{not-json', schema)).toThrow(AiOutputValidationError);
     try {
