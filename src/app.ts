@@ -26,6 +26,14 @@ import { createGrowthExplanationRoutes } from './modules/growth/growth-explanati
 import { createGrowthRoutes, type GrowthRestRepository } from './modules/growth/growth.routes.js';
 import { createGrowthWebRoutes } from './modules/growth/growth.web.routes.js';
 import { healthRoutes } from './modules/health/health.routes.js';
+import type { KeywordCoverageService } from './modules/keywords/keyword-coverage.service.js';
+import { createKeywordDiscoveryRoutes } from './modules/keywords/keyword-discovery.routes.js';
+import type { KeywordDiscoveryService } from './modules/keywords/keyword-discovery.service.js';
+import { createKeywordDiscoveryWebRoutes } from './modules/keywords/keyword-discovery.web.routes.js';
+import { createKeywordRoutes } from './modules/keywords/keyword.routes.js';
+import type { KeywordSearchEvidenceService } from './modules/keywords/keyword-search-evidence.service.js';
+import type { KeywordService } from './modules/keywords/keyword.service.js';
+import { createKeywordWebRoutes } from './modules/keywords/keyword.web.routes.js';
 import { createMarketRoutes, type MarketApiPort } from './modules/market/market.routes.js';
 import {
   createOptimizationExperimentRoutes,
@@ -60,6 +68,9 @@ import { reportWebRoutes } from './modules/reporting/report.web.routes.js';
 import { createSearchConsoleRoutes } from './modules/search-console/search-console.routes.js';
 import type { SearchConsoleService } from './modules/search-console/search-console.service.js';
 import { searchConsoleWebRoutes } from './modules/search-console/search-console.web.routes.js';
+import { createOfficialSearchSyncRoutes } from './modules/search-sync/official-search-sync.routes.js';
+import type { OfficialSearchSyncService } from './modules/search-sync/official-search-sync.service.js';
+import type { OfficialSearchBindingRepositoryPort } from './modules/search-sync/official-search-sync.types.js';
 import { createSeoRoutes } from './modules/seo/seo.routes.js';
 import type { SeoService } from './modules/seo/seo.service.js';
 import { createVisibilityRoutes } from './modules/visibility/visibility.routes.js';
@@ -86,7 +97,13 @@ export interface AppOptions {
   aiTaskService?: AiTaskService;
   contentService?: ContentService;
   competitorService?: CompetitorService;
+  keywordService?: KeywordService;
+  keywordCoverageService?: KeywordCoverageService;
+  keywordSearchEvidenceService?: Pick<KeywordSearchEvidenceService, 'evaluateKeyword' | 'evaluateProject'>;
+  keywordDiscoveryService?: Pick<KeywordDiscoveryService, 'list' | 'refresh' | 'accept' | 'reject'>;
   searchConsoleService?: SearchConsoleService;
+  officialSearchBindingRepository?: OfficialSearchBindingRepositoryPort;
+  officialSearchSyncService?: Pick<OfficialSearchSyncService, 'sync'>;
   growthApiRepository?: Partial<GrowthRestRepository>;
   optimizationOrchestrationApi?: OptimizationOrchestrationApiPort;
   optimizationExperimentApi?: OptimizationExperimentApiPort;
@@ -127,6 +144,17 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/v1', createAiRoutes(options.aiTaskService));
   app.use('/api/v1', createContentRoutes(options.contentService, options.aiTaskService));
   app.use('/api/v1', createCompetitorRoutes(options.competitorService, options.aiTaskService));
+  app.use('/api/v1', createKeywordRoutes(
+    options.keywordService,
+    options.keywordCoverageService,
+    options.aiTaskService,
+    options.keywordSearchEvidenceService,
+  ));
+  app.use('/api/v1', createKeywordDiscoveryRoutes(options.keywordDiscoveryService));
+  app.use('/api/v1', createOfficialSearchSyncRoutes(
+    options.officialSearchBindingRepository,
+    options.officialSearchSyncService,
+  ));
   app.use('/api/v1', createOptimizationOrchestrationRoutes(options.optimizationOrchestrationApi));
   app.use('/api/v1', createOptimizationOperationsRoutes(
     options.optimizationOperationsApi,
@@ -157,6 +185,17 @@ export function createApp(options: AppOptions = {}) {
     options.operationsActorResolver,
   ));
   app.use('/', optimizationExperimentWebRoutes);
+  app.use('/', createKeywordDiscoveryWebRoutes(
+    options.keywordCoverageService,
+    options.keywordSearchEvidenceService,
+    options.keywordDiscoveryService,
+  ));
+  app.use('/', createKeywordWebRoutes(
+    options.keywordService,
+    options.keywordCoverageService,
+    options.aiTaskService,
+    options.keywordSearchEvidenceService,
+  ));
   app.use('/', createProjectAdminWebRoutes());
   app.use('/', webRoutes);
   app.use(errorHandler);

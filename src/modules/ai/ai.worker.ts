@@ -8,6 +8,11 @@ import {
 } from '../distribution/distribution-ai.js';
 import { emitPreparedDistributionEvent } from '../distribution/distribution-prepared-observability.js';
 import {
+  materializeKeywordSuggestions,
+  parseKeywordExpansionOutput,
+  type KeywordExpansionOutput,
+} from '../keywords/keyword-ai.js';
+import {
   materializeArticleGenerationOutput,
   parseArticleGenerationOutput as parsePublicationArticleGenerationOutput,
   parseContentBriefOutput as parsePublicationContentBriefOutput
@@ -70,6 +75,7 @@ function expectedPromptId(task: AiTask): string {
     case 'PUBLICATION_CONTENT_BRIEF': return 'publication-content-brief-v1';
     case 'PUBLICATION_ARTICLE_GENERATION': return 'publication-article-generation-v1';
     case 'PUBLICATION_CONTENT_ADAPTATION': return promptIdForDistributionTask(task);
+    case 'KEYWORD_EXPANSION': return 'keyword-expansion-v1';
   }
 }
 
@@ -116,6 +122,7 @@ function resultSummary(task: AiTask, output: unknown): string {
     case 'PUBLICATION_CONTENT_BRIEF': return 'Advisory publication content brief generated.';
     case 'PUBLICATION_ARTICLE_GENERATION': return 'Advisory publication article draft generated.';
     case 'PUBLICATION_CONTENT_ADAPTATION': return 'Advisory distribution adaptation draft generated.';
+    case 'KEYWORD_EXPANSION': return 'Advisory keyword suggestions generated.';
   }
 }
 
@@ -134,6 +141,12 @@ function parseTaskOutput(task: AiTask, content: string): unknown {
     case 'PUBLICATION_CONTENT_BRIEF': return parsePublicationContentBriefOutput(content, task.sourceReferences);
     case 'PUBLICATION_ARTICLE_GENERATION': return parsePublicationArticleGenerationOutput(content, task.sourceReferences);
     case 'PUBLICATION_CONTENT_ADAPTATION': return parseDistributionAdaptationTaskOutput(task, content);
+    case 'KEYWORD_EXPANSION': {
+      const snapshot = task.factSnapshot as Record<string, unknown>;
+      const seed = snapshot.seedKeyword as Record<string, unknown> | undefined;
+      const seedText = typeof seed?.text === 'string' ? seed.text : '';
+      return parseKeywordExpansionOutput(content, seedText);
+    }
   }
 }
 
@@ -172,27 +185,34 @@ export async function executeAiTask(taskId: string, dependencies: ExecuteAiTaskD
 
     const output = parseTaskOutput(task, response.content);
     observability.emit({ event: 'ai.output.validated', taskId: task.id, projectId: task.projectId, runId: run.id, provider: 'DEEPSEEK', model: response.model, promptVersion: task.promptVersion });
-    const materialize = task.taskType === 'OPTIMIZATION_PLAN_RANKING'
-      ? (tx: Prisma.TransactionClient) => materializeOptimizationRankingSuccess(
+    const materialize = task.taskType === 'KEYWORD_EXPANSION'
+      ? (tx: Prisma.TransactionClient) => materializeKeywordSuggestions(
         task,
-        output as OptimizationPlanRankingOutput,
+        output as KeywordExpansionOutput,
+        { model: response.model, responseId: response.responseId },
         tx,
       )
-      : task.taskType === 'CONTENT_BRIEF'
-        ? (tx: Prisma.TransactionClient) => persistContentBrief(task, output as ReturnType<typeof parseContentBriefOutput>, tx).then(() => undefined)
-        : task.taskType === 'PUBLICATION_ARTICLE_GENERATION'
-          ? (tx: Prisma.TransactionClient) => materializeArticleGenerationOutput(
-            task,
-            output as ReturnType<typeof parsePublicationArticleGenerationOutput>,
-            tx
-          )
-          : task.taskType === 'PUBLICATION_CONTENT_ADAPTATION'
-            ? (tx: Prisma.TransactionClient) => materializeDistributionAdaptationOutput(
+      : task.taskType === 'OPTIMIZATION_PLAN_RANKING'
+        ? (tx: Prisma.TransactionClient) => materializeOptimizationRankingSuccess(
+          task,
+          output as OptimizationPlanRankingOutput,
+          tx,
+        )
+        : task.taskType === 'CONTENT_BRIEF'
+          ? (tx: Prisma.TransactionClient) => persistContentBrief(task, output as ReturnType<typeof parseContentBriefOutput>, tx).then(() => undefined)
+          : task.taskType === 'PUBLICATION_ARTICLE_GENERATION'
+            ? (tx: Prisma.TransactionClient) => materializeArticleGenerationOutput(
               task,
-              output as ReturnType<typeof parseDistributionAdaptationTaskOutput>,
+              output as ReturnType<typeof parsePublicationArticleGenerationOutput>,
               tx
             )
-            : undefined;
+            : task.taskType === 'PUBLICATION_CONTENT_ADAPTATION'
+              ? (tx: Prisma.TransactionClient) => materializeDistributionAdaptationOutput(
+                task,
+                output as ReturnType<typeof parseDistributionAdaptationTaskOutput>,
+                tx
+              )
+              : undefined;
     await repository.completeRun(task, run.id, response, output as Prisma.InputJsonValue, resultSummary(task, output), materialize);
     if (task.taskType === 'PUBLICATION_CONTENT_ADAPTATION') {
       try {

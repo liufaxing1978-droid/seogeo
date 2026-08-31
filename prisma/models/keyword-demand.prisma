@@ -1,0 +1,187 @@
+enum KeywordType {
+  CORE
+  LONG_TAIL
+  BRAND
+  QUESTION
+  LOCAL
+  COMMERCIAL
+}
+
+enum KeywordIntent {
+  INFORMATIONAL
+  NAVIGATIONAL
+  COMMERCIAL_INVESTIGATION
+  TRANSACTIONAL
+  LOCAL
+  UNKNOWN
+}
+
+enum KeywordPriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum KeywordStatus {
+  ACTIVE
+  DISABLED
+  ARCHIVED
+}
+
+enum KeywordSource {
+  MANUAL
+  AI_ACCEPTED
+  SEARCH_DISCOVERY_ACCEPTED
+}
+
+enum KeywordSuggestionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum KeywordDiscoveryStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+model Keyword {
+  id                  String          @id @default(uuid()) @db.Uuid
+  projectId           String          @db.Uuid
+  text                String
+  normalizedText      String
+  type                KeywordType
+  intent              KeywordIntent?
+  priority            KeywordPriority @default(MEDIUM)
+  status              KeywordStatus   @default(ACTIVE)
+  locked              Boolean         @default(false)
+  source              KeywordSource
+  language            String?
+  targetCountry       String?
+  notes               String?
+  createdByUserId     String?         @db.Uuid
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  project             Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parentEdges         KeywordRelation[]        @relation("KeywordParent")
+  childEdge           KeywordRelation?         @relation("KeywordChild")
+  groupMemberships    KeywordGroupMembership[]
+  seededSuggestions   KeywordSuggestion[]      @relation("KeywordSuggestionSeed")
+  acceptedSuggestions KeywordSuggestion[]      @relation("KeywordSuggestionAccepted")
+  auditEvents         KeywordAuditEvent[]
+
+  @@unique([projectId, normalizedText])
+  @@index([projectId, status])
+  @@index([projectId, type])
+  @@index([projectId, priority])
+}
+
+model KeywordRelation {
+  id              String   @id @default(uuid()) @db.Uuid
+  projectId       String   @db.Uuid
+  parentKeywordId String   @db.Uuid
+  childKeywordId  String   @unique @db.Uuid
+  createdAt       DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent  Keyword @relation("KeywordParent", fields: [parentKeywordId], references: [id], onDelete: Cascade)
+  child   Keyword @relation("KeywordChild", fields: [childKeywordId], references: [id], onDelete: Cascade)
+
+  @@unique([parentKeywordId, childKeywordId])
+  @@index([projectId, parentKeywordId])
+}
+
+model KeywordGroup {
+  id          String   @id @default(uuid()) @db.Uuid
+  projectId   String   @db.Uuid
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  memberships KeywordGroupMembership[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+}
+
+model KeywordGroupMembership {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @db.Uuid
+  groupId   String   @db.Uuid
+  keywordId String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  group   KeywordGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  keyword Keyword      @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, keywordId])
+  @@index([projectId, keywordId])
+}
+
+model KeywordSuggestion {
+  id                String                   @id @default(uuid()) @db.Uuid
+  projectId         String                   @db.Uuid
+  seedKeywordId     String                   @db.Uuid
+  acceptedKeywordId String?                  @db.Uuid
+  suggestedText     String
+  normalizedText    String
+  suggestedType     KeywordType?
+  suggestedIntent   KeywordIntent?
+  rationale         String?
+  status            KeywordSuggestionStatus @default(PENDING)
+  provider          String
+  model             String
+  aiTaskId          String                   @db.Uuid
+  responseId        String?
+  createdAt         DateTime                 @default(now())
+  decidedAt         DateTime?
+  decidedByUserId   String?                  @db.Uuid
+
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  seedKeyword     Keyword  @relation("KeywordSuggestionSeed", fields: [seedKeywordId], references: [id], onDelete: Cascade)
+  acceptedKeyword Keyword? @relation("KeywordSuggestionAccepted", fields: [acceptedKeywordId], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, seedKeywordId, normalizedText])
+  @@index([projectId, status, createdAt])
+  @@index([aiTaskId])
+}
+
+model KeywordDiscoveryCandidate {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  projectId          String                 @db.Uuid
+  normalizedQuery    String
+  representativeText String
+  status             KeywordDiscoveryStatus @default(PENDING)
+  acceptedKeywordId  String?                @db.Uuid
+  firstObservedAt    DateTime
+  lastObservedAt     DateTime
+  decidedAt          DateTime?
+  decidedByUserId    String?                @db.Uuid
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  @@unique([projectId, normalizedQuery], map: "KeywordDiscoveryCandidate_identity_key")
+  @@index([projectId, status, lastObservedAt], map: "KeywordDiscoveryCandidate_review_idx")
+}
+
+model KeywordAuditEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  projectId   String   @db.Uuid
+  keywordId   String?  @db.Uuid
+  actorUserId String?  @db.Uuid
+  eventType   String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword Keyword? @relation(fields: [keywordId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@index([keywordId, createdAt])
+}
