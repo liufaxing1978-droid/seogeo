@@ -8,6 +8,7 @@ import { createApp } from '../../src/app.js';
 import { prisma } from '../../src/db/prisma.js';
 import { OptimizationOperationsRepository } from '../../src/modules/optimization-operations/operations.repository.js';
 import { OptimizationOperationsService } from '../../src/modules/optimization-operations/operations.service.js';
+import { truncateProjectTestFixtures } from '../helpers/test-database.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -434,7 +435,7 @@ async function authoritySnapshot(projectId: string) {
 }
 
 async function cleanup() {
-  await prisma.$executeRawUnsafe('TRUNCATE TABLE "Project" CASCADE');
+  await truncateProjectTestFixtures(prisma);
 }
 
 afterAll(cleanup);

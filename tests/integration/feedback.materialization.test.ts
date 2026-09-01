@@ -26,9 +26,10 @@ import {
 import { OptimizationFeedbackService } from '../../src/modules/optimization-feedback/feedback.service.js';
 import { OPTIMIZATION_FEEDBACK_EVIDENCE_VERSION } from '../../src/modules/optimization-feedback/feedback.types.js';
 import { projectRepository } from '../../src/modules/projects/project.repository.js';
+import { truncateProjectTestFixtures } from '../helpers/test-database.js';
 
 afterAll(async () => {
-  await prisma.$executeRawUnsafe('TRUNCATE TABLE "Project" CASCADE');
+  await truncateProjectTestFixtures(prisma);
 });
 
 const DAY_MS = 24 * 60 * 60 * 1000;

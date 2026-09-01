@@ -4,6 +4,7 @@ import { prisma } from '../../src/db/prisma.js';
 import { derivePipelineStage } from '../../src/modules/optimization-operations/operations.derive.js';
 import { OptimizationOperationsRepository } from '../../src/modules/optimization-operations/operations.repository.js';
 import { OptimizationOperationsService } from '../../src/modules/optimization-operations/operations.service.js';
+import { truncateProjectTestFixtures } from '../helpers/test-database.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const NOW = new Date('2026-08-25T05:15:00.000Z');
@@ -488,7 +489,7 @@ async function createFeedbackProfile(input: {
 }
 
 async function cleanup(): Promise<void> {
-  await prisma.$executeRawUnsafe('TRUNCATE TABLE "Project" CASCADE');
+  await truncateProjectTestFixtures(prisma);
 }
 
 afterAll(cleanup);
