@@ -1,4 +1,4 @@
-import { Prisma, type KeywordDiscoveryCandidate } from '@prisma/client';
+import type { KeywordDiscoveryCandidate } from '@prisma/client';
 import { AppError } from '../../core/errors.js';
 import { normalizeKeywordText } from './keyword-normalize.js';
 import { projectKeywordDiscoveryEvidence } from './keyword-discovery.js';
@@ -100,10 +100,6 @@ function archivedKeywordRestoreRequired(): AppError {
     409,
     'KEYWORD_ARCHIVED_RESTORE_REQUIRED',
   );
-}
-
-function isUniqueConflict(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
 export class KeywordDiscoveryService {
@@ -268,28 +264,21 @@ export class KeywordDiscoveryService {
       if (keyword?.status === 'ARCHIVED') throw archivedKeywordRestoreRequired();
 
       if (!keyword) {
-        try {
-          keyword = await keywords.createKeyword({
-            projectId: input.projectId,
-            text: rawText,
-            normalizedText,
-            type: input.type,
-            intent: input.intent ?? 'UNKNOWN',
-            priority: input.priority ?? 'MEDIUM',
-            status: 'ACTIVE',
-            locked: false,
-            source: 'SEARCH_DISCOVERY_ACCEPTED',
-            language: input.language ?? null,
-            targetCountry: input.targetCountry ?? null,
-            notes: null,
-            createdByUserId: input.actorUserId,
-          });
-        } catch (error) {
-          if (!isUniqueConflict(error)) throw error;
-          keyword = await keywords.findByNormalized(input.projectId, normalizedText);
-          if (!keyword) throw error;
-          if (keyword.status === 'ARCHIVED') throw archivedKeywordRestoreRequired();
-        }
+        keyword = await keywords.createKeyword({
+          projectId: input.projectId,
+          text: rawText,
+          normalizedText,
+          type: input.type,
+          intent: input.intent ?? 'UNKNOWN',
+          priority: input.priority ?? 'MEDIUM',
+          status: 'ACTIVE',
+          locked: false,
+          source: 'SEARCH_DISCOVERY_ACCEPTED',
+          language: input.language ?? null,
+          targetCountry: input.targetCountry ?? null,
+          notes: null,
+          createdByUserId: input.actorUserId,
+        });
       }
 
       const decidedAt = this.now();

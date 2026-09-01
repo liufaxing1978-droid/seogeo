@@ -19,8 +19,9 @@ type DecisionRepositories = {
 
 const KEYWORD_DISCOVERY_TRANSACTION_MAX_ATTEMPTS = 3;
 
-function isSerializationConflict(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
+function isRetryableTransactionConflict(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError
+    && (error.code === 'P2034' || error.code === 'P2002');
 }
 
 export class KeywordDiscoveryRepository {
@@ -170,7 +171,7 @@ export class KeywordDiscoveryRepository {
           { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
         );
       } catch (error) {
-        if (!isSerializationConflict(error) || attempt === KEYWORD_DISCOVERY_TRANSACTION_MAX_ATTEMPTS) {
+        if (!isRetryableTransactionConflict(error) || attempt === KEYWORD_DISCOVERY_TRANSACTION_MAX_ATTEMPTS) {
           throw error;
         }
       }
