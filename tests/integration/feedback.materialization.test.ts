@@ -12,7 +12,7 @@ import type {
   PublicationVerificationStatus,
   RecommendedActionType
 } from '@prisma/client';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { prisma } from '../../src/db/prisma.js';
 import {
   buildFeedbackEvidenceKey,
@@ -26,6 +26,10 @@ import {
 import { OptimizationFeedbackService } from '../../src/modules/optimization-feedback/feedback.service.js';
 import { OPTIMIZATION_FEEDBACK_EVIDENCE_VERSION } from '../../src/modules/optimization-feedback/feedback.types.js';
 import { projectRepository } from '../../src/modules/projects/project.repository.js';
+
+afterAll(async () => {
+  await prisma.$executeRawUnsafe('TRUNCATE TABLE "Project" CASCADE');
+});
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

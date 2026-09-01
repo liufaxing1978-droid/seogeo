@@ -5,7 +5,6 @@ import { derivePipelineStage } from '../../src/modules/optimization-operations/o
 import { OptimizationOperationsRepository } from '../../src/modules/optimization-operations/operations.repository.js';
 import { OptimizationOperationsService } from '../../src/modules/optimization-operations/operations.service.js';
 
-const projectIds: string[] = [];
 const DAY_MS = 24 * 60 * 60 * 1000;
 const NOW = new Date('2026-08-25T05:15:00.000Z');
 
@@ -23,7 +22,6 @@ async function createProject(label: string) {
       planLevel: 'ADVANCED',
     },
   });
-  projectIds.push(project.id);
   return project;
 }
 
@@ -490,30 +488,7 @@ async function createFeedbackProfile(input: {
 }
 
 async function cleanup(): Promise<void> {
-  if (projectIds.length === 0) return;
-  const where = { projectId: { in: projectIds } };
-  await prisma.optimizationFeedbackEvidence.deleteMany({ where }).catch(() => undefined);
-  await prisma.optimizationFeedbackProfile.deleteMany({ where }).catch(() => undefined);
-  await prisma.optimizationExperimentObservation.deleteMany({ where }).catch(() => undefined);
-  await prisma.optimizationExperiment.deleteMany({ where }).catch(() => undefined);
-  await prisma.publicationVerification.deleteMany({ where }).catch(() => undefined);
-  await prisma.publicationExecution.deleteMany({ where }).catch(() => undefined);
-  await prisma.publicationApproval.deleteMany({ where }).catch(() => undefined);
-  await prisma.publicationPreview.deleteMany({ where }).catch(() => undefined);
-  await prisma.publicationPlan.deleteMany({ where }).catch(() => undefined);
-  await prisma.contentDraft.deleteMany({ where }).catch(() => undefined);
-  await prisma.publicationProposal.deleteMany({ where }).catch(() => undefined);
-  await prisma.publicationSite.deleteMany({ where }).catch(() => undefined);
-  await prisma.autopilotExecutionReservation.deleteMany({ where }).catch(() => undefined);
-  await prisma.optimizationAutopilotDecision.deleteMany({ where }).catch(() => undefined);
-  await prisma.optimizationRunItem.deleteMany({ where }).catch(() => undefined);
-  await prisma.optimizationRun.deleteMany({ where }).catch(() => undefined);
-  await prisma.autopilotPolicy.deleteMany({ where }).catch(() => undefined);
-  await prisma.optimizationPlan.deleteMany({ where }).catch(() => undefined);
-  await prisma.optimizationCandidate.deleteMany({ where }).catch(() => undefined);
-  await prisma.growthOpportunitySnapshot.deleteMany({ where }).catch(() => undefined);
-  await prisma.growthOpportunityIdentity.deleteMany({ where }).catch(() => undefined);
-  await prisma.project.deleteMany({ where: { id: { in: projectIds } } }).catch(() => undefined);
+  await prisma.$executeRawUnsafe('TRUNCATE TABLE "Project" CASCADE');
 }
 
 afterAll(cleanup);

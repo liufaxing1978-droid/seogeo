@@ -9,8 +9,6 @@ import { prisma } from '../../src/db/prisma.js';
 import { OptimizationOperationsRepository } from '../../src/modules/optimization-operations/operations.repository.js';
 import { OptimizationOperationsService } from '../../src/modules/optimization-operations/operations.service.js';
 
-const projectIds: string[] = [];
-const retainedImmutableProjectIds = new Set<string>();
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 async function readSourceTree(root: string): Promise<Array<{ path: string; source: string }>> {
@@ -37,7 +35,6 @@ async function createEligibleProject() {
       planLevel: 'ADVANCED',
     },
   });
-  projectIds.push(project.id);
   const policy = await prisma.autopilotPolicy.create({
     data: {
       projectId: project.id,
@@ -63,7 +60,6 @@ async function createEligibleProject() {
 
 async function createFullPersistedChain() {
   const { project, policy, growth } = await createEligibleProject();
-  retainedImmutableProjectIds.add(project.id);
   const now = new Date();
   const cutoffAt = new Date(now.getTime() - DAY_MS);
   const verifiedAnchorAt = new Date(cutoffAt.getTime() - 56 * DAY_MS);
@@ -438,12 +434,7 @@ async function authoritySnapshot(projectId: string) {
 }
 
 async function cleanup() {
-  const cleanupProjectIds = projectIds.filter((projectId) => !retainedImmutableProjectIds.has(projectId));
-  if (cleanupProjectIds.length === 0) return;
-  const where = { projectId: { in: cleanupProjectIds } };
-  await prisma.autopilotPolicy.deleteMany({ where });
-  await prisma.growthOpportunityIdentity.deleteMany({ where });
-  await prisma.project.deleteMany({ where: { id: { in: cleanupProjectIds } } });
+  await prisma.$executeRawUnsafe('TRUNCATE TABLE "Project" CASCADE');
 }
 
 afterAll(cleanup);
