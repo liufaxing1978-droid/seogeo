@@ -31,6 +31,7 @@ export interface OptimizationOrchestrationApiPort {
     requestedBy: string;
   }): Promise<unknown>;
   listAutomationRuns?(input: { projectId: string; limit: number }): Promise<unknown>;
+  getAutomationRun?(input: { projectId: string; runId: string }): Promise<unknown>;
   startAutomationRun?(input: StartAutomationRunInput): Promise<unknown>;
   retryAutomationRun?(input: RetryAutomationRunInput): Promise<unknown>;
   listAutomationDefinitions?(projectId: string): Promise<unknown>;
@@ -267,6 +268,31 @@ export function createOptimizationOrchestrationRoutes(
           'listAutomationRuns'
         );
         const data = await api.listAutomationRuns!({ projectId, limit });
+        res.json({ data });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  router.get(
+    '/projects/:projectId/optimization/automation-runs/:runId',
+    requireAuthentication(),
+    requireProjectMembership(),
+    requireFeature('OPTIMIZATION_ORCHESTRATION'),
+    requireProjectCapability('PROJECT_READ'),
+    async (req, res, next) => {
+      try {
+        const projectId = projectIdSchema.parse(req.params.projectId);
+        const runId = runIdSchema.parse(req.params.runId);
+        assertAutomationRunMethod(
+          typeof api.getAutomationRun === 'function',
+          'getAutomationRun'
+        );
+        const data = await api.getAutomationRun!({ projectId, runId });
+        if (!data) {
+          throw new AppError('Automation run not found', 404, 'AUTOMATION_RUN_NOT_FOUND');
+        }
         res.json({ data });
       } catch (error) {
         next(error);
