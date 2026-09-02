@@ -25,6 +25,7 @@ import {
   type KeywordOpportunityService,
 } from './keyword-opportunity.service.js';
 import { KeywordWebRepository } from './keyword.web.repository.js';
+import { KeywordCannibalizationService } from './keyword-cannibalization.service.js';
 import {
   keywordBulkCreateSchema,
   keywordCreateSchema,
@@ -79,6 +80,7 @@ export function createKeywordWebRoutes(
   aiService: Pick<AiTaskService, 'createAndEnqueue'> = aiTaskService,
   searchEvidenceService: Pick<KeywordSearchEvidenceService, 'evaluateProject'> = keywordSearchEvidenceService,
   opportunityService: Pick<KeywordOpportunityService, 'calculate'> = keywordOpportunityService,
+  cannibalizationService = new KeywordCannibalizationService(),
 ) {
   const router = Router();
   const readGuards = [
@@ -190,6 +192,14 @@ export function createKeywordWebRoutes(
     } catch (error) {
       next(error);
     }
+  });
+
+  router.post('/projects/:projectId/keywords/:keywordId/cannibalization', ...writeGuards, async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.projectId);
+      await cannibalizationService.calculateKeyword(projectId, routeParam(req.params.keywordId), req.auth!.userId);
+      res.redirect(303, `/projects/${projectId}/keywords`);
+    } catch (error) { next(error); }
   });
 
   router.post(

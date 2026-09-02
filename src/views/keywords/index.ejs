@@ -219,6 +219,7 @@
                   <% } else { %>
                     <span>未分析</span>
                   <% } %>
+                  <% if (canWriteKeywords) { %><form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/cannibalization"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="keyword-button" type="submit"><%= keyword.cannibalization ? '重新分析' : '分析冲突' %></button></form><% } %>
                 </td>
                 <td>
                   <div class="keyword-meta-stack">
