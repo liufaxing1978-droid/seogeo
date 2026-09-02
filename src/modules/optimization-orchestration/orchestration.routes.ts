@@ -20,6 +20,7 @@ import {
   OptimizationOrchestrationService,
   type CreateManagedAutomationDefinitionInput,
   type RetryAutomationRunInput,
+  type StartAutomationRunInput,
   type UpdateManagedAutomationDefinitionInput
 } from './orchestration.service.js';
 
@@ -30,6 +31,7 @@ export interface OptimizationOrchestrationApiPort {
     requestedBy: string;
   }): Promise<unknown>;
   listAutomationRuns?(input: { projectId: string; limit: number }): Promise<unknown>;
+  startAutomationRun?(input: StartAutomationRunInput): Promise<unknown>;
   retryAutomationRun?(input: RetryAutomationRunInput): Promise<unknown>;
   listAutomationDefinitions?(projectId: string): Promise<unknown>;
   createAutomationDefinition?(input: CreateManagedAutomationDefinitionInput): Promise<unknown>;
@@ -42,6 +44,10 @@ const definitionIdSchema = z.string().uuid();
 const runIdSchema = z.string().uuid();
 const automationRunListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50)
+}).strict();
+const automationRunCreateSchema = z.object({
+  definitionId: z.string().uuid(),
+  requestKey: z.string().trim().min(1).max(128)
 }).strict();
 const manualRunSchema = z.object({
   manualRequestId: z.string().uuid()
@@ -262,6 +268,34 @@ export function createOptimizationOrchestrationRoutes(
         );
         const data = await api.listAutomationRuns!({ projectId, limit });
         res.json({ data });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  router.post(
+    '/projects/:projectId/optimization/automation-runs',
+    requireAuthentication(),
+    requireProjectMembership(),
+    requireFeature('OPTIMIZATION_ORCHESTRATION'),
+    requireProjectCapability('OPTIMIZATION_RUN'),
+    requireCsrf(),
+    async (req, res, next) => {
+      try {
+        const projectId = projectIdSchema.parse(req.params.projectId);
+        const input = automationRunCreateSchema.parse(req.body);
+        assertAutomationRunMethod(
+          typeof api.startAutomationRun === 'function',
+          'startAutomationRun'
+        );
+        const data = await api.startAutomationRun!({
+          projectId,
+          definitionId: input.definitionId,
+          source: 'MANUAL',
+          requestKey: input.requestKey
+        });
+        res.status(202).json({ data });
       } catch (error) {
         next(error);
       }
