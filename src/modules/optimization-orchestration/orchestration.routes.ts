@@ -19,6 +19,7 @@ import { optimizationOrchestrationRepository } from './orchestration.repository.
 import {
   OptimizationOrchestrationService,
   type CreateManagedAutomationDefinitionInput,
+  type RetryAutomationRunInput,
   type UpdateManagedAutomationDefinitionInput
 } from './orchestration.service.js';
 
@@ -28,6 +29,7 @@ export interface OptimizationOrchestrationApiPort {
     manualRequestId: string;
     requestedBy: string;
   }): Promise<unknown>;
+  retryAutomationRun?(input: RetryAutomationRunInput): Promise<unknown>;
   listAutomationDefinitions?(projectId: string): Promise<unknown>;
   createAutomationDefinition?(input: CreateManagedAutomationDefinitionInput): Promise<unknown>;
   updateAutomationDefinition?(input: UpdateManagedAutomationDefinitionInput): Promise<unknown>;
@@ -36,6 +38,7 @@ export interface OptimizationOrchestrationApiPort {
 
 const projectIdSchema = z.string().uuid();
 const definitionIdSchema = z.string().uuid();
+const runIdSchema = z.string().uuid();
 const manualRunSchema = z.object({
   manualRequestId: z.string().uuid()
 }).strict();
@@ -98,12 +101,15 @@ class LazyOptimizationAutomationQueuePort {
 }
 
 function createDefaultOptimizationOrchestrationApi(): OptimizationOrchestrationApiPort {
+  const automationQueue = new OptimizationAutomationQueue(new LazyOptimizationAutomationQueuePort());
   return new OptimizationOrchestrationService({
     repository: optimizationOrchestrationRepository,
     planningQueue: new OptimizationPlanningQueue(new LazyOptimizationPlanningQueuePort()),
     projects: projectRepository,
+    automationRuns: optimizationOrchestrationRepository,
+    automationQueue,
     automationDefinitions: automationDefinitionManagementRepository,
-    automationSchedules: new OptimizationAutomationQueue(new LazyOptimizationAutomationQueuePort())
+    automationSchedules: automationQueue
   });
 }
 
@@ -116,6 +122,19 @@ function assertDefinitionManagementMethod(
       `Automation definition management method ${method} is unavailable`,
       503,
       'AUTOMATION_DEFINITION_MANAGEMENT_UNAVAILABLE'
+    );
+  }
+}
+
+function assertAutomationRunMethod(
+  available: boolean,
+  method: string
+): void {
+  if (!available) {
+    throw new AppError(
+      `Automation run method ${method} is unavailable`,
+      503,
+      'AUTOMATION_RUN_MANAGEMENT_UNAVAILABLE'
     );
   }
 }
@@ -217,6 +236,30 @@ export function createOptimizationOrchestrationRoutes(
           patch
         });
         res.json({ data });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  router.post(
+    '/projects/:projectId/optimization/automation-runs/:runId/retry',
+    requireAuthentication(),
+    requireProjectMembership(),
+    requireFeature('OPTIMIZATION_ORCHESTRATION'),
+    requireProjectCapability('OPTIMIZATION_RUN'),
+    requireCsrf(),
+    async (req, res, next) => {
+      try {
+        emptyBodySchema.parse(req.body ?? {});
+        const projectId = projectIdSchema.parse(req.params.projectId);
+        const runId = runIdSchema.parse(req.params.runId);
+        assertAutomationRunMethod(
+          typeof api.retryAutomationRun === 'function',
+          'retryAutomationRun'
+        );
+        const data = await api.retryAutomationRun!({ projectId, runId });
+        res.status(202).json({ data });
       } catch (error) {
         next(error);
       }
