@@ -4,7 +4,15 @@ import { processOptimizationAutomationJob } from '../../src/modules/optimization
 const RUN_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const DEFINITION_ID = '33333333-3333-4333-8333-333333333333';
+const BINDING_ID = '44444444-4444-4444-8444-444444444444';
 const NOW = new Date('2026-09-02T03:00:00.000Z');
+
+const ACTION_CONFIG = {
+  version: 'SEARCH_REFRESH_V1',
+  bindingId: BINDING_ID,
+  lookbackDays: 7,
+  lagDays: 1
+};
 
 function queuedRun(overrides: Record<string, unknown> = {}) {
   return {
@@ -32,6 +40,7 @@ function definition(overrides: Record<string, unknown> = {}) {
     projectId: PROJECT_ID,
     key: 'daily-search-refresh',
     actionType: 'SEARCH_REFRESH',
+    actionConfig: ACTION_CONFIG,
     enabled: true,
     scheduleCron: '0 3 * * *',
     overlapPolicy: 'SKIP_IF_RUNNING',
@@ -136,6 +145,7 @@ describe('OL-2 automation worker', () => {
     });
     expect(state.execute).toHaveBeenCalledWith({
       actionType: 'SEARCH_REFRESH',
+      actionConfig: ACTION_CONFIG,
       projectId: PROJECT_ID,
       runId: RUN_ID,
       definitionId: DEFINITION_ID
