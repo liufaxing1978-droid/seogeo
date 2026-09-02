@@ -195,6 +195,19 @@ async function seedOfficialSearchEvidence(
 }
 
 describe('P11-01 keyword center web UI', () => {
+  it('renders an inherited Cluster Target URL instead of leaving a mapped member unmapped', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const keyword = await keywordService.createManual({ actorUserId: fixture.user.id, projectId: fixture.project.id, text: 'Cluster 法事', type: 'CORE' });
+      const group = await prisma.keywordGroup.create({ data: { projectId: fixture.project.id, name: 'Inherited target' } });
+      await prisma.keywordGroupMembership.create({ data: { projectId: fixture.project.id, groupId: group.id, keywordId: keyword.id } });
+      const url = `https://${fixture.project.primaryDomain}/cluster-guide`;
+      await prisma.keywordTargetMapping.create({ data: { projectId: fixture.project.id, groupId: group.id, targetUrl: url, normalizedUrl: url } });
+      const response = await request(createApp()).get(`/projects/${fixture.project.id}/keywords`).set('Cookie', fixture.sessionCookie).expect(200);
+      expect(response.text).toContain(url);
+      expect(response.text).toContain('继承');
+    } finally { await fixture.cleanup(); }
+  });
   it('renders persisted P4 Target URL and latest cannibalization snapshot without inventing evidence', async () => {
     const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
     try {

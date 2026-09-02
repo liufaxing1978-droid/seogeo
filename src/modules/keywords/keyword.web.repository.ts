@@ -17,6 +17,7 @@ import type {
 } from './keyword-opportunity-score.js';
 import type { KeywordCoverageResult, KeywordListRecord } from './keyword.types.js';
 import type { KeywordListQuery } from './keyword.schema.js';
+import { resolveEffectiveTargetUrl } from './keyword-target-url.js';
 
 export interface KeywordCenterKeywordRecord extends KeywordListRecord {
   parentKeywordId: string | null;
@@ -31,7 +32,7 @@ export interface KeywordCenterKeywordRecord extends KeywordListRecord {
     breakdown: Record<KeywordOpportunityComponentName, KeywordOpportunityBreakdownEntry>;
     createdAt: Date;
   };
-  targetUrl: string | null;
+  target: { state: 'DIRECT' | 'INHERITED' | 'UNMAPPED' | 'AMBIGUOUS'; url: string | null };
   cannibalization: null | { risk: string; recommendedAction: string | null; confidence: number | null; createdAt: Date };
 }
 
@@ -106,7 +107,7 @@ export class KeywordWebRepository {
         orderBy: { createdAt: 'desc' },
         take: 50,
       }),
-      prisma.keywordTargetMapping.findMany({ where: { projectId }, select: { keywordId: true, normalizedUrl: true } }),
+      prisma.keywordTargetMapping.findMany({ where: { projectId }, select: { keywordId: true, groupId: true, normalizedUrl: true } }),
       prisma.keywordCannibalizationSnapshot.findMany({ where: { projectId, keywordId: { not: null } }, orderBy: { createdAt: 'desc' }, select: { keywordId: true, risk: true, recommendedAction: true, confidence: true, createdAt: true } }),
     ]);
 
@@ -124,6 +125,7 @@ export class KeywordWebRepository {
     ]);
     const parentByChild = new Map(relations.map((item) => [item.childKeywordId, item.parentKeywordId]));
     const targetByKeyword = new Map(targets.flatMap((item) => item.keywordId ? [[item.keywordId, item.normalizedUrl] as const] : []));
+    const targetByGroup = new Map(targets.flatMap((item) => item.groupId ? [[item.groupId, item.normalizedUrl] as const] : []));
     const cannibalizationByKeyword = new Map<string, (typeof cannibalization)[number]>();
     for (const item of cannibalization) if (item.keywordId && !cannibalizationByKeyword.has(item.keywordId)) cannibalizationByKeyword.set(item.keywordId, item);
     const groupsByKeyword = new Map<string, string[]>();
@@ -171,7 +173,7 @@ export class KeywordWebRepository {
           >,
           createdAt: opportunity.createdAt,
         } : null,
-        targetUrl: targetByKeyword.get(keyword.id) ?? null,
+        target: resolveEffectiveTargetUrl({ direct: targetByKeyword.get(keyword.id) ?? null, inherited: (groupsByKeyword.get(keyword.id) ?? []).flatMap((groupId) => targetByGroup.get(groupId) ?? []) }),
         cannibalization: cannibalizationByKeyword.get(keyword.id) ?? null,
       };
     });

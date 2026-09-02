@@ -211,7 +211,7 @@
                     <% if (keyword.locked) { %><span class="keyword-lock">已锁定</span><% } %>
                   </div>
                 </td>
-                <td data-ui="keyword-target-url"><%= keyword.targetUrl || '未映射' %></td>
+                <td data-ui="keyword-target-url"><%= keyword.target.url || '未映射' %><small><%= keyword.target.state === 'INHERITED' ? '继承 Cluster' : keyword.target.state === 'AMBIGUOUS' ? 'Cluster 映射冲突' : keyword.target.state === 'DIRECT' ? '直接映射' : '' %></small></td>
                 <td data-ui="keyword-cannibalization">
                   <% if (keyword.cannibalization) { %>
                     <strong><%= keyword.cannibalization.risk %></strong>
