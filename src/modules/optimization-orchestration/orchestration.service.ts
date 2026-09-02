@@ -44,6 +44,10 @@ export type AutomationRunRepositoryPort = {
   findActiveAutomationRun(definitionId: string): Promise<AutomationRun | null>;
   createAutomationRun(input: CreateAutomationRunInput): Promise<AutomationRun>;
   getAutomationRun(runId: string): Promise<AutomationRun | null>;
+  getAutomationRunForProject?(input: {
+    projectId: string;
+    runId: string;
+  }): Promise<AutomationRun | null>;
   transitionAutomationRun(input: GuardedAutomationRunTransition): Promise<boolean>;
   listTimedOutAutomationRuns(asOf: Date): Promise<AutomationRun[]>;
   listAutomationRuns?(input: ListAutomationRunsInput): Promise<AutomationRun[]>;
@@ -401,6 +405,17 @@ export class OptimizationOrchestrationService {
       throw new Error('Automation run listing is not configured');
     }
     return repository.listAutomationRuns(input);
+  }
+
+  async getAutomationRun(input: {
+    projectId: string;
+    runId: string;
+  }): Promise<AutomationRun | null> {
+    const { repository } = this.automationDeps();
+    if (!repository.getAutomationRunForProject) {
+      throw new Error('Automation run detail lookup is not configured');
+    }
+    return repository.getAutomationRunForProject(input);
   }
 
   async startAutomationRun(input: StartAutomationRunInput): Promise<AutomationRun> {
