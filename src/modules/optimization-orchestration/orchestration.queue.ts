@@ -31,6 +31,9 @@ export type OptimizationAutomationJobData =
       kind: 'START_SCHEDULED';
       definitionId: string;
       projectId: string;
+    }
+  | {
+      kind: 'REPAIR_TIMEOUTS';
     };
 
 export type AutomationScheduleDefinition = {
