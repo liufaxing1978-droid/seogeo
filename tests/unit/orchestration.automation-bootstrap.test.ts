@@ -120,4 +120,27 @@ describe('OL-2 automation worker bootstrap', () => {
     expect(reconcileAutomationSchedules).toHaveBeenCalledTimes(1);
     expect(reconcileAutomationSchedules).toHaveBeenCalledWith(PROJECT_ID);
   });
+
+  it('registers a durable minute-level scheduler for timeout repair on the automation queue', async () => {
+    const register = (workerBootstrap as unknown as Record<string, unknown>)[
+      'registerOptimizationAutomationTimeoutRepairScheduler'
+    ];
+    expect(register).toBeTypeOf('function');
+    if (typeof register !== 'function') return;
+
+    const upsertJobScheduler = vi.fn().mockResolvedValue(undefined);
+
+    await (register as (queue: { upsertJobScheduler: typeof upsertJobScheduler }) => Promise<void>)({
+      upsertJobScheduler
+    });
+
+    expect(upsertJobScheduler).toHaveBeenCalledWith(
+      'optimization-automation-timeout-repair',
+      { every: 60_000 },
+      expect.objectContaining({
+        name: 'repair-timed-out-automation-runs',
+        data: { kind: 'REPAIR_TIMEOUTS' }
+      })
+    );
+  });
 });
