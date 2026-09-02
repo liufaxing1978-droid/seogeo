@@ -71,6 +71,9 @@ async function startScheduledAutomation(
   if (job.name !== 'start-scheduled-automation') {
     throw workerError('INVALID_AUTOMATION_JOB', 'Unexpected scheduled automation job name');
   }
+  if (job.data.kind !== 'START_SCHEDULED') {
+    throw workerError('INVALID_AUTOMATION_JOB', 'Scheduled automation payload is invalid');
+  }
 
   const schedulerJobId = requireScheduledJobId(job);
   await deps.service.startAutomationRun({
