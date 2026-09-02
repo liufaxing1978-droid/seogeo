@@ -8,6 +8,7 @@ import { seedAuthenticatedUser } from '../helpers/auth-fixture.js';
 const fixtures: Awaited<ReturnType<typeof seedAuthenticatedUser>>[] = [];
 const DEFINITION_ID = '33333333-3333-4333-8333-333333333333';
 const BINDING_ID = '44444444-4444-4444-8444-444444444444';
+const MANUAL_REQUEST_ID = '66666666-6666-4666-8666-666666666666';
 
 async function seed(role: 'VIEWER' | 'OPERATOR' | 'ADMIN' | 'OWNER') {
   const fixture = await seedAuthenticatedUser({
@@ -54,7 +55,7 @@ function definition(projectId: string, overrides: Record<string, unknown> = {}) 
 function createFakeApi(projectId: string) {
   const current = definition(projectId);
   const api = {
-    triggerManual: vi.fn(),
+    triggerManual: vi.fn().mockResolvedValue({ id: 'optimization-run-1', status: 'QUEUED' }),
     listAutomationDefinitions: vi.fn().mockResolvedValue([current]),
     createAutomationDefinition: vi.fn().mockResolvedValue(current),
     updateAutomationDefinition: vi.fn().mockImplementation(async (input: { patch: Record<string, unknown> }) => ({
@@ -68,6 +69,10 @@ function createFakeApi(projectId: string) {
 
 function definitionsUrl(projectId: string) {
   return `/api/v1/projects/${projectId}/optimization/automation-definitions`;
+}
+
+function runsUrl(projectId: string) {
+  return `/api/v1/projects/${projectId}/optimization/runs`;
 }
 
 function createBody() {
@@ -207,5 +212,69 @@ describe('OL-3 automation definition management API', () => {
     expect(response.status).toBe(200);
     expect(response.body.data).toEqual({ considered: 1, synced: 1 });
     expect(api.reconcileAutomationSchedules).toHaveBeenCalledWith(owner.project.id);
+  });
+
+  it('rejects unauthenticated manual optimization triggers', async () => {
+    const owner = await seed('OWNER');
+    const api = createFakeApi(owner.project.id);
+    const app = createApp({ optimizationOrchestrationApi: api as never });
+
+    const response = await request(app)
+      .post(runsUrl(owner.project.id))
+      .send({ manualRequestId: MANUAL_REQUEST_ID });
+
+    expect(response.status).toBe(401);
+    expect(response.body).toMatchObject({ error: { code: 'AUTHENTICATION_REQUIRED' } });
+    expect(api.triggerManual).not.toHaveBeenCalled();
+  });
+
+  it('requires OPTIMIZATION_RUN instead of allowing a VIEWER to trigger optimization', async () => {
+    const viewer = await seed('VIEWER');
+    const api = createFakeApi(viewer.project.id);
+    const app = createApp({ optimizationOrchestrationApi: api as never });
+
+    const response = await request(app)
+      .post(runsUrl(viewer.project.id))
+      .set('Cookie', viewer.sessionCookie)
+      .set('X-CSRF-Token', csrf(viewer))
+      .send({ manualRequestId: MANUAL_REQUEST_ID });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({ error: { code: 'PROJECT_CAPABILITY_REQUIRED' } });
+    expect(api.triggerManual).not.toHaveBeenCalled();
+  });
+
+  it('requires valid CSRF from an OPERATOR before triggering optimization', async () => {
+    const operator = await seed('OPERATOR');
+    const api = createFakeApi(operator.project.id);
+    const app = createApp({ optimizationOrchestrationApi: api as never });
+
+    const response = await request(app)
+      .post(runsUrl(operator.project.id))
+      .set('Cookie', operator.sessionCookie)
+      .send({ manualRequestId: MANUAL_REQUEST_ID });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({ error: { code: 'CSRF_INVALID' } });
+    expect(api.triggerManual).not.toHaveBeenCalled();
+  });
+
+  it('binds an authorized manual trigger to the authenticated user actor', async () => {
+    const operator = await seed('OPERATOR');
+    const api = createFakeApi(operator.project.id);
+    const app = createApp({ optimizationOrchestrationApi: api as never });
+
+    const response = await request(app)
+      .post(runsUrl(operator.project.id))
+      .set('Cookie', operator.sessionCookie)
+      .set('X-CSRF-Token', csrf(operator))
+      .send({ manualRequestId: MANUAL_REQUEST_ID });
+
+    expect(response.status).toBe(202);
+    expect(api.triggerManual).toHaveBeenCalledWith({
+      projectId: operator.project.id,
+      manualRequestId: MANUAL_REQUEST_ID,
+      requestedBy: `user:${operator.user.id}`,
+    });
   });
 });
