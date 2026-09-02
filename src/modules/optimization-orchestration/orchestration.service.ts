@@ -81,6 +81,11 @@ export type StartAutomationRunInput = {
   requestKey: string;
 };
 
+export type RetryAutomationRunInput = {
+  runId: string;
+  projectId: string;
+};
+
 export type CreateManagedAutomationDefinitionInput = {
   projectId: string;
   key: string;
@@ -426,10 +431,13 @@ export class OptimizationOrchestrationService {
     return run;
   }
 
-  async retryAutomationRun(runId: string): Promise<AutomationRun> {
+  async retryAutomationRun(input: RetryAutomationRunInput): Promise<AutomationRun> {
     const { repository, queue } = this.automationDeps();
-    const run = await repository.getAutomationRun(runId);
+    const run = await repository.getAutomationRun(input.runId);
     if (!run) throw new Error('Automation run not found');
+    if (run.projectId !== input.projectId) {
+      throw new Error('Automation run project mismatch');
+    }
     if (run.status !== 'FAILED') {
       throw new Error('Only failed automation runs can be retried');
     }
