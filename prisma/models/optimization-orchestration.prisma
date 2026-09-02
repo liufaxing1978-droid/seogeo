@@ -28,6 +28,24 @@ enum OptimizationRunItemStatus {
   FAILED
 }
 
+enum AutomationRunSource {
+  MANUAL
+  SCHEDULED
+}
+
+enum AutomationRunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  TIMED_OUT
+  SKIPPED
+}
+
+enum AutomationOverlapPolicy {
+  SKIP_IF_RUNNING
+}
+
 model OptimizationRun {
   id                  String                 @id @default(uuid()) @db.Uuid
   projectId           String                 @db.Uuid
@@ -74,4 +92,47 @@ model OptimizationRunItem {
   @@unique([runId, optimizationPlanId], map: "OptimizationRunItem_run_plan")
   @@unique([runId, itemKey], map: "OptimizationRunItem_run_item_key")
   @@index([projectId, status, createdAt], map: "OptimizationRunItem_project_status_idx")
+}
+
+model AutomationDefinition {
+  id            String                  @id @default(uuid()) @db.Uuid
+  projectId     String                  @db.Uuid
+  key           String
+  actionType    String
+  enabled       Boolean                 @default(true)
+  scheduleCron  String?
+  overlapPolicy AutomationOverlapPolicy @default(SKIP_IF_RUNNING)
+  maxAttempts   Int                     @default(3)
+  timeoutMs     Int                     @default(300000)
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+
+  runs AutomationRun[]
+
+  @@unique([projectId, key], map: "AutomationDefinition_project_key")
+  @@index([projectId, enabled], map: "AutomationDefinition_project_enabled_idx")
+}
+
+model AutomationRun {
+  id             String              @id @default(uuid()) @db.Uuid
+  definitionId   String              @db.Uuid
+  projectId      String              @db.Uuid
+  source         AutomationRunSource
+  requestKey     String
+  status         AutomationRunStatus @default(QUEUED)
+  attempt        Int                 @default(1)
+  deadlineAt     DateTime?
+  blockedByRunId String?             @db.Uuid
+  startedAt      DateTime?
+  completedAt    DateTime?
+  lastErrorCode  String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  definition AutomationDefinition @relation(fields: [definitionId], references: [id], onDelete: Restrict)
+
+  @@unique([definitionId, requestKey], map: "AutomationRun_definition_request_key")
+  @@index([projectId, status, createdAt], map: "AutomationRun_project_status_idx")
+  @@index([definitionId, status, createdAt], map: "AutomationRun_definition_status_idx")
+  @@index([status, deadlineAt], map: "AutomationRun_timeout_idx")
 }
