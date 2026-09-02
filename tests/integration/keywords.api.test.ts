@@ -15,6 +15,19 @@ function csrfFor(fixture: Awaited<ReturnType<typeof seedAuthenticatedUser>>): st
 }
 
 describe('P11-01 keyword JSON API authorization', () => {
+  it('lets a CONTENT_WRITE member set an in-scope Target URL and read its P4 analysis', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const app = createApp();
+      const csrf = csrfFor(fixture);
+      const created = await request(app).post(`/api/v1/projects/${fixture.project.id}/keywords`).set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf).send({ text: '法事', type: 'CORE' }).expect(201);
+      const url = `https://${fixture.project.primaryDomain}/guide`;
+      const target = await request(app).put(`/api/v1/projects/${fixture.project.id}/keywords/${created.body.data.id}/target-url`).set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf).send({ targetUrl: url }).expect(200);
+      expect(target.body.data).toMatchObject({ keywordId: created.body.data.id, normalizedUrl: url });
+      const analysis = await request(app).post(`/api/v1/projects/${fixture.project.id}/keywords/${created.body.data.id}/cannibalization`).set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf).send({}).expect(201);
+      expect(analysis.body.data).toMatchObject({ risk: 'NONE' });
+    } finally { await fixture.cleanup(); }
+  });
   it('rejects anonymous keyword reads', async () => {
     const response = await request(createApp())
       .get('/api/v1/projects/00000000-0000-0000-0000-000000000001/keywords')
