@@ -87,6 +87,11 @@ export type CreateAutomationRunInput = {
   blockedByRunId: string | null;
 };
 
+export type ListAutomationRunsInput = {
+  projectId: string;
+  limit: number;
+};
+
 export type GuardedAutomationRunTransition = {
   runId: string;
   from: AutomationRunStatus;
@@ -423,6 +428,14 @@ export class OptimizationOrchestrationRepository {
 
   getAutomationRun(runId: string): Promise<AutomationRun | null> {
     return this.db.automationRun.findUnique({ where: { id: runId } });
+  }
+
+  listAutomationRuns(input: ListAutomationRunsInput): Promise<AutomationRun[]> {
+    return this.db.automationRun.findMany({
+      where: { projectId: input.projectId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: input.limit
+    });
   }
 
   async transitionAutomationRun(input: GuardedAutomationRunTransition): Promise<boolean> {
