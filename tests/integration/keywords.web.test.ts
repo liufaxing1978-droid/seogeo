@@ -195,6 +195,18 @@ async function seedOfficialSearchEvidence(
 }
 
 describe('P11-01 keyword center web UI', () => {
+  it('renders persisted P4 Target URL and latest cannibalization snapshot without inventing evidence', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const keyword = await keywordService.createManual({ actorUserId: fixture.user.id, projectId: fixture.project.id, text: '法事', type: 'CORE' });
+      const url = `https://${fixture.project.primaryDomain}/guide`;
+      await prisma.keywordTargetMapping.create({ data: { projectId: fixture.project.id, keywordId: keyword.id, targetUrl: url, normalizedUrl: url } });
+      await prisma.keywordCannibalizationSnapshot.create({ data: { projectId: fixture.project.id, keywordId: keyword.id, risk: 'MEDIUM', recommendedAction: 'REPOSITION', urls: [url], reasons: ['TARGET_MAPPING_CONFLICT'], sourceProvenance: { growthSnapshotId: null }, confidence: 0.7, formulaVersion: 'keyword-cannibalization-v1' } });
+      const response = await request(createApp()).get(`/projects/${fixture.project.id}/keywords`).set('Cookie', fixture.sessionCookie).expect(200);
+      expect(response.text).toContain(url);
+      expect(response.text).toContain('REPOSITION');
+    } finally { await fixture.cleanup(); }
+  });
   it('renders persisted Keyword Cluster primary and management controls', async () => {
     const fixture = await seedAuthenticatedUser({
       role: 'OWNER',

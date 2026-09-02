@@ -31,6 +31,8 @@ export interface KeywordCenterKeywordRecord extends KeywordListRecord {
     breakdown: Record<KeywordOpportunityComponentName, KeywordOpportunityBreakdownEntry>;
     createdAt: Date;
   };
+  targetUrl: string | null;
+  cannibalization: null | { risk: string; recommendedAction: string | null; confidence: number | null; createdAt: Date };
 }
 
 export interface KeywordCenterViewModel {
@@ -70,7 +72,7 @@ export class KeywordWebRepository {
   ) {}
 
   async load(projectId: string, filters: KeywordListQuery = {}): Promise<KeywordCenterViewModel> {
-    const [project, keywords, keywordOptions, relations, groups, memberships, suggestions] = await Promise.all([
+    const [project, keywords, keywordOptions, relations, groups, memberships, suggestions, targets, cannibalization] = await Promise.all([
       prisma.project.findUnique({
         where: { id: projectId },
         select: {
@@ -104,6 +106,8 @@ export class KeywordWebRepository {
         orderBy: { createdAt: 'desc' },
         take: 50,
       }),
+      prisma.keywordTargetMapping.findMany({ where: { projectId }, select: { keywordId: true, normalizedUrl: true } }),
+      prisma.keywordCannibalizationSnapshot.findMany({ where: { projectId, keywordId: { not: null } }, orderBy: { createdAt: 'desc' }, select: { keywordId: true, risk: true, recommendedAction: true, confidence: true, createdAt: true } }),
     ]);
 
     if (!project) {
@@ -119,6 +123,9 @@ export class KeywordWebRepository {
       ),
     ]);
     const parentByChild = new Map(relations.map((item) => [item.childKeywordId, item.parentKeywordId]));
+    const targetByKeyword = new Map(targets.flatMap((item) => item.keywordId ? [[item.keywordId, item.normalizedUrl] as const] : []));
+    const cannibalizationByKeyword = new Map<string, (typeof cannibalization)[number]>();
+    for (const item of cannibalization) if (item.keywordId && !cannibalizationByKeyword.has(item.keywordId)) cannibalizationByKeyword.set(item.keywordId, item);
     const groupsByKeyword = new Map<string, string[]>();
     for (const membership of memberships) {
       const ids = groupsByKeyword.get(membership.keywordId) ?? [];
@@ -164,6 +171,8 @@ export class KeywordWebRepository {
           >,
           createdAt: opportunity.createdAt,
         } : null,
+        targetUrl: targetByKeyword.get(keyword.id) ?? null,
+        cannibalization: cannibalizationByKeyword.get(keyword.id) ?? null,
       };
     });
 

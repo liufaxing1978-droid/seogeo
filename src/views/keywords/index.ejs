@@ -187,6 +187,8 @@
               <th>类型 / 意图</th>
               <th>优先级</th>
               <th>机会分</th>
+              <th>Target URL</th>
+              <th>Cannibalization</th>
               <th>内容覆盖</th>
               <th>搜索证据</th>
               <th>父关键词 / 分组</th>
@@ -208,6 +210,15 @@
                     <span><%= keyword.source === 'MANUAL' ? '手动' : 'AI 已接受' %></span>
                     <% if (keyword.locked) { %><span class="keyword-lock">已锁定</span><% } %>
                   </div>
+                </td>
+                <td data-ui="keyword-target-url"><%= keyword.targetUrl || '未映射' %></td>
+                <td data-ui="keyword-cannibalization">
+                  <% if (keyword.cannibalization) { %>
+                    <strong><%= keyword.cannibalization.risk %></strong>
+                    <small><%= keyword.cannibalization.recommendedAction || '无需动作' %> · 置信度 <%= keyword.cannibalization.confidence === null ? '未知' : Math.round(keyword.cannibalization.confidence * 100) + '%' %></small>
+                  <% } else { %>
+                    <span>未分析</span>
+                  <% } %>
                 </td>
                 <td>
                   <div class="keyword-meta-stack">
