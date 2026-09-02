@@ -36,16 +36,20 @@ import { OptimizationFeedbackRepository } from '../modules/optimization-feedback
 import { OptimizationFeedbackService } from '../modules/optimization-feedback/feedback.service.js';
 import { processOptimizationFeedbackJob } from '../modules/optimization-feedback/feedback.worker.js';
 import {
+  OPTIMIZATION_AUTOMATION_QUEUE_NAME,
   OPTIMIZATION_ORCHESTRATION_QUEUE_NAME,
   OPTIMIZATION_PLANNING_QUEUE_NAME,
   OPTIMIZATION_QUEUE_ATTEMPTS,
+  OptimizationAutomationQueue,
   OptimizationOrchestrationQueue,
   OptimizationPlanningQueue,
+  type OptimizationAutomationJobData,
   type OptimizationOrchestrationJobData,
   type OptimizationPlanningJobData
 } from '../modules/optimization-orchestration/orchestration.queue.js';
 import { optimizationOrchestrationRepository } from '../modules/optimization-orchestration/orchestration.repository.js';
 import { OptimizationOrchestrationService } from '../modules/optimization-orchestration/orchestration.service.js';
+import { processOptimizationAutomationJob } from '../modules/optimization-orchestration/orchestration.automation.worker.js';
 import {
   classifyOptimizationOrchestrationError,
   processOptimizationOrchestrationJob,
@@ -118,6 +122,7 @@ import { QUEUE_NAMES } from './queues.js';
 const VISIBILITY_MONITORING_RECONCILE_EVERY_MS = 60 * 60 * 1000;
 export const OPTIMIZATION_PLANNING_WORKER_CONCURRENCY = 1;
 export const OPTIMIZATION_ORCHESTRATION_WORKER_CONCURRENCY = 2;
+export const OPTIMIZATION_AUTOMATION_WORKER_CONCURRENCY = 2;
 export const OPTIMIZATION_AUTOPILOT_WORKER_CONCURRENCY = 2;
 export const OPTIMIZATION_EXPERIMENT_WORKER_CONCURRENCY = 2;
 export const OPTIMIZATION_FEEDBACK_WORKER_CONCURRENCY = 2;
@@ -216,6 +221,7 @@ export function workerDefinitionForQueue(
     | 'growth-materialization'
     | 'optimization-planning'
     | 'optimization-orchestration'
+    | 'optimization-automation'
     | 'optimization-autopilot'
     | 'optimization-experiment-evaluation'
     | 'optimization-feedback-materialization'
@@ -249,6 +255,12 @@ export function workerDefinitionForQueue(
     return {
       processor: processOptimizationOrchestrationJob,
       concurrency: OPTIMIZATION_ORCHESTRATION_WORKER_CONCURRENCY
+    } as const;
+  }
+  if (name === OPTIMIZATION_AUTOMATION_QUEUE_NAME) {
+    return {
+      processor: processOptimizationAutomationJob,
+      concurrency: OPTIMIZATION_AUTOMATION_WORKER_CONCURRENCY
     } as const;
   }
   if (name === OPTIMIZATION_AUTOPILOT_QUEUE_NAME) {
@@ -326,6 +338,10 @@ export async function startWorkers() {
 
   const optimizationPlanningSupportQueue = new Queue(OPTIMIZATION_PLANNING_QUEUE_NAME, { connection });
   const optimizationOrchestrationSupportQueue = new Queue(OPTIMIZATION_ORCHESTRATION_QUEUE_NAME, { connection });
+  const optimizationAutomationSupportQueue = new Queue<OptimizationAutomationJobData>(
+    OPTIMIZATION_AUTOMATION_QUEUE_NAME,
+    { connection }
+  );
   const optimizationAutopilotSupportQueue = new Queue(OPTIMIZATION_AUTOPILOT_QUEUE_NAME, { connection });
   const optimizationExperimentSupportQueue = new Queue<OptimizationExperimentJobData>(
     OPTIMIZATION_EXPERIMENT_QUEUE_NAME,
@@ -342,6 +358,7 @@ export async function startWorkers() {
   supportQueues.push(
     optimizationPlanningSupportQueue,
     optimizationOrchestrationSupportQueue,
+    optimizationAutomationSupportQueue,
     optimizationAutopilotSupportQueue,
     optimizationExperimentSupportQueue,
     optimizationFeedbackSupportQueue,
@@ -350,6 +367,9 @@ export async function startWorkers() {
   const optimizationPlanningQueue = new OptimizationPlanningQueue(optimizationPlanningSupportQueue);
   const optimizationOrchestrationQueue = new OptimizationOrchestrationQueue(
     optimizationOrchestrationSupportQueue
+  );
+  const optimizationAutomationQueue = new OptimizationAutomationQueue(
+    optimizationAutomationSupportQueue
   );
   const optimizationAutopilotQueue = new OptimizationAutopilotQueue(
     optimizationAutopilotSupportQueue
@@ -396,8 +416,23 @@ export async function startWorkers() {
   const optimizationOrchestrationService = new OptimizationOrchestrationService({
     repository: optimizationOrchestrationRepository,
     planningQueue: optimizationPlanningQueue,
-    projects: projectRepository
+    projects: projectRepository,
+    automationRuns: optimizationOrchestrationRepository,
+    automationQueue: optimizationAutomationQueue
   });
+  const optimizationAutomationRuntimeDeps = {
+    repository: optimizationOrchestrationRepository,
+    service: optimizationOrchestrationService,
+    actions: {
+      async execute(input: { actionType: string }): Promise<void> {
+        const error = Object.assign(
+          new Error(`Automation action is not configured: ${input.actionType}`),
+          { code: 'AUTOMATION_ACTION_NOT_CONFIGURED' }
+        );
+        throw error;
+      }
+    }
+  };
   const advisoryRootDir = path.resolve('vendor/third-party-skills');
 
   const workers = QUEUE_NAMES.map((name) => {
@@ -466,6 +501,16 @@ export async function startWorkers() {
           }
         },
         { connection, concurrency: OPTIMIZATION_ORCHESTRATION_WORKER_CONCURRENCY }
+      );
+    }
+    if (name === OPTIMIZATION_AUTOMATION_QUEUE_NAME) {
+      return new Worker<OptimizationAutomationJobData>(
+        name,
+        async (job) => processOptimizationAutomationJob(
+          { id: job.id, name: job.name, data: job.data },
+          optimizationAutomationRuntimeDeps
+        ),
+        { connection, concurrency: OPTIMIZATION_AUTOMATION_WORKER_CONCURRENCY }
       );
     }
     if (name === OPTIMIZATION_AUTOPILOT_QUEUE_NAME) {
