@@ -69,6 +69,13 @@ export const keywordUpdateSchema = z.object({
   message: 'At least one keyword field is required',
 });
 
+export const keywordTargetUrlSchema = z.object({
+  targetUrl: z.string().url().max(2_000),
+  acknowledgeLock: z.boolean().optional(),
+}).strict();
+
+export const keywordCannibalizationCalculationSchema = z.object({}).strict();
+
 export const keywordBulkCreateSchema = z.object({
   text: z.string().min(1).max(30_000),
   type: keywordTypeSchema,

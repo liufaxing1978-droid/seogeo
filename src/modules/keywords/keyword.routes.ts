@@ -20,6 +20,8 @@ import {
   type KeywordSearchEvidenceService,
 } from './keyword-search-evidence.service.js';
 import { keywordService, type KeywordService } from './keyword.service.js';
+import { KeywordTargetService } from './keyword-target.service.js';
+import { KeywordCannibalizationService } from './keyword-cannibalization.service.js';
 import {
   keywordOpportunityService,
   type KeywordOpportunityService,
@@ -40,6 +42,8 @@ import {
   keywordStatusCommandSchema,
   keywordSuggestionDecisionSchema,
   keywordUpdateSchema,
+  keywordTargetUrlSchema,
+  keywordCannibalizationCalculationSchema,
 } from './keyword.schema.js';
 
 function routeParam(value: string | string[]): string {
@@ -54,6 +58,8 @@ export function createKeywordRoutes(
   aiService: Pick<AiTaskService, 'createAndEnqueue'> = aiTaskService,
   searchEvidenceService: Pick<KeywordSearchEvidenceService, 'evaluateKeyword'> = keywordSearchEvidenceService,
   opportunityService: Pick<KeywordOpportunityService, 'calculate' | 'findLatest'> = keywordOpportunityService,
+  targetService = new KeywordTargetService(),
+  cannibalizationService = new KeywordCannibalizationService(),
 ) {
   const router = Router();
   const keywordMutationGuards = [
@@ -68,6 +74,24 @@ export function createKeywordRoutes(
     requireProjectMembership(),
     requireProjectCapability('AI_RUN'),
   ];
+
+  router.get(
+    '/projects/:projectId/keywords/:keywordId/cannibalization',
+    requireAuthentication(), requireProjectMembership(), requireProjectCapability('PROJECT_READ'),
+    async (req, res, next) => { try { res.json({ data: await cannibalizationService.findLatestKeyword(routeParam(req.params.projectId), routeParam(req.params.keywordId)) }); } catch (error) { next(error); } },
+  );
+
+  router.post(
+    '/projects/:projectId/keywords/:keywordId/cannibalization',
+    ...keywordMutationGuards,
+    async (req, res, next) => { try { keywordCannibalizationCalculationSchema.parse(req.body ?? {}); const data = await cannibalizationService.calculateKeyword(routeParam(req.params.projectId), routeParam(req.params.keywordId), req.auth!.userId); res.status(201).json({ data }); } catch (error) { next(error); } },
+  );
+
+  router.put(
+    '/projects/:projectId/keywords/:keywordId/target-url',
+    ...keywordMutationGuards,
+    async (req, res, next) => { try { const input = keywordTargetUrlSchema.parse(req.body ?? {}); const data = await targetService.setKeywordTargetUrl({ ...input, actorUserId: req.auth!.userId, projectId: routeParam(req.params.projectId), keywordId: routeParam(req.params.keywordId) }); res.json({ data }); } catch (error) { next(error); } },
+  );
 
   router.get(
     '/projects/:projectId/keywords',
