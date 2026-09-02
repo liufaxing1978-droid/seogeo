@@ -15,6 +15,15 @@ function csrfFor(fixture: Awaited<ReturnType<typeof seedAuthenticatedUser>>): st
 }
 
 describe('P11-01 keyword JSON API authorization', () => {
+  it('lets a CONTENT_WRITE member set a Cluster Target URL', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const group = await prisma.keywordGroup.create({ data: { projectId: fixture.project.id, name: 'P4 Cluster' } });
+      const url = `https://${fixture.project.primaryDomain}/cluster`;
+      const response = await request(createApp()).put(`/api/v1/projects/${fixture.project.id}/keyword-groups/${group.id}/target-url`).set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrfFor(fixture)).send({ targetUrl: url }).expect(200);
+      expect(response.body.data).toMatchObject({ groupId: group.id, normalizedUrl: url });
+    } finally { await fixture.cleanup(); }
+  });
   it('lets a CONTENT_WRITE member set an in-scope Target URL and read its P4 analysis', async () => {
     const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
     try {

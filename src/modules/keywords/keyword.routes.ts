@@ -6,6 +6,7 @@ import {
   requireProjectMembership,
 } from '../../auth/project-access.js';
 import { NotFoundError } from '../../core/errors.js';
+import { prisma } from '../../db/prisma.js';
 import { aiTaskService, type AiTaskService } from '../ai/ai.service.js';
 import { createKeywordExpansionTask } from './keyword-ai.js';
 import {
@@ -74,6 +75,21 @@ export function createKeywordRoutes(
     requireProjectMembership(),
     requireProjectCapability('AI_RUN'),
   ];
+
+  router.get(
+    '/projects/:projectId/keyword-groups/:groupId/target-url',
+    requireAuthentication(), requireProjectMembership(), requireProjectCapability('PROJECT_READ'),
+    async (req, res, next) => { try {
+      const data = await prisma.keywordTargetMapping.findUnique({ where: { groupId: routeParam(req.params.groupId) } });
+      res.json({ data: data?.projectId === routeParam(req.params.projectId) ? data : null });
+    } catch (error) { next(error); } },
+  );
+
+  router.put(
+    '/projects/:projectId/keyword-groups/:groupId/target-url',
+    ...keywordMutationGuards,
+    async (req, res, next) => { try { const input = keywordTargetUrlSchema.parse(req.body ?? {}); const data = await targetService.setGroupTargetUrl({ ...input, actorUserId: req.auth!.userId, projectId: routeParam(req.params.projectId), groupId: routeParam(req.params.groupId) }); res.json({ data }); } catch (error) { next(error); } },
+  );
 
   router.get(
     '/projects/:projectId/keywords/:keywordId/cannibalization',
