@@ -430,6 +430,18 @@ export class OptimizationOrchestrationRepository {
     return this.db.automationRun.findUnique({ where: { id: runId } });
   }
 
+  getAutomationRunForProject(input: {
+    projectId: string;
+    runId: string;
+  }): Promise<AutomationRun | null> {
+    return this.db.automationRun.findFirst({
+      where: {
+        id: input.runId,
+        projectId: input.projectId
+      }
+    });
+  }
+
   listAutomationRuns(input: ListAutomationRunsInput): Promise<AutomationRun[]> {
     return this.db.automationRun.findMany({
       where: { projectId: input.projectId },
