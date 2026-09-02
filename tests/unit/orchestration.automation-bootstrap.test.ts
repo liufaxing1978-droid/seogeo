@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { processOptimizationAutomationJob } from '../../src/modules/optimization-orchestration/orchestration.worker.js';
+import { processOptimizationAutomationJob } from '../../src/modules/optimization-orchestration/orchestration.automation.worker.js';
 import {
   OPTIMIZATION_AUTOMATION_WORKER_CONCURRENCY,
   workerDefinitionForQueue
