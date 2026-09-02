@@ -225,7 +225,11 @@ export function createOptimizationOrchestrationRoutes(
 
   router.post(
     '/projects/:projectId/optimization/runs',
+    requireAuthentication(),
+    requireProjectMembership(),
     requireFeature('OPTIMIZATION_ORCHESTRATION'),
+    requireProjectCapability('OPTIMIZATION_RUN'),
+    requireCsrf(),
     async (req, res, next) => {
       try {
         const input = manualRunSchema.parse(req.body);
@@ -233,7 +237,7 @@ export function createOptimizationOrchestrationRoutes(
         const data = await api.triggerManual({
           projectId,
           manualRequestId: input.manualRequestId,
-          requestedBy: `project-api:${projectId}`
+          requestedBy: `user:${req.auth!.userId}`
         });
         res.status(202).json({ data });
       } catch (error) {
