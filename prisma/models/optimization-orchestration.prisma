@@ -99,6 +99,7 @@ model AutomationDefinition {
   projectId     String                  @db.Uuid
   key           String
   actionType    String
+  actionConfig  Json?
   enabled       Boolean                 @default(true)
   scheduleCron  String?
   overlapPolicy AutomationOverlapPolicy @default(SKIP_IF_RUNNING)
