@@ -168,17 +168,8 @@ describe('OL-3 Alert Center', () => {
     const repository = new OptimizationOperationsRepository({
       automationRun: { findMany },
     } as never);
-    const listAutomationAlertAuthority = (
-      repository as unknown as Record<string, unknown>
-    )['listAutomationAlertAuthority'];
 
-    expect(listAutomationAlertAuthority).toBeTypeOf('function');
-    if (typeof listAutomationAlertAuthority !== 'function') return;
-
-    await (listAutomationAlertAuthority as (projectId: string, limit: number) => Promise<unknown>)(
-      PROJECT_ID,
-      25,
-    );
+    await repository.listAutomationAlertAuthority(PROJECT_ID, 25);
 
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: {
