@@ -21,6 +21,10 @@ import {
 } from './keyword-search-evidence.service.js';
 import { keywordService, type KeywordService } from './keyword.service.js';
 import {
+  keywordOpportunityService,
+  type KeywordOpportunityService,
+} from './keyword-opportunity.service.js';
+import {
   keywordBulkCreateSchema,
   keywordCreateSchema,
   emptyKeywordMutationSchema,
@@ -31,6 +35,7 @@ import {
   keywordGroupRenameSchema,
   keywordListQuerySchema,
   keywordLockSchema,
+  keywordOpportunityCalculationSchema,
   keywordParentSchema,
   keywordStatusCommandSchema,
   keywordSuggestionDecisionSchema,
@@ -48,6 +53,7 @@ export function createKeywordRoutes(
   coverageService: KeywordCoverageService = keywordCoverageService,
   aiService: Pick<AiTaskService, 'createAndEnqueue'> = aiTaskService,
   searchEvidenceService: Pick<KeywordSearchEvidenceService, 'evaluateKeyword'> = keywordSearchEvidenceService,
+  opportunityService: Pick<KeywordOpportunityService, 'calculate' | 'findLatest'> = keywordOpportunityService,
 ) {
   const router = Router();
   const keywordMutationGuards = [
@@ -72,6 +78,42 @@ export function createKeywordRoutes(
       try {
         const filters = keywordListQuerySchema.parse(req.query);
         res.json({ data: await service.list(routeParam(req.params.projectId), filters) });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.get(
+    '/projects/:projectId/keywords/:keywordId/opportunity-score',
+    requireAuthentication(),
+    requireProjectMembership(),
+    requireProjectCapability('PROJECT_READ'),
+    async (req, res, next) => {
+      try {
+        const data = await opportunityService.findLatest(
+          routeParam(req.params.projectId),
+          routeParam(req.params.keywordId),
+        );
+        res.json({ data });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    '/projects/:projectId/keywords/:keywordId/opportunity-score',
+    ...keywordMutationGuards,
+    async (req, res, next) => {
+      try {
+        keywordOpportunityCalculationSchema.parse(req.body ?? {});
+        const data = await opportunityService.calculate(
+          routeParam(req.params.projectId),
+          routeParam(req.params.keywordId),
+          req.auth!.userId,
+        );
+        res.status(201).json({ data });
       } catch (error) {
         next(error);
       }

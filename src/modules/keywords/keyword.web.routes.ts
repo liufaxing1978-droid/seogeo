@@ -20,6 +20,10 @@ import {
   type KeywordSearchEvidenceService,
 } from './keyword-search-evidence.service.js';
 import { keywordService, type KeywordService } from './keyword.service.js';
+import {
+  keywordOpportunityService,
+  type KeywordOpportunityService,
+} from './keyword-opportunity.service.js';
 import { KeywordWebRepository } from './keyword.web.repository.js';
 import {
   keywordBulkCreateSchema,
@@ -31,6 +35,7 @@ import {
   keywordGroupRenameSchema,
   keywordListQuerySchema,
   keywordLockSchema,
+  keywordOpportunityCalculationSchema,
   keywordParentSchema,
   keywordStatusCommandSchema,
   keywordSuggestionDecisionSchema,
@@ -73,6 +78,7 @@ export function createKeywordWebRoutes(
   coverageService: KeywordCoverageService = keywordCoverageService,
   aiService: Pick<AiTaskService, 'createAndEnqueue'> = aiTaskService,
   searchEvidenceService: Pick<KeywordSearchEvidenceService, 'evaluateProject'> = keywordSearchEvidenceService,
+  opportunityService: Pick<KeywordOpportunityService, 'calculate'> = keywordOpportunityService,
 ) {
   const router = Router();
   const readGuards = [
@@ -165,6 +171,21 @@ export function createKeywordWebRoutes(
         projectId,
         ...body,
       });
+      res.redirect(303, `/projects/${projectId}/keywords`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/projects/:projectId/keywords/:keywordId/opportunity-score', ...writeGuards, async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.projectId);
+      keywordOpportunityCalculationSchema.parse({});
+      await opportunityService.calculate(
+        projectId,
+        routeParam(req.params.keywordId),
+        req.auth!.userId,
+      );
       res.redirect(303, `/projects/${projectId}/keywords`);
     } catch (error) {
       next(error);

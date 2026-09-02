@@ -346,4 +346,52 @@ describe('P11-01 keyword JSON API authorization', () => {
       await fixture.cleanup();
     }
   });
+
+  it('calculates and reads the latest explainable opportunity snapshot without inventing missing facts', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OPERATOR',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const app = createApp();
+      const csrf = csrfFor(fixture);
+      const api = `/api/v1/projects/${fixture.project.id}`;
+      const created = await request(app)
+        .post(`${api}/keywords`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ text: '符纸怎么用', type: 'QUESTION', intent: 'INFORMATIONAL' })
+        .expect(201);
+
+      const calculated = await request(app)
+        .post(`${api}/keywords/${created.body.data.id}/opportunity-score`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({})
+        .expect(201);
+      expect(calculated.body.data).toMatchObject({
+        keywordId: created.body.data.id,
+        score: null,
+        dataConfidence: 0.15,
+        formulaVersion: 'keyword-opportunity-v1',
+        breakdown: {
+          relevance: { state: 'UNKNOWN', score: null },
+          demand: { state: 'UNKNOWN', score: null },
+          rankingOpportunity: { state: 'UNKNOWN', score: null },
+          difficulty: { state: 'UNKNOWN', score: null },
+        },
+      });
+
+      const latest = await request(app)
+        .get(`${api}/keywords/${created.body.data.id}/opportunity-score`)
+        .set('Cookie', fixture.sessionCookie)
+        .expect(200);
+      expect(latest.body.data.id).toBe(calculated.body.data.id);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
 });

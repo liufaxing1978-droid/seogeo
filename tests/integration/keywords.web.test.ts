@@ -239,6 +239,46 @@ describe('P11-01 keyword center web UI', () => {
     }
   });
 
+  it('renders persisted opportunity score confidence and explainable unknown dimensions', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OWNER',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const keyword = await keywordService.createManual({
+        actorUserId: fixture.user.id,
+        projectId: fixture.project.id,
+        text: '符纸怎么用',
+        type: 'QUESTION',
+        intent: 'INFORMATIONAL',
+      });
+      await request(createApp())
+        .post(`/projects/${fixture.project.id}/keywords/${keyword.id}/opportunity-score`)
+        .set('Cookie', fixture.sessionCookie)
+        .type('form')
+        .send({ _csrf: csrfFor(fixture) })
+        .expect(303);
+
+      const response = await request(createApp())
+        .get(`/projects/${fixture.project.id}/keywords`)
+        .set('Cookie', fixture.sessionCookie)
+        .expect(200);
+
+      expect(response.text).toContain('data-ui="keyword-opportunity-score"');
+      expect(response.text).toContain('N/A');
+      expect(response.text).toContain('置信度 15%');
+      expect(response.text).toContain('评分依据');
+      expect(response.text).toContain('项目相关度');
+      expect(response.text).toContain('证据不足');
+      expect(response.text).toContain(`/keywords/${keyword.id}/opportunity-score`);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it('renders keyword facts without fabricated ranking', async () => {
     const fixture = await seedAuthenticatedUser({
       role: 'OWNER',

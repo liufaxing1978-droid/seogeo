@@ -89,6 +89,7 @@ model Keyword {
   seededSuggestions   KeywordSuggestion[]      @relation("KeywordSuggestionSeed")
   acceptedSuggestions KeywordSuggestion[]      @relation("KeywordSuggestionAccepted")
   auditEvents         KeywordAuditEvent[]
+  opportunitySnapshots KeywordOpportunitySnapshot[]
 
   @@unique([projectId, normalizedText])
   @@index([projectId, status])
@@ -205,4 +206,23 @@ model KeywordAuditEvent {
 
   @@index([projectId, createdAt])
   @@index([keywordId, createdAt])
+}
+
+model KeywordOpportunitySnapshot {
+  id               String   @id @default(uuid()) @db.Uuid
+  projectId        String   @db.Uuid
+  keywordId        String   @db.Uuid
+  score            Float?
+  dataConfidence   Float
+  breakdown        Json
+  sourceProvenance Json
+  formulaVersion   String
+  createdByUserId  String?  @db.Uuid
+  createdAt        DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, keywordId, createdAt])
+  @@index([projectId, createdAt])
 }

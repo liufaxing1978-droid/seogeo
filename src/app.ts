@@ -32,6 +32,7 @@ import type { KeywordDiscoveryService } from './modules/keywords/keyword-discove
 import { createKeywordDiscoveryWebRoutes } from './modules/keywords/keyword-discovery.web.routes.js';
 import { createKeywordRoutes } from './modules/keywords/keyword.routes.js';
 import type { KeywordSearchEvidenceService } from './modules/keywords/keyword-search-evidence.service.js';
+import type { KeywordOpportunityService } from './modules/keywords/keyword-opportunity.service.js';
 import type { KeywordService } from './modules/keywords/keyword.service.js';
 import { createKeywordWebRoutes } from './modules/keywords/keyword.web.routes.js';
 import { createMarketRoutes, type MarketApiPort } from './modules/market/market.routes.js';
@@ -100,6 +101,7 @@ export interface AppOptions {
   keywordService?: KeywordService;
   keywordCoverageService?: KeywordCoverageService;
   keywordSearchEvidenceService?: Pick<KeywordSearchEvidenceService, 'evaluateKeyword' | 'evaluateProject'>;
+  keywordOpportunityService?: Pick<KeywordOpportunityService, 'calculate' | 'findLatest'>;
   keywordDiscoveryService?: Pick<KeywordDiscoveryService, 'list' | 'refresh' | 'accept' | 'reject'>;
   searchConsoleService?: SearchConsoleService;
   officialSearchBindingRepository?: OfficialSearchBindingRepositoryPort;
@@ -149,6 +151,7 @@ export function createApp(options: AppOptions = {}) {
     options.keywordCoverageService,
     options.aiTaskService,
     options.keywordSearchEvidenceService,
+    options.keywordOpportunityService,
   ));
   app.use('/api/v1', createKeywordDiscoveryRoutes(options.keywordDiscoveryService));
   app.use('/api/v1', createOfficialSearchSyncRoutes(
@@ -195,6 +198,7 @@ export function createApp(options: AppOptions = {}) {
     options.keywordCoverageService,
     options.aiTaskService,
     options.keywordSearchEvidenceService,
+    options.keywordOpportunityService,
   ));
   app.use('/', createProjectAdminWebRoutes());
   app.use('/', webRoutes);

@@ -10,6 +10,11 @@ import {
   type KeywordSearchEvidenceService,
 } from './keyword-search-evidence.service.js';
 import { KeywordRepository } from './keyword.repository.js';
+import { KeywordOpportunityRepository } from './keyword-opportunity.repository.js';
+import type {
+  KeywordOpportunityBreakdownEntry,
+  KeywordOpportunityComponentName,
+} from './keyword-opportunity-score.js';
 import type { KeywordCoverageResult, KeywordListRecord } from './keyword.types.js';
 import type { KeywordListQuery } from './keyword.schema.js';
 
@@ -18,6 +23,14 @@ export interface KeywordCenterKeywordRecord extends KeywordListRecord {
   groupIds: string[];
   coverage: KeywordCoverageResult;
   searchEvidence: KeywordSearchEvidenceResult;
+  opportunity: null | {
+    id: string;
+    score: number | null;
+    dataConfidence: number;
+    formulaVersion: string;
+    breakdown: Record<KeywordOpportunityComponentName, KeywordOpportunityBreakdownEntry>;
+    createdAt: Date;
+  };
 }
 
 export interface KeywordCenterViewModel {
@@ -53,6 +66,7 @@ export class KeywordWebRepository {
     private readonly coverageService: KeywordCoverageService = keywordCoverageService,
     private readonly keywordRepository = new KeywordRepository(),
     private readonly searchEvidenceService: Pick<KeywordSearchEvidenceService, 'evaluateProject'> = keywordSearchEvidenceService,
+    private readonly opportunityRepository = new KeywordOpportunityRepository(),
   ) {}
 
   async load(projectId: string, filters: KeywordListQuery = {}): Promise<KeywordCenterViewModel> {
@@ -96,9 +110,13 @@ export class KeywordWebRepository {
       throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
     }
 
-    const [coverageByKeyword, searchEvidenceByKeyword] = await Promise.all([
+    const [coverageByKeyword, searchEvidenceByKeyword, opportunityByKeyword] = await Promise.all([
       this.coverageService.evaluateProject(projectId, keywords),
       this.searchEvidenceService.evaluateProject(projectId, keywords),
+      this.opportunityRepository.findLatestForKeywords(
+        projectId,
+        keywords.map((keyword) => keyword.id),
+      ),
     ]);
     const parentByChild = new Map(relations.map((item) => [item.childKeywordId, item.parentKeywordId]));
     const groupsByKeyword = new Map<string, string[]>();
@@ -114,6 +132,7 @@ export class KeywordWebRepository {
         throw new Error(`Keyword search evidence result missing for keyword ${keyword.id}`);
       }
 
+      const opportunity = opportunityByKeyword.get(keyword.id);
       return {
         id: keyword.id,
         projectId: keyword.projectId,
@@ -134,6 +153,17 @@ export class KeywordWebRepository {
           matches: [],
         },
         searchEvidence,
+        opportunity: opportunity ? {
+          id: opportunity.id,
+          score: opportunity.score,
+          dataConfidence: opportunity.dataConfidence,
+          formulaVersion: opportunity.formulaVersion,
+          breakdown: opportunity.breakdown as unknown as Record<
+            KeywordOpportunityComponentName,
+            KeywordOpportunityBreakdownEntry
+          >,
+          createdAt: opportunity.createdAt,
+        } : null,
       };
     });
 

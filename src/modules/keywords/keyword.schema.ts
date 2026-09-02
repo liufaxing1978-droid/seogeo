@@ -148,6 +148,8 @@ export const keywordGroupBulkAssignmentSchema = z.object({
   acknowledgeLock: z.boolean().optional(),
 }).strict();
 
+export const keywordOpportunityCalculationSchema = z.object({}).strict();
+
 export const keywordSuggestionDecisionSchema = z.object({
   editedText: keywordTextSchema.optional(),
 }).strict();

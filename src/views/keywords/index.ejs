@@ -41,6 +41,13 @@
     INDEXED: '已收录', RANKING: '已有排名', AI_CITED: 'AI 已引用',
     NEEDS_OPTIMIZATION: '待优化', RETIRED: '已淘汰',
   };
+  const opportunityComponentLabels = {
+    relevance: '项目相关度', demand: '搜索需求', rankingOpportunity: '排名机会',
+    difficulty: '竞争难度', contentGap: '内容缺口', authorityFit: '权威匹配',
+    strategicValue: '战略价值', geoValue: 'GEO 价值',
+  };
+  const opportunityBand = (score) => score === null ? '证据不足'
+    : score >= 90 ? '强烈建议' : score >= 75 ? '建议' : score >= 50 ? '观察' : '低优先级';
   const suggestionStatusLabels = {
     PENDING: '待审核',
     ACCEPTED: '已接受',
@@ -179,6 +186,7 @@
               <th>关键词</th>
               <th>类型 / 意图</th>
               <th>优先级</th>
+              <th>机会分</th>
               <th>内容覆盖</th>
               <th>搜索证据</th>
               <th>父关键词 / 分组</th>
@@ -208,6 +216,29 @@
                   </div>
                 </td>
                 <td><span class="keyword-priority keyword-priority--<%= keyword.priority.toLowerCase() %>"><%= keyword.priority === 'HIGH' ? '高' : keyword.priority === 'LOW' ? '低' : '中' %></span></td>
+                <td>
+                  <div class="keyword-opportunity" data-ui="keyword-opportunity-score">
+                    <% if (keyword.opportunity) { %>
+                      <div class="keyword-opportunity__summary">
+                        <strong><%= keyword.opportunity.score === null ? 'N/A' : keyword.opportunity.score.toFixed(1) %></strong>
+                        <span><%= opportunityBand(keyword.opportunity.score) %></span>
+                        <small>置信度 <%= Math.round(keyword.opportunity.dataConfidence * 100) %>%</small>
+                      </div>
+                      <details class="keyword-opportunity__details">
+                        <summary>评分依据</summary>
+                        <dl><% Object.entries(keyword.opportunity.breakdown).forEach(([component, entry]) => { %><div><dt><%= opportunityComponentLabels[component] || component %></dt><dd><%= entry.state === 'KNOWN' ? entry.score.toFixed(1) : '证据不足' %> · 权重 <%= entry.weight %>%</dd></div><% }) %></dl>
+                      </details>
+                    <% } else { %>
+                      <span class="keyword-opportunity__empty">未评分</span>
+                    <% } %>
+                    <% if (canWriteKeywords) { %>
+                      <form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/opportunity-score">
+                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                        <button class="keyword-button" type="submit"><%= keyword.opportunity ? '重新评分' : '计算机会分' %></button>
+                      </form>
+                    <% } %>
+                  </div>
+                </td>
                 <td>
                   <div class="keyword-coverage keyword-coverage--<%= keyword.coverage.status.toLowerCase() %>" data-ui="keyword-coverage">
                     <strong><%= coverageLabels[keyword.coverage.status] %></strong>

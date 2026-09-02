@@ -49,3 +49,56 @@
   margin-bottom: 6px;
   font-weight: 700;
 }
+
+.keyword-opportunity {
+  display: grid;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.keyword-opportunity__summary {
+  display: grid;
+  gap: 2px;
+}
+
+.keyword-opportunity__summary strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.keyword-opportunity__summary span,
+.keyword-opportunity__summary small,
+.keyword-opportunity__empty {
+  font-size: 10px;
+  color: var(--ui-text-secondary);
+}
+
+.keyword-opportunity__details summary {
+  cursor: pointer;
+  color: var(--ui-primary);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.keyword-opportunity__details dl {
+  display: grid;
+  gap: 5px;
+  min-width: 220px;
+  margin: 7px 0 0;
+}
+
+.keyword-opportunity__details dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 9px;
+}
+
+.keyword-opportunity__details dt,
+.keyword-opportunity__details dd {
+  margin: 0;
+}
+
+.keyword-opportunity__details dd {
+  color: var(--ui-text-secondary);
+}
