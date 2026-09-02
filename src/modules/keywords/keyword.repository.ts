@@ -78,6 +78,30 @@ export class KeywordRepository {
     return this.db.keywordGroup.findFirst({ where: { id: groupId, projectId } });
   }
 
+  findGroupByName(projectId: string, name: string) {
+    return this.db.keywordGroup.findUnique({
+      where: { projectId_name: { projectId, name } },
+    });
+  }
+
+  renameGroup(projectId: string, groupId: string, name: string) {
+    return this.db.keywordGroup.updateMany({
+      where: { id: groupId, projectId },
+      data: { name },
+    });
+  }
+
+  setGroupPrimaryKeyword(
+    projectId: string,
+    groupId: string,
+    primaryKeywordId: string | null,
+  ) {
+    return this.db.keywordGroup.updateMany({
+      where: { id: groupId, projectId },
+      data: { primaryKeywordId },
+    });
+  }
+
   listGroups(projectId: string) {
     return this.db.keywordGroup.findMany({
       where: { projectId },
@@ -89,6 +113,21 @@ export class KeywordRepository {
     return this.db.keywordGroupMembership.findMany({
       where: { projectId, keywordId },
       orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  listMembershipsForGroup(projectId: string, groupId: string) {
+    return this.db.keywordGroupMembership.findMany({
+      where: { projectId, groupId },
+      orderBy: [{ createdAt: 'asc' }, { keywordId: 'asc' }],
+    });
+  }
+
+  addGroupMemberships(projectId: string, groupId: string, keywordIds: string[]) {
+    if (keywordIds.length === 0) return Promise.resolve({ count: 0 });
+    return this.db.keywordGroupMembership.createMany({
+      data: keywordIds.map((keywordId) => ({ projectId, groupId, keywordId })),
+      skipDuplicates: true,
     });
   }
 

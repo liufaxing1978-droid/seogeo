@@ -272,6 +272,36 @@ describe('P11-01 keyword JSON API authorization', () => {
         .send({ name: '符纸专题', description: '专题内容集群' })
         .expect(201);
 
+      const renamedGroup = await request(app)
+        .patch(`${api}/keyword-groups/${group.body.data.id}`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ name: '符纸内容集群' })
+        .expect(200);
+      expect(renamedGroup.body.data.name).toBe('符纸内容集群');
+
+      const primaryGroup = await request(app)
+        .put(`${api}/keyword-groups/${group.body.data.id}/primary-keyword`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ primaryKeywordId: parent.body.data.id })
+        .expect(200);
+      expect(primaryGroup.body.data.primaryKeywordId).toBe(parent.body.data.id);
+
+      const assigned = await request(app)
+        .put(`${api}/keyword-groups/${group.body.data.id}/keywords`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({
+          keywordIds: [parent.body.data.id, child.body.data.id],
+          acknowledgeLock: true,
+        })
+        .expect(200);
+      expect(assigned.body.data).toEqual(expect.arrayContaining([
+        expect.objectContaining({ keywordId: parent.body.data.id }),
+        expect.objectContaining({ keywordId: child.body.data.id }),
+      ]));
+
       const groups = await request(app)
         .put(`${api}/keywords/${child.body.data.id}/groups`)
         .set('Cookie', fixture.sessionCookie)

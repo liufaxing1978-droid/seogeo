@@ -25,7 +25,10 @@ import {
   keywordBulkCreateSchema,
   keywordCreateSchema,
   keywordGroupCreateSchema,
+  keywordGroupBulkAssignmentSchema,
   keywordGroupMembershipSchema,
+  keywordGroupPrimarySchema,
+  keywordGroupRenameSchema,
   keywordListQuerySchema,
   keywordLockSchema,
   keywordParentSchema,
@@ -354,6 +357,60 @@ export function createKeywordWebRoutes(
       });
       await service.createGroup({
         projectId,
+        ...body,
+      });
+      res.redirect(303, `/projects/${projectId}/keywords`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/projects/:projectId/keyword-groups/:groupId/rename', ...writeGuards, async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.projectId);
+      const body = keywordGroupRenameSchema.parse({ name: req.body?.name });
+      await service.renameGroup({
+        actorUserId: req.auth!.userId,
+        projectId,
+        groupId: routeParam(req.params.groupId),
+        ...body,
+      });
+      res.redirect(303, `/projects/${projectId}/keywords`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/projects/:projectId/keyword-groups/:groupId/primary-keyword', ...writeGuards, async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.projectId);
+      const body = keywordGroupPrimarySchema.parse({
+        primaryKeywordId: optionalString(req.body?.primaryKeywordId) ?? null,
+        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
+      });
+      await service.setGroupPrimaryKeyword({
+        actorUserId: req.auth!.userId,
+        projectId,
+        groupId: routeParam(req.params.groupId),
+        ...body,
+      });
+      res.redirect(303, `/projects/${projectId}/keywords`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/projects/:projectId/keyword-groups/:groupId/keywords', ...writeGuards, async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.projectId);
+      const body = keywordGroupBulkAssignmentSchema.parse({
+        keywordIds: stringList(req.body?.keywordIds),
+        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
+      });
+      await service.assignKeywordsToGroup({
+        actorUserId: req.auth!.userId,
+        projectId,
+        groupId: routeParam(req.params.groupId),
         ...body,
       });
       res.redirect(303, `/projects/${projectId}/keywords`);

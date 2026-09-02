@@ -25,7 +25,10 @@ import {
   keywordCreateSchema,
   emptyKeywordMutationSchema,
   keywordGroupCreateSchema,
+  keywordGroupBulkAssignmentSchema,
   keywordGroupMembershipSchema,
+  keywordGroupPrimarySchema,
+  keywordGroupRenameSchema,
   keywordListQuerySchema,
   keywordLockSchema,
   keywordParentSchema,
@@ -232,6 +235,63 @@ export function createKeywordRoutes(
           actorUserId: req.auth!.userId,
           projectId: routeParam(req.params.projectId),
           keywordId: routeParam(req.params.keywordId),
+          ...body,
+        });
+        res.json({ data });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.patch(
+    '/projects/:projectId/keyword-groups/:groupId',
+    ...keywordMutationGuards,
+    async (req, res, next) => {
+      try {
+        const body = keywordGroupRenameSchema.parse(req.body);
+        const data = await service.renameGroup({
+          actorUserId: req.auth!.userId,
+          projectId: routeParam(req.params.projectId),
+          groupId: routeParam(req.params.groupId),
+          ...body,
+        });
+        res.json({ data });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.put(
+    '/projects/:projectId/keyword-groups/:groupId/primary-keyword',
+    ...keywordMutationGuards,
+    async (req, res, next) => {
+      try {
+        const body = keywordGroupPrimarySchema.parse(req.body);
+        const data = await service.setGroupPrimaryKeyword({
+          actorUserId: req.auth!.userId,
+          projectId: routeParam(req.params.projectId),
+          groupId: routeParam(req.params.groupId),
+          ...body,
+        });
+        res.json({ data });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.put(
+    '/projects/:projectId/keyword-groups/:groupId/keywords',
+    ...keywordMutationGuards,
+    async (req, res, next) => {
+      try {
+        const body = keywordGroupBulkAssignmentSchema.parse(req.body);
+        const data = await service.assignKeywordsToGroup({
+          actorUserId: req.auth!.userId,
+          projectId: routeParam(req.params.projectId),
+          groupId: routeParam(req.params.groupId),
           ...body,
         });
         res.json({ data });

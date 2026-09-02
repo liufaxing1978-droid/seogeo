@@ -71,6 +71,29 @@ export interface CreateKeywordGroupInput {
   description?: string | null;
 }
 
+export interface RenameKeywordGroupInput {
+  actorUserId: string;
+  projectId: string;
+  groupId: string;
+  name: string;
+}
+
+export interface SetKeywordGroupPrimaryInput {
+  actorUserId: string;
+  projectId: string;
+  groupId: string;
+  primaryKeywordId: string | null;
+  acknowledgeLock?: boolean;
+}
+
+export interface AssignKeywordsToGroupInput {
+  actorUserId: string;
+  projectId: string;
+  groupId: string;
+  keywordIds: string[];
+  acknowledgeLock?: boolean;
+}
+
 export interface SetKeywordGroupsInput {
   actorUserId: string;
   projectId: string;
@@ -123,6 +146,10 @@ function keywordGroupNotFound(): AppError {
   return new AppError('Keyword group not found', 404, 'KEYWORD_GROUP_NOT_FOUND');
 }
 
+function keywordGroupDuplicate(): AppError {
+  return new AppError('Keyword group already exists', 409, 'KEYWORD_GROUP_DUPLICATE');
+}
+
 function keywordSuggestionNotFound(): AppError {
   return new AppError('Keyword suggestion not found', 404, 'KEYWORD_SUGGESTION_NOT_FOUND');
 }
@@ -170,6 +197,16 @@ async function requireSuggestion(
   const suggestion = await repo.findSuggestion(projectId, suggestionId);
   if (!suggestion) throw keywordSuggestionNotFound();
   return suggestion;
+}
+
+async function requireGroup(
+  repo: KeywordRepository,
+  projectId: string,
+  groupId: string,
+) {
+  const group = await repo.findGroup(projectId, groupId);
+  if (!group) throw keywordGroupNotFound();
+  return group;
 }
 
 async function requireGroups(
@@ -485,6 +522,86 @@ export class KeywordService {
       name,
       input.description,
     ));
+  }
+
+  async renameGroup(input: RenameKeywordGroupInput) {
+    const name = input.name.trim();
+    if (!name) throw new ValidationError('Keyword group name is required');
+
+    try {
+      return await inKeywordTransaction(async (repo) => {
+        const group = await requireGroup(repo, input.projectId, input.groupId);
+        const duplicate = await repo.findGroupByName(input.projectId, name);
+        if (duplicate && duplicate.id !== group.id) throw keywordGroupDuplicate();
+
+        await repo.renameGroup(input.projectId, input.groupId, name);
+        await repo.appendAudit(
+          input.projectId,
+          null,
+          input.actorUserId,
+          'KEYWORD_GROUP_RENAMED',
+          { groupId: input.groupId, previousName: group.name, name },
+        );
+        return requireGroup(repo, input.projectId, input.groupId);
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw keywordGroupDuplicate();
+      }
+      throw error;
+    }
+  }
+
+  async setGroupPrimaryKeyword(input: SetKeywordGroupPrimaryInput) {
+    return inKeywordTransaction(async (repo) => {
+      await requireGroup(repo, input.projectId, input.groupId);
+      if (input.primaryKeywordId) {
+        const keyword = await requireKeyword(repo, input.projectId, input.primaryKeywordId);
+        assertUnlockedOrAcknowledged(keyword.locked, input.acknowledgeLock);
+        await repo.addGroupMemberships(input.projectId, input.groupId, [keyword.id]);
+      }
+
+      await repo.setGroupPrimaryKeyword(
+        input.projectId,
+        input.groupId,
+        input.primaryKeywordId,
+      );
+      await repo.appendAudit(
+        input.projectId,
+        input.primaryKeywordId,
+        input.actorUserId,
+        'KEYWORD_GROUP_PRIMARY_CHANGED',
+        { groupId: input.groupId, primaryKeywordId: input.primaryKeywordId },
+      );
+      return requireGroup(repo, input.projectId, input.groupId);
+    });
+  }
+
+  async assignKeywordsToGroup(input: AssignKeywordsToGroupInput) {
+    return inKeywordTransaction(async (repo) => {
+      await requireGroup(repo, input.projectId, input.groupId);
+      const keywordIds = [...new Set(input.keywordIds)];
+      if (keywordIds.length === 0) {
+        throw new ValidationError('At least one keyword is required');
+      }
+
+      for (const keywordId of keywordIds) {
+        const keyword = await requireKeyword(repo, input.projectId, keywordId);
+        assertUnlockedOrAcknowledged(keyword.locked, input.acknowledgeLock);
+      }
+
+      await repo.addGroupMemberships(input.projectId, input.groupId, keywordIds);
+      for (const keywordId of keywordIds) {
+        await repo.appendAudit(
+          input.projectId,
+          keywordId,
+          input.actorUserId,
+          'KEYWORD_GROUP_ASSIGNED',
+          { groupId: input.groupId },
+        );
+      }
+      return repo.listMembershipsForGroup(input.projectId, input.groupId);
+    });
   }
 
   async setGroups(input: SetKeywordGroupsInput) {

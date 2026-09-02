@@ -195,6 +195,50 @@ async function seedOfficialSearchEvidence(
 }
 
 describe('P11-01 keyword center web UI', () => {
+  it('renders persisted Keyword Cluster primary and management controls', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OWNER',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const keyword = await keywordService.createManual({
+        actorUserId: fixture.user.id,
+        projectId: fixture.project.id,
+        text: '符纸',
+        type: 'CORE',
+      });
+      const group = await keywordService.createGroup({
+        projectId: fixture.project.id,
+        name: '符纸专题',
+      });
+      await keywordService.setGroupPrimaryKeyword({
+        actorUserId: fixture.user.id,
+        projectId: fixture.project.id,
+        groupId: group.id,
+        primaryKeywordId: keyword.id,
+      });
+
+      const response = await request(createApp())
+        .get(`/projects/${fixture.project.id}/keywords`)
+        .set('Cookie', fixture.sessionCookie)
+        .expect(200);
+
+      expect(response.text).toContain('data-ui="keyword-cluster-panel"');
+      expect(response.text).toContain('关键词 Cluster');
+      expect(response.text).toContain('符纸专题');
+      expect(response.text).toContain('主词：符纸');
+      expect(response.text).toContain(`/keyword-groups/${group.id}/rename`);
+      expect(response.text).toContain(`/keyword-groups/${group.id}/primary-keyword`);
+      expect(response.text).toContain(`/keyword-groups/${group.id}/keywords`);
+      expect(response.text).toContain('批量加入成员词');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it('renders keyword facts without fabricated ranking', async () => {
     const fixture = await seedAuthenticatedUser({
       role: 'OWNER',

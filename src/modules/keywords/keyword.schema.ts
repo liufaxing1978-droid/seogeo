@@ -134,6 +134,20 @@ export const keywordGroupMembershipSchema = z.object({
   acknowledgeLock: z.boolean().optional(),
 }).strict();
 
+export const keywordGroupRenameSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+}).strict();
+
+export const keywordGroupPrimarySchema = z.object({
+  primaryKeywordId: z.string().uuid().nullable(),
+  acknowledgeLock: z.boolean().optional(),
+}).strict();
+
+export const keywordGroupBulkAssignmentSchema = z.object({
+  keywordIds: z.array(z.string().uuid()).min(1).max(100),
+  acknowledgeLock: z.boolean().optional(),
+}).strict();
+
 export const keywordSuggestionDecisionSchema = z.object({
   editedText: keywordTextSchema.optional(),
 }).strict();

@@ -36,7 +36,8 @@ export interface KeywordCenterViewModel {
     unknown: number;
   };
   keywords: KeywordCenterKeywordRecord[];
-  groups: Array<{ id: string; name: string }>;
+  keywordOptions: Array<{ id: string; text: string; status: string; locked: boolean }>;
+  groups: Array<{ id: string; name: string; primaryKeywordId: string | null }>;
   suggestions: Array<{
     id: string;
     seedKeywordId: string;
@@ -55,7 +56,7 @@ export class KeywordWebRepository {
   ) {}
 
   async load(projectId: string, filters: KeywordListQuery = {}): Promise<KeywordCenterViewModel> {
-    const [project, keywords, relations, groups, memberships, suggestions] = await Promise.all([
+    const [project, keywords, keywordOptions, relations, groups, memberships, suggestions] = await Promise.all([
       prisma.project.findUnique({
         where: { id: projectId },
         select: {
@@ -66,6 +67,7 @@ export class KeywordWebRepository {
         },
       }),
       this.keywordRepository.listKeywords(projectId, filters),
+      this.keywordRepository.listKeywords(projectId),
       prisma.keywordRelation.findMany({
         where: { projectId },
         select: { childKeywordId: true, parentKeywordId: true },
@@ -152,7 +154,17 @@ export class KeywordWebRepository {
       project,
       summary,
       keywords: rows,
-      groups: groups.map((group) => ({ id: group.id, name: group.name })),
+      keywordOptions: keywordOptions.map((keyword) => ({
+        id: keyword.id,
+        text: keyword.text,
+        status: keyword.status,
+        locked: keyword.locked,
+      })),
+      groups: groups.map((group) => ({
+        id: group.id,
+        name: group.name,
+        primaryKeywordId: group.primaryKeywordId,
+      })),
       suggestions: suggestions.map((suggestion) => ({
         id: suggestion.id,
         seedKeywordId: suggestion.seedKeywordId,

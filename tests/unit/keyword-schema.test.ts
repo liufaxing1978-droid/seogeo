@@ -3,7 +3,10 @@ import {
   keywordBulkCreateSchema,
   keywordCreateSchema,
   keywordGroupCreateSchema,
+  keywordGroupPrimarySchema,
   keywordGroupMembershipSchema,
+  keywordGroupRenameSchema,
+  keywordGroupBulkAssignmentSchema,
   keywordListQuerySchema,
   keywordLockSchema,
   keywordParentSchema,
@@ -82,5 +85,33 @@ describe('keyword request schemas', () => {
     expect(keywordGroupCreateSchema.safeParse({ name: '   ' }).success).toBe(false);
     expect(keywordGroupMembershipSchema.safeParse({ groupIds: ['not-a-uuid'] }).success).toBe(false);
     expect(keywordSuggestionDecisionSchema.safeParse({ editedText: '符纸', surprise: true }).success).toBe(false);
+  });
+
+  it('strictly validates cluster rename, primary, and bulk assignment commands', () => {
+    const firstKeywordId = '550e8400-e29b-41d4-a716-446655440000';
+    const secondKeywordId = '550e8400-e29b-41d4-a716-446655440001';
+
+    expect(keywordGroupRenameSchema.parse({ name: '符纸专题' })).toEqual({ name: '符纸专题' });
+    expect(keywordGroupPrimarySchema.parse({ primaryKeywordId: firstKeywordId })).toEqual({
+      primaryKeywordId: firstKeywordId,
+    });
+    expect(keywordGroupPrimarySchema.parse({ primaryKeywordId: null })).toEqual({
+      primaryKeywordId: null,
+    });
+    expect(keywordGroupBulkAssignmentSchema.parse({
+      keywordIds: [firstKeywordId, secondKeywordId],
+      acknowledgeLock: true,
+    })).toEqual({
+      keywordIds: [firstKeywordId, secondKeywordId],
+      acknowledgeLock: true,
+    });
+
+    expect(keywordGroupRenameSchema.safeParse({ name: '   ' }).success).toBe(false);
+    expect(keywordGroupPrimarySchema.safeParse({ primaryKeywordId: 'foreign' }).success).toBe(false);
+    expect(keywordGroupBulkAssignmentSchema.safeParse({ keywordIds: [] }).success).toBe(false);
+    expect(keywordGroupBulkAssignmentSchema.safeParse({
+      keywordIds: [firstKeywordId],
+      surprise: true,
+    }).success).toBe(false);
   });
 });

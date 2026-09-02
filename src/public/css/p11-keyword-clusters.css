@@ -1,0 +1,51 @@
+.keyword-cluster-list {
+  display: grid;
+  gap: 12px;
+}
+
+.keyword-cluster-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  background: var(--ui-surface-subtle);
+}
+
+.keyword-cluster-card__heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.keyword-cluster-card__heading strong {
+  font-size: 13px;
+}
+
+.keyword-cluster-card__heading span,
+.keyword-cluster-assignment legend {
+  font-size: 11px;
+  color: var(--ui-text-secondary);
+}
+
+.keyword-cluster-card .keyword-inline-form {
+  margin-top: 0;
+}
+
+.keyword-cluster-assignment {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ui-border);
+}
+
+.keyword-cluster-assignment fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.keyword-cluster-assignment legend {
+  margin-bottom: 6px;
+  font-weight: 700;
+}

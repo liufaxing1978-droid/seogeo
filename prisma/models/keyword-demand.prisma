@@ -85,6 +85,7 @@ model Keyword {
   parentEdges         KeywordRelation[]        @relation("KeywordParent")
   childEdge           KeywordRelation?         @relation("KeywordChild")
   groupMemberships    KeywordGroupMembership[]
+  primaryForGroups    KeywordGroup[]           @relation("KeywordGroupPrimary")
   seededSuggestions   KeywordSuggestion[]      @relation("KeywordSuggestionSeed")
   acceptedSuggestions KeywordSuggestion[]      @relation("KeywordSuggestionAccepted")
   auditEvents         KeywordAuditEvent[]
@@ -112,18 +113,21 @@ model KeywordRelation {
 }
 
 model KeywordGroup {
-  id          String   @id @default(uuid()) @db.Uuid
-  projectId   String   @db.Uuid
-  name        String
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(uuid()) @db.Uuid
+  projectId        String   @db.Uuid
+  name             String
+  description      String?
+  primaryKeywordId String?  @db.Uuid
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  project     Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  memberships KeywordGroupMembership[]
+  project        Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  primaryKeyword Keyword?                 @relation("KeywordGroupPrimary", fields: [primaryKeywordId], references: [id], onDelete: SetNull)
+  memberships    KeywordGroupMembership[]
 
   @@unique([projectId, name])
   @@index([projectId])
+  @@index([projectId, primaryKeywordId])
 }
 
 model KeywordGroupMembership {

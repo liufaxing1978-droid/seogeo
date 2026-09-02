@@ -261,4 +261,84 @@ describe('KeywordService manual command semantics', () => {
     });
     expect(filtered.map((item) => item.text)).toEqual(['六壬法教']);
   });
+
+  it('rejects a cluster rename that conflicts inside the same project', async () => {
+    const project = await createProject('cluster-rename');
+    const service = new KeywordService();
+    const first = await service.createGroup({ projectId: project.id, name: '符纸专题' });
+    await service.createGroup({ projectId: project.id, name: '六壬专题' });
+
+    await expect(service.renameGroup({
+      actorUserId,
+      projectId: project.id,
+      groupId: first.id,
+      name: ' 六壬专题 ',
+    })).rejects.toMatchObject({ code: 'KEYWORD_GROUP_DUPLICATE' });
+  });
+
+  it('requires a project-local primary keyword and automatically makes it a cluster member', async () => {
+    const local = await createProject('cluster-primary-local');
+    const foreign = await createProject('cluster-primary-foreign');
+    const service = new KeywordService();
+    const group = await service.createGroup({ projectId: local.id, name: '符纸专题' });
+    const localKeyword = await service.createManual({
+      actorUserId,
+      projectId: local.id,
+      text: '符纸',
+      type: 'CORE',
+    });
+    const foreignKeyword = await service.createManual({
+      actorUserId,
+      projectId: foreign.id,
+      text: '外部符纸',
+      type: 'CORE',
+    });
+
+    await expect(service.setGroupPrimaryKeyword({
+      actorUserId,
+      projectId: local.id,
+      groupId: group.id,
+      primaryKeywordId: foreignKeyword.id,
+    })).rejects.toMatchObject({ code: 'KEYWORD_NOT_FOUND' });
+
+    const updated = await service.setGroupPrimaryKeyword({
+      actorUserId,
+      projectId: local.id,
+      groupId: group.id,
+      primaryKeywordId: localKeyword.id,
+    });
+
+    expect(updated.primaryKeywordId).toBe(localKeyword.id);
+    await expect(prisma.keywordGroupMembership.findUnique({
+      where: {
+        groupId_keywordId: { groupId: group.id, keywordId: localKeyword.id },
+      },
+    })).resolves.toMatchObject({ projectId: local.id });
+  });
+
+  it('bulk assigns a cluster atomically and never leaves partial foreign-project membership', async () => {
+    const local = await createProject('cluster-bulk-local');
+    const foreign = await createProject('cluster-bulk-foreign');
+    const service = new KeywordService();
+    const group = await service.createGroup({ projectId: local.id, name: '符纸专题' });
+    const first = await service.createManual({ actorUserId, projectId: local.id, text: '符纸', type: 'CORE' });
+    const second = await service.createManual({ actorUserId, projectId: local.id, text: '六壬符纸', type: 'LONG_TAIL' });
+    const foreignKeyword = await service.createManual({ actorUserId, projectId: foreign.id, text: '外部词', type: 'CORE' });
+
+    await expect(service.assignKeywordsToGroup({
+      actorUserId,
+      projectId: local.id,
+      groupId: group.id,
+      keywordIds: [first.id, foreignKeyword.id],
+    })).rejects.toMatchObject({ code: 'KEYWORD_NOT_FOUND' });
+    expect(await prisma.keywordGroupMembership.count({ where: { groupId: group.id } })).toBe(0);
+
+    const memberships = await service.assignKeywordsToGroup({
+      actorUserId,
+      projectId: local.id,
+      groupId: group.id,
+      keywordIds: [first.id, second.id, first.id],
+    });
+    expect(memberships.map((item) => item.keywordId).sort()).toEqual([first.id, second.id].sort());
+  });
 });

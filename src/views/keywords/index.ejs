@@ -1,5 +1,6 @@
 <%
   const keywordById = new Map(keywordCenter.keywords.map((item) => [item.id, item]));
+  const keywordOptionById = new Map(keywordCenter.keywordOptions.map((item) => [item.id, item]));
   const groupById = new Map(keywordCenter.groups.map((item) => [item.id, item]));
   const typeLabels = {
     CORE: '核心词',
@@ -365,22 +366,49 @@
   </section>
 
   <div class="keyword-center__lower-grid">
-    <section class="keyword-panel">
+    <section class="keyword-panel" data-ui="keyword-cluster-panel">
       <div class="keyword-panel__heading">
-        <div><p class="keyword-panel__kicker">Topic Groups</p><h3>关键词分组</h3></div>
+        <div><p class="keyword-panel__kicker">Keyword Cluster</p><h3>关键词 Cluster</h3></div>
       </div>
       <% if (keywordCenter.groups.length) { %>
-        <div class="keyword-chip-list">
-          <% keywordCenter.groups.forEach((group) => { %><span class="keyword-chip"><%= group.name %></span><% }) %>
+        <div class="keyword-cluster-list">
+          <% keywordCenter.groups.forEach((group) => {
+            const primaryKeyword = group.primaryKeywordId ? keywordOptionById.get(group.primaryKeywordId) : null;
+          %>
+            <article class="keyword-cluster-card" data-cluster-id="<%= group.id %>">
+              <div class="keyword-cluster-card__heading">
+                <strong><%= group.name %></strong>
+                <span>主词：<%= primaryKeyword ? primaryKeyword.text : '未设置' %></span>
+              </div>
+              <% if (canWriteKeywords) { %>
+                <form class="keyword-inline-form" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups/<%= group.id %>/rename">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <label class="keyword-field"><span>Cluster 名称</span><input name="name" value="<%= group.name %>" required maxlength="160"></label>
+                  <button class="keyword-button" type="submit">重命名</button>
+                </form>
+                <form class="keyword-inline-form" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups/<%= group.id %>/primary-keyword">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <label class="keyword-field"><span>主词</span><select name="primaryKeywordId"><option value="">未设置</option><% keywordCenter.keywordOptions.filter((item) => item.status !== 'ARCHIVED').forEach((item) => { %><option value="<%= item.id %>" <%= group.primaryKeywordId === item.id ? 'selected' : '' %>><%= item.text %></option><% }) %></select></label>
+                  <button class="keyword-button" type="submit">设置主词</button>
+                </form>
+                <form class="keyword-cluster-assignment" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups/<%= group.id %>/keywords">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <fieldset><legend>批量加入成员词</legend><div class="keyword-chip-list"><% keywordCenter.keywordOptions.filter((item) => item.status !== 'ARCHIVED').forEach((item) => { %><label class="keyword-check"><input type="checkbox" name="keywordIds" value="<%= item.id %>"><span><%= item.text %></span></label><% }) %></div></fieldset>
+                  <label class="keyword-check"><input type="checkbox" name="acknowledgeLock" value="true"><span>确认调整锁定词</span></label>
+                  <button class="keyword-button" type="submit">批量加入</button>
+                </form>
+              <% } %>
+            </article>
+          <% }) %>
         </div>
       <% } else { %>
-        <p class="keyword-empty keyword-empty--compact">尚未建立分组。</p>
+        <p class="keyword-empty keyword-empty--compact">尚未建立 Keyword Cluster。</p>
       <% } %>
       <% if (canWriteKeywords) { %>
         <form class="keyword-inline-form" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-          <label class="keyword-field"><span>新分组</span><input name="name" required placeholder="例如：符纸专题"></label>
-          <button class="keyword-button" type="submit">创建分组</button>
+          <label class="keyword-field"><span>新 Cluster</span><input name="name" required placeholder="例如：符纸专题"></label>
+          <button class="keyword-button" type="submit">创建 Cluster</button>
         </form>
       <% } %>
     </section>
