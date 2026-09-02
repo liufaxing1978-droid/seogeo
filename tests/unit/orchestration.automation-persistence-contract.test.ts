@@ -12,7 +12,7 @@ function fieldNames(name: string): Set<string> {
 }
 
 describe('OL-2 automation persistence contract', () => {
-  it('persists project-scoped automation definitions with bounded execution policy', () => {
+  it('persists project-scoped automation definitions with bounded execution policy and typed action configuration', () => {
     const fields = fieldNames('AutomationDefinition');
 
     for (const required of [
@@ -20,6 +20,7 @@ describe('OL-2 automation persistence contract', () => {
       'projectId',
       'key',
       'actionType',
+      'actionConfig',
       'enabled',
       'scheduleCron',
       'overlapPolicy',
