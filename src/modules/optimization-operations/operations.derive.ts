@@ -267,6 +267,7 @@ export function deriveAlertCenter(input: {
   }
 
   for (const run of input.automationRuns) {
+    if (run.status !== 'FAILED' && run.status !== 'TIMED_OUT') continue;
     const kind: OperationsAlertKind = run.status === 'TIMED_OUT'
       ? 'AUTOMATION_TIMED_OUT'
       : 'AUTOMATION_FAILED';
