@@ -45,6 +45,7 @@ import {
   type OptimizationAutomationWorkerDeps
 } from '../modules/optimization-orchestration/orchestration.automation.worker.js';
 import {
+  OPTIMIZATION_AUTOMATION_QUEUE_ATTEMPTS,
   OPTIMIZATION_AUTOMATION_QUEUE_NAME,
   OPTIMIZATION_ORCHESTRATION_QUEUE_NAME,
   OPTIMIZATION_PLANNING_QUEUE_NAME,
@@ -136,6 +137,9 @@ export const OPTIMIZATION_AUTOMATION_WORKER_CONCURRENCY = 2;
 export const OPTIMIZATION_AUTOPILOT_WORKER_CONCURRENCY = 2;
 export const OPTIMIZATION_EXPERIMENT_WORKER_CONCURRENCY = 2;
 export const OPTIMIZATION_FEEDBACK_WORKER_CONCURRENCY = 2;
+export const OPTIMIZATION_AUTOMATION_TIMEOUT_REPAIR_EVERY_MS = 60_000;
+export const OPTIMIZATION_AUTOMATION_TIMEOUT_REPAIR_SCHEDULER_ID =
+  'optimization-automation-timeout-repair';
 export const OPTIMIZATION_DAILY_RECONCILE_EVERY_MS = 24 * 60 * 60 * 1000;
 export const OPTIMIZATION_DAILY_RECONCILE_SCHEDULER = {
   id: 'optimization-daily-reconcile',
@@ -222,6 +226,25 @@ export async function reconcileOptimizationAutomationDefinitionSchedules(input: 
     definitions,
     synced
   };
+}
+
+export async function registerOptimizationAutomationTimeoutRepairScheduler(
+  queue: Pick<Queue<OptimizationAutomationJobData>, 'upsertJobScheduler'>
+): Promise<void> {
+  await queue.upsertJobScheduler(
+    OPTIMIZATION_AUTOMATION_TIMEOUT_REPAIR_SCHEDULER_ID,
+    { every: OPTIMIZATION_AUTOMATION_TIMEOUT_REPAIR_EVERY_MS },
+    {
+      name: 'repair-timed-out-automation-runs',
+      data: { kind: 'REPAIR_TIMEOUTS' },
+      opts: {
+        attempts: OPTIMIZATION_AUTOMATION_QUEUE_ATTEMPTS,
+        backoff: { type: 'exponential', delay: 5_000 },
+        removeOnComplete: 100,
+        removeOnFail: 200
+      }
+    }
+  );
 }
 
 export function buildPublicationVerificationExperimentHandoff(
@@ -479,6 +502,9 @@ export async function startWorkers() {
     projects: projectRepository,
     orchestration: optimizationOrchestrationService
   });
+  await registerOptimizationAutomationTimeoutRepairScheduler(
+    optimizationAutomationSupportQueue
+  );
   const optimizationAutomationRuntimeDeps = buildOptimizationAutomationRuntimeDeps({
     repository: optimizationOrchestrationRepository,
     service: optimizationOrchestrationService,
