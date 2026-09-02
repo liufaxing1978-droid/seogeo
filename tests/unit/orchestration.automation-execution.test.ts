@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { OptimizationOrchestrationService } from '../../src/modules/optimization-orchestration/orchestration.service.js';
 
 const PROJECT_ID = '00000000-0000-4000-8000-000000000001';
+const OTHER_PROJECT_ID = '00000000-0000-4000-8000-000000000009';
 const DEFINITION_ID = '00000000-0000-4000-8000-000000000002';
 const RUN_ID = '00000000-0000-4000-8000-000000000003';
 const ACTIVE_RUN_ID = '00000000-0000-4000-8000-000000000004';
@@ -139,7 +140,7 @@ describe('OL-2 automation execution semantics', () => {
       automationRun({ status: 'FAILED', attempt: 1, lastErrorCode: 'UPSTREAM_UNAVAILABLE' })
     );
 
-    await service.retryAutomationRun(RUN_ID);
+    await service.retryAutomationRun({ runId: RUN_ID, projectId: PROJECT_ID });
 
     expect(transitionAutomationRun).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -158,7 +159,20 @@ describe('OL-2 automation execution semantics', () => {
       automationRun({ status: 'FAILED', attempt: 3, lastErrorCode: 'UPSTREAM_UNAVAILABLE' })
     );
 
-    await expect(service.retryAutomationRun(RUN_ID)).rejects.toThrow(/attempt|retry|exhausted/i);
+    await expect(service.retryAutomationRun({ runId: RUN_ID, projectId: PROJECT_ID }))
+      .rejects.toThrow(/attempt|retry|exhausted/i);
+    expect(transitionAutomationRun).not.toHaveBeenCalled();
+    expect(enqueueAutomationRun).not.toHaveBeenCalled();
+  });
+
+  it('rejects a retry when the run does not belong to the requested project', async () => {
+    const { service, getAutomationRun, transitionAutomationRun, enqueueAutomationRun } = setup();
+    getAutomationRun.mockResolvedValueOnce(
+      automationRun({ status: 'FAILED', attempt: 1, lastErrorCode: 'UPSTREAM_UNAVAILABLE' })
+    );
+
+    await expect(service.retryAutomationRun({ runId: RUN_ID, projectId: OTHER_PROJECT_ID }))
+      .rejects.toThrow(/project|not found|mismatch/i);
     expect(transitionAutomationRun).not.toHaveBeenCalled();
     expect(enqueueAutomationRun).not.toHaveBeenCalled();
   });
