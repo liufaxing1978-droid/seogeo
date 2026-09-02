@@ -6,6 +6,7 @@ import {
   deriveOutcomeSummary,
   derivePipelineStage,
   deriveQuota,
+  deriveTodayActions,
 } from './operations.derive.js';
 import {
   OptimizationOperationsRepository,
@@ -20,6 +21,7 @@ import type {
   OperationsPipelineAuthority,
   OperationsPipelineStage,
   OperationsQuota,
+  OperationsTodayAction,
 } from './operations.types.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -71,6 +73,7 @@ export type OperationsFeedbackSummary = {
 export type OperationsOverview = {
   effectiveAutopilotState: EffectiveAutopilotState;
   todayRunCount: number;
+  todayActions: OperationsTodayAction[];
   quota: OperationsQuota;
   pipelineCounts: Record<OperationsPipelineStage, number>;
   inboxCounts: Record<OperationsInboxCategory, number>;
@@ -182,6 +185,7 @@ export class OptimizationOperationsService {
         policyEnabled: policy?.enabled ?? false,
       }),
       todayRunCount,
+      todayActions: deriveTodayActions(inboxItems),
       quota: deriveQuota({
         configuredLimit: policy?.dailyDraftPrLimit ?? 0,
         reservations,
