@@ -1,27 +1,12 @@
 import request from 'supertest';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app.js';
-import { prisma } from '../../src/db/prisma.js';
+import { deriveCsrfToken } from '../../src/auth/csrf.js';
+import { env } from '../../src/config/env.js';
 import type { OptimizationOrchestrationApiPort } from '../../src/modules/optimization-orchestration/orchestration.routes.js';
+import { seedAuthenticatedUser } from '../helpers/auth-fixture.js';
 
-const projectIds: string[] = [];
-
-async function createProject(
-  label: string,
-  planLevel: 'STANDARD' | 'ADVANCED' | 'ENTERPRISE'
-) {
-  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const project = await prisma.project.create({
-    data: {
-      name: `P9-B orchestration API ${label}`,
-      slug: `p9b-orchestration-api-${suffix}`,
-      primaryDomain: `p9b-orchestration-api-${suffix}.example.com`,
-      planLevel
-    }
-  });
-  projectIds.push(project.id);
-  return project;
-}
+const fixtures: Awaited<ReturnType<typeof seedAuthenticatedUser>>[] = [];
 
 type ManualInput = {
   projectId: string;
@@ -53,20 +38,41 @@ function manualRunUrl(projectId: string): string {
   return `/api/v1/projects/${projectId}/optimization/runs`;
 }
 
-afterAll(async () => {
-  for (const projectId of projectIds) {
-    await prisma.project.delete({ where: { id: projectId } }).catch(() => undefined);
+async function seedOperator(planLevel: 'STANDARD' | 'ADVANCED' | 'ENTERPRISE') {
+  const fixture = await seedAuthenticatedUser({
+    role: 'OPERATOR',
+    planLevel,
+    userStatus: 'ACTIVE',
+    membershipStatus: 'ACTIVE'
+  });
+  fixtures.push(fixture);
+  return fixture;
+}
+
+function csrf(fixture: Awaited<ReturnType<typeof seedAuthenticatedUser>>) {
+  return deriveCsrfToken(
+    env.SESSION_SECRET,
+    fixture.csrfInput.sessionId,
+    fixture.csrfInput.tokenHash
+  );
+}
+
+afterEach(async () => {
+  for (const fixture of fixtures.splice(0).reverse()) {
+    await fixture.cleanup();
   }
 });
 
 describe('P9-B strict manual orchestration API', () => {
   it('returns 403 for STANDARD before the trigger API is touched', async () => {
-    const project = await createProject('standard', 'STANDARD');
+    const fixture = await seedOperator('STANDARD');
     const fake = createFakeOptimizationOrchestrationApi();
     const app = appWithOptimizationApi(fake.api);
 
     await request(app)
-      .post(manualRunUrl(project.id))
+      .post(manualRunUrl(fixture.project.id))
+      .set('Cookie', fixture.sessionCookie)
+      .set('X-CSRF-Token', csrf(fixture))
       .send({ manualRequestId: '11111111-1111-4111-8111-111111111111' })
       .expect(403)
       .expect(({ body }) => expect(body.error.code).toBe('FEATURE_NOT_AVAILABLE'));
@@ -75,9 +81,9 @@ describe('P9-B strict manual orchestration API', () => {
   });
 
   it.each(['ADVANCED', 'ENTERPRISE'] as const)(
-    'returns exactly 202 for %s and derives requestedBy from the project route',
+    'returns exactly 202 for %s and binds requestedBy to the authenticated user',
     async (planLevel) => {
-      const project = await createProject(planLevel.toLowerCase(), planLevel);
+      const fixture = await seedOperator(planLevel);
       const fake = createFakeOptimizationOrchestrationApi();
       const app = appWithOptimizationApi(fake.api);
       const manualRequestId = planLevel === 'ADVANCED'
@@ -85,30 +91,34 @@ describe('P9-B strict manual orchestration API', () => {
         : '33333333-3333-4333-8333-333333333333';
 
       const response = await request(app)
-        .post(manualRunUrl(project.id))
+        .post(manualRunUrl(fixture.project.id))
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf(fixture))
         .send({ manualRequestId })
         .expect(202);
 
       expect(response.body.data).toMatchObject({
-        projectId: project.id,
+        projectId: fixture.project.id,
         triggerType: 'MANUAL',
         status: 'QUEUED'
       });
       expect(fake.calls).toEqual([{
-        projectId: project.id,
+        projectId: fixture.project.id,
         manualRequestId,
-        requestedBy: `project-api:${project.id}`
+        requestedBy: `user:${fixture.user.id}`
       }]);
     }
   );
 
   it('rejects malformed UUIDs and unknown fields before the trigger API is touched', async () => {
-    const project = await createProject('strict-body', 'ADVANCED');
+    const fixture = await seedOperator('ADVANCED');
     const fake = createFakeOptimizationOrchestrationApi();
     const app = appWithOptimizationApi(fake.api);
 
     await request(app)
-      .post(manualRunUrl(project.id))
+      .post(manualRunUrl(fixture.project.id))
+      .set('Cookie', fixture.sessionCookie)
+      .set('X-CSRF-Token', csrf(fixture))
       .send({ manualRequestId: 'not-a-uuid' })
       .expect(400)
       .expect(({ body }) => expect(body.error.code).toBe('VALIDATION_ERROR'));
@@ -124,7 +134,9 @@ describe('P9-B strict manual orchestration API', () => {
 
     for (const forbidden of forbiddenFields) {
       await request(app)
-        .post(manualRunUrl(project.id))
+        .post(manualRunUrl(fixture.project.id))
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf(fixture))
         .send({
           manualRequestId: '44444444-4444-4444-8444-444444444444',
           ...forbidden
@@ -137,12 +149,12 @@ describe('P9-B strict manual orchestration API', () => {
   });
 
   it('does not expose a GET orchestration route or invoke the mutation API for unrelated GETs', async () => {
-    const project = await createProject('no-get', 'ADVANCED');
+    const fixture = await seedOperator('ADVANCED');
     const fake = createFakeOptimizationOrchestrationApi();
     const app = appWithOptimizationApi(fake.api);
 
     await request(app)
-      .get(manualRunUrl(project.id))
+      .get(manualRunUrl(fixture.project.id))
       .expect(404);
 
     await request(app)
