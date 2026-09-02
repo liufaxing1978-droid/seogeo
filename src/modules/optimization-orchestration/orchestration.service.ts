@@ -7,11 +7,16 @@ import type {
 } from '@prisma/client';
 import { hasFeature } from '../../auth/feature-flags.js';
 import { OPTIMIZATION_PLAN_VERSION } from '../optimization/optimization.types.js';
+import type {
+  CreateAutomationDefinitionInput,
+  UpdateAutomationDefinitionInput
+} from './orchestration.automation-definition.repository.js';
 import {
   buildDailyTriggerKey,
   buildGrowthTriggerKey,
   buildManualTriggerKey
 } from './orchestration.identity.js';
+import type { AutomationScheduleDefinition } from './orchestration.queue.js';
 import { OPTIMIZATION_RUN_VERSION, type GrowthTriggerInput } from './orchestration.types.js';
 import type {
   CreateAutomationRunInput,
@@ -46,12 +51,26 @@ export type AutomationRunQueuePort = {
   enqueueRun(runId: string, projectId: string): Promise<unknown>;
 };
 
+export type AutomationDefinitionRepositoryPort = {
+  listAutomationDefinitions(projectId: string): Promise<AutomationDefinition[]>;
+  createAutomationDefinition(input: CreateAutomationDefinitionInput): Promise<AutomationDefinition>;
+  updateAutomationDefinition(
+    input: UpdateAutomationDefinitionInput
+  ): Promise<AutomationDefinition | null>;
+};
+
+export type AutomationScheduleQueuePort = {
+  syncDefinitionSchedule(definition: AutomationScheduleDefinition): Promise<unknown>;
+};
+
 export type OptimizationOrchestrationServiceDeps = {
   repository: OrchestrationTriggerRepositoryPort;
   planningQueue: OptimizationPlanningQueuePort;
   projects: OrchestrationProjectPort;
   automationRuns?: AutomationRunRepositoryPort;
   automationQueue?: AutomationRunQueuePort;
+  automationDefinitions?: AutomationDefinitionRepositoryPort;
+  automationSchedules?: AutomationScheduleQueuePort;
   now?: () => Date;
 };
 
@@ -61,6 +80,35 @@ export type StartAutomationRunInput = {
   source: AutomationRunSource;
   requestKey: string;
 };
+
+export type CreateManagedAutomationDefinitionInput = {
+  projectId: string;
+  key: string;
+  actionType: string;
+  actionConfig: unknown;
+  enabled: boolean;
+  scheduleCron: string | null;
+  maxAttempts: number;
+  timeoutMs: number;
+};
+
+export type UpdateManagedAutomationDefinitionInput = {
+  definitionId: string;
+  projectId: string;
+  patch: {
+    key?: string;
+    actionType?: string;
+    actionConfig?: unknown;
+    enabled?: boolean;
+    scheduleCron?: string | null;
+    maxAttempts?: number;
+    timeoutMs?: number;
+  };
+};
+
+const MAX_AUTOMATION_ATTEMPTS = 10;
+const MIN_AUTOMATION_TIMEOUT_MS = 1_000;
+const MAX_AUTOMATION_TIMEOUT_MS = 3_600_000;
 
 function normalizeSnapshotIds(snapshotIds: readonly string[]): string[] {
   return [...new Set(snapshotIds)].sort();
@@ -84,6 +132,43 @@ function deadlineFrom(now: Date, timeoutMs: number): Date {
   return new Date(now.getTime() + timeoutMs);
 }
 
+function assertAutomationExecutionPolicy(maxAttempts: number, timeoutMs: number): void {
+  if (
+    !Number.isInteger(maxAttempts)
+    || maxAttempts < 1
+    || maxAttempts > MAX_AUTOMATION_ATTEMPTS
+  ) {
+    throw new Error(`Automation maxAttempts must be an integer between 1 and ${MAX_AUTOMATION_ATTEMPTS}`);
+  }
+  if (
+    !Number.isInteger(timeoutMs)
+    || timeoutMs < MIN_AUTOMATION_TIMEOUT_MS
+    || timeoutMs > MAX_AUTOMATION_TIMEOUT_MS
+  ) {
+    throw new Error(
+      `Automation timeoutMs must be an integer between ${MIN_AUTOMATION_TIMEOUT_MS} and ${MAX_AUTOMATION_TIMEOUT_MS}`
+    );
+  }
+}
+
+function normalizeAutomationKey(key: string): string {
+  const normalized = key.trim();
+  if (!normalized) throw new Error('Automation definition key is required');
+  return normalized;
+}
+
+function normalizeActionType(actionType: string): string {
+  const normalized = actionType.trim();
+  if (!normalized) throw new Error('Automation action type is required');
+  return normalized;
+}
+
+function normalizeScheduleCron(scheduleCron: string | null): string | null {
+  if (scheduleCron === null) return null;
+  const normalized = scheduleCron.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
 export class OptimizationOrchestrationService {
   constructor(private readonly deps: OptimizationOrchestrationServiceDeps) {}
 
@@ -105,6 +190,19 @@ export class OptimizationOrchestrationService {
     };
   }
 
+  private automationDefinitionDeps(): {
+    repository: AutomationDefinitionRepositoryPort;
+    schedules: AutomationScheduleQueuePort;
+  } {
+    if (!this.deps.automationDefinitions || !this.deps.automationSchedules) {
+      throw new Error('Automation definition management dependencies are not configured');
+    }
+    return {
+      repository: this.deps.automationDefinitions,
+      schedules: this.deps.automationSchedules
+    };
+  }
+
   private now(): Date {
     return this.deps.now?.() ?? new Date();
   }
@@ -120,6 +218,77 @@ export class OptimizationOrchestrationService {
       throw new Error('Automation definition project mismatch');
     }
     return definition;
+  }
+
+  async listAutomationDefinitions(projectId: string): Promise<AutomationDefinition[]> {
+    const { repository } = this.automationDefinitionDeps();
+    return repository.listAutomationDefinitions(projectId);
+  }
+
+  async createAutomationDefinition(
+    input: CreateManagedAutomationDefinitionInput
+  ): Promise<AutomationDefinition> {
+    const { repository, schedules } = this.automationDefinitionDeps();
+    assertAutomationExecutionPolicy(input.maxAttempts, input.timeoutMs);
+
+    const created = await repository.createAutomationDefinition({
+      projectId: input.projectId,
+      key: normalizeAutomationKey(input.key),
+      actionType: normalizeActionType(input.actionType),
+      actionConfig: input.actionConfig,
+      enabled: input.enabled,
+      scheduleCron: normalizeScheduleCron(input.scheduleCron),
+      overlapPolicy: 'SKIP_IF_RUNNING',
+      maxAttempts: input.maxAttempts,
+      timeoutMs: input.timeoutMs
+    });
+    await schedules.syncDefinitionSchedule(created);
+    return created;
+  }
+
+  async updateAutomationDefinition(
+    input: UpdateManagedAutomationDefinitionInput
+  ): Promise<AutomationDefinition> {
+    const { repository, schedules } = this.automationDefinitionDeps();
+    const patch = { ...input.patch };
+
+    if (patch.maxAttempts !== undefined || patch.timeoutMs !== undefined) {
+      const currentDefinitions = await repository.listAutomationDefinitions(input.projectId);
+      const current = currentDefinitions.find((candidate) => candidate.id === input.definitionId);
+      if (!current) throw new Error('Automation definition not found');
+      assertAutomationExecutionPolicy(
+        patch.maxAttempts ?? current.maxAttempts,
+        patch.timeoutMs ?? current.timeoutMs
+      );
+    }
+    if (patch.key !== undefined) patch.key = normalizeAutomationKey(patch.key);
+    if (patch.actionType !== undefined) patch.actionType = normalizeActionType(patch.actionType);
+    if (patch.scheduleCron !== undefined) {
+      patch.scheduleCron = normalizeScheduleCron(patch.scheduleCron);
+    }
+
+    const updated = await repository.updateAutomationDefinition({
+      definitionId: input.definitionId,
+      projectId: input.projectId,
+      patch
+    });
+    if (!updated) throw new Error('Automation definition not found');
+
+    await schedules.syncDefinitionSchedule(updated);
+    return updated;
+  }
+
+  async reconcileAutomationSchedules(
+    projectId: string
+  ): Promise<{ considered: number; synced: number }> {
+    const { repository, schedules } = this.automationDefinitionDeps();
+    const definitions = await repository.listAutomationDefinitions(projectId);
+    let synced = 0;
+    for (const definition of definitions) {
+      await schedules.syncDefinitionSchedule(definition);
+      synced += 1;
+    }
+    return { considered: definitions.length, synced };
   }
 
   async triggerGrowth(input: GrowthTriggerInput): Promise<OptimizationRun> {
@@ -284,12 +453,13 @@ export class OptimizationOrchestrationService {
     });
     if (!transitioned) throw new Error('Automation retry transition conflict');
 
+    const newDeadline = deadlineFrom(this.now(), definition.timeoutMs);
     await queue.enqueueRun(run.id, run.projectId);
     return {
       ...run,
       status: 'QUEUED',
       attempt: run.attempt + 1,
-      deadlineAt: deadlineFrom(this.now(), definition.timeoutMs),
+      deadlineAt: newDeadline,
       startedAt: null,
       completedAt: null,
       lastErrorCode: null
