@@ -181,6 +181,8 @@ model Project {
   keywordSuggestions        KeywordSuggestion[]
   keywordAuditEvents        KeywordAuditEvent[]
   keywordOpportunitySnapshots KeywordOpportunitySnapshot[]
+  keywordTargetMappings     KeywordTargetMapping[]
+  keywordCannibalizationSnapshots KeywordCannibalizationSnapshot[]
 
   @@index([primaryDomain])
   @@index([status])
@@ -238,6 +240,7 @@ model Page {
   entityObservations EntityObservation[]
   pageEntities       PageEntity[]
   entityRelations    EntityRelation[]
+  keywordTargetMappings KeywordTargetMapping[]
 
   @@unique([projectId, normalizedUrl])
   @@index([projectId, host])
