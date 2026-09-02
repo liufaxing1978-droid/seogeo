@@ -76,7 +76,7 @@
       <p>筛选由服务端执行，所有条件保持项目隔离。</p>
     </div>
     <form class="keyword-create-form" method="get" action="/projects/<%= keywordCenter.project.id %>/keywords">
-      <label class="keyword-field keyword-field--wide"><span>筛选关键词</span><input name="q" value="<%= keywordCenter.filters.q || '' %>" placeholder="关键词"></label>
+      <label class="keyword-field keyword-field--wide"><span>筛选文本</span><input name="q" value="<%= keywordCenter.filters.q || '' %>" placeholder="关键词"></label>
       <label class="keyword-field"><span>筛选类型</span><select name="type"><option value="">全部</option><% Object.entries(typeLabels).forEach(([value, label]) => { %><option value="<%= value %>" <%= keywordCenter.filters.type === value ? 'selected' : '' %>><%= label %></option><% }) %></select></label>
       <label class="keyword-field"><span>筛选 Intent</span><select name="intent"><option value="">全部</option><% Object.entries(intentLabels).forEach(([value, label]) => { %><option value="<%= value %>" <%= keywordCenter.filters.intent === value ? 'selected' : '' %>><%= label %></option><% }) %></select></label>
       <label class="keyword-field"><span>筛选生命周期</span><select name="lifecycleStatus"><option value="">全部</option><% Object.entries(lifecycleLabels).forEach(([value, label]) => { %><option value="<%= value %>" <%= keywordCenter.filters.lifecycleStatus === value ? 'selected' : '' %>><%= label %></option><% }) %></select></label>
