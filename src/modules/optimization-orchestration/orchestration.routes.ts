@@ -29,6 +29,7 @@ export interface OptimizationOrchestrationApiPort {
     manualRequestId: string;
     requestedBy: string;
   }): Promise<unknown>;
+  listAutomationRuns?(input: { projectId: string; limit: number }): Promise<unknown>;
   retryAutomationRun?(input: RetryAutomationRunInput): Promise<unknown>;
   listAutomationDefinitions?(projectId: string): Promise<unknown>;
   createAutomationDefinition?(input: CreateManagedAutomationDefinitionInput): Promise<unknown>;
@@ -39,6 +40,9 @@ export interface OptimizationOrchestrationApiPort {
 const projectIdSchema = z.string().uuid();
 const definitionIdSchema = z.string().uuid();
 const runIdSchema = z.string().uuid();
+const automationRunListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50)
+}).strict();
 const manualRunSchema = z.object({
   manualRequestId: z.string().uuid()
 }).strict();
@@ -235,6 +239,28 @@ export function createOptimizationOrchestrationRoutes(
           definitionId,
           patch
         });
+        res.json({ data });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  router.get(
+    '/projects/:projectId/optimization/automation-runs',
+    requireAuthentication(),
+    requireProjectMembership(),
+    requireFeature('OPTIMIZATION_ORCHESTRATION'),
+    requireProjectCapability('PROJECT_READ'),
+    async (req, res, next) => {
+      try {
+        const projectId = projectIdSchema.parse(req.params.projectId);
+        const { limit } = automationRunListQuerySchema.parse(req.query);
+        assertAutomationRunMethod(
+          typeof api.listAutomationRuns === 'function',
+          'listAutomationRuns'
+        );
+        const data = await api.listAutomationRuns!({ projectId, limit });
         res.json({ data });
       } catch (error) {
         next(error);
