@@ -36,6 +36,14 @@ import { OptimizationFeedbackRepository } from '../modules/optimization-feedback
 import { OptimizationFeedbackService } from '../modules/optimization-feedback/feedback.service.js';
 import { processOptimizationFeedbackJob } from '../modules/optimization-feedback/feedback.worker.js';
 import {
+  OptimizationAutomationActionDispatcher,
+  type OfficialSearchSyncPort
+} from '../modules/optimization-orchestration/orchestration.automation.actions.js';
+import {
+  processOptimizationAutomationJob,
+  type OptimizationAutomationWorkerDeps
+} from '../modules/optimization-orchestration/orchestration.automation.worker.js';
+import {
   OPTIMIZATION_AUTOMATION_QUEUE_NAME,
   OPTIMIZATION_ORCHESTRATION_QUEUE_NAME,
   OPTIMIZATION_PLANNING_QUEUE_NAME,
@@ -49,7 +57,6 @@ import {
 } from '../modules/optimization-orchestration/orchestration.queue.js';
 import { optimizationOrchestrationRepository } from '../modules/optimization-orchestration/orchestration.repository.js';
 import { OptimizationOrchestrationService } from '../modules/optimization-orchestration/orchestration.service.js';
-import { processOptimizationAutomationJob } from '../modules/optimization-orchestration/orchestration.automation.worker.js';
 import {
   classifyOptimizationOrchestrationError,
   processOptimizationOrchestrationJob,
@@ -91,6 +98,8 @@ import {
   SEARCH_CONSOLE_SYNC_WORKER_CONCURRENCY,
   type SearchConsoleSyncJobData
 } from '../modules/search-console/search-console.worker.js';
+import { createDefaultOfficialSearchSyncService } from '../modules/search-sync/official-search-sync.routes.js';
+import { officialSearchSyncRepository } from '../modules/search-sync/official-search-sync.repository.js';
 import { processSeoAuditJob, type SeoAuditJobData } from '../modules/seo/seo.worker.js';
 import {
   VISIBILITY_EXTRACTION_QUEUE_NAME,
@@ -169,6 +178,22 @@ export function buildOptimizationAutopilotRuntimeDeps(input: {
   executionQueue: PublicationExecutionQueuePort;
 }) {
   return input;
+}
+
+export function buildOptimizationAutomationRuntimeDeps(input: {
+  repository: OptimizationAutomationWorkerDeps['repository'];
+  service: OptimizationAutomationWorkerDeps['service'];
+  searchSync: OfficialSearchSyncPort;
+  now?: () => Date;
+}): OptimizationAutomationWorkerDeps {
+  return {
+    repository: input.repository,
+    service: input.service,
+    actions: new OptimizationAutomationActionDispatcher({
+      searchSync: input.searchSync,
+      ...(input.now ? { now: input.now } : {})
+    })
+  };
 }
 
 export function buildPublicationVerificationExperimentHandoff(
@@ -420,19 +445,11 @@ export async function startWorkers() {
     automationRuns: optimizationOrchestrationRepository,
     automationQueue: optimizationAutomationQueue
   });
-  const optimizationAutomationRuntimeDeps = {
+  const optimizationAutomationRuntimeDeps = buildOptimizationAutomationRuntimeDeps({
     repository: optimizationOrchestrationRepository,
     service: optimizationOrchestrationService,
-    actions: {
-      async execute(input: { actionType: string }): Promise<void> {
-        const error = Object.assign(
-          new Error(`Automation action is not configured: ${input.actionType}`),
-          { code: 'AUTOMATION_ACTION_NOT_CONFIGURED' }
-        );
-        throw error;
-      }
-    }
-  };
+    searchSync: createDefaultOfficialSearchSyncService(officialSearchSyncRepository)
+  });
   const advisoryRootDir = path.resolve('vendor/third-party-skills');
 
   const workers = QUEUE_NAMES.map((name) => {
