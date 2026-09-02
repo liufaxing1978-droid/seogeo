@@ -3,6 +3,7 @@ import { prisma } from '../../db/prisma.js';
 import { sortActivity } from './operations.derive.js';
 import type {
   OperationsActivityItem,
+  OperationsAutomationAlertAuthority,
   OperationsEffectState,
   OperationsFeedbackEvidenceAuthority,
   OperationsInboxAuthority,
@@ -151,6 +152,35 @@ export class OptimizationOperationsRepository {
         createdAt: { gte: utcDayStart, lt: utcDayEnd },
       },
     });
+  }
+
+  async listAutomationAlertAuthority(
+    projectId: string,
+    limit: number,
+  ): Promise<OperationsAutomationAlertAuthority[]> {
+    assertLimit(limit);
+    const rows = await this.db.automationRun.findMany({
+      where: {
+        projectId,
+        status: { in: ['FAILED', 'TIMED_OUT'] },
+      },
+      select: {
+        id: true,
+        status: true,
+        lastErrorCode: true,
+        updatedAt: true,
+      },
+      orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      status: row.status as OperationsAutomationAlertAuthority['status'],
+      lastErrorCode: row.lastErrorCode,
+      updatedAt: row.updatedAt,
+      authorityUrl: `/api/v1/projects/${projectId}/optimization/automation-runs/${row.id}`,
+    }));
   }
 
   async listPipelineAuthority(
