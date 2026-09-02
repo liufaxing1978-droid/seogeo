@@ -60,18 +60,20 @@ function harness(options?: { run?: any; definition?: any; actionError?: Error })
     ? vi.fn().mockRejectedValue(options.actionError)
     : vi.fn().mockResolvedValue(undefined);
   const startAutomationRun = vi.fn().mockResolvedValue(run);
+  const expireTimedOutAutomationRuns = vi.fn().mockResolvedValue({ considered: 1, timedOut: 1 });
 
   return {
     transitionAutomationRun,
     execute,
     startAutomationRun,
+    expireTimedOutAutomationRuns,
     deps: {
       repository: {
         getAutomationRun: vi.fn().mockResolvedValue(run),
         findAutomationDefinition: vi.fn().mockResolvedValue(def),
         transitionAutomationRun
       },
-      service: { startAutomationRun },
+      service: { startAutomationRun, expireTimedOutAutomationRuns },
       actions: { execute },
       now: () => NOW
     }
@@ -120,6 +122,23 @@ describe('OL-2 automation worker', () => {
     )).rejects.toThrow(/job id|scheduler/i);
 
     expect(state.startAutomationRun).not.toHaveBeenCalled();
+  });
+
+  it('repairs timed-out running automation through the orchestration service on a scheduler job', async () => {
+    const state = harness();
+
+    await processOptimizationAutomationJob(
+      {
+        id: 'repeat:optimization-automation-timeout-repair:2026-09-02T03:00:00.000Z',
+        name: 'repair-timed-out-automation-runs',
+        data: { kind: 'REPAIR_TIMEOUTS' }
+      } as never,
+      state.deps as never
+    );
+
+    expect(state.expireTimedOutAutomationRuns).toHaveBeenCalledWith(NOW);
+    expect(state.startAutomationRun).not.toHaveBeenCalled();
+    expect(state.execute).not.toHaveBeenCalled();
   });
 
   it('moves a queued run through RUNNING to SUCCEEDED around the action dispatcher', async () => {
