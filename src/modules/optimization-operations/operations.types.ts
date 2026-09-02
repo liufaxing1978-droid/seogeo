@@ -26,6 +26,16 @@ export type OperationsInboxCategory =
 
 export type OperationsInboxSeverity = 'HIGH' | 'MEDIUM' | 'LOW';
 
+export type OperationsTodayPriority = 'P0' | 'P1' | 'P2';
+
+export type OperationsTodayActionKind =
+  | 'INVESTIGATE_VERIFICATION'
+  | 'INVESTIGATE_EXECUTION'
+  | 'REVIEW_POLICY'
+  | 'REVIEW_P8_HANDOFF'
+  | 'REFRESH_EVIDENCE'
+  | 'REVIEW_DRAFT_PR';
+
 export type AutopilotDecisionProjectionStatus =
   | 'AUTOPILOT_READY'
   | 'P8_PREPARATION_REQUIRED'
@@ -146,6 +156,19 @@ export type OperationsInboxItem = {
   authorityId: string;
   category: OperationsInboxCategory;
   severity: OperationsInboxSeverity;
+  reasonCode: string;
+  optimizationPlanId: string | null;
+  targetUrl: string | null;
+  updatedAt: Date;
+  authorityUrl: string | null;
+};
+
+export type OperationsTodayAction = {
+  id: string;
+  priority: OperationsTodayPriority;
+  kind: OperationsTodayActionKind;
+  title: string;
+  recommendedAction: string;
   reasonCode: string;
   optimizationPlanId: string | null;
   targetUrl: string | null;
