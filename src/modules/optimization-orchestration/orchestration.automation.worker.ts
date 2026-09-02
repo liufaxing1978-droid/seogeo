@@ -30,6 +30,7 @@ export type OptimizationAutomationWorkerDeps = {
   repository: AutomationWorkerRepositoryPort;
   service: {
     startAutomationRun(input: StartAutomationRunInput): Promise<AutomationRun>;
+    expireTimedOutAutomationRuns(asOf?: Date): Promise<unknown>;
   };
   actions: AutomationActionDispatcherPort;
   now?: () => Date;
@@ -83,6 +84,21 @@ async function startScheduledAutomation(
     source: 'SCHEDULED',
     requestKey: `scheduler:${schedulerJobId}`
   });
+}
+
+async function repairTimedOutAutomationRuns(
+  job: AutomationJob,
+  deps: OptimizationAutomationWorkerDeps
+): Promise<void> {
+  if (job.name !== 'repair-timed-out-automation-runs') {
+    throw workerError('INVALID_AUTOMATION_JOB', 'Unexpected automation timeout repair job name');
+  }
+  if (job.data.kind !== 'REPAIR_TIMEOUTS') {
+    throw workerError('INVALID_AUTOMATION_JOB', 'Automation timeout repair payload is invalid');
+  }
+
+  const now = deps.now ?? (() => new Date());
+  await deps.service.expireTimedOutAutomationRuns(now());
 }
 
 async function transitionOrReload(input: {
@@ -229,6 +245,11 @@ export async function processOptimizationAutomationJob(
 
   if (job.data.kind === 'START_SCHEDULED') {
     await startScheduledAutomation(job, deps);
+    return;
+  }
+
+  if (job.data.kind === 'REPAIR_TIMEOUTS') {
+    await repairTimedOutAutomationRuns(job, deps);
     return;
   }
 
