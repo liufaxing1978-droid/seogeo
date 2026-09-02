@@ -21,7 +21,8 @@ import { OPTIMIZATION_RUN_VERSION, type GrowthTriggerInput } from './orchestrati
 import type {
   CreateAutomationRunInput,
   CreateRunInput,
-  GuardedAutomationRunTransition
+  GuardedAutomationRunTransition,
+  ListAutomationRunsInput
 } from './orchestration.repository.js';
 
 export type OrchestrationTriggerRepositoryPort = {
@@ -45,6 +46,7 @@ export type AutomationRunRepositoryPort = {
   getAutomationRun(runId: string): Promise<AutomationRun | null>;
   transitionAutomationRun(input: GuardedAutomationRunTransition): Promise<boolean>;
   listTimedOutAutomationRuns(asOf: Date): Promise<AutomationRun[]>;
+  listAutomationRuns?(input: ListAutomationRunsInput): Promise<AutomationRun[]>;
 };
 
 export type AutomationRunQueuePort = {
@@ -391,6 +393,14 @@ export class OptimizationOrchestrationService {
     if (!run) throw new Error('Optimization orchestration run not found');
     await this.enqueueIfQueued(run);
     return run;
+  }
+
+  async listAutomationRuns(input: ListAutomationRunsInput): Promise<AutomationRun[]> {
+    const { repository } = this.automationDeps();
+    if (!repository.listAutomationRuns) {
+      throw new Error('Automation run listing is not configured');
+    }
+    return repository.listAutomationRuns(input);
   }
 
   async startAutomationRun(input: StartAutomationRunInput): Promise<AutomationRun> {
