@@ -191,7 +191,7 @@ export type OperationsTodayAction = {
 
 export type OperationsAutomationAlertAuthority = {
   id: string;
-  status: 'FAILED' | 'TIMED_OUT';
+  status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'TIMED_OUT' | 'SKIPPED';
   lastErrorCode: string | null;
   updatedAt: Date;
   authorityUrl: string | null;
