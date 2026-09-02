@@ -30,4 +30,21 @@ describe('P4 keyword target service', () => {
       .rejects.toMatchObject({ code: 'KEYWORD_LOCKED' });
     expect(await prisma.keywordTargetMapping.count({ where: { projectId: project.id } })).toBe(0);
   });
+
+  it('uses an atomic bulk operation and refuses all selected keywords when one locked record lacks acknowledgement', async () => {
+    const { project, keyword: unlocked } = await fixture();
+    const locked = await new KeywordRepository().createKeyword({ projectId: project.id, text: '道场', normalizedText: '道场', type: 'CORE', source: 'MANUAL', locked: true });
+    await expect(new KeywordTargetService().setKeywordTargetUrlBulk({ actorUserId: randomUUID(), projectId: project.id, keywordIds: [unlocked.id, locked.id], targetUrl: `https://${project.primaryDomain}/guide` }))
+      .rejects.toMatchObject({ code: 'KEYWORD_LOCKED' });
+    expect(await prisma.keywordTargetMapping.count({ where: { projectId: project.id } })).toBe(0);
+  });
+
+  it('maps a Cluster target without changing member lifecycle states', async () => {
+    const { project, keyword } = await fixture();
+    const group = await prisma.keywordGroup.create({ data: { projectId: project.id, name: '法事 Cluster' } });
+    await prisma.keywordGroupMembership.create({ data: { projectId: project.id, groupId: group.id, keywordId: keyword.id } });
+    const mapping = await new KeywordTargetService().setGroupTargetUrl({ actorUserId: randomUUID(), projectId: project.id, groupId: group.id, targetUrl: `https://${project.primaryDomain}/cluster` });
+    expect(mapping.groupId).toBe(group.id);
+    expect((await prisma.keyword.findUniqueOrThrow({ where: { id: keyword.id } })).lifecycleStatus).toBe('APPROVED');
+  });
 });
