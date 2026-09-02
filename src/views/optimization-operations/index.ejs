@@ -1,4 +1,5 @@
 <% const inboxTotal = Object.values(overview.inboxCounts).reduce((sum, value) => sum + value, 0); %>
+<% const alerts = overview.alerts ?? []; %>
 <section
   class="operations-page admin-center"
   data-ui="optimization-operations-center"
@@ -63,6 +64,38 @@
       </div>
     <% } else { %>
       <div class="empty">暂无优先行动。</div>
+    <% } %>
+  </section>
+
+  <section class="panel operations-panel" data-ui="operations-alert-center">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">OL-3 · Alert Center</p>
+        <h2>告警中心</h2>
+        <p class="muted">仅汇总已持久化的发布/验证异常与 Automation Run FAILED / TIMED_OUT；不会自动重试、merge、deploy 或扩张执行权限。</p>
+      </div>
+    </div>
+    <% if (alerts.length) { %>
+      <div class="operations-inbox-list">
+        <% for (const alert of alerts) { %>
+          <article class="operations-inbox-item">
+            <div class="operations-inline">
+              <span class="badge" data-alert-priority><%= alert.priority %></span>
+              <strong><%= alert.title %></strong>
+              <code data-alert-kind><%= alert.kind %></code>
+              <span class="muted"><%= alert.source %></span>
+            </div>
+            <p><code><%= alert.reasonCode %></code></p>
+            <% if (alert.targetUrl) { %><p class="muted"><%= alert.targetUrl %></p><% } %>
+            <p class="muted"><time datetime="<%= alert.updatedAt.toISOString() %>"><%= alert.updatedAt.toISOString() %></time></p>
+            <% if (alert.authorityUrl) { %>
+              <a class="text-link" href="<%= alert.authorityUrl %>">查看持久化 authority</a>
+            <% } %>
+          </article>
+        <% } %>
+      </div>
+    <% } else { %>
+      <div class="empty">暂无需要处理的告警。</div>
     <% } %>
   </section>
 
