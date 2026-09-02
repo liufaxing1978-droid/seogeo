@@ -1,6 +1,7 @@
 import { hasFeature } from '../../auth/feature-flags.js';
 import { parseControlledAutopilotGlobalKillSwitch } from '../optimization-autopilot/autopilot.config.js';
 import {
+  deriveAlertCenter,
   deriveEffectiveAutopilotState,
   deriveInboxItems,
   deriveOutcomeSummary,
@@ -15,6 +16,7 @@ import {
 import type {
   EffectiveAutopilotState,
   OperationsActivityItem,
+  OperationsAlert,
   OperationsInboxCategory,
   OperationsInboxItem,
   OperationsOutcomeSummary,
@@ -74,6 +76,7 @@ export type OperationsOverview = {
   effectiveAutopilotState: EffectiveAutopilotState;
   todayRunCount: number;
   todayActions: OperationsTodayAction[];
+  alerts?: OperationsAlert[];
   quota: OperationsQuota;
   pipelineCounts: Record<OperationsPipelineStage, number>;
   inboxCounts: Record<OperationsInboxCategory, number>;
@@ -145,6 +148,11 @@ export class OptimizationOperationsService {
   async getOverview(projectId: string, now: Date = new Date()): Promise<OperationsOverview> {
     const { start: utcDayStart, end: utcDayEnd } = utcDayBounds(now);
     const cutoff30 = new Date(now.getTime() - 30 * DAY_MS);
+    const automationAlertPromise = typeof (
+      this.repository as unknown as { listAutomationAlertAuthority?: unknown }
+    ).listAutomationAlertAuthority === 'function'
+      ? this.repository.listAutomationAlertAuthority(projectId, 100)
+      : Promise.resolve([]);
 
     const [
       planLevel,
@@ -152,6 +160,7 @@ export class OptimizationOperationsService {
       todayRunCount,
       pipelineAuthority,
       inboxAuthority,
+      automationAlertAuthority,
       observations,
       feedbackEvidence,
       feedbackProfiles,
@@ -163,6 +172,7 @@ export class OptimizationOperationsService {
       this.repository.countTodayRuns(projectId, utcDayStart, utcDayEnd),
       this.repository.listPipelineAuthority(projectId, 100, 0),
       this.repository.listInboxAuthority(projectId, 100, 0),
+      automationAlertPromise,
       this.repository.listTerminalObservations(projectId, cutoff30, now),
       this.repository.listFeedbackEvidence(projectId, cutoff30, now),
       this.repository.listFeedbackProfiles(projectId, 1, 0),
@@ -186,6 +196,10 @@ export class OptimizationOperationsService {
       }),
       todayRunCount,
       todayActions: deriveTodayActions(inboxItems),
+      alerts: deriveAlertCenter({
+        inboxItems,
+        automationRuns: automationAlertAuthority,
+      }),
       quota: deriveQuota({
         configuredLimit: policy?.dailyDraftPrLimit ?? 0,
         reservations,
