@@ -39,6 +39,7 @@ import {
   OptimizationAutomationActionDispatcher,
   type OfficialSearchSyncPort
 } from '../modules/optimization-orchestration/orchestration.automation.actions.js';
+import { automationDefinitionManagementRepository } from '../modules/optimization-orchestration/orchestration.automation-definition.repository.js';
 import {
   processOptimizationAutomationJob,
   type OptimizationAutomationWorkerDeps
@@ -193,6 +194,33 @@ export function buildOptimizationAutomationRuntimeDeps(input: {
       searchSync: input.searchSync,
       ...(input.now ? { now: input.now } : {})
     })
+  };
+}
+
+export async function reconcileOptimizationAutomationDefinitionSchedules(input: {
+  projects: {
+    list(): Promise<Array<{ id: string }>>;
+  };
+  orchestration: {
+    reconcileAutomationSchedules(
+      projectId: string
+    ): Promise<{ considered: number; synced: number }>;
+  };
+}): Promise<{ projects: number; definitions: number; synced: number }> {
+  const projects = await input.projects.list();
+  let definitions = 0;
+  let synced = 0;
+
+  for (const project of projects) {
+    const result = await input.orchestration.reconcileAutomationSchedules(project.id);
+    definitions += result.considered;
+    synced += result.synced;
+  }
+
+  return {
+    projects: projects.length,
+    definitions,
+    synced
   };
 }
 
@@ -443,7 +471,13 @@ export async function startWorkers() {
     planningQueue: optimizationPlanningQueue,
     projects: projectRepository,
     automationRuns: optimizationOrchestrationRepository,
-    automationQueue: optimizationAutomationQueue
+    automationQueue: optimizationAutomationQueue,
+    automationDefinitions: automationDefinitionManagementRepository,
+    automationSchedules: optimizationAutomationQueue
+  });
+  await reconcileOptimizationAutomationDefinitionSchedules({
+    projects: projectRepository,
+    orchestration: optimizationOrchestrationService
   });
   const optimizationAutomationRuntimeDeps = buildOptimizationAutomationRuntimeDeps({
     repository: optimizationOrchestrationRepository,
