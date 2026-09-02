@@ -29,6 +29,7 @@ function makeOverview(overrides: Partial<OperationsOverview> = {}): OperationsOv
   return {
     effectiveAutopilotState: 'ACTIVE',
     todayRunCount: 4,
+    todayActions: [],
     quota: {
       configuredLimit: 5,
       reserved: 1,
