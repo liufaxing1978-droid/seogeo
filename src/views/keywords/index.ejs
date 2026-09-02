@@ -34,6 +34,12 @@
     UNAVAILABLE: '不可用',
   };
   const statusLabels = { ACTIVE: '启用', DISABLED: '停用', ARCHIVED: '已归档' };
+  const lifecycleLabels = {
+    DISCOVERED: '已发现', EVALUATING: '评估中', APPROVED: '已批准', MAPPED: '已映射',
+    CONTENT_PLANNED: '内容已规划', CONTENT_IN_PROGRESS: '内容制作中', PUBLISHED: '已发布',
+    INDEXED: '已收录', RANKING: '已有排名', AI_CITED: 'AI 已引用',
+    NEEDS_OPTIMIZATION: '待优化', RETIRED: '已淘汰',
+  };
   const suggestionStatusLabels = {
     PENDING: '待审核',
     ACCEPTED: '已接受',
@@ -62,6 +68,22 @@
     <article class="keyword-summary__card keyword-summary__card--partial"><span>部分覆盖</span><strong><%= keywordCenter.summary.partial %></strong></article>
     <article class="keyword-summary__card"><span>未覆盖</span><strong><%= keywordCenter.summary.none %></strong></article>
     <article class="keyword-summary__card"><span>证据不足</span><strong><%= keywordCenter.summary.unknown %></strong></article>
+  </section>
+
+  <section class="keyword-panel" data-ui="keyword-filter-panel">
+    <div class="keyword-panel__heading">
+      <div><p class="keyword-panel__kicker">Workbench Filters</p><h3>筛选关键词</h3></div>
+      <p>筛选由服务端执行，所有条件保持项目隔离。</p>
+    </div>
+    <form class="keyword-create-form" method="get" action="/projects/<%= keywordCenter.project.id %>/keywords">
+      <label class="keyword-field keyword-field--wide"><span>搜索</span><input name="q" value="<%= keywordCenter.filters.q || '' %>" placeholder="关键词"></label>
+      <label class="keyword-field"><span>类型</span><select name="type"><option value="">全部</option><% Object.entries(typeLabels).forEach(([value, label]) => { %><option value="<%= value %>" <%= keywordCenter.filters.type === value ? 'selected' : '' %>><%= label %></option><% }) %></select></label>
+      <label class="keyword-field"><span>Intent</span><select name="intent"><option value="">全部</option><% Object.entries(intentLabels).forEach(([value, label]) => { %><option value="<%= value %>" <%= keywordCenter.filters.intent === value ? 'selected' : '' %>><%= label %></option><% }) %></select></label>
+      <label class="keyword-field"><span>生命周期</span><select name="lifecycleStatus"><option value="">全部</option><% Object.entries(lifecycleLabels).forEach(([value, label]) => { %><option value="<%= value %>" <%= keywordCenter.filters.lifecycleStatus === value ? 'selected' : '' %>><%= label %></option><% }) %></select></label>
+      <label class="keyword-field"><span>Cluster</span><select name="groupId"><option value="">全部</option><% keywordCenter.groups.forEach((group) => { %><option value="<%= group.id %>" <%= keywordCenter.filters.groupId === group.id ? 'selected' : '' %>><%= group.name %></option><% }) %></select></label>
+      <button class="keyword-button keyword-button--primary" type="submit">应用筛选</button>
+      <a class="keyword-button" href="/projects/<%= keywordCenter.project.id %>/keywords">清除</a>
+    </form>
   </section>
 
   <% if (canWriteKeywords) { %>
@@ -110,6 +132,7 @@
             <option value="LOW">低</option>
           </select>
         </label>
+        <label class="keyword-field"><span>生命周期</span><select name="lifecycleStatus"><option value="DISCOVERED" selected>已发现</option><option value="EVALUATING">评估中</option><option value="APPROVED">已批准</option></select></label>
         <label class="keyword-field">
           <span>父词</span>
           <select name="parentKeywordId">
@@ -124,6 +147,14 @@
           <span>战略锁定</span>
         </label>
         <button class="keyword-button keyword-button--primary" type="submit">添加关键词</button>
+      </form>
+      <form class="keyword-create-form" data-ui="keyword-bulk-create-form" method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/bulk">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <label class="keyword-field keyword-field--wide"><span>批量添加（每行一个，最多 100 个）</span><textarea name="text" rows="5" required maxlength="30000" placeholder="符纸&#10;六壬法教&#10;民间信仰"></textarea></label>
+        <label class="keyword-field"><span>类型</span><select name="type" required><option value="CORE">核心词</option><option value="LONG_TAIL">长尾词</option><option value="BRAND">品牌词</option><option value="QUESTION">问题词</option><option value="LOCAL">地域词</option><option value="COMMERCIAL">商业词</option></select></label>
+        <label class="keyword-field"><span>优先级</span><select name="priority"><option value="HIGH">高</option><option value="MEDIUM" selected>中</option><option value="LOW">低</option></select></label>
+        <input type="hidden" name="lifecycleStatus" value="DISCOVERED">
+        <button class="keyword-button keyword-button--primary" type="submit">批量添加</button>
       </form>
     </section>
   <% } %>
@@ -151,6 +182,7 @@
               <th>搜索证据</th>
               <th>父关键词 / 分组</th>
               <th>状态</th>
+              <th>生命周期</th>
               <% if (canWriteKeywords) { %><th>操作</th><% } %>
             </tr>
           </thead>
@@ -229,6 +261,7 @@
                   </div>
                 </td>
                 <td><span class="keyword-status keyword-status--<%= keyword.status.toLowerCase() %>"><%= statusLabels[keyword.status] %></span></td>
+                <td><span class="keyword-status"><%= lifecycleLabels[keyword.lifecycleStatus] || keyword.lifecycleStatus %></span></td>
                 <% if (canWriteKeywords) { %>
                   <td>
                     <details class="keyword-actions">
@@ -261,6 +294,7 @@
                                 <option value="LOW" <%= keyword.priority === 'LOW' ? 'selected' : '' %>>低</option>
                               </select>
                             </label>
+                            <label><span>生命周期</span><select name="lifecycleStatus"><% Object.entries(lifecycleLabels).forEach(([value, label]) => { %><option value="<%= value %>" <%= keyword.lifecycleStatus === value ? 'selected' : '' %>><%= label %></option><% }) %></select></label>
                             <button class="keyword-button" type="submit">保存编辑</button>
                           </form>
 

@@ -28,6 +28,21 @@ enum KeywordStatus {
   ARCHIVED
 }
 
+enum KeywordLifecycleStatus {
+  DISCOVERED
+  EVALUATING
+  APPROVED
+  MAPPED
+  CONTENT_PLANNED
+  CONTENT_IN_PROGRESS
+  PUBLISHED
+  INDEXED
+  RANKING
+  AI_CITED
+  NEEDS_OPTIMIZATION
+  RETIRED
+}
+
 enum KeywordSource {
   MANUAL
   AI_ACCEPTED
@@ -56,6 +71,7 @@ model Keyword {
   intent              KeywordIntent?
   priority            KeywordPriority @default(MEDIUM)
   status              KeywordStatus   @default(ACTIVE)
+  lifecycleStatus     KeywordLifecycleStatus @default(DISCOVERED)
   locked              Boolean         @default(false)
   source              KeywordSource
   language            String?
@@ -75,6 +91,7 @@ model Keyword {
 
   @@unique([projectId, normalizedText])
   @@index([projectId, status])
+  @@index([projectId, lifecycleStatus])
   @@index([projectId, type])
   @@index([projectId, priority])
 }

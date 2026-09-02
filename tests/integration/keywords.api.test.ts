@@ -156,6 +156,57 @@ describe('P11-01 keyword JSON API authorization', () => {
     }
   });
 
+  it('validates keyword enums before persistence and supports bulk create plus filters', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OPERATOR',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const app = createApp();
+      const csrf = csrfFor(fixture);
+      const api = `/api/v1/projects/${fixture.project.id}`;
+
+      const invalid = await request(app)
+        .post(`${api}/keywords`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({ text: '符纸', type: 'NOT_REAL' })
+        .expect(400);
+      expect(invalid.body.error.code).toBe('VALIDATION_ERROR');
+
+      const bulk = await request(app)
+        .post(`${api}/keywords/bulk`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrf)
+        .send({
+          text: '符纸\n六壬法教\n符纸',
+          type: 'CORE',
+          intent: 'INFORMATIONAL',
+          priority: 'HIGH',
+          lifecycleStatus: 'APPROVED',
+          language: 'zh-Hans',
+          targetCountry: 'CN',
+        })
+        .expect(201);
+      expect(bulk.body.data.created).toHaveLength(2);
+      expect(bulk.body.data.duplicates).toEqual([
+        expect.objectContaining({ line: 3, reason: 'DUPLICATE_IN_REQUEST' }),
+      ]);
+
+      const listed = await request(app)
+        .get(`${api}/keywords`)
+        .query({ q: '六壬', lifecycleStatus: 'APPROVED', intent: 'INFORMATIONAL' })
+        .set('Cookie', fixture.sessionCookie)
+        .expect(200);
+      expect(listed.body.data.map((item: { text: string }) => item.text)).toEqual(['六壬法教']);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it('exposes the complete manual keyword command surface with lock acknowledgement', async () => {
     const fixture = await seedAuthenticatedUser({
       role: 'OPERATOR',

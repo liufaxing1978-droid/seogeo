@@ -1,5 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
+import { buildKeywordWhere } from './keyword-filter.js';
+import type { KeywordListQuery } from './keyword.schema.js';
 
 type KeywordDb = Pick<
   Prisma.TransactionClient,
@@ -28,10 +30,17 @@ export class KeywordRepository {
     });
   }
 
-  listKeywords(projectId: string) {
+  listKeywords(projectId: string, filters: KeywordListQuery = {}) {
+    return this.db.keyword.findMany({
+      where: buildKeywordWhere(projectId, filters),
+      orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }, { normalizedText: 'asc' }],
+    });
+  }
+
+  listNormalizedKeywords(projectId: string) {
     return this.db.keyword.findMany({
       where: { projectId },
-      orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }, { normalizedText: 'asc' }],
+      select: { normalizedText: true },
     });
   }
 

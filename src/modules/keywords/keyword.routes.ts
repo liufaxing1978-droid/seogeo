@@ -20,6 +20,19 @@ import {
   type KeywordSearchEvidenceService,
 } from './keyword-search-evidence.service.js';
 import { keywordService, type KeywordService } from './keyword.service.js';
+import {
+  keywordBulkCreateSchema,
+  keywordCreateSchema,
+  emptyKeywordMutationSchema,
+  keywordGroupCreateSchema,
+  keywordGroupMembershipSchema,
+  keywordListQuerySchema,
+  keywordLockSchema,
+  keywordParentSchema,
+  keywordStatusCommandSchema,
+  keywordSuggestionDecisionSchema,
+  keywordUpdateSchema,
+} from './keyword.schema.js';
 
 function routeParam(value: string | string[]): string {
   const normalized = Array.isArray(value) ? value[0] : value;
@@ -54,7 +67,8 @@ export function createKeywordRoutes(
     requireProjectCapability('PROJECT_READ'),
     async (req, res, next) => {
       try {
-        res.json({ data: await service.list(routeParam(req.params.projectId)) });
+        const filters = keywordListQuerySchema.parse(req.query);
+        res.json({ data: await service.list(routeParam(req.params.projectId), filters) });
       } catch (error) {
         next(error);
       }
@@ -122,6 +136,7 @@ export function createKeywordRoutes(
     ...keywordAiGuards,
     async (req, res, next) => {
       try {
+        emptyKeywordMutationSchema.parse(req.body ?? {});
         const task = await createKeywordExpansionTask(
           routeParam(req.params.projectId),
           routeParam(req.params.keywordId),
@@ -139,11 +154,12 @@ export function createKeywordRoutes(
     ...keywordMutationGuards,
     async (req, res, next) => {
       try {
+        const body = keywordSuggestionDecisionSchema.parse(req.body ?? {});
         const data = await service.acceptSuggestion({
           actorUserId: req.auth!.userId,
           projectId: routeParam(req.params.projectId),
           suggestionId: routeParam(req.params.suggestionId),
-          editedText: req.body?.editedText,
+          editedText: body.editedText,
         });
         res.json({ data });
       } catch (error) {
@@ -157,6 +173,7 @@ export function createKeywordRoutes(
     ...keywordMutationGuards,
     async (req, res, next) => {
       try {
+        emptyKeywordMutationSchema.parse(req.body ?? {});
         const data = await service.rejectSuggestion({
           actorUserId: req.auth!.userId,
           projectId: routeParam(req.params.projectId),
@@ -174,19 +191,29 @@ export function createKeywordRoutes(
     ...keywordMutationGuards,
     async (req, res, next) => {
       try {
+        const body = keywordCreateSchema.parse(req.body);
         const data = await service.createManual({
           actorUserId: req.auth!.userId,
           projectId: routeParam(req.params.projectId),
-          text: req.body?.text,
-          type: req.body?.type,
-          intent: req.body?.intent ?? null,
-          priority: req.body?.priority,
-          parentKeywordId: req.body?.parentKeywordId ?? null,
-          groupIds: req.body?.groupIds,
-          language: req.body?.language ?? null,
-          targetCountry: req.body?.targetCountry ?? null,
-          notes: req.body?.notes ?? null,
-          locked: req.body?.locked,
+          ...body,
+        });
+        res.status(201).json({ data });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    '/projects/:projectId/keywords/bulk',
+    ...keywordMutationGuards,
+    async (req, res, next) => {
+      try {
+        const body = keywordBulkCreateSchema.parse(req.body);
+        const data = await service.createManualBulk({
+          actorUserId: req.auth!.userId,
+          projectId: routeParam(req.params.projectId),
+          ...body,
         });
         res.status(201).json({ data });
       } catch (error) {
@@ -200,19 +227,12 @@ export function createKeywordRoutes(
     ...keywordMutationGuards,
     async (req, res, next) => {
       try {
+        const body = keywordUpdateSchema.parse(req.body);
         const data = await service.updateManual({
           actorUserId: req.auth!.userId,
           projectId: routeParam(req.params.projectId),
           keywordId: routeParam(req.params.keywordId),
-          acknowledgeLock: req.body?.acknowledgeLock ?? false,
-          text: req.body?.text,
-          type: req.body?.type,
-          intent: req.body?.intent,
-          priority: req.body?.priority,
-          status: req.body?.status,
-          language: req.body?.language,
-          targetCountry: req.body?.targetCountry,
-          notes: req.body?.notes,
+          ...body,
         });
         res.json({ data });
       } catch (error) {
@@ -226,12 +246,12 @@ export function createKeywordRoutes(
     ...keywordMutationGuards,
     async (req, res, next) => {
       try {
+        const body = keywordLockSchema.parse(req.body);
         const data = await service.setLocked({
           actorUserId: req.auth!.userId,
           projectId: routeParam(req.params.projectId),
           keywordId: routeParam(req.params.keywordId),
-          locked: req.body?.locked,
-          acknowledgeLock: req.body?.acknowledgeLock ?? false,
+          ...body,
         });
         res.json({ data });
       } catch (error) {
@@ -245,11 +265,12 @@ export function createKeywordRoutes(
     ...keywordMutationGuards,
     async (req, res, next) => {
       try {
+        const body = keywordStatusCommandSchema.parse(req.body ?? {});
         const data = await service.archive({
           actorUserId: req.auth!.userId,
           projectId: routeParam(req.params.projectId),
           keywordId: routeParam(req.params.keywordId),
-          acknowledgeLock: req.body?.acknowledgeLock ?? false,
+          ...body,
         });
         res.json({ data });
       } catch (error) {
@@ -263,11 +284,12 @@ export function createKeywordRoutes(
     ...keywordMutationGuards,
     async (req, res, next) => {
       try {
+        const body = keywordStatusCommandSchema.parse(req.body ?? {});
         const data = await service.restore({
           actorUserId: req.auth!.userId,
           projectId: routeParam(req.params.projectId),
           keywordId: routeParam(req.params.keywordId),
-          acknowledgeLock: req.body?.acknowledgeLock ?? false,
+          ...body,
         });
         res.json({ data });
       } catch (error) {
@@ -281,12 +303,12 @@ export function createKeywordRoutes(
     ...keywordMutationGuards,
     async (req, res, next) => {
       try {
+        const body = keywordParentSchema.parse(req.body);
         const data = await service.setParent({
           actorUserId: req.auth!.userId,
           projectId: routeParam(req.params.projectId),
           childKeywordId: routeParam(req.params.keywordId),
-          parentKeywordId: req.body?.parentKeywordId,
-          acknowledgeLock: req.body?.acknowledgeLock ?? false,
+          ...body,
         });
         res.json({ data });
       } catch (error) {
@@ -300,11 +322,12 @@ export function createKeywordRoutes(
     ...keywordMutationGuards,
     async (req, res, next) => {
       try {
+        const body = keywordStatusCommandSchema.parse(req.body ?? {});
         const data = await service.removeParent({
           actorUserId: req.auth!.userId,
           projectId: routeParam(req.params.projectId),
           childKeywordId: routeParam(req.params.keywordId),
-          acknowledgeLock: req.body?.acknowledgeLock ?? false,
+          ...body,
         });
         res.json({ data });
       } catch (error) {
@@ -318,10 +341,10 @@ export function createKeywordRoutes(
     ...keywordMutationGuards,
     async (req, res, next) => {
       try {
+        const body = keywordGroupCreateSchema.parse(req.body);
         const data = await service.createGroup({
           projectId: routeParam(req.params.projectId),
-          name: req.body?.name,
-          description: req.body?.description ?? null,
+          ...body,
         });
         res.status(201).json({ data });
       } catch (error) {
@@ -335,12 +358,12 @@ export function createKeywordRoutes(
     ...keywordMutationGuards,
     async (req, res, next) => {
       try {
+        const body = keywordGroupMembershipSchema.parse(req.body);
         const data = await service.setGroups({
           actorUserId: req.auth!.userId,
           projectId: routeParam(req.params.projectId),
           keywordId: routeParam(req.params.keywordId),
-          groupIds: req.body?.groupIds,
-          acknowledgeLock: req.body?.acknowledgeLock ?? false,
+          ...body,
         });
         res.json({ data });
       } catch (error) {

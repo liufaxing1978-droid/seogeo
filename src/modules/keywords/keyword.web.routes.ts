@@ -21,6 +21,18 @@ import {
 } from './keyword-search-evidence.service.js';
 import { keywordService, type KeywordService } from './keyword.service.js';
 import { KeywordWebRepository } from './keyword.web.repository.js';
+import {
+  keywordBulkCreateSchema,
+  keywordCreateSchema,
+  keywordGroupCreateSchema,
+  keywordGroupMembershipSchema,
+  keywordListQuerySchema,
+  keywordLockSchema,
+  keywordParentSchema,
+  keywordStatusCommandSchema,
+  keywordSuggestionDecisionSchema,
+  keywordUpdateSchema,
+} from './keyword.schema.js';
 
 function routeParam(value: string | string[] | undefined): string {
   const normalized = Array.isArray(value) ? value[0] : value;
@@ -82,7 +94,8 @@ export function createKeywordWebRoutes(
   router.get('/projects/:projectId/keywords', ...readGuards, async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
-      const model = await webRepository.load(projectId);
+      const filters = keywordListQuerySchema.parse(req.query);
+      const model = await webRepository.load(projectId, filters);
       const membership = res.locals.projectMembership as { role: ProjectRole };
 
       res.render('layout', {
@@ -105,19 +118,49 @@ export function createKeywordWebRoutes(
   router.post('/projects/:projectId/keywords', ...writeGuards, async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
-      await service.createManual({
-        actorUserId: req.auth!.userId,
-        projectId,
+      const body = keywordCreateSchema.parse({
         text: req.body?.text,
         type: req.body?.type,
-        intent: optionalString(req.body?.intent) as any,
+        intent: optionalString(req.body?.intent),
         priority: req.body?.priority,
+        lifecycleStatus: req.body?.lifecycleStatus,
         parentKeywordId: optionalString(req.body?.parentKeywordId),
         groupIds: stringList(req.body?.groupIds),
         language: optionalString(req.body?.language),
         targetCountry: optionalString(req.body?.targetCountry),
         notes: optionalString(req.body?.notes),
         locked: formBoolean(req.body?.locked),
+      });
+      await service.createManual({
+        actorUserId: req.auth!.userId,
+        projectId,
+        ...body,
+      });
+      res.redirect(303, `/projects/${projectId}/keywords`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/projects/:projectId/keywords/bulk', ...writeGuards, async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.projectId);
+      const body = keywordBulkCreateSchema.parse({
+        text: req.body?.text,
+        type: req.body?.type,
+        intent: optionalString(req.body?.intent),
+        priority: req.body?.priority,
+        lifecycleStatus: req.body?.lifecycleStatus,
+        groupIds: stringList(req.body?.groupIds),
+        language: optionalString(req.body?.language),
+        targetCountry: optionalString(req.body?.targetCountry),
+        notes: optionalString(req.body?.notes),
+        locked: formBoolean(req.body?.locked),
+      });
+      await service.createManualBulk({
+        actorUserId: req.auth!.userId,
+        projectId,
+        ...body,
       });
       res.redirect(303, `/projects/${projectId}/keywords`);
     } catch (error) {
@@ -149,12 +192,14 @@ export function createKeywordWebRoutes(
     async (req, res, next) => {
       try {
         const projectId = routeParam(req.params.projectId);
-        const editedText = optionalString(req.body?.editedText);
+        const body = keywordSuggestionDecisionSchema.parse({
+          editedText: optionalString(req.body?.editedText),
+        });
         await service.acceptSuggestion({
           actorUserId: req.auth!.userId,
           projectId,
           suggestionId: routeParam(req.params.suggestionId),
-          editedText: typeof editedText === 'string' ? editedText : undefined,
+          editedText: body.editedText,
         });
         res.redirect(303, `/projects/${projectId}/keywords`);
       } catch (error) {
@@ -184,19 +229,23 @@ export function createKeywordWebRoutes(
   router.post('/projects/:projectId/keywords/:keywordId/update', ...writeGuards, async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
+      const body = keywordUpdateSchema.parse({
+        text: req.body?.text,
+        type: req.body?.type,
+        intent: optionalString(req.body?.intent),
+        priority: req.body?.priority,
+        status: req.body?.status,
+        lifecycleStatus: req.body?.lifecycleStatus,
+        language: optionalString(req.body?.language),
+        targetCountry: optionalString(req.body?.targetCountry),
+        notes: optionalString(req.body?.notes),
+        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
+      });
       await service.updateManual({
         actorUserId: req.auth!.userId,
         projectId,
         keywordId: routeParam(req.params.keywordId),
-        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
-        text: req.body?.text,
-        type: req.body?.type,
-        intent: optionalString(req.body?.intent) as any,
-        priority: req.body?.priority,
-        status: req.body?.status,
-        language: optionalString(req.body?.language),
-        targetCountry: optionalString(req.body?.targetCountry),
-        notes: optionalString(req.body?.notes),
+        ...body,
       });
       res.redirect(303, `/projects/${projectId}/keywords`);
     } catch (error) {
@@ -207,12 +256,15 @@ export function createKeywordWebRoutes(
   router.post('/projects/:projectId/keywords/:keywordId/lock', ...writeGuards, async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
+      const body = keywordLockSchema.parse({
+        locked: formBoolean(req.body?.locked),
+        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
+      });
       await service.setLocked({
         actorUserId: req.auth!.userId,
         projectId,
         keywordId: routeParam(req.params.keywordId),
-        locked: formBoolean(req.body?.locked),
-        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
+        ...body,
       });
       res.redirect(303, `/projects/${projectId}/keywords`);
     } catch (error) {
@@ -223,11 +275,14 @@ export function createKeywordWebRoutes(
   router.post('/projects/:projectId/keywords/:keywordId/archive', ...writeGuards, async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
+      const body = keywordStatusCommandSchema.parse({
+        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
+      });
       await service.archive({
         actorUserId: req.auth!.userId,
         projectId,
         keywordId: routeParam(req.params.keywordId),
-        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
+        ...body,
       });
       res.redirect(303, `/projects/${projectId}/keywords`);
     } catch (error) {
@@ -238,11 +293,14 @@ export function createKeywordWebRoutes(
   router.post('/projects/:projectId/keywords/:keywordId/restore', ...writeGuards, async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
+      const body = keywordStatusCommandSchema.parse({
+        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
+      });
       await service.restore({
         actorUserId: req.auth!.userId,
         projectId,
         keywordId: routeParam(req.params.keywordId),
-        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
+        ...body,
       });
       res.redirect(303, `/projects/${projectId}/keywords`);
     } catch (error) {
@@ -253,12 +311,15 @@ export function createKeywordWebRoutes(
   router.post('/projects/:projectId/keywords/:keywordId/parent', ...writeGuards, async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
+      const body = keywordParentSchema.parse({
+        parentKeywordId: String(req.body?.parentKeywordId ?? ''),
+        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
+      });
       await service.setParent({
         actorUserId: req.auth!.userId,
         projectId,
         childKeywordId: routeParam(req.params.keywordId),
-        parentKeywordId: String(req.body?.parentKeywordId ?? ''),
-        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
+        ...body,
       });
       res.redirect(303, `/projects/${projectId}/keywords`);
     } catch (error) {
@@ -269,11 +330,14 @@ export function createKeywordWebRoutes(
   router.post('/projects/:projectId/keywords/:keywordId/parent/remove', ...writeGuards, async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
+      const body = keywordStatusCommandSchema.parse({
+        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
+      });
       await service.removeParent({
         actorUserId: req.auth!.userId,
         projectId,
         childKeywordId: routeParam(req.params.keywordId),
-        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
+        ...body,
       });
       res.redirect(303, `/projects/${projectId}/keywords`);
     } catch (error) {
@@ -284,10 +348,13 @@ export function createKeywordWebRoutes(
   router.post('/projects/:projectId/keyword-groups', ...writeGuards, async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
-      await service.createGroup({
-        projectId,
+      const body = keywordGroupCreateSchema.parse({
         name: req.body?.name,
         description: optionalString(req.body?.description),
+      });
+      await service.createGroup({
+        projectId,
+        ...body,
       });
       res.redirect(303, `/projects/${projectId}/keywords`);
     } catch (error) {
@@ -298,12 +365,15 @@ export function createKeywordWebRoutes(
   router.post('/projects/:projectId/keywords/:keywordId/groups', ...writeGuards, async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
+      const body = keywordGroupMembershipSchema.parse({
+        groupIds: stringList(req.body?.groupIds),
+        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
+      });
       await service.setGroups({
         actorUserId: req.auth!.userId,
         projectId,
         keywordId: routeParam(req.params.keywordId),
-        groupIds: stringList(req.body?.groupIds),
-        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
+        ...body,
       });
       res.redirect(303, `/projects/${projectId}/keywords`);
     } catch (error) {

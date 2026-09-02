@@ -201,4 +201,64 @@ describe('KeywordService manual command semantics', () => {
     expect(restored.id).toBe(created.id);
     expect(restored.status).toBe('ACTIVE');
   });
+
+  it('persists lifecycle independently from the legacy enable/archive status', async () => {
+    const project = await createProject('lifecycle');
+    const service = new KeywordService();
+    const created = await service.createManual({
+      actorUserId,
+      projectId: project.id,
+      text: '符纸',
+      type: 'CORE',
+    });
+    expect(created.lifecycleStatus).toBe('DISCOVERED');
+
+    const updated = await service.updateManual({
+      actorUserId,
+      projectId: project.id,
+      keywordId: created.id,
+      lifecycleStatus: 'APPROVED',
+    });
+    expect(updated).toMatchObject({ status: 'ACTIVE', lifecycleStatus: 'APPROVED' });
+  });
+
+  it('bulk creates unique lines, reports duplicates, and supports combined filters', async () => {
+    const project = await createProject('bulk-filter');
+    const service = new KeywordService();
+    await service.createManual({
+      actorUserId,
+      projectId: project.id,
+      text: '符纸',
+      type: 'CORE',
+    });
+
+    const result = await service.createManualBulk({
+      actorUserId,
+      projectId: project.id,
+      text: '符纸\n六壬法教\n六壬法教\n民间信仰',
+      type: 'CORE',
+      intent: 'INFORMATIONAL',
+      priority: 'HIGH',
+      lifecycleStatus: 'APPROVED',
+      language: 'zh-Hans',
+      targetCountry: 'CN',
+    });
+
+    expect(result.created.map((item) => item.text)).toEqual(['六壬法教', '民间信仰']);
+    expect(result.duplicates).toEqual([
+      expect.objectContaining({ line: 1, reason: 'ALREADY_EXISTS' }),
+      expect.objectContaining({ line: 3, reason: 'DUPLICATE_IN_REQUEST' }),
+    ]);
+
+    const filtered = await service.list(project.id, {
+      q: '六壬',
+      type: 'CORE',
+      intent: 'INFORMATIONAL',
+      priority: 'HIGH',
+      lifecycleStatus: 'APPROVED',
+      language: 'zh-Hans',
+      region: 'CN',
+    });
+    expect(filtered.map((item) => item.text)).toEqual(['六壬法教']);
+  });
 });

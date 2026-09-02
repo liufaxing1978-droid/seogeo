@@ -11,6 +11,7 @@ import {
 } from './keyword-search-evidence.service.js';
 import { KeywordRepository } from './keyword.repository.js';
 import type { KeywordCoverageResult, KeywordListRecord } from './keyword.types.js';
+import type { KeywordListQuery } from './keyword.schema.js';
 
 export interface KeywordCenterKeywordRecord extends KeywordListRecord {
   parentKeywordId: string | null;
@@ -43,6 +44,7 @@ export interface KeywordCenterViewModel {
     status: string;
     rationale: string | null;
   }>;
+  filters: KeywordListQuery;
 }
 
 export class KeywordWebRepository {
@@ -52,7 +54,7 @@ export class KeywordWebRepository {
     private readonly searchEvidenceService: Pick<KeywordSearchEvidenceService, 'evaluateProject'> = keywordSearchEvidenceService,
   ) {}
 
-  async load(projectId: string): Promise<KeywordCenterViewModel> {
+  async load(projectId: string, filters: KeywordListQuery = {}): Promise<KeywordCenterViewModel> {
     const [project, keywords, relations, groups, memberships, suggestions] = await Promise.all([
       prisma.project.findUnique({
         where: { id: projectId },
@@ -63,7 +65,7 @@ export class KeywordWebRepository {
           targetCountry: true,
         },
       }),
-      this.keywordRepository.listKeywords(projectId),
+      this.keywordRepository.listKeywords(projectId, filters),
       prisma.keywordRelation.findMany({
         where: { projectId },
         select: { childKeywordId: true, parentKeywordId: true },
@@ -119,6 +121,7 @@ export class KeywordWebRepository {
         intent: keyword.intent,
         priority: keyword.priority,
         status: keyword.status,
+        lifecycleStatus: keyword.lifecycleStatus,
         locked: keyword.locked,
         source: keyword.source,
         parentKeywordId: parentByChild.get(keyword.id) ?? null,
@@ -157,6 +160,7 @@ export class KeywordWebRepository {
         status: suggestion.status,
         rationale: suggestion.rationale,
       })),
+      filters,
     };
   }
 }

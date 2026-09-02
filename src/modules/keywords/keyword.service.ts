@@ -2,6 +2,7 @@ import {
   Prisma,
   type Keyword,
   type KeywordIntent,
+  type KeywordLifecycleStatus,
   type KeywordPriority,
   type KeywordStatus,
   type KeywordSuggestion,
@@ -9,9 +10,14 @@ import {
 } from '@prisma/client';
 import { AppError, ValidationError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
+import { planKeywordBulkCreate, type KeywordBulkDuplicate } from './keyword-bulk.js';
 import { normalizeKeywordText } from './keyword-normalize.js';
 import { KeywordRepository } from './keyword.repository.js';
-import type { CreateManualKeywordInput } from './keyword.types.js';
+import type { KeywordListQuery } from './keyword.schema.js';
+import type {
+  CreateManualKeywordInput,
+  CreateManualKeywordsBulkInput,
+} from './keyword.types.js';
 
 export interface UpdateManualKeywordInput {
   actorUserId: string;
@@ -22,6 +28,7 @@ export interface UpdateManualKeywordInput {
   intent?: KeywordIntent | null;
   priority?: KeywordPriority;
   status?: KeywordStatus;
+  lifecycleStatus?: KeywordLifecycleStatus;
   language?: string | null;
   targetCountry?: string | null;
   notes?: string | null;
@@ -239,6 +246,7 @@ export class KeywordService {
           intent: input.intent ?? null,
           priority: input.priority ?? 'MEDIUM',
           status: 'ACTIVE',
+          lifecycleStatus: input.lifecycleStatus ?? 'DISCOVERED',
           locked: input.locked ?? false,
           source: 'MANUAL',
           language: input.language ?? null,
@@ -271,6 +279,53 @@ export class KeywordService {
     }
   }
 
+  async createManualBulk(input: CreateManualKeywordsBulkInput): Promise<{
+    created: Keyword[];
+    duplicates: KeywordBulkDuplicate[];
+  }> {
+    return inKeywordTransaction(async (repo) => {
+      const existing = await repo.listNormalizedKeywords(input.projectId);
+      const plan = planKeywordBulkCreate({
+        text: input.text,
+        existingNormalized: new Set(existing.map((item) => item.normalizedText)),
+      });
+      const groupIds = await requireGroups(repo, input.projectId, input.groupIds ?? []);
+      const created: Keyword[] = [];
+
+      for (const candidate of plan.candidates) {
+        const keyword = await repo.createKeyword({
+          projectId: input.projectId,
+          text: candidate.text,
+          normalizedText: candidate.normalizedText,
+          type: input.type,
+          intent: input.intent ?? null,
+          priority: input.priority ?? 'MEDIUM',
+          status: 'ACTIVE',
+          lifecycleStatus: input.lifecycleStatus ?? 'DISCOVERED',
+          locked: input.locked ?? false,
+          source: 'MANUAL',
+          language: input.language ?? null,
+          targetCountry: input.targetCountry ?? null,
+          notes: input.notes ?? null,
+          createdByUserId: input.actorUserId,
+        });
+        if (groupIds.length > 0) {
+          await repo.replaceGroupMemberships(input.projectId, keyword.id, groupIds);
+        }
+        await repo.appendAudit(
+          input.projectId,
+          keyword.id,
+          input.actorUserId,
+          'KEYWORD_CREATED',
+          { source: 'MANUAL', bulk: true, line: candidate.line },
+        );
+        created.push(keyword);
+      }
+
+      return { created, duplicates: plan.duplicates };
+    });
+  }
+
   async updateManual(input: UpdateManualKeywordInput): Promise<Keyword> {
     return inKeywordTransaction(async (repo) => {
       const current = await requireKeyword(repo, input.projectId, input.keywordId);
@@ -297,6 +352,7 @@ export class KeywordService {
       if (input.intent !== undefined) data.intent = input.intent;
       if (input.priority !== undefined) data.priority = input.priority;
       if (input.status !== undefined) data.status = input.status;
+      if (input.lifecycleStatus !== undefined) data.lifecycleStatus = input.lifecycleStatus;
       if (input.language !== undefined) data.language = input.language;
       if (input.targetCountry !== undefined) data.targetCountry = input.targetCountry;
       if (input.notes !== undefined) data.notes = input.notes;
@@ -529,8 +585,8 @@ export class KeywordService {
     });
   }
 
-  list(projectId: string) {
-    return new KeywordRepository().listKeywords(projectId);
+  list(projectId: string, filters: KeywordListQuery = {}) {
+    return new KeywordRepository().listKeywords(projectId, filters);
   }
 }
 
