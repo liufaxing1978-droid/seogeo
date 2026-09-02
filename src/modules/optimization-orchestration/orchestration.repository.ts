@@ -1,5 +1,9 @@
 import {
   Prisma,
+  type AutomationDefinition,
+  type AutomationRun,
+  type AutomationRunSource,
+  type AutomationRunStatus,
   type OptimizationRun,
   type OptimizationRunItem,
   type OptimizationRunItemStage,
@@ -13,7 +17,11 @@ import { prisma } from '../../db/prisma.js';
 
 export type OrchestrationDbClient = Pick<
   PrismaClient,
-  'optimizationRun' | 'optimizationRunItem' | 'optimizationPlan'
+  | 'optimizationRun'
+  | 'optimizationRunItem'
+  | 'optimizationPlan'
+  | 'automationDefinition'
+  | 'automationRun'
 >;
 
 export type CreateRunInput = {
@@ -68,6 +76,31 @@ export type GuardedItemTransition = {
   };
 };
 
+export type CreateAutomationRunInput = {
+  definitionId: string;
+  projectId: string;
+  source: AutomationRunSource;
+  requestKey: string;
+  status: AutomationRunStatus;
+  attempt: number;
+  deadlineAt: Date | null;
+  blockedByRunId: string | null;
+};
+
+export type GuardedAutomationRunTransition = {
+  runId: string;
+  from: AutomationRunStatus;
+  to: AutomationRunStatus;
+  patch?: {
+    attempt?: number;
+    deadlineAt?: Date | null;
+    blockedByRunId?: string | null;
+    startedAt?: Date | null;
+    completedAt?: Date | null;
+    lastErrorCode?: string | null;
+  };
+};
+
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
   if (value === null || typeof value !== 'object') return value;
@@ -116,6 +149,21 @@ function assertRunItemIdentity(existing: OptimizationRunItem, input: CreateRunIt
     existing.itemKey !== input.itemKey
   ) {
     throw new Error('Optimization run item identity conflict');
+  }
+}
+
+function assertAutomationRunIdentity(
+  existing: AutomationRun,
+  input: CreateAutomationRunInput
+): void {
+  if (
+    existing.definitionId !== input.definitionId ||
+    existing.projectId !== input.projectId ||
+    existing.source !== input.source ||
+    existing.requestKey !== input.requestKey ||
+    existing.blockedByRunId !== input.blockedByRunId
+  ) {
+    throw new Error('Automation run identity conflict');
   }
 }
 
@@ -324,6 +372,83 @@ export class OptimizationOrchestrationRepository {
     return this.db.optimizationRun.update({
       where: { id: runId },
       data: { itemCount, completedCount, failureCount }
+    });
+  }
+
+  findAutomationDefinition(definitionId: string): Promise<AutomationDefinition | null> {
+    return this.db.automationDefinition.findUnique({ where: { id: definitionId } });
+  }
+
+  findActiveAutomationRun(definitionId: string): Promise<AutomationRun | null> {
+    return this.db.automationRun.findFirst({
+      where: {
+        definitionId,
+        status: { in: ['QUEUED', 'RUNNING'] }
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+    });
+  }
+
+  async createAutomationRun(input: CreateAutomationRunInput): Promise<AutomationRun> {
+    const existing = await this.db.automationRun.findUnique({
+      where: {
+        definitionId_requestKey: {
+          definitionId: input.definitionId,
+          requestKey: input.requestKey
+        }
+      }
+    });
+    if (existing) {
+      assertAutomationRunIdentity(existing, input);
+      return existing;
+    }
+
+    try {
+      return await this.db.automationRun.create({ data: input });
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      const collided = await this.db.automationRun.findUnique({
+        where: {
+          definitionId_requestKey: {
+            definitionId: input.definitionId,
+            requestKey: input.requestKey
+          }
+        }
+      });
+      if (!collided) throw error;
+      assertAutomationRunIdentity(collided, input);
+      return collided;
+    }
+  }
+
+  getAutomationRun(runId: string): Promise<AutomationRun | null> {
+    return this.db.automationRun.findUnique({ where: { id: runId } });
+  }
+
+  async transitionAutomationRun(input: GuardedAutomationRunTransition): Promise<boolean> {
+    const patch = input.patch ?? {};
+    const updated = await this.db.automationRun.updateMany({
+      where: { id: input.runId, status: input.from },
+      data: {
+        status: input.to,
+        ...(patch.attempt !== undefined ? { attempt: patch.attempt } : {}),
+        ...(patch.deadlineAt !== undefined ? { deadlineAt: patch.deadlineAt } : {}),
+        ...(patch.blockedByRunId !== undefined ? { blockedByRunId: patch.blockedByRunId } : {}),
+        ...(patch.startedAt !== undefined ? { startedAt: patch.startedAt } : {}),
+        ...(patch.completedAt !== undefined ? { completedAt: patch.completedAt } : {}),
+        ...(patch.lastErrorCode !== undefined ? { lastErrorCode: patch.lastErrorCode } : {})
+      }
+    });
+    return updated.count === 1;
+  }
+
+  listTimedOutAutomationRuns(asOf: Date): Promise<AutomationRun[]> {
+    return this.db.automationRun.findMany({
+      where: {
+        status: 'RUNNING',
+        deadlineAt: { lte: asOf }
+      },
+      orderBy: [{ deadlineAt: 'asc' }, { id: 'asc' }]
     });
   }
 }
