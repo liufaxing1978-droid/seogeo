@@ -1,6 +1,10 @@
 import type {
   EffectiveAutopilotState,
   OperationsActivityItem,
+  OperationsAlert,
+  OperationsAlertKind,
+  OperationsAlertPriority,
+  OperationsAutomationAlertAuthority,
   OperationsFeedbackEvidenceAuthority,
   OperationsInboxAuthority,
   OperationsInboxCategory,
@@ -218,6 +222,80 @@ export function deriveTodayActions(
   }
 
   return result;
+}
+
+const alertTitleByKind: Record<OperationsAlertKind, string> = {
+  VERIFICATION_FAILED: '发布后验证失败',
+  EXECUTION_FAILED: '优化执行失败',
+  STALE: '优化证据已过期',
+  POLICY_BLOCKED: '策略阻止自动优化',
+  P8_VALIDATION_BLOCKED: '发布交接验证受阻',
+  AUTOMATION_FAILED: 'Automation Run 执行失败',
+  AUTOMATION_TIMED_OUT: 'Automation Run 执行超时',
+};
+
+const alertPriorityRank: Record<OperationsAlertPriority, number> = {
+  P0: 2,
+  P1: 1,
+};
+
+export function deriveAlertCenter(input: {
+  inboxItems: readonly OperationsInboxItem[];
+  automationRuns: readonly OperationsAutomationAlertAuthority[];
+}, limit = 20): OperationsAlert[] {
+  const alerts: OperationsAlert[] = [];
+  const seen = new Set<string>();
+
+  for (const item of input.inboxItems) {
+    if (item.category === 'AWAITING_HUMAN_MERGE' || item.severity === 'LOW') continue;
+    const kind = item.category as Exclude<OperationsAlertKind, 'AUTOMATION_FAILED' | 'AUTOMATION_TIMED_OUT'>;
+    const id = `alert:inbox:${item.id}:${kind}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    alerts.push({
+      id,
+      priority: item.severity === 'HIGH' ? 'P0' : 'P1',
+      source: 'OPERATIONS_INBOX',
+      kind,
+      title: alertTitleByKind[kind],
+      reasonCode: item.reasonCode,
+      optimizationPlanId: item.optimizationPlanId,
+      targetUrl: item.targetUrl,
+      updatedAt: item.updatedAt,
+      authorityUrl: item.authorityUrl,
+    });
+  }
+
+  for (const run of input.automationRuns) {
+    const kind: OperationsAlertKind = run.status === 'TIMED_OUT'
+      ? 'AUTOMATION_TIMED_OUT'
+      : 'AUTOMATION_FAILED';
+    const id = `alert:automation:${run.id}:${kind}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    alerts.push({
+      id,
+      priority: 'P0',
+      source: 'AUTOMATION_RUN',
+      kind,
+      title: alertTitleByKind[kind],
+      reasonCode: run.lastErrorCode ?? kind,
+      optimizationPlanId: null,
+      targetUrl: null,
+      updatedAt: run.updatedAt,
+      authorityUrl: run.authorityUrl,
+    });
+  }
+
+  alerts.sort((left, right) => {
+    const priorityDifference = alertPriorityRank[right.priority] - alertPriorityRank[left.priority];
+    if (priorityDifference !== 0) return priorityDifference;
+    const waitDifference = left.updatedAt.getTime() - right.updatedAt.getTime();
+    if (waitDifference !== 0) return waitDifference;
+    return left.id.localeCompare(right.id);
+  });
+
+  return alerts.slice(0, Math.max(0, Math.trunc(limit)));
 }
 
 function emptyOutcomeWindow(): OperationsOutcomeWindow {
