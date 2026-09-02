@@ -19,6 +19,7 @@ export type AutomationWorkerRepositoryPort = {
 export type AutomationActionDispatcherPort = {
   execute(input: {
     actionType: string;
+    actionConfig: unknown;
     projectId: string;
     runId: string;
     definitionId: string;
@@ -177,6 +178,7 @@ async function executeAutomationRun(
   try {
     await deps.actions.execute({
       actionType: definition.actionType,
+      actionConfig: definition.actionConfig,
       projectId: run.projectId,
       runId: run.id,
       definitionId: definition.id
