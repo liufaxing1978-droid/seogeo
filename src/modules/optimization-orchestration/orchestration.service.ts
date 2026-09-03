@@ -5,6 +5,7 @@ import type {
   OptimizationRun,
   PlanLevel
 } from '@prisma/client';
+import { defaultRepeatStrategy } from 'bullmq';
 import { hasFeature } from '../../auth/feature-flags.js';
 import { OPTIMIZATION_PLAN_VERSION } from '../optimization/optimization.types.js';
 import type {
@@ -181,7 +182,21 @@ function normalizeActionType(actionType: string): string {
 function normalizeScheduleCron(scheduleCron: string | null): string | null {
   if (scheduleCron === null) return null;
   const normalized = scheduleCron.trim();
-  return normalized.length > 0 ? normalized : null;
+  if (!normalized) return null;
+
+  try {
+    const nextRunAt = defaultRepeatStrategy(Date.now(), {
+      pattern: normalized,
+      tz: 'UTC'
+    });
+    if (nextRunAt === undefined) {
+      throw new Error('Automation schedule has no future run');
+    }
+  } catch {
+    throw new Error('Automation schedule cron is invalid');
+  }
+
+  return normalized;
 }
 
 export class OptimizationOrchestrationService {
