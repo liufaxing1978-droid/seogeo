@@ -217,7 +217,8 @@ export class AiRepository {
   async failRun(
     taskId: string,
     runId: string,
-    input: { errorCode: string; errorMessage: string; httpStatus?: number | null }
+    input: { errorCode: string; errorMessage: string; httpStatus?: number | null },
+    materialize?: AiCompletionMaterializer
   ): Promise<void> {
     await prisma.$transaction(async (tx) => {
       await tx.aiProviderCall.upsert({
@@ -247,6 +248,7 @@ export class AiRepository {
           errorMessage: input.errorMessage
         }
       });
+      if (materialize) await materialize(tx);
     });
   }
 }
