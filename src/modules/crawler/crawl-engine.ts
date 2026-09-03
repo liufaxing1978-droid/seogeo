@@ -14,6 +14,7 @@ import {
   type RenderedPageResult
 } from './browser-renderer.js';
 import { crawlRepository, type CrawlRepository, type CrawlRunStats } from './crawl.repository.js';
+import { crawlerHealthService } from './crawler-health.service.js';
 import { mapSnapshotPersistence } from './crawl.mapper.js';
 
 const MAX_SITEMAP_DOCUMENTS = 50;
@@ -306,6 +307,7 @@ export async function executeCrawlRun(
 
     stats.pagesDiscovered = queued.size;
     await repository.markRunCompleted(crawlRunId, stats);
+    await crawlerHealthService.project(crawlRunId);
     logCrawlEvent('crawl.completed', { crawlRunId, projectId: run.projectId, ...stats });
   } catch (error) {
     const message = safeError(error);
