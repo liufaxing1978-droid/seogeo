@@ -280,6 +280,7 @@ export class OptimizationOrchestrationService {
     }
     if (patch.key !== undefined) patch.key = normalizeAutomationKey(patch.key);
     if (patch.actionType !== undefined) patch.actionType = normalizeActionType(patch.actionType);
+    if (patch.actionConfig !== undefined) parseSearchRefreshConfig(patch.actionConfig);
     if (patch.scheduleCron !== undefined) {
       patch.scheduleCron = normalizeScheduleCron(patch.scheduleCron);
     }
