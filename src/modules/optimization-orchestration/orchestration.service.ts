@@ -316,12 +316,15 @@ export class OptimizationOrchestrationService {
   ): Promise<{ considered: number; synced: number }> {
     const { repository, schedules } = this.automationDefinitionDeps();
     const definitions = await repository.listAutomationDefinitions(projectId);
-    let synced = 0;
     for (const definition of definitions) {
       assertAutomationExecutionPolicy(definition.maxAttempts, definition.timeoutMs);
       normalizeActionType(definition.actionType);
       parseSearchRefreshConfig(definition.actionConfig);
       normalizeScheduleCron(definition.scheduleCron);
+    }
+
+    let synced = 0;
+    for (const definition of definitions) {
       await schedules.syncDefinitionSchedule(definition);
       synced += 1;
     }
