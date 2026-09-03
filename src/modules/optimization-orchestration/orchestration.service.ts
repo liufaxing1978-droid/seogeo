@@ -11,6 +11,7 @@ import type {
   CreateAutomationDefinitionInput,
   UpdateAutomationDefinitionInput
 } from './orchestration.automation-definition.repository.js';
+import { parseSearchRefreshConfig } from './orchestration.automation.actions.js';
 import {
   buildDailyTriggerKey,
   buildGrowthTriggerKey,
@@ -244,11 +245,13 @@ export class OptimizationOrchestrationService {
   ): Promise<AutomationDefinition> {
     const { repository, schedules } = this.automationDefinitionDeps();
     assertAutomationExecutionPolicy(input.maxAttempts, input.timeoutMs);
+    const actionType = normalizeActionType(input.actionType);
+    parseSearchRefreshConfig(input.actionConfig);
 
     const created = await repository.createAutomationDefinition({
       projectId: input.projectId,
       key: normalizeAutomationKey(input.key),
-      actionType: normalizeActionType(input.actionType),
+      actionType,
       actionConfig: input.actionConfig,
       enabled: input.enabled,
       scheduleCron: normalizeScheduleCron(input.scheduleCron),
