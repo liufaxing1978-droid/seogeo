@@ -8,6 +8,7 @@
   data-operations-root
   data-project-id="<%= project.id %>"
   data-policy-updated-at="<%= policy?.updatedAt ?? '' %>"
+  data-csrf-token="<%= csrfToken ?? '' %>"
 >
   <section class="page-header operations-hero admin-center-hero">
     <div>
@@ -158,6 +159,28 @@
     <% } else { %>
       <div class="empty">暂无发布后验证记录。</div>
     <% } %>
+  </section>
+
+  <section class="panel operations-panel" data-ui="operations-automation-control-panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">OL-5 · Automation Control Panel</p>
+        <h2>Automation Control Panel</h2>
+        <p class="muted">复用既有 Automation API；所有读取、执行与设置权限仍由后端 Project RBAC 与 CSRF 校验决定，UI 不成为 authority。</p>
+      </div>
+      <button class="btn" type="button" data-automation-reconcile>Reconcile schedules</button>
+    </div>
+    <p class="muted operations-status" data-automation-status aria-live="polite"></p>
+    <div class="operations-grid">
+      <article class="panel operations-panel">
+        <div class="panel-header"><div><h3>Definitions</h3><p class="muted">Enabled、Action、Cron、Attempts 与 Timeout。</p></div></div>
+        <div data-automation-definitions><div class="empty">正在读取 Automation Definitions…</div></div>
+      </article>
+      <article class="panel operations-panel">
+        <div class="panel-header"><div><h3>Recent Runs</h3><p class="muted">最近 20 个已持久化 Automation Runs。</p></div></div>
+        <div data-automation-runs><div class="empty">正在读取 Automation Runs…</div></div>
+      </article>
+    </div>
   </section>
 
   <section class="metric-grid operations-metrics admin-metric-grid" aria-label="Operations overview metrics">
