@@ -153,6 +153,24 @@ describe('OL-2 automation definition management', () => {
     expect(state.schedules.syncDefinitionSchedule).toHaveBeenNthCalledWith(2, disabled);
   });
 
+  it('fails closed before scheduler sync when a persisted definition violates the current management contract', async () => {
+    const state = harness();
+    const unsafeDefinitions = [
+      definition({ actionType: 'UNREGISTERED_ACTION' }),
+      definition({ actionConfig: {} }),
+      definition({ scheduleCron: 'not a cron' }),
+      definition({ maxAttempts: 0 })
+    ];
+
+    for (const unsafe of unsafeDefinitions) {
+      state.definitions.listAutomationDefinitions.mockResolvedValueOnce([unsafe]);
+      state.schedules.syncDefinitionSchedule.mockClear();
+
+      await expect(state.service.reconcileAutomationSchedules(PROJECT_ID)).rejects.toThrow();
+      expect(state.schedules.syncDefinitionSchedule).not.toHaveBeenCalled();
+    }
+  });
+
   it('rejects unsafe execution policy values before persistence', async () => {
     const state = harness();
 
