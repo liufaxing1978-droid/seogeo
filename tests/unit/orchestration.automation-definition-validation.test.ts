@@ -41,4 +41,22 @@ describe('automation definition action validation', () => {
     expect(state.definitions.createAutomationDefinition).not.toHaveBeenCalled();
     expect(state.schedules.syncDefinitionSchedule).not.toHaveBeenCalled();
   });
+
+  it('rejects invalid SEARCH_REFRESH config before persistence', async () => {
+    const state = harness();
+
+    await expect(state.service.createAutomationDefinition({
+      projectId: PROJECT_ID,
+      key: 'invalid-search-refresh-config',
+      actionType: 'SEARCH_REFRESH',
+      actionConfig: {},
+      enabled: true,
+      scheduleCron: '0 7 * * *',
+      maxAttempts: 3,
+      timeoutMs: 300_000
+    })).rejects.toThrow(/configuration|config.*invalid|invalid.*config/i);
+
+    expect(state.definitions.createAutomationDefinition).not.toHaveBeenCalled();
+    expect(state.schedules.syncDefinitionSchedule).not.toHaveBeenCalled();
+  });
 });
