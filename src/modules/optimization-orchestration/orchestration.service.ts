@@ -284,21 +284,26 @@ export class OptimizationOrchestrationService {
     const { repository, schedules } = this.automationDefinitionDeps();
     const patch = { ...input.patch };
 
-    if (patch.maxAttempts !== undefined || patch.timeoutMs !== undefined) {
-      const currentDefinitions = await repository.listAutomationDefinitions(input.projectId);
-      const current = currentDefinitions.find((candidate) => candidate.id === input.definitionId);
-      if (!current) throw new Error('Automation definition not found');
-      assertAutomationExecutionPolicy(
-        patch.maxAttempts ?? current.maxAttempts,
-        patch.timeoutMs ?? current.timeoutMs
-      );
-    }
     if (patch.key !== undefined) patch.key = normalizeAutomationKey(patch.key);
     if (patch.actionType !== undefined) patch.actionType = normalizeActionType(patch.actionType);
     if (patch.actionConfig !== undefined) parseSearchRefreshConfig(patch.actionConfig);
     if (patch.scheduleCron !== undefined) {
       patch.scheduleCron = normalizeScheduleCron(patch.scheduleCron);
     }
+
+    const currentDefinitions = await repository.listAutomationDefinitions(input.projectId);
+    const current = currentDefinitions.find((candidate) => candidate.id === input.definitionId);
+    if (!current) throw new Error('Automation definition not found');
+
+    const candidate = {
+      ...current,
+      ...patch
+    };
+    normalizeAutomationKey(candidate.key);
+    assertAutomationExecutionPolicy(candidate.maxAttempts, candidate.timeoutMs);
+    normalizeActionType(candidate.actionType);
+    parseSearchRefreshConfig(candidate.actionConfig);
+    normalizeScheduleCron(candidate.scheduleCron);
 
     const updated = await repository.updateAutomationDefinition({
       definitionId: input.definitionId,
