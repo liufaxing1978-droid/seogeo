@@ -111,6 +111,7 @@ model ContentBrief {
   updatedAt         DateTime @updatedAt
 
   document ContentDocument? @relation(fields: [contentDocumentId], references: [id], onDelete: Cascade)
+  keywordContentBriefRequests KeywordContentBriefRequest[]
 
   @@index([projectId, createdAt])
   @@index([contentDocumentId, createdAt])

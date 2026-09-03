@@ -185,6 +185,7 @@ model Project {
   keywordCannibalizationSnapshots KeywordCannibalizationSnapshot[]
   keywordContentGaps       KeywordContentGap[]
   keywordEntityMappings    KeywordEntityMapping[]
+  keywordContentBriefRequests KeywordContentBriefRequest[]
 
   @@index([primaryDomain])
   @@index([status])

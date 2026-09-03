@@ -85,6 +85,13 @@ enum KeywordContentGapStatus {
   IGNORED
 }
 
+enum KeywordContentBriefRequestStatus {
+  PENDING
+  QUEUED
+  COMPLETED
+  FAILED
+}
+
 model Keyword {
   id                  String          @id @default(uuid()) @db.Uuid
   projectId           String          @db.Uuid
@@ -117,6 +124,7 @@ model Keyword {
   cannibalizationSnapshots KeywordCannibalizationSnapshot[] @relation("KeywordCannibalizationKeyword")
   contentGaps KeywordContentGap[] @relation("KeywordContentGapKeyword")
   entityMappings KeywordEntityMapping[] @relation("KeywordEntityMappingKeyword")
+  contentBriefRequests KeywordContentBriefRequest[] @relation("KeywordContentBriefRequestKeyword")
 
   @@unique([projectId, normalizedText])
   @@index([projectId, status])
@@ -156,6 +164,7 @@ model KeywordGroup {
   cannibalizationSnapshots KeywordCannibalizationSnapshot[] @relation("KeywordCannibalizationGroup")
   contentGaps KeywordContentGap[] @relation("KeywordContentGapGroup")
   entityMappings KeywordEntityMapping[] @relation("KeywordEntityMappingGroup")
+  contentBriefRequests KeywordContentBriefRequest[] @relation("KeywordContentBriefRequestGroup")
 
   @@unique([projectId, name])
   @@index([projectId])
@@ -320,10 +329,40 @@ model KeywordContentGap {
   project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   keyword Keyword?      @relation("KeywordContentGapKeyword", fields: [keywordId], references: [id], onDelete: Cascade)
   group   KeywordGroup? @relation("KeywordContentGapGroup", fields: [groupId], references: [id], onDelete: Cascade)
+  contentBriefRequests KeywordContentBriefRequest[]
 
   @@unique([keywordId])
   @@unique([groupId])
   @@index([projectId, status])
+}
+
+model KeywordContentBriefRequest {
+  id             String                          @id @default(uuid()) @db.Uuid
+  projectId      String                          @db.Uuid
+  keywordId      String?                         @db.Uuid
+  groupId        String?                         @db.Uuid
+  contentGapId   String?                         @db.Uuid
+  aiTaskId       String?                         @unique @db.Uuid
+  contentBriefId String?                         @unique @db.Uuid
+  snapshotHash   String
+  factsSnapshot  Json
+  status         KeywordContentBriefRequestStatus @default(PENDING)
+  createdByUserId String?                        @db.Uuid
+  createdAt      DateTime                        @default(now())
+  updatedAt      DateTime                        @updatedAt
+
+  project       Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword       Keyword?           @relation("KeywordContentBriefRequestKeyword", fields: [keywordId], references: [id], onDelete: Cascade)
+  group         KeywordGroup?      @relation("KeywordContentBriefRequestGroup", fields: [groupId], references: [id], onDelete: Cascade)
+  contentGap    KeywordContentGap? @relation(fields: [contentGapId], references: [id], onDelete: Cascade)
+  aiTask        AiTask?            @relation(fields: [aiTaskId], references: [id], onDelete: SetNull)
+  contentBrief  ContentBrief?      @relation(fields: [contentBriefId], references: [id], onDelete: SetNull)
+
+  @@unique([contentGapId, snapshotHash])
+  @@unique([groupId, snapshotHash])
+  @@index([projectId, status, createdAt])
+  @@index([projectId, keywordId])
+  @@index([projectId, groupId])
 }
 
 model KeywordEntityMapping {

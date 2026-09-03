@@ -57,6 +57,7 @@ model AiTask {
   updatedAt        DateTime     @updatedAt
 
   runs AiTaskRun[]
+  keywordContentBriefRequests KeywordContentBriefRequest[]
 
   @@unique([projectId, requestKey])
   @@index([projectId, createdAt])
