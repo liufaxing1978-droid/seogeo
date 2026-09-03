@@ -171,6 +171,9 @@ function normalizeAutomationKey(key: string): string {
 function normalizeActionType(actionType: string): string {
   const normalized = actionType.trim();
   if (!normalized) throw new Error('Automation action type is required');
+  if (normalized !== 'SEARCH_REFRESH') {
+    throw new Error(`Unsupported automation action type: ${normalized}`);
+  }
   return normalized;
 }
 
