@@ -24,6 +24,8 @@ import type {
   OperationsPipelineStage,
   OperationsQuota,
   OperationsTodayAction,
+  OperationsVerificationAuthority,
+  OperationsVerificationSummary,
 } from './operations.types.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -80,6 +82,8 @@ export type OperationsOverview = {
   quota: OperationsQuota;
   pipelineCounts: Record<OperationsPipelineStage, number>;
   inboxCounts: Record<OperationsInboxCategory, number>;
+  verificationSummary: OperationsVerificationSummary;
+  recentVerifications: OperationsVerificationAuthority[];
   experimentSummary: OperationsOutcomeSummary;
   feedbackSummary: OperationsFeedbackSummary;
   recentActivity: OperationsActivityItem[];
@@ -111,6 +115,19 @@ function countInbox(items: readonly OperationsInboxItem[]): Record<OperationsInb
     number
   >;
   for (const item of items) counts[item.category] += 1;
+  return counts;
+}
+
+function countVerifications(
+  items: readonly OperationsVerificationAuthority[],
+): OperationsVerificationSummary {
+  const counts: OperationsVerificationSummary = {
+    PENDING: 0,
+    VERIFIED: 0,
+    FAILED: 0,
+    UNKNOWN: 0,
+  };
+  for (const item of items) counts[item.status] += 1;
   return counts;
 }
 
@@ -161,6 +178,7 @@ export class OptimizationOperationsService {
       pipelineAuthority,
       inboxAuthority,
       automationAlertAuthority,
+      recentVerifications,
       observations,
       feedbackEvidence,
       feedbackProfiles,
@@ -173,6 +191,7 @@ export class OptimizationOperationsService {
       this.repository.listPipelineAuthority(projectId, 100, 0),
       this.repository.listInboxAuthority(projectId, 100, 0),
       automationAlertPromise,
+      this.repository.listRecentVerificationAuthority(projectId, 20),
       this.repository.listTerminalObservations(projectId, cutoff30, now),
       this.repository.listFeedbackEvidence(projectId, cutoff30, now),
       this.repository.listFeedbackProfiles(projectId, 1, 0),
@@ -206,6 +225,8 @@ export class OptimizationOperationsService {
       }),
       pipelineCounts: countPipeline(pipelineItems),
       inboxCounts: countInbox(inboxItems),
+      verificationSummary: countVerifications(recentVerifications),
+      recentVerifications,
       experimentSummary: deriveOutcomeSummary({
         now,
         observations,
