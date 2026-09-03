@@ -40,6 +40,7 @@ export interface KeywordCenterKeywordRecord extends KeywordListRecord {
     coverageStatus: string;
     reasonCodes: string[];
     contentEntryHref: string;
+    briefRequest: null | { status: 'PENDING' | 'QUEUED' | 'COMPLETED' | 'FAILED'; contentBriefId: string | null };
   };
 }
 
@@ -60,7 +61,7 @@ export interface KeywordCenterViewModel {
   };
   keywords: KeywordCenterKeywordRecord[];
   keywordOptions: Array<{ id: string; text: string; status: string; locked: boolean }>;
-  groups: Array<{ id: string; name: string; primaryKeywordId: string | null; entityIds: string[] }>;
+  groups: Array<{ id: string; name: string; primaryKeywordId: string | null; entityIds: string[]; briefRequest: null | { status: 'PENDING' | 'QUEUED' | 'COMPLETED' | 'FAILED'; contentBriefId: string | null } }>;
   entityOptions: Array<{ id: string; canonicalName: string; entityType: string }>;
   suggestions: Array<{
     id: string;
@@ -84,7 +85,7 @@ export class KeywordWebRepository {
   ) {}
 
   async load(projectId: string, filters: KeywordListQuery = {}): Promise<KeywordCenterViewModel> {
-    const [project, keywords, keywordOptions, relations, groups, memberships, suggestions, targets, cannibalization, contentGaps, entityMappings, entities] = await Promise.all([
+    const [project, keywords, keywordOptions, relations, groups, memberships, suggestions, targets, cannibalization, contentGaps, contentBriefRequests, entityMappings, entities] = await Promise.all([
       prisma.project.findUnique({
         where: { id: projectId },
         select: {
@@ -123,6 +124,7 @@ export class KeywordWebRepository {
       prisma.keywordTargetMapping.findMany({ where: { projectId }, select: { keywordId: true, groupId: true, normalizedUrl: true } }),
       prisma.keywordCannibalizationSnapshot.findMany({ where: { projectId, keywordId: { not: null } }, orderBy: { createdAt: 'desc' }, select: { keywordId: true, risk: true, recommendedAction: true, confidence: true, createdAt: true } }),
       prisma.keywordContentGap.findMany({ where: { projectId, keywordId: { not: null } }, select: { keywordId: true, status: true, coverageStatus: true, reasonCodes: true } }),
+      prisma.keywordContentBriefRequest.findMany({ where: { projectId }, select: { keywordId: true, groupId: true, status: true, contentBriefId: true, createdAt: true }, orderBy: { createdAt: 'desc' } }),
       prisma.keywordEntityMapping.findMany({ where: { projectId }, select: { keywordId: true, groupId: true, entityId: true } }),
       prisma.entity.findMany({ where: { projectId, status: 'ACTIVE' }, select: { id: true, canonicalName: true, entityType: true }, orderBy: { canonicalName: 'asc' } }),
     ]);
@@ -145,6 +147,12 @@ export class KeywordWebRepository {
     const cannibalizationByKeyword = new Map<string, (typeof cannibalization)[number]>();
     for (const item of cannibalization) if (item.keywordId && !cannibalizationByKeyword.has(item.keywordId)) cannibalizationByKeyword.set(item.keywordId, item);
     const contentGapByKeyword = new Map(contentGaps.flatMap((item) => item.keywordId ? [[item.keywordId, item] as const] : []));
+    const briefRequestByKeyword = new Map<string, (typeof contentBriefRequests)[number]>();
+    const briefRequestByGroup = new Map<string, (typeof contentBriefRequests)[number]>();
+    for (const request of contentBriefRequests) {
+      if (request.keywordId && !briefRequestByKeyword.has(request.keywordId)) briefRequestByKeyword.set(request.keywordId, request);
+      if (request.groupId && !briefRequestByGroup.has(request.groupId)) briefRequestByGroup.set(request.groupId, request);
+    }
     const groupsByKeyword = new Map<string, string[]>();
     for (const membership of memberships) {
       const ids = groupsByKeyword.get(membership.keywordId) ?? [];
@@ -204,6 +212,7 @@ export class KeywordWebRepository {
           coverageStatus: contentGapByKeyword.get(keyword.id)!.coverageStatus,
           reasonCodes: contentGapByKeyword.get(keyword.id)!.reasonCodes as string[],
           contentEntryHref: `/projects/${projectId}/content`,
+          briefRequest: briefRequestByKeyword.get(keyword.id) ?? null,
         } : null,
       };
     });
@@ -236,6 +245,7 @@ export class KeywordWebRepository {
         name: group.name,
         primaryKeywordId: group.primaryKeywordId,
         entityIds: entityIdsByGroup.get(group.id) ?? [],
+        briefRequest: briefRequestByGroup.get(group.id) ?? null,
       })),
       entityOptions: entities,
       suggestions: suggestions.map((suggestion) => ({

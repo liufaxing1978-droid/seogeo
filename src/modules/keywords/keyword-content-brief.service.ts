@@ -4,6 +4,20 @@ import { prisma } from '../../db/prisma.js';
 import { aiTaskService } from '../ai/ai.service.js';
 
 export class KeywordContentBriefService {
+  findFromGap(projectId: string, keywordId: string) {
+    return prisma.keywordContentBriefRequest.findFirst({
+      where: { projectId, keywordId, contentGapId: { not: null } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  findFromGroup(projectId: string, groupId: string) {
+    return prisma.keywordContentBriefRequest.findFirst({
+      where: { projectId, groupId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
   async createFromGroup(input: { projectId: string; groupId: string; actorUserId: string }) {
     const group = await prisma.keywordGroup.findFirst({
       where: { id: input.groupId, projectId: input.projectId },

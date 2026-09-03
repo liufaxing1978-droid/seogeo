@@ -229,6 +229,22 @@ describe('P11-01 keyword center web UI', () => {
     } finally { await fixture.cleanup(); }
   });
 
+  it('renders a persisted P8 brief request as an advisory action without publishing content', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const keyword = await keywordService.createManual({ actorUserId: fixture.user.id, projectId: fixture.project.id, text: 'P8 页面 Brief', type: 'LONG_TAIL' });
+      const gap = await prisma.keywordContentGap.create({ data: { projectId: fixture.project.id, keywordId: keyword.id, coverageStatus: 'UNKNOWN', status: 'OPEN', reasonCodes: ['NO_ACTIVE_PAGE_EVIDENCE'], sourceProvenance: { coverageStatus: 'UNKNOWN' } } });
+      await prisma.keywordContentBriefRequest.create({ data: { projectId: fixture.project.id, keywordId: keyword.id, contentGapId: gap.id, snapshotHash: randomUUID(), factsSnapshot: { keywordId: keyword.id }, status: 'QUEUED', createdByUserId: fixture.user.id } });
+
+      const response = await request(createApp()).get(`/projects/${fixture.project.id}/keywords`).set('Cookie', fixture.sessionCookie).expect(200);
+
+      expect(response.text).toContain('data-ui="keyword-content-brief"');
+      expect(response.text).toContain('Brief 已排队');
+      expect(response.text).not.toContain('生成建议 Brief');
+      expect(response.text).not.toContain('/publication');
+    } finally { await fixture.cleanup(); }
+  });
+
   it('renders an inherited Cluster Target URL instead of leaving a mapped member unmapped', async () => {
     const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
     try {

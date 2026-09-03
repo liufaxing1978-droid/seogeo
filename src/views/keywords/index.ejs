@@ -276,6 +276,13 @@
                       <strong><%= keyword.contentGap.status === 'OPEN' ? '待规划' : keyword.contentGap.status === 'CONTENT_PLANNED' ? '内容已规划' : keyword.contentGap.status === 'IN_PROGRESS' ? '内容制作中' : keyword.contentGap.status === 'RESOLVED' ? '已解决' : '已忽略' %></strong>
                       <small><%= keyword.contentGap.reasonCodes[0] === 'NO_ACTIVE_PAGE_EVIDENCE' ? '暂无启用页面证据' : keyword.contentGap.reasonCodes[0] === 'NO_USABLE_SNAPSHOT_EVIDENCE' ? '暂无可用抓取快照' : keyword.contentGap.reasonCodes[0] === 'NO_MATCH' ? '已有页面但未匹配' : '覆盖状态：' + keyword.contentGap.coverageStatus %></small>
                       <% if (canWriteKeywords && keyword.contentGap.status === 'OPEN') { %><form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/content-gap/plan"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="keyword-button" type="submit">规划内容</button></form><% } %>
+                      <div data-ui="keyword-content-brief">
+                        <% if (keyword.contentGap.briefRequest) { %>
+                          <small><%= keyword.contentGap.briefRequest.status === 'PENDING' ? 'Brief 待提交' : keyword.contentGap.briefRequest.status === 'QUEUED' ? 'Brief 已排队' : keyword.contentGap.briefRequest.status === 'COMPLETED' ? 'Brief 已生成' : 'Brief 生成失败，可重试' %></small>
+                        <% } else if (canWriteKeywords && keyword.contentGap.status !== 'RESOLVED') { %>
+                          <form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/content-gap/brief"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="keyword-button" type="submit">生成建议 Brief</button></form>
+                        <% } %>
+                      </div>
                       <a href="<%= keyword.contentGap.contentEntryHref %>">进入内容中心</a>
                     <% } else { %>
                       <span>未评估</span>
@@ -458,6 +465,13 @@
                 <strong><%= group.name %></strong>
                 <span>主词：<%= primaryKeyword ? primaryKeyword.text : '未设置' %></span>
                 <span data-ui="keyword-entity-map">实体：<%= groupEntities.length ? groupEntities.map((entity) => entity.canonicalName).join('、') : '—' %></span>
+              </div>
+              <div data-ui="keyword-cluster-content-brief">
+                <% if (group.briefRequest) { %>
+                  <small><%= group.briefRequest.status === 'PENDING' ? 'Brief 待提交' : group.briefRequest.status === 'QUEUED' ? 'Brief 已排队' : group.briefRequest.status === 'COMPLETED' ? 'Brief 已生成' : 'Brief 生成失败，可重试' %></small>
+                <% } else if (canWriteKeywords) { %>
+                  <form method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups/<%= group.id %>/content-brief"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="keyword-button" type="submit">从 Cluster 生成建议 Brief</button></form>
+                <% } %>
               </div>
               <% if (canWriteKeywords) { %>
                 <form class="keyword-inline-form" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups/<%= group.id %>/rename">

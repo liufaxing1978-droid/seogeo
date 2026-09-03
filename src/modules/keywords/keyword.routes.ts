@@ -24,6 +24,7 @@ import { keywordService, type KeywordService } from './keyword.service.js';
 import { KeywordTargetService } from './keyword-target.service.js';
 import { KeywordCannibalizationService } from './keyword-cannibalization.service.js';
 import { KeywordContentGapService } from './keyword-content-gap.service.js';
+import { KeywordContentBriefService } from './keyword-content-brief.service.js';
 import { KeywordEntityService } from './keyword-entity.service.js';
 import {
   keywordOpportunityService,
@@ -66,6 +67,7 @@ export function createKeywordRoutes(
   targetService = new KeywordTargetService(),
   cannibalizationService = new KeywordCannibalizationService(),
   contentGapService = new KeywordContentGapService(),
+  contentBriefService = new KeywordContentBriefService(),
   entityService = new KeywordEntityService(),
 ) {
   const router = Router();
@@ -135,6 +137,42 @@ export function createKeywordRoutes(
       const projectId = routeParam(req.params.projectId);
       const data = await contentGapService.evaluateKeyword(projectId, routeParam(req.params.keywordId), req.auth!.userId);
       res.status(201).json({ data: { ...data, contentEntryHref: `/projects/${projectId}/content` } });
+    } catch (error) { next(error); } },
+  );
+
+  router.get(
+    '/projects/:projectId/keywords/:keywordId/content-gap/brief',
+    requireAuthentication(), requireProjectMembership(), requireProjectCapability('PROJECT_READ'),
+    async (req, res, next) => { try {
+      res.json({ data: await contentBriefService.findFromGap(routeParam(req.params.projectId), routeParam(req.params.keywordId)) });
+    } catch (error) { next(error); } },
+  );
+
+  router.post(
+    '/projects/:projectId/keywords/:keywordId/content-gap/brief',
+    ...keywordMutationGuards,
+    async (req, res, next) => { try {
+      emptyKeywordMutationSchema.parse(req.body ?? {});
+      const data = await contentBriefService.createFromGap({ projectId: routeParam(req.params.projectId), keywordId: routeParam(req.params.keywordId), contentGapId: (await contentGapService.findKeyword(routeParam(req.params.projectId), routeParam(req.params.keywordId)))?.id ?? '', actorUserId: req.auth!.userId });
+      res.status(202).json({ data });
+    } catch (error) { next(error); } },
+  );
+
+  router.get(
+    '/projects/:projectId/keyword-groups/:groupId/content-brief',
+    requireAuthentication(), requireProjectMembership(), requireProjectCapability('PROJECT_READ'),
+    async (req, res, next) => { try {
+      res.json({ data: await contentBriefService.findFromGroup(routeParam(req.params.projectId), routeParam(req.params.groupId)) });
+    } catch (error) { next(error); } },
+  );
+
+  router.post(
+    '/projects/:projectId/keyword-groups/:groupId/content-brief',
+    ...keywordMutationGuards,
+    async (req, res, next) => { try {
+      emptyKeywordMutationSchema.parse(req.body ?? {});
+      const data = await contentBriefService.createFromGroup({ projectId: routeParam(req.params.projectId), groupId: routeParam(req.params.groupId), actorUserId: req.auth!.userId });
+      res.status(202).json({ data });
     } catch (error) { next(error); } },
   );
 

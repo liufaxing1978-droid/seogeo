@@ -69,6 +69,41 @@ describe('P11-01 keyword JSON API authorization', () => {
     } finally { await fixture.cleanup(); }
   });
 
+  it('creates one advisory Content Brief request from a persisted gap or Keyword Cluster', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const app = createApp();
+      const csrf = csrfFor(fixture);
+      const keyword = await request(app)
+        .post(`/api/v1/projects/${fixture.project.id}/keywords`)
+        .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf)
+        .send({ text: 'P8 内容 Brief', type: 'LONG_TAIL' }).expect(201);
+      const gap = await request(app)
+        .post(`/api/v1/projects/${fixture.project.id}/keywords/${keyword.body.data.id}/content-gap`)
+        .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf).send({}).expect(201);
+
+      const fromGap = await request(app)
+        .post(`/api/v1/projects/${fixture.project.id}/keywords/${keyword.body.data.id}/content-gap/brief`)
+        .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf).send({}).expect(202);
+      expect(fromGap.body.data).toMatchObject({ request: { contentGapId: gap.body.data.id, status: 'QUEUED' }, task: { taskType: 'CONTENT_BRIEF' } });
+      const gapRead = await request(app)
+        .get(`/api/v1/projects/${fixture.project.id}/keywords/${keyword.body.data.id}/content-gap/brief`)
+        .set('Cookie', fixture.sessionCookie).expect(200);
+      expect(gapRead.body.data).toMatchObject({ id: fromGap.body.data.request.id, status: 'QUEUED' });
+
+      const group = await prisma.keywordGroup.create({ data: { projectId: fixture.project.id, name: 'P8 Cluster' } });
+      await prisma.keywordGroupMembership.create({ data: { projectId: fixture.project.id, groupId: group.id, keywordId: keyword.body.data.id } });
+      const fromGroup = await request(app)
+        .post(`/api/v1/projects/${fixture.project.id}/keyword-groups/${group.id}/content-brief`)
+        .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf).send({}).expect(202);
+      expect(fromGroup.body.data).toMatchObject({ request: { groupId: group.id, status: 'QUEUED' }, task: { taskType: 'CONTENT_BRIEF' } });
+      const groupRead = await request(app)
+        .get(`/api/v1/projects/${fixture.project.id}/keyword-groups/${group.id}/content-brief`)
+        .set('Cookie', fixture.sessionCookie).expect(200);
+      expect(groupRead.body.data).toMatchObject({ id: fromGroup.body.data.request.id, status: 'QUEUED' });
+    } finally { await fixture.cleanup(); }
+  });
+
   it('does not reveal a foreign keyword content gap through an in-scope project route', async () => {
     const fixture = await seedAuthenticatedUser({ role: 'VIEWER', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
     const foreign = await prisma.project.create({ data: { name: 'P5 foreign gap', slug: `p5-foreign-gap-${Date.now()}`, primaryDomain: `p5-foreign-gap-${Date.now()}.example.com` } });

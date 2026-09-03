@@ -27,6 +27,7 @@ import {
 import { KeywordWebRepository } from './keyword.web.repository.js';
 import { KeywordCannibalizationService } from './keyword-cannibalization.service.js';
 import { KeywordContentGapService } from './keyword-content-gap.service.js';
+import { KeywordContentBriefService } from './keyword-content-brief.service.js';
 import { KeywordEntityService } from './keyword-entity.service.js';
 import {
   keywordBulkCreateSchema,
@@ -86,6 +87,7 @@ export function createKeywordWebRoutes(
   opportunityService: Pick<KeywordOpportunityService, 'calculate'> = keywordOpportunityService,
   cannibalizationService = new KeywordCannibalizationService(),
   contentGapService = new KeywordContentGapService(),
+  contentBriefService = new KeywordContentBriefService(),
   entityService = new KeywordEntityService(),
 ) {
   const router = Router();
@@ -213,6 +215,17 @@ export function createKeywordWebRoutes(
       const projectId = routeParam(req.params.projectId);
       await contentGapService.planKeyword(projectId, routeParam(req.params.keywordId), req.auth!.userId);
       res.redirect(303, `/projects/${projectId}/content`);
+    } catch (error) { next(error); }
+  });
+
+  router.post('/projects/:projectId/keywords/:keywordId/content-gap/brief', ...writeGuards, async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.projectId);
+      const keywordId = routeParam(req.params.keywordId);
+      const gap = await contentGapService.findKeyword(projectId, keywordId);
+      if (!gap) throw new AppError('Keyword content gap not found', 404, 'KEYWORD_CONTENT_GAP_NOT_FOUND');
+      await contentBriefService.createFromGap({ projectId, keywordId, contentGapId: gap.id, actorUserId: req.auth!.userId });
+      res.redirect(303, `/projects/${projectId}/keywords`);
     } catch (error) { next(error); }
   });
 
@@ -483,6 +496,14 @@ export function createKeywordWebRoutes(
     } catch (error) {
       next(error);
     }
+  });
+
+  router.post('/projects/:projectId/keyword-groups/:groupId/content-brief', ...writeGuards, async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.projectId);
+      await contentBriefService.createFromGroup({ projectId, groupId: routeParam(req.params.groupId), actorUserId: req.auth!.userId });
+      res.redirect(303, `/projects/${projectId}/keywords`);
+    } catch (error) { next(error); }
   });
 
   router.post('/projects/:projectId/keywords/:keywordId/groups', ...writeGuards, async (req, res, next) => {
