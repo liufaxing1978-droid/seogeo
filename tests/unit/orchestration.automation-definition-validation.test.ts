@@ -2,12 +2,25 @@ import { describe, expect, it, vi } from 'vitest';
 import { OptimizationOrchestrationService } from '../../src/modules/optimization-orchestration/orchestration.service.js';
 
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
+const DEFINITION_ID = '33333333-3333-4333-8333-333333333333';
 
 function harness() {
+  const updatedDefinition = {
+    id: DEFINITION_ID,
+    projectId: PROJECT_ID,
+    key: 'daily-search-refresh',
+    actionType: 'SEARCH_REFRESH',
+    actionConfig: {},
+    enabled: true,
+    scheduleCron: '0 7 * * *',
+    overlapPolicy: 'SKIP_IF_RUNNING',
+    maxAttempts: 3,
+    timeoutMs: 300_000
+  };
   const definitions = {
     listAutomationDefinitions: vi.fn().mockResolvedValue([]),
     createAutomationDefinition: vi.fn().mockResolvedValue({ id: 'definition-1' }),
-    updateAutomationDefinition: vi.fn()
+    updateAutomationDefinition: vi.fn().mockResolvedValue(updatedDefinition)
   };
   const schedules = {
     syncDefinitionSchedule: vi.fn().mockResolvedValue(undefined)
@@ -57,6 +70,21 @@ describe('automation definition action validation', () => {
     })).rejects.toThrow(/configuration|config.*invalid|invalid.*config/i);
 
     expect(state.definitions.createAutomationDefinition).not.toHaveBeenCalled();
+    expect(state.schedules.syncDefinitionSchedule).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid SEARCH_REFRESH config on update before persistence', async () => {
+    const state = harness();
+
+    await expect(state.service.updateAutomationDefinition({
+      definitionId: DEFINITION_ID,
+      projectId: PROJECT_ID,
+      patch: {
+        actionConfig: {}
+      }
+    })).rejects.toThrow(/configuration|config.*invalid|invalid.*config/i);
+
+    expect(state.definitions.updateAutomationDefinition).not.toHaveBeenCalled();
     expect(state.schedules.syncDefinitionSchedule).not.toHaveBeenCalled();
   });
 });
