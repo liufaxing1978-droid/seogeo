@@ -170,6 +170,11 @@ export class OptimizationOperationsService {
     ).listAutomationAlertAuthority === 'function'
       ? this.repository.listAutomationAlertAuthority(projectId, 100)
       : Promise.resolve([]);
+    const verificationAuthorityPromise = typeof (
+      this.repository as unknown as { listRecentVerificationAuthority?: unknown }
+    ).listRecentVerificationAuthority === 'function'
+      ? this.repository.listRecentVerificationAuthority(projectId, 20)
+      : Promise.resolve([]);
 
     const [
       planLevel,
@@ -191,7 +196,7 @@ export class OptimizationOperationsService {
       this.repository.listPipelineAuthority(projectId, 100, 0),
       this.repository.listInboxAuthority(projectId, 100, 0),
       automationAlertPromise,
-      this.repository.listRecentVerificationAuthority(projectId, 20),
+      verificationAuthorityPromise,
       this.repository.listTerminalObservations(projectId, cutoff30, now),
       this.repository.listFeedbackEvidence(projectId, cutoff30, now),
       this.repository.listFeedbackProfiles(projectId, 1, 0),
