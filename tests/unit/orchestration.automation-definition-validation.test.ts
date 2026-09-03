@@ -115,4 +115,41 @@ describe('automation definition action validation', () => {
     expect(state.definitions.createAutomationDefinition).not.toHaveBeenCalled();
     expect(state.schedules.syncDefinitionSchedule).not.toHaveBeenCalled();
   });
+
+  it('fails closed before persistence when an unrelated update would carry forward an unsafe persisted definition', async () => {
+    const state = harness();
+    const baseDefinition = {
+      id: DEFINITION_ID,
+      projectId: PROJECT_ID,
+      key: 'legacy-definition',
+      actionType: 'SEARCH_REFRESH',
+      actionConfig: validSearchRefreshConfig(),
+      enabled: true,
+      scheduleCron: '0 7 * * *',
+      overlapPolicy: 'SKIP_IF_RUNNING',
+      maxAttempts: 3,
+      timeoutMs: 300_000
+    };
+    const unsafeDefinitions = [
+      { ...baseDefinition, actionType: 'UNREGISTERED_ACTION' },
+      { ...baseDefinition, actionConfig: {} },
+      { ...baseDefinition, scheduleCron: 'not a cron' },
+      { ...baseDefinition, maxAttempts: 0 }
+    ];
+
+    for (const unsafe of unsafeDefinitions) {
+      state.definitions.listAutomationDefinitions.mockResolvedValueOnce([unsafe]);
+      state.definitions.updateAutomationDefinition.mockClear();
+      state.schedules.syncDefinitionSchedule.mockClear();
+
+      await expect(state.service.updateAutomationDefinition({
+        definitionId: DEFINITION_ID,
+        projectId: PROJECT_ID,
+        patch: { enabled: false }
+      })).rejects.toThrow();
+
+      expect(state.definitions.updateAutomationDefinition).not.toHaveBeenCalled();
+      expect(state.schedules.syncDefinitionSchedule).not.toHaveBeenCalled();
+    }
+  });
 });
