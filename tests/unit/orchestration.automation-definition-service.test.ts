@@ -171,6 +171,21 @@ describe('OL-2 automation definition management', () => {
     }
   });
 
+  it('prevalidates the full persisted definition set before mutating any scheduler state', async () => {
+    const state = harness();
+    const unsafe = definition({
+      id: '66666666-6666-4666-8666-666666666666',
+      actionType: 'UNREGISTERED_ACTION'
+    });
+    state.definitions.listAutomationDefinitions.mockResolvedValueOnce([
+      state.created,
+      unsafe
+    ]);
+
+    await expect(state.service.reconcileAutomationSchedules(PROJECT_ID)).rejects.toThrow();
+    expect(state.schedules.syncDefinitionSchedule).not.toHaveBeenCalled();
+  });
+
   it('rejects unsafe execution policy values before persistence', async () => {
     const state = harness();
 
