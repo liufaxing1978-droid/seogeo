@@ -57,7 +57,7 @@ export function buildSearchRefreshWindow(
   };
 }
 
-function parseSearchRefreshConfig(value: unknown): SearchRefreshActionConfig {
+export function parseSearchRefreshConfig(value: unknown): SearchRefreshActionConfig {
   const parsed = searchRefreshConfigSchema.safeParse(value);
   if (!parsed.success) {
     throw new OptimizationAutomationActionError(
