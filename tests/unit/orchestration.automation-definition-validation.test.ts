@@ -3,6 +3,7 @@ import { OptimizationOrchestrationService } from '../../src/modules/optimization
 
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const DEFINITION_ID = '33333333-3333-4333-8333-333333333333';
+const BINDING_ID = '44444444-4444-4444-8444-444444444444';
 
 function harness() {
   const updatedDefinition = {
@@ -34,6 +35,15 @@ function harness() {
   } as any);
 
   return { service, definitions, schedules };
+}
+
+function validSearchRefreshConfig() {
+  return {
+    version: 'SEARCH_REFRESH_V1' as const,
+    bindingId: BINDING_ID,
+    lookbackDays: 7,
+    lagDays: 1
+  };
 }
 
 describe('automation definition action validation', () => {
@@ -85,6 +95,24 @@ describe('automation definition action validation', () => {
     })).rejects.toThrow(/configuration|config.*invalid|invalid.*config/i);
 
     expect(state.definitions.updateAutomationDefinition).not.toHaveBeenCalled();
+    expect(state.schedules.syncDefinitionSchedule).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid non-empty cron schedule before persistence', async () => {
+    const state = harness();
+
+    await expect(state.service.createAutomationDefinition({
+      projectId: PROJECT_ID,
+      key: 'invalid-cron',
+      actionType: 'SEARCH_REFRESH',
+      actionConfig: validSearchRefreshConfig(),
+      enabled: true,
+      scheduleCron: 'not a cron',
+      maxAttempts: 3,
+      timeoutMs: 300_000
+    })).rejects.toThrow(/cron|schedule/i);
+
+    expect(state.definitions.createAutomationDefinition).not.toHaveBeenCalled();
     expect(state.schedules.syncDefinitionSchedule).not.toHaveBeenCalled();
   });
 });
