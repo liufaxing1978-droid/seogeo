@@ -112,6 +112,31 @@ export type OperationsPublicationVerificationAuthority = {
   updatedAt: Date;
 };
 
+export type OperationsVerificationAuthority = {
+  id: string;
+  executionId: string;
+  status: PublicationVerificationProjectionStatus;
+  targetUrl: string | null;
+  observedAt: Date | null;
+  httpStatus: number | null;
+  titleMatches: boolean | null;
+  descriptionMatches: boolean | null;
+  canonicalMatches: boolean | null;
+  h1Matches: boolean | null;
+  indexable: boolean | null;
+  schemaValid: boolean | null;
+  contentFingerprintOk: boolean | null;
+  regressionFindings: string[];
+  reasonCode: string | null;
+  createdAt: Date;
+  authorityUrl: string;
+};
+
+export type OperationsVerificationSummary = Record<
+  PublicationVerificationProjectionStatus,
+  number
+>;
+
 export type OperationsTerminalObservationAuthority = {
   id: string;
   effectState: OperationsEffectState;
