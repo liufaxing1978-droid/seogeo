@@ -26,6 +26,7 @@ import {
 } from './keyword-opportunity.service.js';
 import { KeywordWebRepository } from './keyword.web.repository.js';
 import { KeywordCannibalizationService } from './keyword-cannibalization.service.js';
+import { KeywordContentGapService } from './keyword-content-gap.service.js';
 import {
   keywordBulkCreateSchema,
   keywordCreateSchema,
@@ -81,6 +82,7 @@ export function createKeywordWebRoutes(
   searchEvidenceService: Pick<KeywordSearchEvidenceService, 'evaluateProject'> = keywordSearchEvidenceService,
   opportunityService: Pick<KeywordOpportunityService, 'calculate'> = keywordOpportunityService,
   cannibalizationService = new KeywordCannibalizationService(),
+  contentGapService = new KeywordContentGapService(),
 ) {
   const router = Router();
   const readGuards = [
@@ -199,6 +201,14 @@ export function createKeywordWebRoutes(
       const projectId = routeParam(req.params.projectId);
       await cannibalizationService.calculateKeyword(projectId, routeParam(req.params.keywordId), req.auth!.userId);
       res.redirect(303, `/projects/${projectId}/keywords`);
+    } catch (error) { next(error); }
+  });
+
+  router.post('/projects/:projectId/keywords/:keywordId/content-gap/plan', ...writeGuards, async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.projectId);
+      await contentGapService.planKeyword(projectId, routeParam(req.params.keywordId), req.auth!.userId);
+      res.redirect(303, `/projects/${projectId}/content`);
     } catch (error) { next(error); }
   });
 

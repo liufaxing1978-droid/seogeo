@@ -190,6 +190,7 @@
               <th>Target URL</th>
               <th>Cannibalization</th>
               <th>内容覆盖</th>
+              <th>内容缺口</th>
               <th>搜索证据</th>
               <th>父关键词 / 分组</th>
               <th>状态</th>
@@ -259,6 +260,19 @@
                       <small>证据分 <%= topMatch.score %> · 标题 <%= topMatch.titleMatch ? '✓' : '—' %> · H1 <%= topMatch.h1Match ? '✓' : '—' %></small>
                     <% } else { %>
                       <small><%= keyword.coverage.reason === 'NO_ACTIVE_PAGE_EVIDENCE' ? '暂无启用页面证据' : keyword.coverage.reason === 'NO_USABLE_SNAPSHOT_EVIDENCE' ? '暂无可用抓取快照' : '已有页面证据，但未发现匹配' %></small>
+                    <% } %>
+                  </div>
+                </td>
+                <td>
+                  <div class="keyword-meta-stack" data-ui="keyword-content-gap">
+                    <% if (keyword.contentGap) { %>
+                      <strong><%= keyword.contentGap.status === 'OPEN' ? '待规划' : keyword.contentGap.status === 'CONTENT_PLANNED' ? '内容已规划' : keyword.contentGap.status === 'IN_PROGRESS' ? '内容制作中' : keyword.contentGap.status === 'RESOLVED' ? '已解决' : '已忽略' %></strong>
+                      <small><%= keyword.contentGap.reasonCodes[0] === 'NO_ACTIVE_PAGE_EVIDENCE' ? '暂无启用页面证据' : keyword.contentGap.reasonCodes[0] === 'NO_USABLE_SNAPSHOT_EVIDENCE' ? '暂无可用抓取快照' : keyword.contentGap.reasonCodes[0] === 'NO_MATCH' ? '已有页面但未匹配' : '覆盖状态：' + keyword.contentGap.coverageStatus %></small>
+                      <% if (canWriteKeywords && keyword.contentGap.status === 'OPEN') { %><form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/content-gap/plan"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="keyword-button" type="submit">规划内容</button></form><% } %>
+                      <a href="<%= keyword.contentGap.contentEntryHref %>">进入内容中心</a>
+                    <% } else { %>
+                      <span>未评估</span>
+                      <% if (canWriteKeywords) { %><form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/content-gap/plan"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="keyword-button" type="submit">评估并规划</button></form><% } %>
                     <% } %>
                   </div>
                 </td>

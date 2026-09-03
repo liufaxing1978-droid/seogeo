@@ -195,6 +195,21 @@ async function seedOfficialSearchEvidence(
 }
 
 describe('P11-01 keyword center web UI', () => {
+  it('renders a persisted P5 content gap with the existing content-center handoff', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const keyword = await keywordService.createManual({ actorUserId: fixture.user.id, projectId: fixture.project.id, text: '超度法事', type: 'LONG_TAIL' });
+      await prisma.keywordContentGap.create({ data: { projectId: fixture.project.id, keywordId: keyword.id, coverageStatus: 'UNKNOWN', status: 'OPEN', reasonCodes: ['NO_ACTIVE_PAGE_EVIDENCE'], sourceProvenance: { coverageStatus: 'UNKNOWN' } } });
+
+      const response = await request(createApp()).get(`/projects/${fixture.project.id}/keywords`).set('Cookie', fixture.sessionCookie).expect(200);
+
+      expect(response.text).toContain('data-ui="keyword-content-gap"');
+      expect(response.text).toContain('暂无启用页面证据');
+      expect(response.text).toContain(`/projects/${fixture.project.id}/keywords/${keyword.id}/content-gap/plan`);
+      expect(response.text).toContain(`/projects/${fixture.project.id}/content`);
+    } finally { await fixture.cleanup(); }
+  });
+
   it('renders an inherited Cluster Target URL instead of leaving a mapped member unmapped', async () => {
     const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
     try {

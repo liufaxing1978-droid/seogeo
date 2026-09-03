@@ -77,6 +77,14 @@ enum KeywordCannibalizationAction {
   CANONICAL_REVIEW
 }
 
+enum KeywordContentGapStatus {
+  OPEN
+  CONTENT_PLANNED
+  IN_PROGRESS
+  RESOLVED
+  IGNORED
+}
+
 model Keyword {
   id                  String          @id @default(uuid()) @db.Uuid
   projectId           String          @db.Uuid
@@ -107,6 +115,7 @@ model Keyword {
   opportunitySnapshots KeywordOpportunitySnapshot[]
   directTargetMapping KeywordTargetMapping? @relation("KeywordTargetMappingKeyword")
   cannibalizationSnapshots KeywordCannibalizationSnapshot[] @relation("KeywordCannibalizationKeyword")
+  contentGaps KeywordContentGap[] @relation("KeywordContentGapKeyword")
 
   @@unique([projectId, normalizedText])
   @@index([projectId, status])
@@ -144,6 +153,7 @@ model KeywordGroup {
   memberships    KeywordGroupMembership[]
   targetMapping  KeywordTargetMapping? @relation("KeywordTargetMappingGroup")
   cannibalizationSnapshots KeywordCannibalizationSnapshot[] @relation("KeywordCannibalizationGroup")
+  contentGaps KeywordContentGap[] @relation("KeywordContentGapGroup")
 
   @@unique([projectId, name])
   @@index([projectId])
@@ -289,4 +299,27 @@ model KeywordCannibalizationSnapshot {
 
   @@index([projectId, keywordId, createdAt])
   @@index([projectId, groupId, createdAt])
+}
+
+model KeywordContentGap {
+  id               String                  @id @default(uuid()) @db.Uuid
+  projectId        String                  @db.Uuid
+  keywordId        String?                 @db.Uuid
+  groupId          String?                 @db.Uuid
+  coverageStatus   String
+  status           KeywordContentGapStatus @default(OPEN)
+  targetUrl        String?
+  reasonCodes      Json
+  sourceProvenance Json
+  createdByUserId  String?                 @db.Uuid
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword Keyword?      @relation("KeywordContentGapKeyword", fields: [keywordId], references: [id], onDelete: Cascade)
+  group   KeywordGroup? @relation("KeywordContentGapGroup", fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([keywordId])
+  @@unique([groupId])
+  @@index([projectId, status])
 }

@@ -15,6 +15,50 @@ function csrfFor(fixture: Awaited<ReturnType<typeof seedAuthenticatedUser>>): st
 }
 
 describe('P11-01 keyword JSON API authorization', () => {
+  it('persists an explainable P5 content gap and records its handoff to the existing content center', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const app = createApp();
+      const csrf = csrfFor(fixture);
+      const keyword = await request(app)
+        .post(`/api/v1/projects/${fixture.project.id}/keywords`)
+        .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf)
+        .send({ text: '超度法事', type: 'LONG_TAIL' }).expect(201);
+
+      const evaluated = await request(app)
+        .post(`/api/v1/projects/${fixture.project.id}/keywords/${keyword.body.data.id}/content-gap`)
+        .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf)
+        .send({}).expect(201);
+      expect(evaluated.body.data).toMatchObject({ keywordId: keyword.body.data.id, status: 'OPEN', coverageStatus: 'UNKNOWN' });
+
+      const planned = await request(app)
+        .post(`/api/v1/projects/${fixture.project.id}/keywords/${keyword.body.data.id}/content-gap/plan`)
+        .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf)
+        .send({}).expect(200);
+      expect(planned.body.data).toMatchObject({ keywordId: keyword.body.data.id, status: 'CONTENT_PLANNED' });
+      expect(planned.body.data.contentEntryHref).toBe(`/projects/${fixture.project.id}/content`);
+    } finally { await fixture.cleanup(); }
+  });
+
+  it('does not reveal a foreign keyword content gap through an in-scope project route', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'VIEWER', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    const foreign = await prisma.project.create({ data: { name: 'P5 foreign gap', slug: `p5-foreign-gap-${Date.now()}`, primaryDomain: `p5-foreign-gap-${Date.now()}.example.com` } });
+    try {
+      const keyword = await prisma.keyword.create({ data: { projectId: foreign.id, text: '外部内容缺口', normalizedText: `外部内容缺口-${foreign.id}`, type: 'LONG_TAIL', source: 'MANUAL' } });
+      await prisma.keywordContentGap.create({ data: { projectId: foreign.id, keywordId: keyword.id, coverageStatus: 'NONE', status: 'OPEN', reasonCodes: ['NO_MATCH'], sourceProvenance: { coverageStatus: 'NONE' } } });
+
+      const response = await request(createApp())
+        .get(`/api/v1/projects/${fixture.project.id}/keywords/${keyword.id}/content-gap`)
+        .set('Cookie', fixture.sessionCookie)
+        .expect(404);
+
+      expect(response.body.error.code).toBe('KEYWORD_NOT_FOUND');
+    } finally {
+      await prisma.project.delete({ where: { id: foreign.id } }).catch(() => undefined);
+      await fixture.cleanup();
+    }
+  });
+
   it('lets a CONTENT_WRITE member set a Cluster Target URL', async () => {
     const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
     try {

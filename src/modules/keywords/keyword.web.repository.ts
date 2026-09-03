@@ -34,6 +34,12 @@ export interface KeywordCenterKeywordRecord extends KeywordListRecord {
   };
   target: { state: 'DIRECT' | 'INHERITED' | 'UNMAPPED' | 'AMBIGUOUS'; url: string | null };
   cannibalization: null | { risk: string; recommendedAction: string | null; confidence: number | null; createdAt: Date };
+  contentGap: null | {
+    status: 'OPEN' | 'CONTENT_PLANNED' | 'IN_PROGRESS' | 'RESOLVED' | 'IGNORED';
+    coverageStatus: string;
+    reasonCodes: string[];
+    contentEntryHref: string;
+  };
 }
 
 export interface KeywordCenterViewModel {
@@ -73,7 +79,7 @@ export class KeywordWebRepository {
   ) {}
 
   async load(projectId: string, filters: KeywordListQuery = {}): Promise<KeywordCenterViewModel> {
-    const [project, keywords, keywordOptions, relations, groups, memberships, suggestions, targets, cannibalization] = await Promise.all([
+    const [project, keywords, keywordOptions, relations, groups, memberships, suggestions, targets, cannibalization, contentGaps] = await Promise.all([
       prisma.project.findUnique({
         where: { id: projectId },
         select: {
@@ -109,6 +115,7 @@ export class KeywordWebRepository {
       }),
       prisma.keywordTargetMapping.findMany({ where: { projectId }, select: { keywordId: true, groupId: true, normalizedUrl: true } }),
       prisma.keywordCannibalizationSnapshot.findMany({ where: { projectId, keywordId: { not: null } }, orderBy: { createdAt: 'desc' }, select: { keywordId: true, risk: true, recommendedAction: true, confidence: true, createdAt: true } }),
+      prisma.keywordContentGap.findMany({ where: { projectId, keywordId: { not: null } }, select: { keywordId: true, status: true, coverageStatus: true, reasonCodes: true } }),
     ]);
 
     if (!project) {
@@ -128,6 +135,7 @@ export class KeywordWebRepository {
     const targetByGroup = new Map(targets.flatMap((item) => item.groupId ? [[item.groupId, item.normalizedUrl] as const] : []));
     const cannibalizationByKeyword = new Map<string, (typeof cannibalization)[number]>();
     for (const item of cannibalization) if (item.keywordId && !cannibalizationByKeyword.has(item.keywordId)) cannibalizationByKeyword.set(item.keywordId, item);
+    const contentGapByKeyword = new Map(contentGaps.flatMap((item) => item.keywordId ? [[item.keywordId, item] as const] : []));
     const groupsByKeyword = new Map<string, string[]>();
     for (const membership of memberships) {
       const ids = groupsByKeyword.get(membership.keywordId) ?? [];
@@ -175,6 +183,12 @@ export class KeywordWebRepository {
         } : null,
         target: resolveEffectiveTargetUrl({ direct: targetByKeyword.get(keyword.id) ?? null, inherited: (groupsByKeyword.get(keyword.id) ?? []).flatMap((groupId) => targetByGroup.get(groupId) ?? []) }),
         cannibalization: cannibalizationByKeyword.get(keyword.id) ?? null,
+        contentGap: contentGapByKeyword.get(keyword.id) ? {
+          status: contentGapByKeyword.get(keyword.id)!.status,
+          coverageStatus: contentGapByKeyword.get(keyword.id)!.coverageStatus,
+          reasonCodes: contentGapByKeyword.get(keyword.id)!.reasonCodes as string[],
+          contentEntryHref: `/projects/${projectId}/content`,
+        } : null,
       };
     });
 
