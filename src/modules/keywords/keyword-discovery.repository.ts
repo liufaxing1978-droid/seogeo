@@ -18,6 +18,13 @@ type DecisionRepositories = {
 };
 
 const KEYWORD_DISCOVERY_TRANSACTION_MAX_ATTEMPTS = 3;
+const KEYWORD_DISCOVERY_TRANSACTION_RETRY_DELAY_MS = 25;
+
+type RetryPause = (delayMs: number) => Promise<void>;
+
+const pauseBeforeRetry: RetryPause = (delayMs) => new Promise((resolve) => {
+  setTimeout(resolve, delayMs);
+});
 
 function isRetryableTransactionConflict(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError
@@ -25,7 +32,10 @@ function isRetryableTransactionConflict(error: unknown): boolean {
 }
 
 export class KeywordDiscoveryRepository {
-  constructor(private readonly db: KeywordDiscoveryDb = prisma) {}
+  constructor(
+    private readonly db: KeywordDiscoveryDb = prisma,
+    private readonly retryPause: RetryPause = pauseBeforeRetry,
+  ) {}
 
   async loadWindow(input: {
     projectId: string;
@@ -174,6 +184,7 @@ export class KeywordDiscoveryRepository {
         if (!isRetryableTransactionConflict(error) || attempt === KEYWORD_DISCOVERY_TRANSACTION_MAX_ATTEMPTS) {
           throw error;
         }
+        await this.retryPause(attempt * KEYWORD_DISCOVERY_TRANSACTION_RETRY_DELAY_MS);
       }
     }
 
