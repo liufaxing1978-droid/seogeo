@@ -10,6 +10,7 @@ import type {
   OperationsOutcomeObservation,
   OperationsPipelineAuthority,
   OperationsReservationAuthority,
+  OperationsVerificationAuthority,
 } from './operations.types.js';
 
 const MAX_LIMIT = 100;
@@ -62,6 +63,11 @@ function firstString(value: unknown): string | null {
     if (typeof item === 'string' && item.length > 0) return item;
   }
   return null;
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
 }
 
 function terminalWindow(value: Prisma.JsonValue): TerminalWindow | null {
@@ -180,6 +186,61 @@ export class OptimizationOperationsRepository {
       lastErrorCode: row.lastErrorCode,
       updatedAt: row.updatedAt,
       authorityUrl: `/api/v1/projects/${projectId}/optimization/automation-runs/${row.id}`,
+    }));
+  }
+
+  async listRecentVerificationAuthority(
+    projectId: string,
+    limit: number,
+  ): Promise<OperationsVerificationAuthority[]> {
+    assertLimit(limit);
+    const rows = await this.db.publicationVerification.findMany({
+      where: { projectId },
+      select: {
+        id: true,
+        executionId: true,
+        status: true,
+        observedUrl: true,
+        observedAt: true,
+        httpStatus: true,
+        titleMatches: true,
+        descriptionMatches: true,
+        canonicalMatches: true,
+        h1Matches: true,
+        indexable: true,
+        schemaValid: true,
+        contentFingerprintOk: true,
+        regressionFindings: true,
+        reasonCode: true,
+        createdAt: true,
+        execution: {
+          select: {
+            plan: { select: { targetPublicUrl: true } },
+          },
+        },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      executionId: row.executionId,
+      status: row.status,
+      targetUrl: row.observedUrl ?? row.execution.plan.targetPublicUrl,
+      observedAt: row.observedAt,
+      httpStatus: row.httpStatus,
+      titleMatches: row.titleMatches,
+      descriptionMatches: row.descriptionMatches,
+      canonicalMatches: row.canonicalMatches,
+      h1Matches: row.h1Matches,
+      indexable: row.indexable,
+      schemaValid: row.schemaValid,
+      contentFingerprintOk: row.contentFingerprintOk,
+      regressionFindings: stringArray(row.regressionFindings),
+      reasonCode: row.reasonCode,
+      createdAt: row.createdAt,
+      authorityUrl: `/projects/${projectId}/publication/verifications/${row.id}`,
     }));
   }
 
