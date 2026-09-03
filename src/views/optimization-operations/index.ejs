@@ -1,5 +1,7 @@
 <% const inboxTotal = Object.values(overview.inboxCounts).reduce((sum, value) => sum + value, 0); %>
 <% const alerts = overview.alerts ?? []; %>
+<% const verifications = overview.recentVerifications ?? []; %>
+<% const verificationSummary = overview.verificationSummary ?? { PENDING: 0, VERIFIED: 0, FAILED: 0, UNKNOWN: 0 }; %>
 <section
   class="operations-page admin-center"
   data-ui="optimization-operations-center"
@@ -96,6 +98,65 @@
       </div>
     <% } else { %>
       <div class="empty">暂无需要处理的告警。</div>
+    <% } %>
+  </section>
+
+  <section class="panel operations-panel" data-ui="operations-verification-monitor">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">OL-4 · Verification Monitor</p>
+        <h2>发布后验证监控</h2>
+        <p class="muted">只读展示已持久化 PublicationVerification；页面不会发起新的验证、重试、merge 或 deploy。</p>
+      </div>
+    </div>
+    <div class="operations-stage-grid" aria-label="Verification status summary">
+      <% for (const status of ['PENDING', 'VERIFIED', 'FAILED', 'UNKNOWN']) { %>
+        <div class="operations-stage-card">
+          <span><%= status %></span>
+          <strong><%= verificationSummary[status] %></strong>
+        </div>
+      <% } %>
+    </div>
+    <% if (verifications.length) { %>
+      <div class="operations-inbox-list">
+        <% for (const verification of verifications) { %>
+          <%
+            const checks = [
+              verification.titleMatches,
+              verification.descriptionMatches,
+              verification.canonicalMatches,
+              verification.h1Matches,
+              verification.indexable,
+              verification.schemaValid,
+              verification.contentFingerprintOk,
+            ].filter((value) => value !== null && value !== undefined);
+            const passedChecks = checks.filter((value) => value === true).length;
+          %>
+          <article class="operations-inbox-item">
+            <div class="operations-inline">
+              <span class="badge"><%= verification.status %></span>
+              <strong><%= verification.targetUrl ?? 'URL UNKNOWN' %></strong>
+            </div>
+            <p>HTTP: <code><%= verification.httpStatus ?? 'UNKNOWN' %></code></p>
+            <p>通过检查：<strong><%= passedChecks %>/<%= checks.length %></strong></p>
+            <p>Reason Code: <code><%= verification.reasonCode ?? 'NONE' %></code></p>
+            <% if (verification.regressionFindings.length) { %>
+              <p class="muted">Regression findings: <%= verification.regressionFindings.join(', ') %></p>
+            <% } %>
+            <p class="muted">
+              Observed:
+              <% if (verification.observedAt) { %>
+                <time datetime="<%= verification.observedAt.toISOString() %>"><%= verification.observedAt.toISOString() %></time>
+              <% } else { %>
+                UNKNOWN
+              <% } %>
+            </p>
+            <a class="text-link" href="<%= verification.authorityUrl %>">查看验证详情</a>
+          </article>
+        <% } %>
+      </div>
+    <% } else { %>
+      <div class="empty">暂无发布后验证记录。</div>
     <% } %>
   </section>
 
