@@ -14,6 +14,11 @@ const projectIds: string[] = [];
 const actorUserId = randomUUID();
 
 type SuggestionService = KeywordService & {
+  acceptSuggestions(input: {
+    actorUserId: string;
+    projectId: string;
+    suggestionIds: string[];
+  }): Promise<Keyword[]>;
   acceptSuggestion(input: {
     actorUserId: string;
     projectId: string;
@@ -135,6 +140,30 @@ afterEach(async () => {
 });
 
 describe('KeywordService suggestion decision semantics', () => {
+  it('accepts selected pending suggestions in one confirmation and applies project locale defaults', async () => {
+    const project = await createProject('bulk-accept');
+    await prisma.project.update({
+      where: { id: project.id },
+      data: { defaultLanguage: 'zh-Hant', targetCountry: 'SG' },
+    });
+    const service = new KeywordService() as SuggestionService;
+    const first = await seedSuggestion(service, project.id, { text: '传统符纸' });
+    const second = await seedSuggestion(service, project.id, { text: '符纸怎么保存' });
+
+    const accepted = await service.acceptSuggestions({
+      actorUserId,
+      projectId: project.id,
+      suggestionIds: [first.suggestion.id, second.suggestion.id],
+    });
+
+    expect(accepted.map((keyword) => keyword.text).sort()).toEqual(['传统符纸', '符纸怎么保存']);
+    expect(accepted.every((keyword) => keyword.source === 'AI_ACCEPTED')).toBe(true);
+    expect(accepted.every((keyword) => keyword.language === 'zh-Hant' && keyword.targetCountry === 'SG')).toBe(true);
+    expect(await prisma.keywordSuggestion.count({
+      where: { projectId: project.id, status: 'ACCEPTED' },
+    })).toBe(2);
+  });
+
   it('accepts a pending suggestion idempotently and creates one AI_ACCEPTED child', async () => {
     const project = await createProject('accept-idempotent');
     const service = new KeywordService() as SuggestionService;
@@ -451,6 +480,31 @@ describe('Keyword suggestion API authorization and commands', () => {
         id: second.suggestion.id,
         status: 'REJECTED',
       });
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('lets an OPERATOR accept selected suggestions in one API request', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OPERATOR',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const first = await seedAuthenticatedSuggestion(fixture, '传统符纸');
+      const second = await seedAuthenticatedSuggestion(fixture, '符纸怎么保存');
+      const response = await request(createApp())
+        .post(`/api/v1/projects/${fixture.project.id}/keyword-suggestions/accept`)
+        .set('Cookie', fixture.sessionCookie)
+        .set('X-CSRF-Token', csrfFor(fixture))
+        .send({ suggestionIds: [first.suggestion.id, second.suggestion.id] })
+        .expect(200);
+
+      expect(response.body.data.map((keyword: Keyword) => keyword.text).sort())
+        .toEqual(['传统符纸', '符纸怎么保存']);
     } finally {
       await fixture.cleanup();
     }

@@ -64,6 +64,9 @@ export interface KeywordCenterViewModel {
     id: string;
     seedKeywordId: string;
     suggestedText: string;
+    suggestedType: string | null;
+    suggestedIntent: string | null;
+    category: 'RELATED' | 'LONG_TAIL' | 'QUESTION';
     status: string;
     rationale: string | null;
   }>;
@@ -107,6 +110,8 @@ export class KeywordWebRepository {
           id: true,
           seedKeywordId: true,
           suggestedText: true,
+          suggestedType: true,
+          suggestedIntent: true,
           status: true,
           rationale: true,
         },
@@ -224,6 +229,13 @@ export class KeywordWebRepository {
         id: suggestion.id,
         seedKeywordId: suggestion.seedKeywordId,
         suggestedText: suggestion.suggestedText,
+        suggestedType: suggestion.suggestedType,
+        suggestedIntent: suggestion.suggestedIntent,
+        category: suggestion.suggestedType === 'QUESTION'
+          ? 'QUESTION'
+          : suggestion.suggestedType === 'LONG_TAIL'
+            ? 'LONG_TAIL'
+            : 'RELATED',
         status: suggestion.status,
         rationale: suggestion.rationale,
       })),

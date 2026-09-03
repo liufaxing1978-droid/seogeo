@@ -115,6 +115,12 @@ export interface RejectKeywordSuggestionInput {
   suggestionId: string;
 }
 
+export interface AcceptKeywordSuggestionsInput {
+  actorUserId: string;
+  projectId: string;
+  suggestionIds: string[];
+}
+
 const KEYWORD_TRANSACTION_MAX_ATTEMPTS = 3;
 
 async function inKeywordTransaction<T>(
@@ -259,6 +265,66 @@ async function rereadDuplicateAfterConstraint(
   const winner = await new KeywordRepository().findByNormalized(projectId, normalizedText);
   if (winner) throw duplicateError(winner);
   throw new AppError('Keyword write conflict', 409, 'KEYWORD_WRITE_CONFLICT');
+}
+
+async function acceptSuggestionInTransaction(
+  repo: KeywordRepository,
+  input: AcceptKeywordSuggestionInput,
+): Promise<Keyword> {
+  const suggestion = await requireSuggestion(repo, input.projectId, input.suggestionId);
+
+  if (suggestion.status === 'ACCEPTED' && suggestion.acceptedKeywordId) {
+    const linked = await repo.findKeyword(input.projectId, suggestion.acceptedKeywordId);
+    if (linked) return linked;
+    throw suggestionAlreadyDecided();
+  }
+  if (suggestion.status !== 'PENDING') throw suggestionAlreadyDecided();
+
+  const seed = await requireKeyword(repo, input.projectId, suggestion.seedKeywordId);
+  const rawText = input.editedText ?? suggestion.suggestedText;
+  const normalizedText = assertUsableText(rawText);
+  let keyword = await repo.findByNormalized(input.projectId, normalizedText);
+
+  if (keyword?.status === 'ARCHIVED') throw duplicateError(keyword);
+
+  if (keyword) {
+    assertUnlockedOrAcknowledged(keyword.locked, undefined);
+  } else {
+    const projectDefaults = await repo.findProjectKeywordDefaults(input.projectId);
+    keyword = await repo.createKeyword({
+      projectId: input.projectId,
+      text: rawText.trim(),
+      normalizedText,
+      type: suggestion.suggestedType ?? 'LONG_TAIL',
+      intent: suggestion.suggestedIntent,
+      priority: 'MEDIUM',
+      status: 'ACTIVE',
+      locked: false,
+      source: 'AI_ACCEPTED',
+      language: seed.language ?? projectDefaults?.defaultLanguage ?? null,
+      targetCountry: seed.targetCountry ?? projectDefaults?.targetCountry ?? null,
+      notes: null,
+      createdByUserId: input.actorUserId,
+    });
+  }
+
+  await assertNoCycle(repo, input.projectId, keyword.id, seed.id);
+  await repo.upsertParent(input.projectId, seed.id, keyword.id);
+  const decidedAt = new Date();
+  await repo.updateSuggestion(input.projectId, suggestion.id, {
+    status: 'ACCEPTED',
+    acceptedKeywordId: keyword.id,
+    decidedAt,
+    decidedByUserId: input.actorUserId,
+  });
+  await repo.appendAudit(
+    input.projectId,
+    keyword.id,
+    input.actorUserId,
+    'KEYWORD_SUGGESTION_ACCEPTED',
+    { suggestionId: suggestion.id, seedKeywordId: seed.id },
+  );
+  return keyword;
 }
 
 export class KeywordService {
@@ -622,60 +688,20 @@ export class KeywordService {
   }
 
   async acceptSuggestion(input: AcceptKeywordSuggestionInput): Promise<Keyword> {
+    return inKeywordTransaction((repo) => acceptSuggestionInTransaction(repo, input));
+  }
+
+  async acceptSuggestions(input: AcceptKeywordSuggestionsInput): Promise<Keyword[]> {
+    const suggestionIds = [...new Set(input.suggestionIds)];
+    if (suggestionIds.length === 0) {
+      throw new ValidationError('At least one keyword suggestion is required');
+    }
     return inKeywordTransaction(async (repo) => {
-      const suggestion = await requireSuggestion(repo, input.projectId, input.suggestionId);
-
-      if (suggestion.status === 'ACCEPTED' && suggestion.acceptedKeywordId) {
-        const linked = await repo.findKeyword(input.projectId, suggestion.acceptedKeywordId);
-        if (linked) return linked;
-        throw suggestionAlreadyDecided();
+      const accepted: Keyword[] = [];
+      for (const suggestionId of suggestionIds) {
+        accepted.push(await acceptSuggestionInTransaction(repo, { ...input, suggestionId }));
       }
-      if (suggestion.status !== 'PENDING') throw suggestionAlreadyDecided();
-
-      const seed = await requireKeyword(repo, input.projectId, suggestion.seedKeywordId);
-      const rawText = input.editedText ?? suggestion.suggestedText;
-      const normalizedText = assertUsableText(rawText);
-      let keyword = await repo.findByNormalized(input.projectId, normalizedText);
-
-      if (keyword?.status === 'ARCHIVED') throw duplicateError(keyword);
-
-      if (keyword) {
-        assertUnlockedOrAcknowledged(keyword.locked, undefined);
-      } else {
-        keyword = await repo.createKeyword({
-          projectId: input.projectId,
-          text: rawText.trim(),
-          normalizedText,
-          type: suggestion.suggestedType ?? 'LONG_TAIL',
-          intent: suggestion.suggestedIntent,
-          priority: 'MEDIUM',
-          status: 'ACTIVE',
-          locked: false,
-          source: 'AI_ACCEPTED',
-          language: null,
-          targetCountry: null,
-          notes: null,
-          createdByUserId: input.actorUserId,
-        });
-      }
-
-      await assertNoCycle(repo, input.projectId, keyword.id, seed.id);
-      await repo.upsertParent(input.projectId, seed.id, keyword.id);
-      const decidedAt = new Date();
-      await repo.updateSuggestion(input.projectId, suggestion.id, {
-        status: 'ACCEPTED',
-        acceptedKeywordId: keyword.id,
-        decidedAt,
-        decidedByUserId: input.actorUserId,
-      });
-      await repo.appendAudit(
-        input.projectId,
-        keyword.id,
-        input.actorUserId,
-        'KEYWORD_SUGGESTION_ACCEPTED',
-        { suggestionId: suggestion.id, seedKeywordId: seed.id },
-      );
-      return keyword;
+      return accepted;
     });
   }
 

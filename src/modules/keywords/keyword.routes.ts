@@ -40,6 +40,7 @@ import {
   keywordListQuerySchema,
   keywordLockSchema,
   keywordOpportunityCalculationSchema,
+  keywordSuggestionBulkAcceptSchema,
   keywordParentSchema,
   keywordStatusCommandSchema,
   keywordSuggestionDecisionSchema,
@@ -263,6 +264,24 @@ export function createKeywordRoutes(
           aiService,
         );
         res.status(202).json({ data: { aiTaskId: task.id } });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    '/projects/:projectId/keyword-suggestions/accept',
+    ...keywordMutationGuards,
+    async (req, res, next) => {
+      try {
+        const body = keywordSuggestionBulkAcceptSchema.parse(req.body ?? {});
+        const data = await service.acceptSuggestions({
+          actorUserId: req.auth!.userId,
+          projectId: routeParam(req.params.projectId),
+          suggestionIds: body.suggestionIds,
+        });
+        res.json({ data });
       } catch (error) {
         next(error);
       }

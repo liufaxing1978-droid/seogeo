@@ -38,6 +38,7 @@ import {
   keywordListQuerySchema,
   keywordLockSchema,
   keywordOpportunityCalculationSchema,
+  keywordSuggestionBulkAcceptSchema,
   keywordParentSchema,
   keywordStatusCommandSchema,
   keywordSuggestionDecisionSchema,
@@ -223,6 +224,27 @@ export function createKeywordWebRoutes(
           routeParam(req.params.keywordId),
           aiService,
         );
+        res.redirect(303, `/projects/${projectId}/keywords`);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    '/projects/:projectId/keyword-suggestions/accept',
+    ...writeGuards,
+    async (req, res, next) => {
+      try {
+        const projectId = routeParam(req.params.projectId);
+        const body = keywordSuggestionBulkAcceptSchema.parse({
+          suggestionIds: stringList(req.body?.suggestionIds),
+        });
+        await service.acceptSuggestions({
+          actorUserId: req.auth!.userId,
+          projectId,
+          suggestionIds: body.suggestionIds,
+        });
         res.redirect(303, `/projects/${projectId}/keywords`);
       } catch (error) {
         next(error);

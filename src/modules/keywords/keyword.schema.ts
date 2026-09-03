@@ -161,6 +161,10 @@ export const keywordSuggestionDecisionSchema = z.object({
   editedText: keywordTextSchema.optional(),
 }).strict();
 
+export const keywordSuggestionBulkAcceptSchema = z.object({
+  suggestionIds: z.array(z.string().uuid()).min(1).max(50),
+}).strict();
+
 export const emptyKeywordMutationSchema = z.object({}).strict();
 
 export type KeywordCreateBody = z.infer<typeof keywordCreateSchema>;

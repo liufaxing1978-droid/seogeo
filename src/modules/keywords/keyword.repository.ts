@@ -11,6 +11,7 @@ type KeywordDb = Pick<
   | 'keywordGroupMembership'
   | 'keywordSuggestion'
   | 'keywordAuditEvent'
+  | 'project'
 >;
 
 export class KeywordRepository {
@@ -41,6 +42,13 @@ export class KeywordRepository {
     return this.db.keyword.findMany({
       where: { projectId },
       select: { normalizedText: true },
+    });
+  }
+
+  findProjectKeywordDefaults(projectId: string) {
+    return this.db.project.findUnique({
+      where: { id: projectId },
+      select: { defaultLanguage: true, targetCountry: true },
     });
   }
 

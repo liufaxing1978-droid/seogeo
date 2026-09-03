@@ -650,6 +650,60 @@ describe('P11-01 keyword center web UI', () => {
     }
   });
 
+  it('renders expansion categories and a selected-suggestion batch acceptance control', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OPERATOR',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const { suggestion } = await seedPendingSuggestion(fixture, '符纸怎么保存');
+      const response = await request(createApp())
+        .get(`/projects/${fixture.project.id}/keywords`)
+        .set('Cookie', fixture.sessionCookie)
+        .expect(200);
+
+      expect(response.text).toContain('data-ui="keyword-suggestion-bulk-accept"');
+      expect(response.text).toContain('name="suggestionIds"');
+      expect(response.text).toContain(`value="${suggestion.id}"`);
+      expect(response.text).toContain('长尾词 · 信息型');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('accepts selected suggestions through the web form and redirects', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OPERATOR',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const first = await seedPendingSuggestion(fixture, '传统符纸');
+      const second = await seedPendingSuggestion(fixture, '符纸怎么保存');
+      const response = await request(createApp())
+        .post(`/projects/${fixture.project.id}/keyword-suggestions/accept`)
+        .set('Cookie', fixture.sessionCookie)
+        .type('form')
+        .send({
+          _csrf: csrfFor(fixture),
+          suggestionIds: [first.suggestion.id, second.suggestion.id],
+        })
+        .expect(303);
+
+      expect(response.headers.location).toBe(`/projects/${fixture.project.id}/keywords`);
+      expect(await prisma.keywordSuggestion.count({
+        where: { projectId: fixture.project.id, status: 'ACCEPTED' },
+      })).toBe(2);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it('rejects a pending suggestion through the web form and redirects without creating a keyword', async () => {
     const fixture = await seedAuthenticatedUser({
       role: 'OPERATOR',

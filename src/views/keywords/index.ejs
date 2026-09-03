@@ -54,6 +54,11 @@
     REJECTED: '已拒绝',
     EXPIRED: '已过期',
   };
+  const suggestionCategoryLabels = {
+    RELATED: '相关词',
+    LONG_TAIL: '长尾词',
+    QUESTION: '问题词',
+  };
 %>
 
 <section class="keyword-center" data-ui="keyword-center">
@@ -499,6 +504,14 @@
       <% if (!keywordCenter.suggestions.length) { %>
         <p class="keyword-empty keyword-empty--compact">暂无 AI 建议。建议不会自动创建、发布或修改关键词。</p>
       <% } else { %>
+        <% const pendingSuggestions = keywordCenter.suggestions.filter((suggestion) => suggestion.status === 'PENDING'); %>
+        <% if (pendingSuggestions.length && canWriteKeywords) { %>
+          <form id="keyword-suggestion-bulk-accept-form" class="keyword-inline-form" data-ui="keyword-suggestion-bulk-accept" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-suggestions/accept">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <span>勾选候选后批量入库；不会自动创建未选中的建议。</span>
+            <button class="keyword-button keyword-button--primary" type="submit">接受已选建议</button>
+          </form>
+        <% } %>
         <div class="keyword-suggestion-list">
           <% keywordCenter.suggestions.forEach((suggestion) => {
             const seedKeyword = keywordById.get(suggestion.seedKeywordId);
@@ -508,12 +521,14 @@
                 <div>
                   <strong><%= suggestion.suggestedText %></strong>
                   <small>来源核心词：<%= seedKeyword ? seedKeyword.text : '—' %></small>
+                  <small><%= suggestionCategoryLabels[suggestion.category] || suggestion.category %> · <%= suggestion.suggestedIntent ? (intentLabels[suggestion.suggestedIntent] || suggestion.suggestedIntent) : '未分类 Intent' %></small>
                 </div>
                 <span class="keyword-suggestion-status"><%= suggestionStatusLabels[suggestion.status] || suggestion.status %></span>
               </div>
               <p><%= suggestion.rationale || '未提供理由' %></p>
 
               <% if (suggestion.status === 'PENDING' && canWriteKeywords) { %>
+                <label class="keyword-check"><input form="keyword-suggestion-bulk-accept-form" type="checkbox" name="suggestionIds" value="<%= suggestion.id %>"><span>加入本次批量接受</span></label>
                 <div class="keyword-suggestion-actions">
                   <form data-ui="keyword-suggestion-accept" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-suggestions/<%= suggestion.id %>/accept">
                     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
