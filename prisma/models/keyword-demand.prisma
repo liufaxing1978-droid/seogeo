@@ -116,6 +116,7 @@ model Keyword {
   directTargetMapping KeywordTargetMapping? @relation("KeywordTargetMappingKeyword")
   cannibalizationSnapshots KeywordCannibalizationSnapshot[] @relation("KeywordCannibalizationKeyword")
   contentGaps KeywordContentGap[] @relation("KeywordContentGapKeyword")
+  entityMappings KeywordEntityMapping[] @relation("KeywordEntityMappingKeyword")
 
   @@unique([projectId, normalizedText])
   @@index([projectId, status])
@@ -154,6 +155,7 @@ model KeywordGroup {
   targetMapping  KeywordTargetMapping? @relation("KeywordTargetMappingGroup")
   cannibalizationSnapshots KeywordCannibalizationSnapshot[] @relation("KeywordCannibalizationGroup")
   contentGaps KeywordContentGap[] @relation("KeywordContentGapGroup")
+  entityMappings KeywordEntityMapping[] @relation("KeywordEntityMappingGroup")
 
   @@unique([projectId, name])
   @@index([projectId])
@@ -322,4 +324,25 @@ model KeywordContentGap {
   @@unique([keywordId])
   @@unique([groupId])
   @@index([projectId, status])
+}
+
+model KeywordEntityMapping {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @db.Uuid
+  keywordId String?  @db.Uuid
+  groupId   String?  @db.Uuid
+  entityId  String   @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword Keyword?      @relation("KeywordEntityMappingKeyword", fields: [keywordId], references: [id], onDelete: Cascade)
+  group   KeywordGroup? @relation("KeywordEntityMappingGroup", fields: [groupId], references: [id], onDelete: Cascade)
+  entity  Entity        @relation(fields: [entityId], references: [id], onDelete: Restrict)
+
+  @@unique([keywordId, entityId])
+  @@unique([groupId, entityId])
+  @@index([projectId, keywordId])
+  @@index([projectId, groupId])
+  @@index([projectId, entityId])
 }

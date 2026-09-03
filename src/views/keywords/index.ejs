@@ -2,6 +2,7 @@
   const keywordById = new Map(keywordCenter.keywords.map((item) => [item.id, item]));
   const keywordOptionById = new Map(keywordCenter.keywordOptions.map((item) => [item.id, item]));
   const groupById = new Map(keywordCenter.groups.map((item) => [item.id, item]));
+  const entityById = new Map(keywordCenter.entityOptions.map((item) => [item.id, item]));
   const typeLabels = {
     CORE: '核心词',
     LONG_TAIL: '长尾词',
@@ -207,6 +208,7 @@
             <% keywordCenter.keywords.forEach((keyword) => {
               const parent = keyword.parentKeywordId ? keywordById.get(keyword.parentKeywordId) : null;
               const keywordGroups = keyword.groupIds.map((id) => groupById.get(id)).filter(Boolean);
+              const keywordEntities = keyword.entityIds.map((id) => entityById.get(id)).filter(Boolean);
               const topMatch = keyword.coverage.matches[0];
             %>
               <tr data-ui="keyword-row" data-keyword-id="<%= keyword.id %>">
@@ -321,6 +323,7 @@
                   <div class="keyword-meta-stack">
                     <span>父词：<%= parent ? parent.text : '—' %></span>
                     <small>分组：<%= keywordGroups.length ? keywordGroups.map((group) => group.name).join('、') : '—' %></small>
+                    <small data-ui="keyword-entity-map">实体：<%= keywordEntities.length ? keywordEntities.map((entity) => entity.canonicalName).join('、') : '—' %></small>
                   </div>
                 </td>
                 <td><span class="keyword-status keyword-status--<%= keyword.status.toLowerCase() %>"><%= statusLabels[keyword.status] %></span></td>
@@ -403,6 +406,18 @@
                             <button class="keyword-button" type="submit">保存分组</button>
                           </form>
 
+                          <form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/entities">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <fieldset>
+                              <legend>关联实体</legend>
+                              <% if (!keywordCenter.entityOptions.length) { %><small>尚无可关联的活跃实体；请先在 GEO 实体页产生或确认实体。</small><% } %>
+                              <% keywordCenter.entityOptions.forEach((entity) => { %>
+                                <label class="keyword-check"><input type="checkbox" name="entityIds" value="<%= entity.id %>" <%= keyword.entityIds.includes(entity.id) ? 'checked' : '' %>><span><%= entity.canonicalName %> · <%= entity.entityType %></span></label>
+                              <% }) %>
+                            </fieldset>
+                            <button class="keyword-button" type="submit">保存实体</button>
+                          </form>
+
                           <form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/archive">
                             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                             <% if (keyword.locked) { %><input type="hidden" name="acknowledgeLock" value="true"><% } %>
@@ -436,11 +451,13 @@
         <div class="keyword-cluster-list">
           <% keywordCenter.groups.forEach((group) => {
             const primaryKeyword = group.primaryKeywordId ? keywordOptionById.get(group.primaryKeywordId) : null;
+            const groupEntities = group.entityIds.map((id) => entityById.get(id)).filter(Boolean);
           %>
             <article class="keyword-cluster-card" data-cluster-id="<%= group.id %>">
               <div class="keyword-cluster-card__heading">
                 <strong><%= group.name %></strong>
                 <span>主词：<%= primaryKeyword ? primaryKeyword.text : '未设置' %></span>
+                <span data-ui="keyword-entity-map">实体：<%= groupEntities.length ? groupEntities.map((entity) => entity.canonicalName).join('、') : '—' %></span>
               </div>
               <% if (canWriteKeywords) { %>
                 <form class="keyword-inline-form" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups/<%= group.id %>/rename">
@@ -458,6 +475,12 @@
                   <fieldset><legend>批量加入成员词</legend><div class="keyword-chip-list"><% keywordCenter.keywordOptions.filter((item) => item.status !== 'ARCHIVED').forEach((item) => { %><label class="keyword-check"><input type="checkbox" name="keywordIds" value="<%= item.id %>"><span><%= item.text %></span></label><% }) %></div></fieldset>
                   <label class="keyword-check"><input type="checkbox" name="acknowledgeLock" value="true"><span>确认调整锁定词</span></label>
                   <button class="keyword-button" type="submit">批量加入</button>
+                </form>
+                <form class="keyword-cluster-assignment" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups/<%= group.id %>/entities">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <fieldset><legend>关联实体</legend><div class="keyword-chip-list"><% keywordCenter.entityOptions.forEach((entity) => { %><label class="keyword-check"><input type="checkbox" name="entityIds" value="<%= entity.id %>" <%= group.entityIds.includes(entity.id) ? 'checked' : '' %>><span><%= entity.canonicalName %> · <%= entity.entityType %></span></label><% }) %></div></fieldset>
+                  <% if (!keywordCenter.entityOptions.length) { %><small>尚无可关联的活跃实体；请先在 GEO 实体页产生或确认实体。</small><% } %>
+                  <button class="keyword-button" type="submit">保存实体</button>
                 </form>
               <% } %>
             </article>

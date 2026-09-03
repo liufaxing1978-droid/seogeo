@@ -195,6 +195,25 @@ async function seedOfficialSearchEvidence(
 }
 
 describe('P11-01 keyword center web UI', () => {
+  it('renders persisted P7 Entity links and only offers active project entities for keyword and Cluster mapping', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const keyword = await keywordService.createManual({ actorUserId: fixture.user.id, projectId: fixture.project.id, text: '实体关联词', type: 'CORE' });
+      const group = await prisma.keywordGroup.create({ data: { projectId: fixture.project.id, name: '实体 Cluster' } });
+      const active = await prisma.entity.create({ data: { projectId: fixture.project.id, entityType: 'TOPIC', canonicalName: '法事主题', normalizedName: `法事主题-${randomUUID()}` } });
+      await prisma.entity.create({ data: { projectId: fixture.project.id, entityType: 'TOPIC', canonicalName: '已归档实体', normalizedName: `已归档-${randomUUID()}`, status: 'ARCHIVED' } });
+      await prisma.keywordEntityMapping.create({ data: { projectId: fixture.project.id, keywordId: keyword.id, entityId: active.id } });
+      await prisma.keywordEntityMapping.create({ data: { projectId: fixture.project.id, groupId: group.id, entityId: active.id } });
+
+      const response = await request(createApp()).get(`/projects/${fixture.project.id}/keywords`).set('Cookie', fixture.sessionCookie).expect(200);
+      expect(response.text).toContain('data-ui="keyword-entity-map"');
+      expect(response.text).toContain('法事主题');
+      expect(response.text).not.toContain('已归档实体');
+      expect(response.text).toContain(`/projects/${fixture.project.id}/keywords/${keyword.id}/entities`);
+      expect(response.text).toContain(`/projects/${fixture.project.id}/keyword-groups/${group.id}/entities`);
+    } finally { await fixture.cleanup(); }
+  });
+
   it('renders a persisted P5 content gap with the existing content-center handoff', async () => {
     const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
     try {

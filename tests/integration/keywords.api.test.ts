@@ -15,6 +15,35 @@ function csrfFor(fixture: Awaited<ReturnType<typeof seedAuthenticatedUser>>): st
 }
 
 describe('P11-01 keyword JSON API authorization', () => {
+  it('lets CONTENT_WRITE members replace in-project Keyword and Cluster entity links without exposing foreign entities', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    const foreign = await prisma.project.create({ data: { name: 'P7 API foreign', slug: `p7-api-${Date.now()}`, primaryDomain: `p7-api-${Date.now()}.example.com` } });
+    try {
+      const keyword = await prisma.keyword.create({ data: { projectId: fixture.project.id, text: '实体关键词', normalizedText: `实体关键词-${Date.now()}`, type: 'CORE', source: 'MANUAL' } });
+      const group = await prisma.keywordGroup.create({ data: { projectId: fixture.project.id, name: '实体 Cluster' } });
+      const entity = await prisma.entity.create({ data: { projectId: fixture.project.id, entityType: 'TOPIC', canonicalName: '法事', normalizedName: `法事-${Date.now()}` } });
+      const foreignEntity = await prisma.entity.create({ data: { projectId: foreign.id, entityType: 'TOPIC', canonicalName: '外部法事', normalizedName: `外部法事-${Date.now()}` } });
+      const app = createApp();
+      const csrf = csrfFor(fixture);
+
+      const keywordLinks = await request(app)
+        .put(`/api/v1/projects/${fixture.project.id}/keywords/${keyword.id}/entities`)
+        .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf).send({ entityIds: [entity.id] }).expect(200);
+      expect(keywordLinks.body.data).toEqual([expect.objectContaining({ keywordId: keyword.id, entityId: entity.id })]);
+      const read = await request(app).get(`/api/v1/projects/${fixture.project.id}/keywords/${keyword.id}/entities`).set('Cookie', fixture.sessionCookie).expect(200);
+      expect(read.body.data).toEqual([expect.objectContaining({ entityId: entity.id, entity: expect.objectContaining({ canonicalName: '法事' }) })]);
+      await request(app)
+        .put(`/api/v1/projects/${fixture.project.id}/keyword-groups/${group.id}/entities`)
+        .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf).send({ entityIds: [entity.id] }).expect(200);
+      await request(app)
+        .put(`/api/v1/projects/${fixture.project.id}/keywords/${keyword.id}/entities`)
+        .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf).send({ entityIds: [foreignEntity.id] }).expect(404);
+    } finally {
+      await prisma.project.delete({ where: { id: foreign.id } }).catch(() => undefined);
+      await fixture.cleanup();
+    }
+  });
+
   it('persists an explainable P5 content gap and records its handoff to the existing content center', async () => {
     const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
     try {

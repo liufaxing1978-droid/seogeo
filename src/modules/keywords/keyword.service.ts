@@ -122,6 +122,7 @@ export interface AcceptKeywordSuggestionsInput {
 }
 
 const KEYWORD_TRANSACTION_MAX_ATTEMPTS = 3;
+const KEYWORD_TRANSACTION_RETRY_DELAY_MS = 15;
 
 async function inKeywordTransaction<T>(
   work: (repo: KeywordRepository) => Promise<T>,
@@ -138,6 +139,9 @@ async function inKeywordTransaction<T>(
       if (!retryable || attempt === KEYWORD_TRANSACTION_MAX_ATTEMPTS) {
         throw error;
       }
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, KEYWORD_TRANSACTION_RETRY_DELAY_MS * attempt);
+      });
     }
   }
 

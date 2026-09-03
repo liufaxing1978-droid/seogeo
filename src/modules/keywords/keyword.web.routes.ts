@@ -27,6 +27,7 @@ import {
 import { KeywordWebRepository } from './keyword.web.repository.js';
 import { KeywordCannibalizationService } from './keyword-cannibalization.service.js';
 import { KeywordContentGapService } from './keyword-content-gap.service.js';
+import { KeywordEntityService } from './keyword-entity.service.js';
 import {
   keywordBulkCreateSchema,
   keywordCreateSchema,
@@ -43,6 +44,7 @@ import {
   keywordStatusCommandSchema,
   keywordSuggestionDecisionSchema,
   keywordUpdateSchema,
+  keywordEntityMappingSchema,
 } from './keyword.schema.js';
 
 function routeParam(value: string | string[] | undefined): string {
@@ -84,6 +86,7 @@ export function createKeywordWebRoutes(
   opportunityService: Pick<KeywordOpportunityService, 'calculate'> = keywordOpportunityService,
   cannibalizationService = new KeywordCannibalizationService(),
   contentGapService = new KeywordContentGapService(),
+  entityService = new KeywordEntityService(),
 ) {
   const router = Router();
   const readGuards = [
@@ -499,6 +502,24 @@ export function createKeywordWebRoutes(
     } catch (error) {
       next(error);
     }
+  });
+
+  router.post('/projects/:projectId/keywords/:keywordId/entities', ...writeGuards, async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.projectId);
+      const body = keywordEntityMappingSchema.parse({ entityIds: stringList(req.body?.entityIds) });
+      await entityService.setKeywordEntities({ actorUserId: req.auth!.userId, projectId, keywordId: routeParam(req.params.keywordId), ...body });
+      res.redirect(303, `/projects/${projectId}/keywords`);
+    } catch (error) { next(error); }
+  });
+
+  router.post('/projects/:projectId/keyword-groups/:groupId/entities', ...writeGuards, async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.projectId);
+      const body = keywordEntityMappingSchema.parse({ entityIds: stringList(req.body?.entityIds) });
+      await entityService.setGroupEntities({ actorUserId: req.auth!.userId, projectId, groupId: routeParam(req.params.groupId), ...body });
+      res.redirect(303, `/projects/${projectId}/keywords`);
+    } catch (error) { next(error); }
   });
 
   return router;

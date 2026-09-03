@@ -122,10 +122,19 @@ describe('SEO audit web UI', () => {
     const detail = await request(app)
       .get(`/seo/issues/${fixture.issue.id}`)
       .expect(200);
+    const occurrence = await prisma.seoIssueOccurrence.findUniqueOrThrow({
+      where: {
+        seoIssueId_auditRunId: {
+          seoIssueId: fixture.issue.id,
+          auditRunId: fixture.audit.id,
+        },
+      },
+      include: { ruleVersion: { select: { fixGuide: true } } },
+    });
     expect(detail.text).toContain('TITLE_MISSING');
     expect(detail.text).toContain('规则版本 1');
     expect(detail.text).toContain(fixture.page.normalizedUrl);
-    expect(detail.text).toContain('Add a unique, descriptive title');
+    expect(detail.text).toContain(occurrence.ruleVersion.fixGuide);
     expect(detail.text).not.toContain('标记为已解决');
   });
 });

@@ -22,6 +22,7 @@ import { resolveEffectiveTargetUrl } from './keyword-target-url.js';
 export interface KeywordCenterKeywordRecord extends KeywordListRecord {
   parentKeywordId: string | null;
   groupIds: string[];
+  entityIds: string[];
   coverage: KeywordCoverageResult;
   searchEvidence: KeywordSearchEvidenceResult;
   opportunity: null | {
@@ -59,7 +60,8 @@ export interface KeywordCenterViewModel {
   };
   keywords: KeywordCenterKeywordRecord[];
   keywordOptions: Array<{ id: string; text: string; status: string; locked: boolean }>;
-  groups: Array<{ id: string; name: string; primaryKeywordId: string | null }>;
+  groups: Array<{ id: string; name: string; primaryKeywordId: string | null; entityIds: string[] }>;
+  entityOptions: Array<{ id: string; canonicalName: string; entityType: string }>;
   suggestions: Array<{
     id: string;
     seedKeywordId: string;
@@ -82,7 +84,7 @@ export class KeywordWebRepository {
   ) {}
 
   async load(projectId: string, filters: KeywordListQuery = {}): Promise<KeywordCenterViewModel> {
-    const [project, keywords, keywordOptions, relations, groups, memberships, suggestions, targets, cannibalization, contentGaps] = await Promise.all([
+    const [project, keywords, keywordOptions, relations, groups, memberships, suggestions, targets, cannibalization, contentGaps, entityMappings, entities] = await Promise.all([
       prisma.project.findUnique({
         where: { id: projectId },
         select: {
@@ -121,6 +123,8 @@ export class KeywordWebRepository {
       prisma.keywordTargetMapping.findMany({ where: { projectId }, select: { keywordId: true, groupId: true, normalizedUrl: true } }),
       prisma.keywordCannibalizationSnapshot.findMany({ where: { projectId, keywordId: { not: null } }, orderBy: { createdAt: 'desc' }, select: { keywordId: true, risk: true, recommendedAction: true, confidence: true, createdAt: true } }),
       prisma.keywordContentGap.findMany({ where: { projectId, keywordId: { not: null } }, select: { keywordId: true, status: true, coverageStatus: true, reasonCodes: true } }),
+      prisma.keywordEntityMapping.findMany({ where: { projectId }, select: { keywordId: true, groupId: true, entityId: true } }),
+      prisma.entity.findMany({ where: { projectId, status: 'ACTIVE' }, select: { id: true, canonicalName: true, entityType: true }, orderBy: { canonicalName: 'asc' } }),
     ]);
 
     if (!project) {
@@ -147,6 +151,12 @@ export class KeywordWebRepository {
       ids.push(membership.groupId);
       groupsByKeyword.set(membership.keywordId, ids);
     }
+    const entityIdsByKeyword = new Map<string, string[]>();
+    const entityIdsByGroup = new Map<string, string[]>();
+    for (const mapping of entityMappings) {
+      if (mapping.keywordId) (entityIdsByKeyword.get(mapping.keywordId) ?? entityIdsByKeyword.set(mapping.keywordId, []).get(mapping.keywordId)!).push(mapping.entityId);
+      if (mapping.groupId) (entityIdsByGroup.get(mapping.groupId) ?? entityIdsByGroup.set(mapping.groupId, []).get(mapping.groupId)!).push(mapping.entityId);
+    }
 
     const rows: KeywordCenterKeywordRecord[] = keywords.map((keyword) => {
       const searchEvidence = searchEvidenceByKeyword.get(keyword.id);
@@ -169,6 +179,7 @@ export class KeywordWebRepository {
         source: keyword.source,
         parentKeywordId: parentByChild.get(keyword.id) ?? null,
         groupIds: groupsByKeyword.get(keyword.id) ?? [],
+        entityIds: entityIdsByKeyword.get(keyword.id) ?? [],
         coverage: coverageByKeyword.get(keyword.id) ?? {
           status: 'UNKNOWN',
           reason: 'NO_ACTIVE_PAGE_EVIDENCE',
@@ -224,7 +235,9 @@ export class KeywordWebRepository {
         id: group.id,
         name: group.name,
         primaryKeywordId: group.primaryKeywordId,
+        entityIds: entityIdsByGroup.get(group.id) ?? [],
       })),
+      entityOptions: entities,
       suggestions: suggestions.map((suggestion) => ({
         id: suggestion.id,
         seedKeywordId: suggestion.seedKeywordId,

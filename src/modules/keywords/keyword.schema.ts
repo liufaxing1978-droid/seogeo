@@ -74,6 +74,10 @@ export const keywordTargetUrlSchema = z.object({
   acknowledgeLock: z.boolean().optional(),
 }).strict();
 
+export const keywordEntityMappingSchema = z.object({
+  entityIds: z.array(z.string().uuid()).max(50),
+}).strict();
+
 export const keywordCannibalizationCalculationSchema = z.object({}).strict();
 
 export const keywordBulkCreateSchema = z.object({

@@ -24,6 +24,7 @@ import { keywordService, type KeywordService } from './keyword.service.js';
 import { KeywordTargetService } from './keyword-target.service.js';
 import { KeywordCannibalizationService } from './keyword-cannibalization.service.js';
 import { KeywordContentGapService } from './keyword-content-gap.service.js';
+import { KeywordEntityService } from './keyword-entity.service.js';
 import {
   keywordOpportunityService,
   type KeywordOpportunityService,
@@ -46,6 +47,7 @@ import {
   keywordSuggestionDecisionSchema,
   keywordUpdateSchema,
   keywordTargetUrlSchema,
+  keywordEntityMappingSchema,
   keywordCannibalizationCalculationSchema,
 } from './keyword.schema.js';
 
@@ -64,6 +66,7 @@ export function createKeywordRoutes(
   targetService = new KeywordTargetService(),
   cannibalizationService = new KeywordCannibalizationService(),
   contentGapService = new KeywordContentGapService(),
+  entityService = new KeywordEntityService(),
 ) {
   const router = Router();
   const keywordMutationGuards = [
@@ -78,6 +81,40 @@ export function createKeywordRoutes(
     requireProjectMembership(),
     requireProjectCapability('AI_RUN'),
   ];
+
+  router.get(
+    '/projects/:projectId/keywords/:keywordId/entities',
+    requireAuthentication(), requireProjectMembership(), requireProjectCapability('PROJECT_READ'),
+    async (req, res, next) => { try {
+      res.json({ data: await entityService.listKeywordEntities(routeParam(req.params.projectId), routeParam(req.params.keywordId)) });
+    } catch (error) { next(error); } },
+  );
+
+  router.put(
+    '/projects/:projectId/keywords/:keywordId/entities',
+    ...keywordMutationGuards,
+    async (req, res, next) => { try {
+      const input = keywordEntityMappingSchema.parse(req.body ?? {});
+      res.json({ data: await entityService.setKeywordEntities({ ...input, actorUserId: req.auth!.userId, projectId: routeParam(req.params.projectId), keywordId: routeParam(req.params.keywordId) }) });
+    } catch (error) { next(error); } },
+  );
+
+  router.get(
+    '/projects/:projectId/keyword-groups/:groupId/entities',
+    requireAuthentication(), requireProjectMembership(), requireProjectCapability('PROJECT_READ'),
+    async (req, res, next) => { try {
+      res.json({ data: await entityService.listGroupEntities(routeParam(req.params.projectId), routeParam(req.params.groupId)) });
+    } catch (error) { next(error); } },
+  );
+
+  router.put(
+    '/projects/:projectId/keyword-groups/:groupId/entities',
+    ...keywordMutationGuards,
+    async (req, res, next) => { try {
+      const input = keywordEntityMappingSchema.parse(req.body ?? {});
+      res.json({ data: await entityService.setGroupEntities({ ...input, actorUserId: req.auth!.userId, projectId: routeParam(req.params.projectId), groupId: routeParam(req.params.groupId) }) });
+    } catch (error) { next(error); } },
+  );
 
   router.get(
     '/projects/:projectId/keywords/:keywordId/content-gap',

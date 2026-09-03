@@ -184,6 +184,7 @@ model Project {
   keywordTargetMappings     KeywordTargetMapping[]
   keywordCannibalizationSnapshots KeywordCannibalizationSnapshot[]
   keywordContentGaps       KeywordContentGap[]
+  keywordEntityMappings    KeywordEntityMapping[]
 
   @@index([primaryDomain])
   @@index([status])
@@ -670,6 +671,7 @@ model Entity {
   sourceRelations EntityRelation[]     @relation("EntityRelationSource")
   targetRelations EntityRelation[]     @relation("EntityRelationTarget")
   geoRuleResults  GeoRuleResult[]
+  keywordEntityMappings KeywordEntityMapping[]
 
   @@unique([projectId, entityType, normalizedName])
   @@index([projectId, status])
