@@ -318,6 +318,10 @@ export class OptimizationOrchestrationService {
     const definitions = await repository.listAutomationDefinitions(projectId);
     let synced = 0;
     for (const definition of definitions) {
+      assertAutomationExecutionPolicy(definition.maxAttempts, definition.timeoutMs);
+      normalizeActionType(definition.actionType);
+      parseSearchRefreshConfig(definition.actionConfig);
+      normalizeScheduleCron(definition.scheduleCron);
       await schedules.syncDefinitionSchedule(definition);
       synced += 1;
     }
