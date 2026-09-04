@@ -263,6 +263,40 @@ describe('P9-F Policy Revision command', () => {
     ]);
   });
 
+  it('observes validation rejection without touching policy state', async () => {
+    const project = await createProject('validation');
+    const requestId = '45000000-0000-4000-8000-000000000001';
+    const expectedUpdatedAt = '2026-08-25T12:00:00+00:00';
+    const events: PolicyRevisionCommandEvent[] = [];
+
+    await expect(reviseAutopilotPolicy({
+      projectId: project.id,
+      requestId,
+      expectedUpdatedAt,
+      actorId: 'operator:task-34',
+      policy: { enabled: true },
+    }, { observe: (event) => events.push(event) })).rejects.toThrow(
+      /Expected timestamp must be canonical ISO-8601 UTC/,
+    );
+
+    await expect(prisma.autopilotPolicy.count({
+      where: { projectId: project.id },
+    })).resolves.toBe(0);
+    await expect(prisma.autopilotPolicyRevision.count({
+      where: { projectId: project.id },
+    })).resolves.toBe(0);
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: 'AUTOPILOT_POLICY_REVISION_REJECTED',
+        reasonCode: 'COMMAND_FAILED',
+        projectId: project.id,
+        requestId,
+        actorId: 'operator:task-34',
+        expectedUpdatedAt,
+      }),
+    ]);
+  });
+
   it('rolls back the policy write when immutable revision persistence fails', async () => {
     const project = await createProject('rollback');
     await installForcedRevisionFailureTrigger();
