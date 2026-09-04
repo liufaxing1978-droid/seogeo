@@ -6,6 +6,40 @@ export interface WebPagination {
 }
 
 export class CrawlerWebRepository {
+  async getProjectCrawlerHealthAndSubmissions(projectId: string) {
+    const [latestHealth, submissions] = await Promise.all([
+      prisma.crawlerHealthSnapshot.findFirst({
+        where: { projectId },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: {
+          id: true,
+          crawlRunId: true,
+          status: true,
+          calculationVersion: true,
+          createdAt: true
+        }
+      }),
+      prisma.indexNowSubmissionBatch.findMany({
+        where: { projectId },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 20,
+        select: {
+          id: true,
+          status: true,
+          attemptCount: true,
+          responseStatusCode: true,
+          errorCode: true,
+          createdAt: true,
+          urls: {
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+            select: { url: true, status: true, errorCode: true }
+          }
+        }
+      })
+    ]);
+    return { latestHealth, submissions };
+  }
+
   async listProjectPages(projectId: string, pagination: WebPagination) {
     const where = { projectId, isActive: true };
     const [pages, total] = await Promise.all([

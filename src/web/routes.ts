@@ -121,14 +121,19 @@ webRoutes.post('/projects', requireAuthentication(), requireCsrf(), async (req, 
 webRoutes.get('/projects/:id/crawls', async (req, res, next) => {
   try {
     const project = await projectService.get(req.params.id);
-    const result = await crawlRepository.listRuns(project.id, { limit: 100, offset: 0 });
+    const [result, indexNow] = await Promise.all([
+      crawlRepository.listRuns(project.id, { limit: 100, offset: 0 }),
+      crawlerWebRepository.getProjectCrawlerHealthAndSubmissions(project.id)
+    ]);
     render(res, 'crawls/index', {
       title: '抓取历史',
       activeNav: 'crawls',
       currentProjectId: project.id,
       project,
       runs: result.data,
-      total: result.total
+      total: result.total,
+      latestHealth: indexNow.latestHealth,
+      submissions: indexNow.submissions
     });
   } catch (error) {
     next(error);

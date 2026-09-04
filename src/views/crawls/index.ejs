@@ -10,6 +10,55 @@
   </div>
 </section>
 
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h3>Crawler Health</h3>
+      <p>基于已完成抓取的持久化事实；查看此页面不会启动新的抓取。</p>
+    </div>
+  </div>
+  <% if (latestHealth) { %>
+    <dl class="detail-grid">
+      <div><dt>状态</dt><dd><span class="badge <%= latestHealth.status === 'HEALTHY' ? 'success' : latestHealth.status === 'FAILED' ? 'danger' : 'neutral' %>"><%= latestHealth.status %></span></dd></div>
+      <div><dt>抓取记录</dt><dd><a class="link-primary" href="/crawls/<%= latestHealth.crawlRunId %>"><%= latestHealth.crawlRunId %></a></dd></div>
+      <div><dt>计算版本</dt><dd><%= latestHealth.calculationVersion %></dd></div>
+      <div><dt>生成时间</dt><dd><%= latestHealth.createdAt.toLocaleString('zh-CN') %></dd></div>
+    </dl>
+  <% } else { %>
+    <p class="muted">尚无已持久化的 crawler-health 快照。</p>
+  <% } %>
+</section>
+
+<section class="panel table-panel">
+  <div class="panel-header">
+    <div>
+      <h3>IndexNow 提交历史</h3>
+      <p>提交已接受不代表已收录、已抓取、已排名或已发布。</p>
+    </div>
+  </div>
+  <% if (!submissions.length) { %>
+    <p class="muted">尚无 IndexNow 提交记录。</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>状态</th><th>URL 数</th><th>尝试</th><th>HTTP</th><th>错误</th><th>创建时间</th></tr></thead>
+        <tbody>
+          <% submissions.forEach((batch) => { %>
+            <tr>
+              <td><span class="badge <%= batch.status === 'COMPLETED' ? 'success' : batch.status === 'FAILED' ? 'danger' : 'neutral' %>"><%= batch.status %></span></td>
+              <td><%= batch.urls.length %></td>
+              <td><%= batch.attemptCount %></td>
+              <td><%= batch.responseStatusCode ?? '—' %></td>
+              <td><%= batch.errorCode ?? '—' %></td>
+              <td><%= batch.createdAt.toLocaleString('zh-CN') %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
 <section class="panel table-panel">
   <div class="panel-header crawler-panel-header">
     <div>

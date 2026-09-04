@@ -15,6 +15,7 @@ import type { ContentService } from './modules/content/content.service.js';
 import { contentWebRoutes } from './modules/content/content.web.routes.js';
 import { createCrawlRoutes } from './modules/crawler/crawl.routes.js';
 import type { CrawlService } from './modules/crawler/crawl.service.js';
+import type { IndexNowSubmissionService } from './modules/indexnow/indexnow.service.js';
 import {
   createDistributionRoutes,
   type DistributionApiPort
@@ -93,6 +94,7 @@ const assetsDir = path.join(here, 'public');
 
 export interface AppOptions {
   crawlService?: CrawlService;
+  indexNowSubmissionService?: IndexNowSubmissionService;
   seoService?: SeoService;
   geoService?: GeoService;
   aiTaskService?: AiTaskService;
@@ -136,7 +138,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/projects', createProjectMembershipRoutes());
   app.use('/api/projects', projectRoutes);
   app.use('/api', createMarketRoutes(options.marketService));
-  app.use('/api', createCrawlRoutes(options.crawlService));
+  app.use('/api', createCrawlRoutes(options.crawlService, options.indexNowSubmissionService));
   app.use('/api', createSeoRoutes(options.seoService));
   app.use('/api', createGeoRoutes(options.geoService));
   app.use('/api', createSearchConsoleRoutes(options.searchConsoleService));

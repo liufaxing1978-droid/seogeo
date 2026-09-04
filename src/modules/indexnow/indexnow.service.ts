@@ -1,9 +1,29 @@
 import { createHash } from 'node:crypto';
+import { Queue } from 'bullmq';
 import { AppError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
+import { createRedisConnection } from '../../queue/connection.js';
+import { IndexNowSubmissionQueue, type IndexNowSubmissionJobData } from './indexnow.queue.js';
 
 export interface IndexNowQueue {
   enqueue(batchId: string): Promise<void>;
+}
+
+class LazyBullIndexNowQueue implements IndexNowQueue {
+  private queue: Queue<IndexNowSubmissionJobData> | null = null;
+
+  private getQueue() {
+    if (!this.queue) {
+      this.queue = new Queue<IndexNowSubmissionJobData>('indexnow-submission', {
+        connection: createRedisConnection()
+      });
+    }
+    return this.queue;
+  }
+
+  enqueue(batchId: string): Promise<void> {
+    return new IndexNowSubmissionQueue(this.getQueue()).enqueue(batchId);
+  }
 }
 
 export class IndexNowSubmissionService {
@@ -53,4 +73,47 @@ export class IndexNowSubmissionService {
       throw error;
     }
   }
+
+  async retry(input: { projectId: string; batchId: string }) {
+    const batch = await prisma.indexNowSubmissionBatch.findFirst({
+      where: { id: input.batchId, projectId: input.projectId },
+      include: { urls: true }
+    });
+    if (!batch) throw new AppError('IndexNow submission batch not found', 404, 'INDEXNOW_BATCH_NOT_FOUND');
+    if (batch.status !== 'FAILED') {
+      throw new AppError('Only a failed IndexNow batch can be retried', 409, 'INDEXNOW_RETRY_NOT_ALLOWED');
+    }
+
+    await prisma.indexNowSubmissionBatch.update({
+      where: { id: batch.id },
+      data: {
+        status: 'PENDING',
+        responseStatusCode: null,
+        errorCode: null,
+        errorMessage: null,
+        urls: { updateMany: { where: {}, data: { status: 'PENDING', errorCode: null } } }
+      }
+    });
+    try {
+      await this.queue.enqueue(batch.id);
+      return prisma.indexNowSubmissionBatch.update({
+        where: { id: batch.id },
+        data: { status: 'QUEUED', urls: { updateMany: { where: {}, data: { status: 'QUEUED' } } } },
+        include: { urls: true }
+      });
+    } catch (error) {
+      await prisma.indexNowSubmissionBatch.update({
+        where: { id: batch.id },
+        data: {
+          status: 'FAILED',
+          errorCode: 'INDEXNOW_QUEUE_FAILED',
+          errorMessage: 'Failed to enqueue IndexNow submission',
+          urls: { updateMany: { where: {}, data: { status: 'FAILED', errorCode: 'INDEXNOW_QUEUE_FAILED' } } }
+        }
+      });
+      throw error;
+    }
+  }
 }
+
+export const indexNowSubmissionService = new IndexNowSubmissionService(new LazyBullIndexNowQueue());

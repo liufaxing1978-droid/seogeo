@@ -94,4 +94,34 @@ describe('P9 IndexNow submission service', () => {
       await prisma.project.deleteMany({ where: { id: { in: [project.id, otherProject.id] } } });
     }
   });
+
+  it('requeues only a failed project-local batch for an explicit manual retry', async () => {
+    const suffix = randomUUID();
+    const project = await prisma.project.create({
+      data: { name: 'P9 retry', slug: `p9-indexnow-retry-${suffix}`, primaryDomain: `${suffix}.example.com` }
+    });
+    try {
+      const batch = await prisma.indexNowSubmissionBatch.create({
+        data: {
+          projectId: project.id,
+          requestFingerprint: `retry-${suffix}`,
+          status: 'FAILED',
+          attemptCount: 3,
+          errorCode: 'INDEXNOW_RETRY_EXHAUSTED',
+          urls: { create: { url: `https://${project.primaryDomain}/guide`, status: 'FAILED', errorCode: 'INDEXNOW_RETRY_EXHAUSTED' } }
+        }
+      });
+      const service = new IndexNowSubmissionService({ enqueue: async () => undefined });
+
+      const retried = await service.retry({ projectId: project.id, batchId: batch.id });
+
+      expect(retried).toMatchObject({
+        id: batch.id,
+        status: 'QUEUED',
+        attemptCount: 3,
+        errorCode: null,
+        urls: [expect.objectContaining({ status: 'QUEUED', errorCode: null })]
+      });
+    } finally { await prisma.project.delete({ where: { id: project.id } }); }
+  });
 });

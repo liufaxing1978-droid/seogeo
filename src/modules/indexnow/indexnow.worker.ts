@@ -100,11 +100,12 @@ export async function executeIndexNowBatch(
     include: { project: true, urls: true }
   });
   if (!batch) throw new AppError('IndexNow batch not found', 404, 'INDEXNOW_BATCH_NOT_FOUND');
+  const attemptCount = Math.max(batch.attemptCount + 1, execution.attemptNumber);
 
   if (!dependencies.config.key || !dependencies.config.keyLocation) {
     await markFailed(
       batch.id,
-      execution.attemptNumber,
+      attemptCount,
       'INDEXNOW_NOT_CONFIGURED',
       'IndexNow key and key location are required'
     );
@@ -126,10 +127,10 @@ export async function executeIndexNowBatch(
       ? 'IndexNow request timed out'
       : 'IndexNow request failed';
     if (failure.retryable !== false && execution.attemptNumber < execution.maxAttempts) {
-      await markRetryable(batch.id, execution.attemptNumber, code, message);
+      await markRetryable(batch.id, attemptCount, code, message);
       throw error;
     }
-    await markFailed(batch.id, execution.attemptNumber, 'INDEXNOW_RETRY_EXHAUSTED', message);
+    await markFailed(batch.id, attemptCount, 'INDEXNOW_RETRY_EXHAUSTED', message);
     throw new AppError(message, 502, 'INDEXNOW_RETRY_EXHAUSTED');
   }
 
@@ -139,7 +140,7 @@ export async function executeIndexNowBatch(
     if (retryable && execution.attemptNumber < execution.maxAttempts) {
       await markRetryable(
         batch.id,
-        execution.attemptNumber,
+        attemptCount,
         'INDEXNOW_TRANSIENT_FAILURE',
         `IndexNow returned HTTP ${response.statusCode}`,
         response.statusCode
@@ -150,7 +151,7 @@ export async function executeIndexNowBatch(
     const code = retryable ? 'INDEXNOW_RETRY_EXHAUSTED' : 'INDEXNOW_REJECTED';
     await markFailed(
       batch.id,
-      execution.attemptNumber,
+      attemptCount,
       code,
       `IndexNow returned HTTP ${response.statusCode}`,
       response.statusCode
@@ -166,7 +167,7 @@ export async function executeIndexNowBatch(
     where: { id: batch.id },
     data: {
       status: 'COMPLETED',
-      attemptCount: execution.attemptNumber,
+      attemptCount,
       responseStatusCode: response.statusCode,
       errorCode: null,
       errorMessage: null,

@@ -169,4 +169,24 @@ describe('P9 IndexNow worker', () => {
       });
     } finally { await prisma.project.delete({ where: { id: project.id } }); }
   });
+
+  it('preserves prior attempt history when a manually retried batch succeeds', async () => {
+    const { project, batch } = await createQueuedBatch('P9 manual retry history');
+    try {
+      await prisma.indexNowSubmissionBatch.update({
+        where: { id: batch.id },
+        data: { status: 'QUEUED', attemptCount: 3 }
+      });
+      const completed = await processIndexNowSubmissionJob({
+        data: { batchId: batch.id },
+        attemptsMade: 0,
+        opts: { attempts: 3 }
+      }, {
+        config: configured,
+        gateway: { submit: async () => ({ accepted: true, statusCode: 200, retryable: false }) }
+      });
+
+      expect(completed).toMatchObject({ status: 'COMPLETED', attemptCount: 4 });
+    } finally { await prisma.project.delete({ where: { id: project.id } }); }
+  });
 });
