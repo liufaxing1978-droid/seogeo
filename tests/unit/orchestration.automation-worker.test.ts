@@ -206,6 +206,30 @@ describe('OL-2 automation worker', () => {
     });
   });
 
+  it('persists a disabled definition discovered after start as FAILED instead of leaving the run RUNNING', async () => {
+    const state = harness({ definition: definition({ enabled: false }) });
+
+    await expect(processOptimizationAutomationJob(
+      {
+        id: 'automation-job-1',
+        name: 'execute-automation-run',
+        data: { kind: 'EXECUTE_RUN', runId: RUN_ID, projectId: PROJECT_ID }
+      } as never,
+      state.deps as never
+    )).resolves.toBeUndefined();
+
+    expect(state.transitionAutomationRun).toHaveBeenLastCalledWith({
+      runId: RUN_ID,
+      from: 'RUNNING',
+      to: 'FAILED',
+      patch: {
+        completedAt: NOW,
+        lastErrorCode: 'AUTOMATION_DEFINITION_DISABLED'
+      }
+    });
+    expect(state.execute).not.toHaveBeenCalled();
+  });
+
   it('times out an already-expired queued run before invoking its action', async () => {
     const state = harness({
       run: queuedRun({ deadlineAt: new Date('2026-09-02T02:59:59.000Z') })
