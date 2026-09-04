@@ -95,7 +95,20 @@ jobs:
             exit 1
           fi
       - name: Audit deployable runtime dependency tree
-        run: npm audit --omit=dev --audit-level=high --legacy-peer-deps
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/npm-audit-registry-proxy.mjs &
+          audit_proxy_pid=$!
+          trap 'kill "$audit_proxy_pid" 2>/dev/null || true' EXIT
+          for _ in {1..50}; do
+            if curl --fail --silent http://127.0.0.1:8099/__health >/dev/null; then
+              break
+            fi
+            sleep 0.1
+          done
+          curl --fail --silent http://127.0.0.1:8099/__health >/dev/null
+          npm audit --omit=dev --audit-level=high --legacy-peer-deps --registry=http://127.0.0.1:8099
 
   e2e:
     runs-on: ubuntu-latest
