@@ -28,7 +28,7 @@
   <section class="settings-section-grid">
     <article class="panel settings-panel">
       <div class="panel-header"><div><p class="eyebrow">Project</p><h2>项目与地区</h2><p class="muted">字段语义沿用现有 Project schema；Plan 只读展示。</p></div></div>
-      <form action="/projects/<%= project.id %>/settings" method="post" class="settings-form">
+      <form action="/projects/<%= project.id %>/settings" method="post" class="settings-form" data-settings-form>
         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
         <div class="form-grid">
           <label>项目名称<input name="name" value="<%= project.name %>" required <%= canWriteSettings ? '' : 'disabled' %>></label>
@@ -39,7 +39,7 @@
           <label>时区<input name="timezone" value="<%= project.timezone %>" required <%= canWriteSettings ? '' : 'disabled' %>></label>
         </div>
         <div class="settings-readonly-row"><span>Plan Level</span><strong><%= project.planLevel %></strong><small>本页不提供套餐变更入口</small></div>
-        <% if (canWriteSettings) { %><div class="actions"><button class="button" type="submit">保存项目设置</button></div><% } %>
+        <% if (canWriteSettings) { %><div class="actions"><button class="button" type="submit" data-settings-save disabled>保存项目设置</button><span class="muted" data-settings-dirty aria-live="polite">未检测到变更</span></div><% } %>
       </form>
     </article>
 
@@ -110,3 +110,13 @@
     </dl>
   </section>
 </section>
+<script>
+  document.querySelectorAll('[data-settings-form]').forEach((form) => {
+    const save = form.querySelector('[data-settings-save]');
+    const status = form.querySelector('[data-settings-dirty]');
+    const initial = new FormData(form);
+    const changed = () => Array.from(new FormData(form)).some(([key, value]) => initial.get(key) !== value);
+    form.addEventListener('input', () => { const dirty = changed(); save.disabled = !dirty; status.textContent = dirty ? '有未保存的变更' : '未检测到变更'; });
+    form.addEventListener('submit', () => { save.disabled = true; status.textContent = '正在保存…'; });
+  });
+</script>
