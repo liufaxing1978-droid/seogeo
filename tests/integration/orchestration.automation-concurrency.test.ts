@@ -111,4 +111,98 @@ describe('OL-3 automation SKIP_IF_RUNNING concurrency', () => {
     expect(skipped).toMatchObject({ blockedByRunId: queued!.id });
     expect(automationQueue.enqueueRun).toHaveBeenCalledTimes(1);
   });
+
+  it('replays a previously skipped request idempotently after its blocker completes', async () => {
+    const project = await prisma.project.create({
+      data: {
+        name: 'Automation Skipped Replay Fixture',
+        slug: `automation-skipped-replay-${Date.now()}`,
+        primaryDomain: 'example.com',
+      },
+    });
+    projectIds.push(project.id);
+
+    const definition = await prisma.automationDefinition.create({
+      data: {
+        projectId: project.id,
+        key: 'skipped-replay-search-refresh',
+        actionType: 'SEARCH_REFRESH',
+        actionConfig: {
+          version: 'SEARCH_REFRESH_V1',
+          bindingId: '44444444-4444-4444-8444-444444444444',
+          lookbackDays: 7,
+          lagDays: 1,
+        },
+        enabled: true,
+        overlapPolicy: 'SKIP_IF_RUNNING',
+        maxAttempts: 3,
+        timeoutMs: 300_000,
+      },
+    });
+
+    const repository = new OptimizationOrchestrationRepository();
+    const automationQueue = {
+      enqueueRun: vi.fn().mockResolvedValue(undefined),
+    };
+    const service = new OptimizationOrchestrationService({
+      repository,
+      planningQueue: { enqueueRun: vi.fn().mockResolvedValue(undefined) },
+      projects: {
+        list: vi.fn().mockResolvedValue([]),
+        findById: vi.fn().mockResolvedValue(null),
+      },
+      automationRuns: repository,
+      automationQueue,
+    });
+
+    const blocker = await prisma.automationRun.create({
+      data: {
+        definitionId: definition.id,
+        projectId: project.id,
+        source: 'MANUAL',
+        requestKey: 'blocking-request',
+        status: 'QUEUED',
+        attempt: 1,
+        deadlineAt: new Date('2026-09-04T08:00:00.000Z'),
+        blockedByRunId: null,
+      },
+    });
+
+    const first = await service.startAutomationRun({
+      projectId: project.id,
+      definitionId: definition.id,
+      source: 'MANUAL',
+      requestKey: 'replayed-skipped-request',
+    });
+
+    expect(first).toMatchObject({
+      status: 'SKIPPED',
+      blockedByRunId: blocker.id,
+    });
+
+    const completed = await repository.transitionAutomationRun({
+      runId: blocker.id,
+      from: 'QUEUED',
+      to: 'SUCCEEDED',
+      patch: {
+        deadlineAt: null,
+        completedAt: new Date('2026-09-04T08:01:00.000Z'),
+      },
+    });
+    expect(completed).toBe(true);
+
+    const replay = await service.startAutomationRun({
+      projectId: project.id,
+      definitionId: definition.id,
+      source: 'MANUAL',
+      requestKey: 'replayed-skipped-request',
+    });
+
+    expect(replay.id).toBe(first.id);
+    expect(replay).toMatchObject({
+      status: 'SKIPPED',
+      blockedByRunId: blocker.id,
+    });
+    expect(automationQueue.enqueueRun).not.toHaveBeenCalled();
+  });
 });
