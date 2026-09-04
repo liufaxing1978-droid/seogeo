@@ -387,8 +387,10 @@ model SitemapUrl {
 model IndexNowSubmissionBatch {
   id             String                  @id @default(uuid()) @db.Uuid
   projectId      String                  @db.Uuid
+  requestFingerprint String?
   status         IndexNowSubmissionStatus @default(PENDING)
   attemptCount   Int                     @default(0)
+  responseStatusCode Int?
   errorCode      String?
   errorMessage   String?
   createdByUserId String?                @db.Uuid
@@ -399,6 +401,7 @@ model IndexNowSubmissionBatch {
   urls    IndexNowSubmissionUrl[]
 
   @@index([projectId, status, createdAt])
+  @@unique([projectId, requestFingerprint])
 }
 
 model IndexNowSubmissionUrl {

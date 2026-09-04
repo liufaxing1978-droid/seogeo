@@ -55,6 +55,7 @@ describe('P9 IndexNow worker', () => {
         status: 'COMPLETED',
         attemptCount: 1,
         errorCode: null,
+        responseStatusCode: 202,
         urls: [
           expect.objectContaining({ status: 'COMPLETED' }),
           expect.objectContaining({ status: 'COMPLETED' })
@@ -160,6 +161,7 @@ describe('P9 IndexNow worker', () => {
         status: 'FAILED',
         attemptCount: 1,
         errorCode: 'INDEXNOW_REJECTED',
+        responseStatusCode: 403,
         urls: [
           expect.objectContaining({ status: 'FAILED', errorCode: 'INDEXNOW_REJECTED' }),
           expect.objectContaining({ status: 'FAILED', errorCode: 'INDEXNOW_REJECTED' })

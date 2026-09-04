@@ -49,12 +49,19 @@ function boundedContext(input?: Partial<IndexNowExecutionContext>): IndexNowExec
   };
 }
 
-async function markFailed(batchId: string, attemptCount: number, code: string, message: string) {
+async function markFailed(
+  batchId: string,
+  attemptCount: number,
+  code: string,
+  message: string,
+  responseStatusCode?: number
+) {
   return prisma.indexNowSubmissionBatch.update({
     where: { id: batchId },
     data: {
       status: 'FAILED',
       attemptCount,
+      responseStatusCode: responseStatusCode ?? null,
       errorCode: code,
       errorMessage: message,
       urls: { updateMany: { where: {}, data: { status: 'FAILED', errorCode: code } } }
@@ -63,10 +70,22 @@ async function markFailed(batchId: string, attemptCount: number, code: string, m
   });
 }
 
-async function markRetryable(batchId: string, attemptCount: number, code: string, message: string) {
+async function markRetryable(
+  batchId: string,
+  attemptCount: number,
+  code: string,
+  message: string,
+  responseStatusCode?: number
+) {
   await prisma.indexNowSubmissionBatch.update({
     where: { id: batchId },
-    data: { status: 'QUEUED', attemptCount, errorCode: code, errorMessage: message }
+    data: {
+      status: 'QUEUED',
+      attemptCount,
+      responseStatusCode: responseStatusCode ?? null,
+      errorCode: code,
+      errorMessage: message
+    }
   });
 }
 
@@ -122,7 +141,8 @@ export async function executeIndexNowBatch(
         batch.id,
         execution.attemptNumber,
         'INDEXNOW_TRANSIENT_FAILURE',
-        `IndexNow returned HTTP ${response.statusCode}`
+        `IndexNow returned HTTP ${response.statusCode}`,
+        response.statusCode
       );
       throw new AppError('IndexNow temporarily rejected the submission', 502, 'INDEXNOW_TRANSIENT_FAILURE');
     }
@@ -132,7 +152,8 @@ export async function executeIndexNowBatch(
       batch.id,
       execution.attemptNumber,
       code,
-      `IndexNow returned HTTP ${response.statusCode}`
+      `IndexNow returned HTTP ${response.statusCode}`,
+      response.statusCode
     );
     throw new AppError(
       retryable ? 'IndexNow retry budget exhausted' : 'IndexNow rejected the submission',
@@ -146,6 +167,7 @@ export async function executeIndexNowBatch(
     data: {
       status: 'COMPLETED',
       attemptCount: execution.attemptNumber,
+      responseStatusCode: response.statusCode,
       errorCode: null,
       errorMessage: null,
       urls: { updateMany: { where: {}, data: { status: 'COMPLETED', errorCode: null } } }
