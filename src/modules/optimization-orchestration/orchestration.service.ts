@@ -506,13 +506,14 @@ export class OptimizationOrchestrationService {
       throw new Error('Automation retry attempt budget exhausted');
     }
 
+    const newDeadline = deadlineFrom(this.now(), definition.timeoutMs);
     const transitioned = await repository.transitionAutomationRun({
       runId: run.id,
       from: 'FAILED',
       to: 'QUEUED',
       patch: {
         attempt: run.attempt + 1,
-        deadlineAt: deadlineFrom(this.now(), definition.timeoutMs),
+        deadlineAt: newDeadline,
         startedAt: null,
         completedAt: null,
         lastErrorCode: null
@@ -520,7 +521,6 @@ export class OptimizationOrchestrationService {
     });
     if (!transitioned) throw new Error('Automation retry transition conflict');
 
-    const newDeadline = deadlineFrom(this.now(), definition.timeoutMs);
     await queue.enqueueRun(run.id, run.projectId);
     return {
       ...run,
