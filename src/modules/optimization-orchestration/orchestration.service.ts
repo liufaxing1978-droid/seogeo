@@ -521,7 +521,24 @@ export class OptimizationOrchestrationService {
     });
     if (!transitioned) throw new Error('Automation retry transition conflict');
 
-    await queue.enqueueRun(run.id, run.projectId);
+    try {
+      await queue.enqueueRun(run.id, run.projectId);
+    } catch (error) {
+      await repository.transitionAutomationRun({
+        runId: run.id,
+        from: 'QUEUED',
+        to: 'FAILED',
+        patch: {
+          attempt: run.attempt,
+          deadlineAt: null,
+          startedAt: null,
+          completedAt: this.now(),
+          lastErrorCode: 'AUTOMATION_ENQUEUE_FAILED'
+        }
+      });
+      throw error;
+    }
+
     return {
       ...run,
       status: 'QUEUED',
