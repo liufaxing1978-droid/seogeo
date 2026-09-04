@@ -469,7 +469,7 @@ export class OptimizationOrchestrationRepository {
   listTimedOutAutomationRuns(asOf: Date): Promise<AutomationRun[]> {
     return this.db.automationRun.findMany({
       where: {
-        status: 'RUNNING',
+        status: { in: ['QUEUED', 'RUNNING'] },
         deadlineAt: { lte: asOf }
       },
       orderBy: [{ deadlineAt: 'asc' }, { id: 'asc' }]
