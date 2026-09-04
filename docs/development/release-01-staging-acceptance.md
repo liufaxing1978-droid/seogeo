@@ -44,6 +44,19 @@ External staging identity for Gates 5–25:
 
 Server connection details and credentials are supplied out-of-band to the operator/Codex session and must never be committed to this repository or pasted into this acceptance record.
 
+## 2.1 P9 IndexNow staging evidence (2026-09-04)
+
+This is a post-Release-01 staging verification record for the merged P9 candidate. It does not alter the historic 25-gate evidence above, authorize Production deployment, or assert that a URL was crawled, indexed, ranked, or published.
+
+- Candidate: `main@c40355f412fc0bae0af1c48bb7492c99c904c9e3`; main CI workflow run `33839466364` completed successfully.
+- Staging backup: `seogeo-staging-c40355f-20260904T053014Z.dump`, custom-format archive validated with PostgreSQL 17; SHA-256 `f53898bf5821cd5b3a608507cb9ae5640a5324dcb97f1651aa8de7a3908c662f`.
+- Migration role: completed successfully; 55 migrations were present and the P9 IndexNow/crawler-health migrations were applied.
+- Separate staging Web and Worker roles were updated to the exact candidate image; HTTPS `/health/live` and `/health/ready` both returned `200 {"status":"ok"}` and the Worker logged its normal startup marker.
+- A staging-only project with the staging canonical host completed a one-page Worker crawl (`1` discovered, crawled, and succeeded; `0` failed).
+- The staging key file was publicly retrievable over HTTPS. The key value, login credentials, connection strings, and key-file path are intentionally omitted from this record.
+- A CSRF-protected, OWNER-authorized IndexNow submission created batch `a42d5221-61f5-4e02-9a63-25057fb443b0`; the Worker completed it in one attempt with HTTP `202 Accepted`. This proves receipt pending provider key verification only; it does not prove crawling, indexing, ranking, or publication.
+- The temporary staging verification user was disabled and its session/temporary credentials were removed after the check. Production containers were not modified.
+
 ## 3. Frozen truth and authority boundaries
 
 These statements remain true throughout acceptance:
