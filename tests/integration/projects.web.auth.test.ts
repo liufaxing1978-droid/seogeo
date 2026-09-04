@@ -47,12 +47,15 @@ afterEach(async () => {
 });
 
 describe('P10-A authenticated project web and portfolio scope', () => {
-  it('requires authentication for dashboard and project web entry points', async () => {
+  it('redirects an anonymous root request to login while guarding project entry points', async () => {
     const project = await createDirectProject('Anonymous web guard');
     const app = createApp();
 
+    const root = await request(app).get('/');
+    expect(root.status).toBe(302);
+    expect(root.headers.location).toBe('/auth/login?returnPath=%2F');
+
     for (const response of [
-      await request(app).get('/'),
       await request(app).get('/projects'),
       await request(app).get('/projects/new'),
       await request(app).get(`/projects/${project.id}`),

@@ -55,8 +55,12 @@ function assertAiAnalysisFeature(project: { planLevel: 'STANDARD' | 'ADVANCED' |
   }
 }
 
-webRoutes.get('/', requireAuthentication(), async (req, res, next) => {
+webRoutes.get('/', async (req, res, next) => {
   try {
+    if (!req.auth) {
+      res.redirect(302, '/auth/login?returnPath=%2F');
+      return;
+    }
     const portfolio = await dashboardRepository.getPortfolioForUser(req.auth!.userId, { limit: 50 });
     render(res, 'dashboard', { portfolio });
   } catch (error) {
