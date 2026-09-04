@@ -1,6 +1,8 @@
 import { Router, type RequestHandler } from 'express';
-import { z } from 'zod';
+import { deriveCsrfToken } from '../../auth/csrf.js';
 import { requireFeature } from '../../auth/require-feature.js';
+import { env } from '../../config/env.js';
+import { z } from 'zod';
 import type { OperationsActorResolver } from './operations.routes.js';
 import {
   OptimizationOperationsService,
@@ -156,6 +158,13 @@ export function createOptimizationOperationsWebRoutes(
         ]);
         const actor = actorResolver.resolve(req);
         const project = res.locals.project;
+        const csrfToken = req.auth && res.locals.authSessionTokenHash
+          ? deriveCsrfToken(
+              env.SESSION_SECRET,
+              req.auth.sessionId,
+              res.locals.authSessionTokenHash,
+            )
+          : '';
 
         res.render('layout', {
           title: `自动优化中心 · ${project.name}`,
@@ -168,6 +177,7 @@ export function createOptimizationOperationsWebRoutes(
           inbox: normalizeInbox(rawInbox),
           policy: normalizePolicy(rawPolicy),
           policyMutationAvailable: Boolean(actor?.actorId.trim()),
+          csrfToken,
           pageScripts: ['/assets/js/optimization-operations.js'],
         });
       } catch (error) {

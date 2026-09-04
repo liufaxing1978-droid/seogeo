@@ -26,6 +26,29 @@ export type OperationsInboxCategory =
 
 export type OperationsInboxSeverity = 'HIGH' | 'MEDIUM' | 'LOW';
 
+export type OperationsTodayPriority = 'P0' | 'P1' | 'P2';
+
+export type OperationsTodayActionKind =
+  | 'INVESTIGATE_VERIFICATION'
+  | 'INVESTIGATE_EXECUTION'
+  | 'REVIEW_POLICY'
+  | 'REVIEW_P8_HANDOFF'
+  | 'REFRESH_EVIDENCE'
+  | 'REVIEW_DRAFT_PR';
+
+export type OperationsAlertPriority = 'P0' | 'P1';
+
+export type OperationsAlertSource = 'OPERATIONS_INBOX' | 'AUTOMATION_RUN';
+
+export type OperationsAlertKind =
+  | 'VERIFICATION_FAILED'
+  | 'EXECUTION_FAILED'
+  | 'STALE'
+  | 'POLICY_BLOCKED'
+  | 'P8_VALIDATION_BLOCKED'
+  | 'AUTOMATION_FAILED'
+  | 'AUTOMATION_TIMED_OUT';
+
 export type AutopilotDecisionProjectionStatus =
   | 'AUTOPILOT_READY'
   | 'P8_PREPARATION_REQUIRED'
@@ -89,6 +112,31 @@ export type OperationsPublicationVerificationAuthority = {
   updatedAt: Date;
 };
 
+export type OperationsVerificationAuthority = {
+  id: string;
+  executionId: string;
+  status: PublicationVerificationProjectionStatus;
+  targetUrl: string | null;
+  observedAt: Date | null;
+  httpStatus: number | null;
+  titleMatches: boolean | null;
+  descriptionMatches: boolean | null;
+  canonicalMatches: boolean | null;
+  h1Matches: boolean | null;
+  indexable: boolean | null;
+  schemaValid: boolean | null;
+  contentFingerprintOk: boolean | null;
+  regressionFindings: string[];
+  reasonCode: string | null;
+  createdAt: Date;
+  authorityUrl: string;
+};
+
+export type OperationsVerificationSummary = Record<
+  PublicationVerificationProjectionStatus,
+  number
+>;
+
 export type OperationsTerminalObservationAuthority = {
   id: string;
   effectState: OperationsEffectState;
@@ -146,6 +194,40 @@ export type OperationsInboxItem = {
   authorityId: string;
   category: OperationsInboxCategory;
   severity: OperationsInboxSeverity;
+  reasonCode: string;
+  optimizationPlanId: string | null;
+  targetUrl: string | null;
+  updatedAt: Date;
+  authorityUrl: string | null;
+};
+
+export type OperationsTodayAction = {
+  id: string;
+  priority: OperationsTodayPriority;
+  kind: OperationsTodayActionKind;
+  title: string;
+  recommendedAction: string;
+  reasonCode: string;
+  optimizationPlanId: string | null;
+  targetUrl: string | null;
+  updatedAt: Date;
+  authorityUrl: string | null;
+};
+
+export type OperationsAutomationAlertAuthority = {
+  id: string;
+  status: 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'TIMED_OUT' | 'SKIPPED';
+  lastErrorCode: string | null;
+  updatedAt: Date;
+  authorityUrl: string | null;
+};
+
+export type OperationsAlert = {
+  id: string;
+  priority: OperationsAlertPriority;
+  source: OperationsAlertSource;
+  kind: OperationsAlertKind;
+  title: string;
   reasonCode: string;
   optimizationPlanId: string | null;
   targetUrl: string | null;

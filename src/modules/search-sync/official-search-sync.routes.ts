@@ -121,7 +121,7 @@ const lazyGoogleDependencies: SearchConsoleSyncDependencies = {
   observability: searchConsoleObservability,
 };
 
-function createDefaultOfficialSearchSyncService(
+export function createDefaultOfficialSearchSyncService(
   repository: OfficialSearchBindingRepositoryPort,
 ): OfficialSearchSyncService {
   const bingProvider = env.BING_WEBMASTER_API_KEY

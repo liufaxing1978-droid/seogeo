@@ -1,11 +1,13 @@
 import { hasFeature } from '../../auth/feature-flags.js';
 import { parseControlledAutopilotGlobalKillSwitch } from '../optimization-autopilot/autopilot.config.js';
 import {
+  deriveAlertCenter,
   deriveEffectiveAutopilotState,
   deriveInboxItems,
   deriveOutcomeSummary,
   derivePipelineStage,
   deriveQuota,
+  deriveTodayActions,
 } from './operations.derive.js';
 import {
   OptimizationOperationsRepository,
@@ -14,12 +16,16 @@ import {
 import type {
   EffectiveAutopilotState,
   OperationsActivityItem,
+  OperationsAlert,
   OperationsInboxCategory,
   OperationsInboxItem,
   OperationsOutcomeSummary,
   OperationsPipelineAuthority,
   OperationsPipelineStage,
   OperationsQuota,
+  OperationsTodayAction,
+  OperationsVerificationAuthority,
+  OperationsVerificationSummary,
 } from './operations.types.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -71,9 +77,13 @@ export type OperationsFeedbackSummary = {
 export type OperationsOverview = {
   effectiveAutopilotState: EffectiveAutopilotState;
   todayRunCount: number;
+  todayActions: OperationsTodayAction[];
+  alerts?: OperationsAlert[];
   quota: OperationsQuota;
   pipelineCounts: Record<OperationsPipelineStage, number>;
   inboxCounts: Record<OperationsInboxCategory, number>;
+  verificationSummary: OperationsVerificationSummary;
+  recentVerifications: OperationsVerificationAuthority[];
   experimentSummary: OperationsOutcomeSummary;
   feedbackSummary: OperationsFeedbackSummary;
   recentActivity: OperationsActivityItem[];
@@ -105,6 +115,19 @@ function countInbox(items: readonly OperationsInboxItem[]): Record<OperationsInb
     number
   >;
   for (const item of items) counts[item.category] += 1;
+  return counts;
+}
+
+function countVerifications(
+  items: readonly OperationsVerificationAuthority[],
+): OperationsVerificationSummary {
+  const counts: OperationsVerificationSummary = {
+    PENDING: 0,
+    VERIFIED: 0,
+    FAILED: 0,
+    UNKNOWN: 0,
+  };
+  for (const item of items) counts[item.status] += 1;
   return counts;
 }
 
@@ -142,6 +165,16 @@ export class OptimizationOperationsService {
   async getOverview(projectId: string, now: Date = new Date()): Promise<OperationsOverview> {
     const { start: utcDayStart, end: utcDayEnd } = utcDayBounds(now);
     const cutoff30 = new Date(now.getTime() - 30 * DAY_MS);
+    const automationAlertPromise = typeof (
+      this.repository as unknown as { listAutomationAlertAuthority?: unknown }
+    ).listAutomationAlertAuthority === 'function'
+      ? this.repository.listAutomationAlertAuthority(projectId, 100)
+      : Promise.resolve([]);
+    const verificationAuthorityPromise = typeof (
+      this.repository as unknown as { listRecentVerificationAuthority?: unknown }
+    ).listRecentVerificationAuthority === 'function'
+      ? this.repository.listRecentVerificationAuthority(projectId, 20)
+      : Promise.resolve([]);
 
     const [
       planLevel,
@@ -149,6 +182,8 @@ export class OptimizationOperationsService {
       todayRunCount,
       pipelineAuthority,
       inboxAuthority,
+      automationAlertAuthority,
+      recentVerifications,
       observations,
       feedbackEvidence,
       feedbackProfiles,
@@ -160,6 +195,8 @@ export class OptimizationOperationsService {
       this.repository.countTodayRuns(projectId, utcDayStart, utcDayEnd),
       this.repository.listPipelineAuthority(projectId, 100, 0),
       this.repository.listInboxAuthority(projectId, 100, 0),
+      automationAlertPromise,
+      verificationAuthorityPromise,
       this.repository.listTerminalObservations(projectId, cutoff30, now),
       this.repository.listFeedbackEvidence(projectId, cutoff30, now),
       this.repository.listFeedbackProfiles(projectId, 1, 0),
@@ -182,12 +219,19 @@ export class OptimizationOperationsService {
         policyEnabled: policy?.enabled ?? false,
       }),
       todayRunCount,
+      todayActions: deriveTodayActions(inboxItems),
+      alerts: deriveAlertCenter({
+        inboxItems,
+        automationRuns: automationAlertAuthority,
+      }),
       quota: deriveQuota({
         configuredLimit: policy?.dailyDraftPrLimit ?? 0,
         reservations,
       }),
       pipelineCounts: countPipeline(pipelineItems),
       inboxCounts: countInbox(inboxItems),
+      verificationSummary: countVerifications(recentVerifications),
+      recentVerifications,
       experimentSummary: deriveOutcomeSummary({
         now,
         observations,

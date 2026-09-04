@@ -42,11 +42,24 @@ import { OptimizationFeedbackRepository } from '../modules/optimization-feedback
 import { OptimizationFeedbackService } from '../modules/optimization-feedback/feedback.service.js';
 import { processOptimizationFeedbackJob } from '../modules/optimization-feedback/feedback.worker.js';
 import {
+  OptimizationAutomationActionDispatcher,
+  type OfficialSearchSyncPort
+} from '../modules/optimization-orchestration/orchestration.automation.actions.js';
+import { automationDefinitionManagementRepository } from '../modules/optimization-orchestration/orchestration.automation-definition.repository.js';
+import {
+  processOptimizationAutomationJob,
+  type OptimizationAutomationWorkerDeps
+} from '../modules/optimization-orchestration/orchestration.automation.worker.js';
+import {
+  OPTIMIZATION_AUTOMATION_QUEUE_ATTEMPTS,
+  OPTIMIZATION_AUTOMATION_QUEUE_NAME,
   OPTIMIZATION_ORCHESTRATION_QUEUE_NAME,
   OPTIMIZATION_PLANNING_QUEUE_NAME,
   OPTIMIZATION_QUEUE_ATTEMPTS,
+  OptimizationAutomationQueue,
   OptimizationOrchestrationQueue,
   OptimizationPlanningQueue,
+  type OptimizationAutomationJobData,
   type OptimizationOrchestrationJobData,
   type OptimizationPlanningJobData
 } from '../modules/optimization-orchestration/orchestration.queue.js';
@@ -93,6 +106,8 @@ import {
   SEARCH_CONSOLE_SYNC_WORKER_CONCURRENCY,
   type SearchConsoleSyncJobData
 } from '../modules/search-console/search-console.worker.js';
+import { createDefaultOfficialSearchSyncService } from '../modules/search-sync/official-search-sync.routes.js';
+import { officialSearchSyncRepository } from '../modules/search-sync/official-search-sync.repository.js';
 import { processSeoAuditJob, type SeoAuditJobData } from '../modules/seo/seo.worker.js';
 import {
   VISIBILITY_EXTRACTION_QUEUE_NAME,
@@ -124,9 +139,13 @@ import { QUEUE_NAMES } from './queues.js';
 const VISIBILITY_MONITORING_RECONCILE_EVERY_MS = 60 * 60 * 1000;
 export const OPTIMIZATION_PLANNING_WORKER_CONCURRENCY = 1;
 export const OPTIMIZATION_ORCHESTRATION_WORKER_CONCURRENCY = 2;
+export const OPTIMIZATION_AUTOMATION_WORKER_CONCURRENCY = 2;
 export const OPTIMIZATION_AUTOPILOT_WORKER_CONCURRENCY = 2;
 export const OPTIMIZATION_EXPERIMENT_WORKER_CONCURRENCY = 2;
 export const OPTIMIZATION_FEEDBACK_WORKER_CONCURRENCY = 2;
+export const OPTIMIZATION_AUTOMATION_TIMEOUT_REPAIR_EVERY_MS = 60_000;
+export const OPTIMIZATION_AUTOMATION_TIMEOUT_REPAIR_SCHEDULER_ID =
+  'optimization-automation-timeout-repair';
 export const OPTIMIZATION_DAILY_RECONCILE_EVERY_MS = 24 * 60 * 60 * 1000;
 export const OPTIMIZATION_DAILY_RECONCILE_SCHEDULER = {
   id: 'optimization-daily-reconcile',
@@ -170,6 +189,68 @@ export function buildOptimizationAutopilotRuntimeDeps(input: {
   executionQueue: PublicationExecutionQueuePort;
 }) {
   return input;
+}
+
+export function buildOptimizationAutomationRuntimeDeps(input: {
+  repository: OptimizationAutomationWorkerDeps['repository'];
+  service: OptimizationAutomationWorkerDeps['service'];
+  searchSync: OfficialSearchSyncPort;
+  now?: () => Date;
+}): OptimizationAutomationWorkerDeps {
+  return {
+    repository: input.repository,
+    service: input.service,
+    actions: new OptimizationAutomationActionDispatcher({
+      searchSync: input.searchSync,
+      ...(input.now ? { now: input.now } : {})
+    })
+  };
+}
+
+export async function reconcileOptimizationAutomationDefinitionSchedules(input: {
+  projects: {
+    list(): Promise<Array<{ id: string }>>;
+  };
+  orchestration: {
+    reconcileAutomationSchedules(
+      projectId: string
+    ): Promise<{ considered: number; synced: number }>;
+  };
+}): Promise<{ projects: number; definitions: number; synced: number }> {
+  const projects = await input.projects.list();
+  let definitions = 0;
+  let synced = 0;
+
+  for (const project of projects) {
+    const result = await input.orchestration.reconcileAutomationSchedules(project.id);
+    definitions += result.considered;
+    synced += result.synced;
+  }
+
+  return {
+    projects: projects.length,
+    definitions,
+    synced
+  };
+}
+
+export async function registerOptimizationAutomationTimeoutRepairScheduler(
+  queue: Pick<Queue<OptimizationAutomationJobData>, 'upsertJobScheduler'>
+): Promise<void> {
+  await queue.upsertJobScheduler(
+    OPTIMIZATION_AUTOMATION_TIMEOUT_REPAIR_SCHEDULER_ID,
+    { every: OPTIMIZATION_AUTOMATION_TIMEOUT_REPAIR_EVERY_MS },
+    {
+      name: 'repair-timed-out-automation-runs',
+      data: { kind: 'REPAIR_TIMEOUTS' },
+      opts: {
+        attempts: OPTIMIZATION_AUTOMATION_QUEUE_ATTEMPTS,
+        backoff: { type: 'exponential', delay: 5_000 },
+        removeOnComplete: 100,
+        removeOnFail: 200
+      }
+    }
+  );
 }
 
 export function buildPublicationVerificationExperimentHandoff(
@@ -222,6 +303,7 @@ export function workerDefinitionForQueue(
     | 'growth-materialization'
     | 'optimization-planning'
     | 'optimization-orchestration'
+    | 'optimization-automation'
     | 'optimization-autopilot'
     | 'optimization-experiment-evaluation'
     | 'optimization-feedback-materialization'
@@ -256,6 +338,12 @@ export function workerDefinitionForQueue(
     return {
       processor: processOptimizationOrchestrationJob,
       concurrency: OPTIMIZATION_ORCHESTRATION_WORKER_CONCURRENCY
+    } as const;
+  }
+  if (name === OPTIMIZATION_AUTOMATION_QUEUE_NAME) {
+    return {
+      processor: processOptimizationAutomationJob,
+      concurrency: OPTIMIZATION_AUTOMATION_WORKER_CONCURRENCY
     } as const;
   }
   if (name === OPTIMIZATION_AUTOPILOT_QUEUE_NAME) {
@@ -339,6 +427,10 @@ export async function startWorkers() {
 
   const optimizationPlanningSupportQueue = new Queue(OPTIMIZATION_PLANNING_QUEUE_NAME, { connection });
   const optimizationOrchestrationSupportQueue = new Queue(OPTIMIZATION_ORCHESTRATION_QUEUE_NAME, { connection });
+  const optimizationAutomationSupportQueue = new Queue<OptimizationAutomationJobData>(
+    OPTIMIZATION_AUTOMATION_QUEUE_NAME,
+    { connection }
+  );
   const optimizationAutopilotSupportQueue = new Queue(OPTIMIZATION_AUTOPILOT_QUEUE_NAME, { connection });
   const optimizationExperimentSupportQueue = new Queue<OptimizationExperimentJobData>(
     OPTIMIZATION_EXPERIMENT_QUEUE_NAME,
@@ -355,6 +447,7 @@ export async function startWorkers() {
   supportQueues.push(
     optimizationPlanningSupportQueue,
     optimizationOrchestrationSupportQueue,
+    optimizationAutomationSupportQueue,
     optimizationAutopilotSupportQueue,
     optimizationExperimentSupportQueue,
     optimizationFeedbackSupportQueue,
@@ -363,6 +456,9 @@ export async function startWorkers() {
   const optimizationPlanningQueue = new OptimizationPlanningQueue(optimizationPlanningSupportQueue);
   const optimizationOrchestrationQueue = new OptimizationOrchestrationQueue(
     optimizationOrchestrationSupportQueue
+  );
+  const optimizationAutomationQueue = new OptimizationAutomationQueue(
+    optimizationAutomationSupportQueue
   );
   const optimizationAutopilotQueue = new OptimizationAutopilotQueue(
     optimizationAutopilotSupportQueue
@@ -409,7 +505,23 @@ export async function startWorkers() {
   const optimizationOrchestrationService = new OptimizationOrchestrationService({
     repository: optimizationOrchestrationRepository,
     planningQueue: optimizationPlanningQueue,
-    projects: projectRepository
+    projects: projectRepository,
+    automationRuns: optimizationOrchestrationRepository,
+    automationQueue: optimizationAutomationQueue,
+    automationDefinitions: automationDefinitionManagementRepository,
+    automationSchedules: optimizationAutomationQueue
+  });
+  await reconcileOptimizationAutomationDefinitionSchedules({
+    projects: projectRepository,
+    orchestration: optimizationOrchestrationService
+  });
+  await registerOptimizationAutomationTimeoutRepairScheduler(
+    optimizationAutomationSupportQueue
+  );
+  const optimizationAutomationRuntimeDeps = buildOptimizationAutomationRuntimeDeps({
+    repository: optimizationOrchestrationRepository,
+    service: optimizationOrchestrationService,
+    searchSync: createDefaultOfficialSearchSyncService(officialSearchSyncRepository)
   });
   const advisoryRootDir = path.resolve('vendor/third-party-skills');
 
@@ -479,6 +591,16 @@ export async function startWorkers() {
           }
         },
         { connection, concurrency: OPTIMIZATION_ORCHESTRATION_WORKER_CONCURRENCY }
+      );
+    }
+    if (name === OPTIMIZATION_AUTOMATION_QUEUE_NAME) {
+      return new Worker<OptimizationAutomationJobData>(
+        name,
+        async (job) => processOptimizationAutomationJob(
+          { id: job.id, name: job.name, data: job.data },
+          optimizationAutomationRuntimeDeps
+        ),
+        { connection, concurrency: OPTIMIZATION_AUTOMATION_WORKER_CONCURRENCY }
       );
     }
     if (name === OPTIMIZATION_AUTOPILOT_QUEUE_NAME) {

@@ -1,6 +1,10 @@
 import type {
   EffectiveAutopilotState,
   OperationsActivityItem,
+  OperationsAlert,
+  OperationsAlertKind,
+  OperationsAlertPriority,
+  OperationsAutomationAlertAuthority,
   OperationsFeedbackEvidenceAuthority,
   OperationsInboxAuthority,
   OperationsInboxCategory,
@@ -13,6 +17,9 @@ import type {
   OperationsPipelineStage,
   OperationsQuota,
   OperationsReservationAuthority,
+  OperationsTodayAction,
+  OperationsTodayActionKind,
+  OperationsTodayPriority,
 } from './operations.types.js';
 
 export function deriveEffectiveAutopilotState(input: {
@@ -138,6 +145,158 @@ export function deriveInboxItems(authorities: OperationsInboxAuthority[]): Opera
 
     return left.id.localeCompare(right.id);
   });
+}
+
+const todayPriorityBySeverity: Record<OperationsInboxSeverity, OperationsTodayPriority> = {
+  HIGH: 'P0',
+  MEDIUM: 'P1',
+  LOW: 'P2',
+};
+
+const todayActionMetadata: Record<
+  OperationsInboxCategory,
+  {
+    kind: OperationsTodayActionKind;
+    title: string;
+    recommendedAction: string;
+  }
+> = {
+  VERIFICATION_FAILED: {
+    kind: 'INVESTIGATE_VERIFICATION',
+    title: '发布后验证失败',
+    recommendedAction: '检查验证证据并修复失败原因',
+  },
+  EXECUTION_FAILED: {
+    kind: 'INVESTIGATE_EXECUTION',
+    title: '优化执行失败',
+    recommendedAction: '检查执行错误并在既有安全边界内修复后重试',
+  },
+  POLICY_BLOCKED: {
+    kind: 'REVIEW_POLICY',
+    title: '策略阻止自动优化',
+    recommendedAction: '检查当前 Autopilot Policy 与阻止原因',
+  },
+  P8_VALIDATION_BLOCKED: {
+    kind: 'REVIEW_P8_HANDOFF',
+    title: '发布交接验证受阻',
+    recommendedAction: '检查 P8 交接证据并解决验证阻塞',
+  },
+  STALE: {
+    kind: 'REFRESH_EVIDENCE',
+    title: '优化证据已过期',
+    recommendedAction: '刷新相关证据后再继续决策或执行',
+  },
+  AWAITING_HUMAN_MERGE: {
+    kind: 'REVIEW_DRAFT_PR',
+    title: 'Draft PR 等待人工复核',
+    recommendedAction: '按既有人工合并流程复核 Draft PR',
+  },
+};
+
+export function deriveTodayActions(
+  inboxItems: readonly OperationsInboxItem[],
+  limit = 7,
+): OperationsTodayAction[] {
+  const result: OperationsTodayAction[] = [];
+  const seen = new Set<string>();
+  const cappedLimit = Math.max(0, Math.trunc(limit));
+
+  for (const item of inboxItems) {
+    if (result.length >= cappedLimit) break;
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+
+    const metadata = todayActionMetadata[item.category];
+    result.push({
+      id: `today:${item.id}`,
+      priority: todayPriorityBySeverity[item.severity],
+      kind: metadata.kind,
+      title: metadata.title,
+      recommendedAction: metadata.recommendedAction,
+      reasonCode: item.reasonCode,
+      optimizationPlanId: item.optimizationPlanId,
+      targetUrl: item.targetUrl,
+      updatedAt: item.updatedAt,
+      authorityUrl: item.authorityUrl,
+    });
+  }
+
+  return result;
+}
+
+const alertTitleByKind: Record<OperationsAlertKind, string> = {
+  VERIFICATION_FAILED: '发布后验证失败',
+  EXECUTION_FAILED: '优化执行失败',
+  STALE: '优化证据已过期',
+  POLICY_BLOCKED: '策略阻止自动优化',
+  P8_VALIDATION_BLOCKED: '发布交接验证受阻',
+  AUTOMATION_FAILED: 'Automation Run 执行失败',
+  AUTOMATION_TIMED_OUT: 'Automation Run 执行超时',
+};
+
+const alertPriorityRank: Record<OperationsAlertPriority, number> = {
+  P0: 2,
+  P1: 1,
+};
+
+export function deriveAlertCenter(input: {
+  inboxItems: readonly OperationsInboxItem[];
+  automationRuns: readonly OperationsAutomationAlertAuthority[];
+}, limit = 20): OperationsAlert[] {
+  const alerts: OperationsAlert[] = [];
+  const seen = new Set<string>();
+
+  for (const item of input.inboxItems) {
+    if (item.category === 'AWAITING_HUMAN_MERGE' || item.severity === 'LOW') continue;
+    const kind = item.category as Exclude<OperationsAlertKind, 'AUTOMATION_FAILED' | 'AUTOMATION_TIMED_OUT'>;
+    const id = `alert:inbox:${item.id}:${kind}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    alerts.push({
+      id,
+      priority: item.severity === 'HIGH' ? 'P0' : 'P1',
+      source: 'OPERATIONS_INBOX',
+      kind,
+      title: alertTitleByKind[kind],
+      reasonCode: item.reasonCode,
+      optimizationPlanId: item.optimizationPlanId,
+      targetUrl: item.targetUrl,
+      updatedAt: item.updatedAt,
+      authorityUrl: item.authorityUrl,
+    });
+  }
+
+  for (const run of input.automationRuns) {
+    if (run.status !== 'FAILED' && run.status !== 'TIMED_OUT') continue;
+    const kind: OperationsAlertKind = run.status === 'TIMED_OUT'
+      ? 'AUTOMATION_TIMED_OUT'
+      : 'AUTOMATION_FAILED';
+    const id = `alert:automation:${run.id}:${kind}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    alerts.push({
+      id,
+      priority: 'P0',
+      source: 'AUTOMATION_RUN',
+      kind,
+      title: alertTitleByKind[kind],
+      reasonCode: run.lastErrorCode ?? kind,
+      optimizationPlanId: null,
+      targetUrl: null,
+      updatedAt: run.updatedAt,
+      authorityUrl: run.authorityUrl,
+    });
+  }
+
+  alerts.sort((left, right) => {
+    const priorityDifference = alertPriorityRank[right.priority] - alertPriorityRank[left.priority];
+    if (priorityDifference !== 0) return priorityDifference;
+    const waitDifference = left.updatedAt.getTime() - right.updatedAt.getTime();
+    if (waitDifference !== 0) return waitDifference;
+    return left.id.localeCompare(right.id);
+  });
+
+  return alerts.slice(0, Math.max(0, Math.trunc(limit)));
 }
 
 function emptyOutcomeWindow(): OperationsOutcomeWindow {
