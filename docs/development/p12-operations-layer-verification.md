@@ -107,16 +107,19 @@ No new runtime capability is introduced by this closure branch.
 
 ## Closure acceptance gates
 
-P12 closure is accepted only when all of the following remain true on the final documentation head:
+Repository-side gates already satisfied before opening the closure PR:
 
 - [x] Four reviewed safety boundaries have explicit existing contracts.
 - [x] P12 hardening is frozen; no additional speculative RED is added.
 - [x] Closure branch is based on exact `main@63e0aa264312c871b7d4574f1ee3b91fcda9e0ba`.
 - [x] Closure changes are documentation-only.
-- [ ] README reflects the P12 freeze and current release boundary.
-- [ ] Production checklist is present and fail-closed.
-- [ ] Draft closure PR is created.
-- [ ] Exact-head CI for the final closure SHA is completed successfully.
+- [x] README reflects the P12 freeze and current release boundary.
+- [x] Production checklist is present and fail-closed.
+
+PR-lifecycle gates are intentionally recorded in GitHub PR metadata/checks rather than written back into this file after CI, because changing this file after a green run would create a new head SHA and invalidate exact-head evidence:
+
+- [ ] Draft closure PR exists and remains Draft.
+- [ ] Exact-head CI for the final closure SHA completes successfully.
 - [ ] PR remains unmerged unless separately authorized.
 - [ ] Production remains untouched unless separately authorized.
 
