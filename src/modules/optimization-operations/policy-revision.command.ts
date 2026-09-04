@@ -133,18 +133,22 @@ export async function reviseAutopilotPolicy(
     throw commandError('AUTOPILOT_POLICY_REVISION_ACTOR_REQUIRED');
   }
 
-  const normalizedPolicy = normalizeAutopilotPolicy(input.policy);
-  const { revisionKey, commandFingerprint } = buildAutopilotPolicyRevisionIdentity({
-    revisionVersion: AUTOPILOT_POLICY_REVISION_VERSION,
-    projectId: input.projectId,
-    requestId: input.requestId,
-    expectedUpdatedAt: input.expectedUpdatedAt,
-    actorId,
-    normalizedPolicy,
-  });
-
+  let rejectionRevisionKey: string | undefined;
+  let rejectionCommandFingerprint: string | undefined;
   let result: PolicyRevisionCommandResult;
   try {
+    const normalizedPolicy = normalizeAutopilotPolicy(input.policy);
+    const { revisionKey, commandFingerprint } = buildAutopilotPolicyRevisionIdentity({
+      revisionVersion: AUTOPILOT_POLICY_REVISION_VERSION,
+      projectId: input.projectId,
+      requestId: input.requestId,
+      expectedUpdatedAt: input.expectedUpdatedAt,
+      actorId,
+      normalizedPolicy,
+    });
+    rejectionRevisionKey = revisionKey;
+    rejectionCommandFingerprint = commandFingerprint;
+
     result = await prisma.$transaction(async (tx) => {
       const lockKey = `p9f-policy:${input.projectId}`;
       await tx.$queryRaw<Array<{ lock: string }>>(Prisma.sql`
@@ -247,8 +251,10 @@ export async function reviseAutopilotPolicy(
       actorId,
       expectedUpdatedAt: input.expectedUpdatedAt,
       reasonCode: rejectionReason(error),
-      revisionKey,
-      commandFingerprint,
+      ...(rejectionRevisionKey === undefined ? {} : { revisionKey: rejectionRevisionKey }),
+      ...(rejectionCommandFingerprint === undefined
+        ? {}
+        : { commandFingerprint: rejectionCommandFingerprint }),
     });
     throw error;
   }
