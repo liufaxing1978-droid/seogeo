@@ -165,8 +165,7 @@ function assertAutomationRunIdentity(
     existing.definitionId !== input.definitionId ||
     existing.projectId !== input.projectId ||
     existing.source !== input.source ||
-    existing.requestKey !== input.requestKey ||
-    existing.blockedByRunId !== input.blockedByRunId
+    existing.requestKey !== input.requestKey
   ) {
     throw new Error('Automation run identity conflict');
   }
