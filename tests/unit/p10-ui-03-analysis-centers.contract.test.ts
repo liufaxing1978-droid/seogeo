@@ -12,6 +12,8 @@ describe('P10 UI-03 analysis-center productization contract', () => {
 
     expect(seo).toContain('data-ui="seo-center"');
     expect(seo).toContain('data-ui="seo-score-summary"');
+    expect(seo).toContain('data-ui="seo-priority-issues-cta"');
+    expect(seo).toContain('处理高优先级问题');
   });
 
   it('locks the deterministic SEO center hierarchy without fabricated ranking facts', () => {

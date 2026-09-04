@@ -186,7 +186,7 @@
   <section class="metric-grid operations-metrics admin-metric-grid" aria-label="Operations overview metrics">
     <article class="metric-card">
       <span class="metric-label">Effective Autopilot</span>
-      <strong data-metric-effective-state><%= overview.effectiveAutopilotState %></strong>
+        <strong data-metric-effective-state><%= overview.effectiveAutopilotState === 'GLOBAL_KILL_SWITCH' ? '全局暂停' : overview.effectiveAutopilotState %></strong>
       <span class="muted">全局开关、项目策略与功能权限共同决定</span>
     </article>
     <article class="metric-card">

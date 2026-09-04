@@ -44,6 +44,13 @@
       </div>
     </section>
 
+    <% if (severityCounts.CRITICAL + severityCounts.HIGH > 0) { %>
+      <section class="panel" data-ui="seo-priority-issues-cta">
+        <strong>发现 <%= severityCounts.CRITICAL + severityCounts.HIGH %> 个高优先级问题</strong>
+        <a class="button" href="/projects/<%= project.id %>/seo/issues">处理高优先级问题</a>
+      </section>
+    <% } %>
+
     <section class="panel">
       <div class="panel-header">
         <div>

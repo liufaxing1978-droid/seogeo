@@ -19,6 +19,8 @@ describe('P10 UI-05 optimization, members, settings contract', () => {
     expect(view).toContain('data-policy-form');
     expect(view).toContain('运行策略不等于执行授权');
     expect(view).toContain('人工合并与部署边界保持不变');
+    expect(view).toContain('全局暂停');
+    expect(view).not.toContain('>GLOBAL_KILL_SWITCH<');
   });
 
   it('activates real project-scoped Members and Settings destinations', () => {
@@ -77,6 +79,9 @@ describe('P10 UI-05 optimization, members, settings contract', () => {
     expect(view).not.toContain('<%= env.DEEPSEEK_API_KEY %>');
     expect(view).not.toContain('<%= env.GOOGLE_OAUTH_CLIENT_SECRET %>');
     expect(view).not.toContain('Last provider success');
+    expect(view).toContain('data-settings-form');
+    expect(view).toContain('data-settings-save disabled');
+    expect(view).toContain('有未保存的变更');
   });
 
   it('registers the project admin web adapter and dedicated responsive UI-05 stylesheet', () => {
