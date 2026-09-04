@@ -153,6 +153,43 @@ describe('OL-2 automation execution semantics', () => {
     expect(enqueueAutomationRun).toHaveBeenCalledWith(RUN_ID, PROJECT_ID);
   });
 
+  it('restores a retryable FAILED state when retry enqueue fails', async () => {
+    const { service, getAutomationRun, transitionAutomationRun, enqueueAutomationRun } = setup();
+    getAutomationRun.mockResolvedValueOnce(
+      automationRun({
+        status: 'FAILED',
+        attempt: 1,
+        completedAt: new Date('2026-09-02T02:59:00.000Z'),
+        lastErrorCode: 'UPSTREAM_UNAVAILABLE'
+      })
+    );
+    enqueueAutomationRun.mockRejectedValueOnce(new Error('queue unavailable'));
+
+    await expect(service.retryAutomationRun({ runId: RUN_ID, projectId: PROJECT_ID }))
+      .rejects.toThrow('queue unavailable');
+
+    expect(transitionAutomationRun).toHaveBeenNthCalledWith(1,
+      expect.objectContaining({
+        runId: RUN_ID,
+        from: 'FAILED',
+        to: 'QUEUED',
+        patch: expect.objectContaining({ attempt: 2, lastErrorCode: null })
+      })
+    );
+    expect(transitionAutomationRun).toHaveBeenNthCalledWith(2, {
+      runId: RUN_ID,
+      from: 'QUEUED',
+      to: 'FAILED',
+      patch: {
+        attempt: 1,
+        deadlineAt: null,
+        startedAt: null,
+        completedAt: new Date('2026-09-02T03:00:00.000Z'),
+        lastErrorCode: 'AUTOMATION_ENQUEUE_FAILED'
+      }
+    });
+  });
+
   it('fails closed when retry budget is exhausted', async () => {
     const { service, getAutomationRun, transitionAutomationRun, enqueueAutomationRun } = setup();
     getAutomationRun.mockResolvedValueOnce(
