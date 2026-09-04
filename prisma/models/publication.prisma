@@ -10,11 +10,13 @@ enum PublicationProposalSourceType {
 enum PublicationAdapterType {
   EXPORT_ONLY
   GITHUB_GIT
+  XINGSHANTANG_API
 }
 
 enum PublicationWriteCapability {
   EXPORT_ONLY
   GIT_DRAFT_PR
+  CMS_DRAFT
 }
 
 enum ContentGeneratedBy {
