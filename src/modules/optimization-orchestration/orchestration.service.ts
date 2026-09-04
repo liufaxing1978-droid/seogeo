@@ -459,6 +459,13 @@ export class OptimizationOrchestrationService {
     if (!definition.enabled) throw new Error('Automation definition is disabled');
 
     const active = await repository.findActiveAutomationRun(definition.id);
+    if (
+      active
+      && active.requestKey === input.requestKey
+      && active.source === input.source
+    ) {
+      return active;
+    }
     if (active && definition.overlapPolicy === 'SKIP_IF_RUNNING') {
       return repository.createAutomationRun({
         definitionId: definition.id,
