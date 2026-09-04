@@ -582,7 +582,7 @@ export class OptimizationOrchestrationService {
     for (const run of runs) {
       const transitioned = await repository.transitionAutomationRun({
         runId: run.id,
-        from: 'RUNNING',
+        from: run.status,
         to: 'TIMED_OUT',
         patch: {
           completedAt: asOf,
