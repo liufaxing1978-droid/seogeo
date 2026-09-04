@@ -189,5 +189,11 @@ export async function persistContentBrief(task: AiTask, output: ContentBriefOutp
       sourceReferences: task.sourceReferences as Prisma.InputJsonValue
     }
   } satisfies Prisma.ContentBriefUpsertArgs;
-  return tx ? tx.contentBrief.upsert(args) : prisma.contentBrief.upsert(args);
+  const brief = tx ? await tx.contentBrief.upsert(args) : await prisma.contentBrief.upsert(args);
+  const requestClient = tx ?? prisma;
+  await requestClient.keywordContentBriefRequest.updateMany({
+    where: { projectId: task.projectId, aiTaskId: task.id },
+    data: { contentBriefId: brief.id, status: 'COMPLETED' },
+  });
+  return brief;
 }

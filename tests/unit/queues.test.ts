@@ -23,6 +23,7 @@ describe('queue registry', () => {
       'site-mutation-execution',
       'site-mutation-verification',
       'distribution-preparation',
+      'indexnow-submission',
       'ai',
       'report'
     ]);

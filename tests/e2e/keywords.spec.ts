@@ -258,6 +258,35 @@ test('operator captures 符纸 demand and sees truthful coverage', async ({ page
   }
 });
 
+test('operator calculates an explainable opportunity snapshot without fabricated evidence', async ({ page, context }) => {
+  const auth = await authenticateE2e(context, {
+    role: 'OWNER',
+    planLevel: 'ENTERPRISE',
+    userStatus: 'ACTIVE',
+    membershipStatus: 'ACTIVE',
+  });
+
+  try {
+    const keyword = await keywordService.createManual({
+      actorUserId: auth.user.id,
+      projectId: auth.project.id,
+      text: '符纸怎么用',
+      type: 'QUESTION',
+      intent: 'INFORMATIONAL',
+    });
+
+    await page.goto(`/projects/${auth.project.id}/keywords`);
+    const row = page.locator(`[data-keyword-id="${keyword.id}"]`);
+    await expect(row.locator('[data-ui="keyword-opportunity-score"]')).toContainText('未评分');
+    await row.getByRole('button', { name: '计算机会分' }).click();
+
+    await expect(row.locator('[data-ui="keyword-opportunity-score"]')).toContainText('N/A');
+    await expect(row.locator('[data-ui="keyword-opportunity-score"]')).toContainText('置信度 15%');
+  } finally {
+    await auth.cleanup();
+  }
+});
+
 test('renders persisted Google search evidence without fabricating current rank', async ({ page, context }) => {
   const auth = await authenticateE2e(context, {
     role: 'OWNER',

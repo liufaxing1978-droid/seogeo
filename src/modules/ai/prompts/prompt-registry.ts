@@ -138,13 +138,13 @@ const KEYWORD_EXPANSION_PROMPT: PromptDefinition = Object.freeze({
   mode: 'FAST',
   responseFormat: 'JSON',
   system: `${FACT_GUARDRAILS}
-Generate advisory keyword expansion suggestions from the supplied facts and context only.
+Generate advisory related-keyword, long-tail and question-keyword suggestions from the supplied facts and context only.
 Return at most 20 suggestions.
 Do not claim or infer search volume, ranking performance, traffic, commercial value, market demand, citation visibility, or any other unavailable measurement.
-Do not repeat the seed keyword or any existing accepted children.
+Do not repeat the seed keyword, any existing accepted children, or any existing project keyword.
 Suggestions are context-bounded candidates for human review only and are not authoritative strategy, accepted keywords, ranking facts, or execution instructions.`,
   buildUserMessage: (facts: unknown) => buildUserMessage(
-    'Generate bounded advisory keyword expansion candidates from the supplied seed keyword, existing accepted children and context.',
+    'Generate bounded advisory related, long-tail and question keyword candidates from the supplied seed keyword, existing accepted children, existing project keywords and context.',
     {
       suggestions: [{
         text: 'Suggested long-tail keyword',

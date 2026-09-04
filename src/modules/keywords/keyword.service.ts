@@ -2,6 +2,7 @@ import {
   Prisma,
   type Keyword,
   type KeywordIntent,
+  type KeywordLifecycleStatus,
   type KeywordPriority,
   type KeywordStatus,
   type KeywordSuggestion,
@@ -9,9 +10,14 @@ import {
 } from '@prisma/client';
 import { AppError, ValidationError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
+import { planKeywordBulkCreate, type KeywordBulkDuplicate } from './keyword-bulk.js';
 import { normalizeKeywordText } from './keyword-normalize.js';
 import { KeywordRepository } from './keyword.repository.js';
-import type { CreateManualKeywordInput } from './keyword.types.js';
+import type { KeywordListQuery } from './keyword.schema.js';
+import type {
+  CreateManualKeywordInput,
+  CreateManualKeywordsBulkInput,
+} from './keyword.types.js';
 
 export interface UpdateManualKeywordInput {
   actorUserId: string;
@@ -22,6 +28,7 @@ export interface UpdateManualKeywordInput {
   intent?: KeywordIntent | null;
   priority?: KeywordPriority;
   status?: KeywordStatus;
+  lifecycleStatus?: KeywordLifecycleStatus;
   language?: string | null;
   targetCountry?: string | null;
   notes?: string | null;
@@ -64,6 +71,29 @@ export interface CreateKeywordGroupInput {
   description?: string | null;
 }
 
+export interface RenameKeywordGroupInput {
+  actorUserId: string;
+  projectId: string;
+  groupId: string;
+  name: string;
+}
+
+export interface SetKeywordGroupPrimaryInput {
+  actorUserId: string;
+  projectId: string;
+  groupId: string;
+  primaryKeywordId: string | null;
+  acknowledgeLock?: boolean;
+}
+
+export interface AssignKeywordsToGroupInput {
+  actorUserId: string;
+  projectId: string;
+  groupId: string;
+  keywordIds: string[];
+  acknowledgeLock?: boolean;
+}
+
 export interface SetKeywordGroupsInput {
   actorUserId: string;
   projectId: string;
@@ -85,7 +115,14 @@ export interface RejectKeywordSuggestionInput {
   suggestionId: string;
 }
 
+export interface AcceptKeywordSuggestionsInput {
+  actorUserId: string;
+  projectId: string;
+  suggestionIds: string[];
+}
+
 const KEYWORD_TRANSACTION_MAX_ATTEMPTS = 3;
+const KEYWORD_TRANSACTION_RETRY_DELAY_MS = 15;
 
 async function inKeywordTransaction<T>(
   work: (repo: KeywordRepository) => Promise<T>,
@@ -102,6 +139,9 @@ async function inKeywordTransaction<T>(
       if (!retryable || attempt === KEYWORD_TRANSACTION_MAX_ATTEMPTS) {
         throw error;
       }
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, KEYWORD_TRANSACTION_RETRY_DELAY_MS * attempt);
+      });
     }
   }
 
@@ -114,6 +154,10 @@ function keywordNotFound(): AppError {
 
 function keywordGroupNotFound(): AppError {
   return new AppError('Keyword group not found', 404, 'KEYWORD_GROUP_NOT_FOUND');
+}
+
+function keywordGroupDuplicate(): AppError {
+  return new AppError('Keyword group already exists', 409, 'KEYWORD_GROUP_DUPLICATE');
 }
 
 function keywordSuggestionNotFound(): AppError {
@@ -163,6 +207,16 @@ async function requireSuggestion(
   const suggestion = await repo.findSuggestion(projectId, suggestionId);
   if (!suggestion) throw keywordSuggestionNotFound();
   return suggestion;
+}
+
+async function requireGroup(
+  repo: KeywordRepository,
+  projectId: string,
+  groupId: string,
+) {
+  const group = await repo.findGroup(projectId, groupId);
+  if (!group) throw keywordGroupNotFound();
+  return group;
 }
 
 async function requireGroups(
@@ -217,6 +271,66 @@ async function rereadDuplicateAfterConstraint(
   throw new AppError('Keyword write conflict', 409, 'KEYWORD_WRITE_CONFLICT');
 }
 
+async function acceptSuggestionInTransaction(
+  repo: KeywordRepository,
+  input: AcceptKeywordSuggestionInput,
+): Promise<Keyword> {
+  const suggestion = await requireSuggestion(repo, input.projectId, input.suggestionId);
+
+  if (suggestion.status === 'ACCEPTED' && suggestion.acceptedKeywordId) {
+    const linked = await repo.findKeyword(input.projectId, suggestion.acceptedKeywordId);
+    if (linked) return linked;
+    throw suggestionAlreadyDecided();
+  }
+  if (suggestion.status !== 'PENDING') throw suggestionAlreadyDecided();
+
+  const seed = await requireKeyword(repo, input.projectId, suggestion.seedKeywordId);
+  const rawText = input.editedText ?? suggestion.suggestedText;
+  const normalizedText = assertUsableText(rawText);
+  let keyword = await repo.findByNormalized(input.projectId, normalizedText);
+
+  if (keyword?.status === 'ARCHIVED') throw duplicateError(keyword);
+
+  if (keyword) {
+    assertUnlockedOrAcknowledged(keyword.locked, undefined);
+  } else {
+    const projectDefaults = await repo.findProjectKeywordDefaults(input.projectId);
+    keyword = await repo.createKeyword({
+      projectId: input.projectId,
+      text: rawText.trim(),
+      normalizedText,
+      type: suggestion.suggestedType ?? 'LONG_TAIL',
+      intent: suggestion.suggestedIntent,
+      priority: 'MEDIUM',
+      status: 'ACTIVE',
+      locked: false,
+      source: 'AI_ACCEPTED',
+      language: seed.language ?? projectDefaults?.defaultLanguage ?? null,
+      targetCountry: seed.targetCountry ?? projectDefaults?.targetCountry ?? null,
+      notes: null,
+      createdByUserId: input.actorUserId,
+    });
+  }
+
+  await assertNoCycle(repo, input.projectId, keyword.id, seed.id);
+  await repo.upsertParent(input.projectId, seed.id, keyword.id);
+  const decidedAt = new Date();
+  await repo.updateSuggestion(input.projectId, suggestion.id, {
+    status: 'ACCEPTED',
+    acceptedKeywordId: keyword.id,
+    decidedAt,
+    decidedByUserId: input.actorUserId,
+  });
+  await repo.appendAudit(
+    input.projectId,
+    keyword.id,
+    input.actorUserId,
+    'KEYWORD_SUGGESTION_ACCEPTED',
+    { suggestionId: suggestion.id, seedKeywordId: seed.id },
+  );
+  return keyword;
+}
+
 export class KeywordService {
   async createManual(input: CreateManualKeywordInput): Promise<Keyword> {
     const normalizedText = assertUsableText(input.text);
@@ -239,6 +353,7 @@ export class KeywordService {
           intent: input.intent ?? null,
           priority: input.priority ?? 'MEDIUM',
           status: 'ACTIVE',
+          lifecycleStatus: input.lifecycleStatus ?? 'DISCOVERED',
           locked: input.locked ?? false,
           source: 'MANUAL',
           language: input.language ?? null,
@@ -271,6 +386,53 @@ export class KeywordService {
     }
   }
 
+  async createManualBulk(input: CreateManualKeywordsBulkInput): Promise<{
+    created: Keyword[];
+    duplicates: KeywordBulkDuplicate[];
+  }> {
+    return inKeywordTransaction(async (repo) => {
+      const existing = await repo.listNormalizedKeywords(input.projectId);
+      const plan = planKeywordBulkCreate({
+        text: input.text,
+        existingNormalized: new Set(existing.map((item) => item.normalizedText)),
+      });
+      const groupIds = await requireGroups(repo, input.projectId, input.groupIds ?? []);
+      const created: Keyword[] = [];
+
+      for (const candidate of plan.candidates) {
+        const keyword = await repo.createKeyword({
+          projectId: input.projectId,
+          text: candidate.text,
+          normalizedText: candidate.normalizedText,
+          type: input.type,
+          intent: input.intent ?? null,
+          priority: input.priority ?? 'MEDIUM',
+          status: 'ACTIVE',
+          lifecycleStatus: input.lifecycleStatus ?? 'DISCOVERED',
+          locked: input.locked ?? false,
+          source: 'MANUAL',
+          language: input.language ?? null,
+          targetCountry: input.targetCountry ?? null,
+          notes: input.notes ?? null,
+          createdByUserId: input.actorUserId,
+        });
+        if (groupIds.length > 0) {
+          await repo.replaceGroupMemberships(input.projectId, keyword.id, groupIds);
+        }
+        await repo.appendAudit(
+          input.projectId,
+          keyword.id,
+          input.actorUserId,
+          'KEYWORD_CREATED',
+          { source: 'MANUAL', bulk: true, line: candidate.line },
+        );
+        created.push(keyword);
+      }
+
+      return { created, duplicates: plan.duplicates };
+    });
+  }
+
   async updateManual(input: UpdateManualKeywordInput): Promise<Keyword> {
     return inKeywordTransaction(async (repo) => {
       const current = await requireKeyword(repo, input.projectId, input.keywordId);
@@ -297,6 +459,7 @@ export class KeywordService {
       if (input.intent !== undefined) data.intent = input.intent;
       if (input.priority !== undefined) data.priority = input.priority;
       if (input.status !== undefined) data.status = input.status;
+      if (input.lifecycleStatus !== undefined) data.lifecycleStatus = input.lifecycleStatus;
       if (input.language !== undefined) data.language = input.language;
       if (input.targetCountry !== undefined) data.targetCountry = input.targetCountry;
       if (input.notes !== undefined) data.notes = input.notes;
@@ -431,6 +594,86 @@ export class KeywordService {
     ));
   }
 
+  async renameGroup(input: RenameKeywordGroupInput) {
+    const name = input.name.trim();
+    if (!name) throw new ValidationError('Keyword group name is required');
+
+    try {
+      return await inKeywordTransaction(async (repo) => {
+        const group = await requireGroup(repo, input.projectId, input.groupId);
+        const duplicate = await repo.findGroupByName(input.projectId, name);
+        if (duplicate && duplicate.id !== group.id) throw keywordGroupDuplicate();
+
+        await repo.renameGroup(input.projectId, input.groupId, name);
+        await repo.appendAudit(
+          input.projectId,
+          null,
+          input.actorUserId,
+          'KEYWORD_GROUP_RENAMED',
+          { groupId: input.groupId, previousName: group.name, name },
+        );
+        return requireGroup(repo, input.projectId, input.groupId);
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw keywordGroupDuplicate();
+      }
+      throw error;
+    }
+  }
+
+  async setGroupPrimaryKeyword(input: SetKeywordGroupPrimaryInput) {
+    return inKeywordTransaction(async (repo) => {
+      await requireGroup(repo, input.projectId, input.groupId);
+      if (input.primaryKeywordId) {
+        const keyword = await requireKeyword(repo, input.projectId, input.primaryKeywordId);
+        assertUnlockedOrAcknowledged(keyword.locked, input.acknowledgeLock);
+        await repo.addGroupMemberships(input.projectId, input.groupId, [keyword.id]);
+      }
+
+      await repo.setGroupPrimaryKeyword(
+        input.projectId,
+        input.groupId,
+        input.primaryKeywordId,
+      );
+      await repo.appendAudit(
+        input.projectId,
+        input.primaryKeywordId,
+        input.actorUserId,
+        'KEYWORD_GROUP_PRIMARY_CHANGED',
+        { groupId: input.groupId, primaryKeywordId: input.primaryKeywordId },
+      );
+      return requireGroup(repo, input.projectId, input.groupId);
+    });
+  }
+
+  async assignKeywordsToGroup(input: AssignKeywordsToGroupInput) {
+    return inKeywordTransaction(async (repo) => {
+      await requireGroup(repo, input.projectId, input.groupId);
+      const keywordIds = [...new Set(input.keywordIds)];
+      if (keywordIds.length === 0) {
+        throw new ValidationError('At least one keyword is required');
+      }
+
+      for (const keywordId of keywordIds) {
+        const keyword = await requireKeyword(repo, input.projectId, keywordId);
+        assertUnlockedOrAcknowledged(keyword.locked, input.acknowledgeLock);
+      }
+
+      await repo.addGroupMemberships(input.projectId, input.groupId, keywordIds);
+      for (const keywordId of keywordIds) {
+        await repo.appendAudit(
+          input.projectId,
+          keywordId,
+          input.actorUserId,
+          'KEYWORD_GROUP_ASSIGNED',
+          { groupId: input.groupId },
+        );
+      }
+      return repo.listMembershipsForGroup(input.projectId, input.groupId);
+    });
+  }
+
   async setGroups(input: SetKeywordGroupsInput) {
     return inKeywordTransaction(async (repo) => {
       const keyword = await requireKeyword(repo, input.projectId, input.keywordId);
@@ -449,60 +692,20 @@ export class KeywordService {
   }
 
   async acceptSuggestion(input: AcceptKeywordSuggestionInput): Promise<Keyword> {
+    return inKeywordTransaction((repo) => acceptSuggestionInTransaction(repo, input));
+  }
+
+  async acceptSuggestions(input: AcceptKeywordSuggestionsInput): Promise<Keyword[]> {
+    const suggestionIds = [...new Set(input.suggestionIds)];
+    if (suggestionIds.length === 0) {
+      throw new ValidationError('At least one keyword suggestion is required');
+    }
     return inKeywordTransaction(async (repo) => {
-      const suggestion = await requireSuggestion(repo, input.projectId, input.suggestionId);
-
-      if (suggestion.status === 'ACCEPTED' && suggestion.acceptedKeywordId) {
-        const linked = await repo.findKeyword(input.projectId, suggestion.acceptedKeywordId);
-        if (linked) return linked;
-        throw suggestionAlreadyDecided();
+      const accepted: Keyword[] = [];
+      for (const suggestionId of suggestionIds) {
+        accepted.push(await acceptSuggestionInTransaction(repo, { ...input, suggestionId }));
       }
-      if (suggestion.status !== 'PENDING') throw suggestionAlreadyDecided();
-
-      const seed = await requireKeyword(repo, input.projectId, suggestion.seedKeywordId);
-      const rawText = input.editedText ?? suggestion.suggestedText;
-      const normalizedText = assertUsableText(rawText);
-      let keyword = await repo.findByNormalized(input.projectId, normalizedText);
-
-      if (keyword?.status === 'ARCHIVED') throw duplicateError(keyword);
-
-      if (keyword) {
-        assertUnlockedOrAcknowledged(keyword.locked, undefined);
-      } else {
-        keyword = await repo.createKeyword({
-          projectId: input.projectId,
-          text: rawText.trim(),
-          normalizedText,
-          type: suggestion.suggestedType ?? 'LONG_TAIL',
-          intent: suggestion.suggestedIntent,
-          priority: 'MEDIUM',
-          status: 'ACTIVE',
-          locked: false,
-          source: 'AI_ACCEPTED',
-          language: null,
-          targetCountry: null,
-          notes: null,
-          createdByUserId: input.actorUserId,
-        });
-      }
-
-      await assertNoCycle(repo, input.projectId, keyword.id, seed.id);
-      await repo.upsertParent(input.projectId, seed.id, keyword.id);
-      const decidedAt = new Date();
-      await repo.updateSuggestion(input.projectId, suggestion.id, {
-        status: 'ACCEPTED',
-        acceptedKeywordId: keyword.id,
-        decidedAt,
-        decidedByUserId: input.actorUserId,
-      });
-      await repo.appendAudit(
-        input.projectId,
-        keyword.id,
-        input.actorUserId,
-        'KEYWORD_SUGGESTION_ACCEPTED',
-        { suggestionId: suggestion.id, seedKeywordId: seed.id },
-      );
-      return keyword;
+      return accepted;
     });
   }
 
@@ -529,8 +732,8 @@ export class KeywordService {
     });
   }
 
-  list(projectId: string) {
-    return new KeywordRepository().listKeywords(projectId);
+  list(projectId: string, filters: KeywordListQuery = {}) {
+    return new KeywordRepository().listKeywords(projectId, filters);
   }
 }
 

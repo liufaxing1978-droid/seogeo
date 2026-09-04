@@ -1,0 +1,104 @@
+.keyword-cluster-list {
+  display: grid;
+  gap: 12px;
+}
+
+.keyword-cluster-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  background: var(--ui-surface-subtle);
+}
+
+.keyword-cluster-card__heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.keyword-cluster-card__heading strong {
+  font-size: 13px;
+}
+
+.keyword-cluster-card__heading span,
+.keyword-cluster-assignment legend {
+  font-size: 11px;
+  color: var(--ui-text-secondary);
+}
+
+.keyword-cluster-card .keyword-inline-form {
+  margin-top: 0;
+}
+
+.keyword-cluster-assignment {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ui-border);
+}
+
+.keyword-cluster-assignment fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.keyword-cluster-assignment legend {
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.keyword-opportunity {
+  display: grid;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.keyword-opportunity__summary {
+  display: grid;
+  gap: 2px;
+}
+
+.keyword-opportunity__summary strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.keyword-opportunity__summary span,
+.keyword-opportunity__summary small,
+.keyword-opportunity__empty {
+  font-size: 10px;
+  color: var(--ui-text-secondary);
+}
+
+.keyword-opportunity__details summary {
+  cursor: pointer;
+  color: var(--ui-primary);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.keyword-opportunity__details dl {
+  display: grid;
+  gap: 5px;
+  min-width: 220px;
+  margin: 7px 0 0;
+}
+
+.keyword-opportunity__details dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 9px;
+}
+
+.keyword-opportunity__details dt,
+.keyword-opportunity__details dd {
+  margin: 0;
+}
+
+.keyword-opportunity__details dd {
+  color: var(--ui-text-secondary);
+}

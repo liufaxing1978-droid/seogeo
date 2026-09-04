@@ -59,7 +59,7 @@ describe('P11-01 keyword AI task authority', () => {
         intent: 'INFORMATIONAL',
         parentKeywordId: seed.id,
       });
-      await keywordService.createManual({
+      const unrelated = await keywordService.createManual({
         actorUserId: fixture.user.id,
         projectId: fixture.project.id,
         text: '不相关独立关键词',
@@ -70,11 +70,13 @@ describe('P11-01 keyword AI task authority', () => {
       const expectedChildren = [childA, childB]
         .sort((left, right) => left.id.localeCompare(right.id))
         .map((child) => child.text);
+      const expectedProjectKeywords = [seed, childA, childB, unrelated]
+        .sort((left, right) => left.id.localeCompare(right.id))
+        .map((keyword) => keyword.text);
 
-      expect(input).toEqual({
+      expect(input).toMatchObject({
         projectId: fixture.project.id,
         taskType: 'KEYWORD_EXPANSION',
-        requestKey: `keyword-expand:${seed.id}:${seed.updatedAt.toISOString()}:keyword-expansion-v1`,
         promptVersion: 'keyword-expansion-v1',
         factSnapshot: {
           seedKeyword: {
@@ -84,6 +86,7 @@ describe('P11-01 keyword AI task authority', () => {
             intent: 'INFORMATIONAL',
           },
           existingAcceptedChildren: expectedChildren,
+          existingProjectKeywords: expectedProjectKeywords,
           context: {
             industry: '民间信仰',
             defaultLanguage: 'zh-Hant',
@@ -92,6 +95,9 @@ describe('P11-01 keyword AI task authority', () => {
         },
         sourceReferences: [{ type: 'KEYWORD', id: seed.id }],
       });
+      expect(input.requestKey).toMatch(
+        new RegExp(`^keyword-expand:${seed.id}:${seed.updatedAt.toISOString()}:`),
+      );
     } finally {
       await fixture.cleanup();
     }
@@ -202,6 +208,58 @@ describe('P11-01 keyword AI task authority', () => {
       expect(await prisma.keyword.count({
         where: { projectId: fixture.project.id, source: 'AI_ACCEPTED' },
       })).toBe(0);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('does not materialize a suggestion whose normalized keyword already exists in the project', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OWNER',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const seed = await keywordService.createManual({
+        actorUserId: fixture.user.id,
+        projectId: fixture.project.id,
+        text: '符纸',
+        type: 'CORE',
+      });
+      await keywordService.createManual({
+        actorUserId: fixture.user.id,
+        projectId: fixture.project.id,
+        text: '传统符纸',
+        type: 'LONG_TAIL',
+      });
+      const task = await prisma.aiTask.create({
+        data: await keywordAi.buildKeywordExpansionTaskInput(fixture.project.id, seed.id),
+      });
+      const gateway: AiCompletionGateway = {
+        complete: vi.fn(async () => ({
+          provider: 'DEEPSEEK' as const,
+          model: 'deepseek-v4-flash',
+          responseId: 'dedupe-response',
+          content: JSON.stringify({
+            suggestions: [
+              { text: '传统符纸', type: 'LONG_TAIL', intent: 'INFORMATIONAL', rationale: '已存在的候选' },
+              { text: '符纸怎么保存', type: 'QUESTION', intent: 'INFORMATIONAL', rationale: '新的问题候选' },
+            ],
+          }),
+          finishReason: 'stop',
+          latencyMs: 120,
+          usage: { promptTokens: 80, completionTokens: 40, totalTokens: 120, cacheHitTokens: 0, cacheMissTokens: 80, reasoningTokens: null },
+        })),
+      };
+
+      await executeAiTask(task.id, { repository: new AiRepository(), gateway });
+
+      expect(await prisma.keywordSuggestion.findMany({
+        where: { aiTaskId: task.id },
+        select: { suggestedText: true },
+      })).toEqual([{ suggestedText: '符纸怎么保存' }]);
     } finally {
       await fixture.cleanup();
     }

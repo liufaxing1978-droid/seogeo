@@ -1,6 +1,8 @@
 <%
   const keywordById = new Map(keywordCenter.keywords.map((item) => [item.id, item]));
+  const keywordOptionById = new Map(keywordCenter.keywordOptions.map((item) => [item.id, item]));
   const groupById = new Map(keywordCenter.groups.map((item) => [item.id, item]));
+  const entityById = new Map(keywordCenter.entityOptions.map((item) => [item.id, item]));
   const typeLabels = {
     CORE: '核心词',
     LONG_TAIL: '长尾词',
@@ -34,11 +36,29 @@
     UNAVAILABLE: '不可用',
   };
   const statusLabels = { ACTIVE: '启用', DISABLED: '停用', ARCHIVED: '已归档' };
+  const lifecycleLabels = {
+    DISCOVERED: '已发现', EVALUATING: '评估中', APPROVED: '已批准', MAPPED: '已映射',
+    CONTENT_PLANNED: '内容已规划', CONTENT_IN_PROGRESS: '内容制作中', PUBLISHED: '已发布',
+    INDEXED: '已收录', RANKING: '已有排名', AI_CITED: 'AI 已引用',
+    NEEDS_OPTIMIZATION: '待优化', RETIRED: '已淘汰',
+  };
+  const opportunityComponentLabels = {
+    relevance: '项目相关度', demand: '搜索需求', rankingOpportunity: '排名机会',
+    difficulty: '竞争难度', contentGap: '内容缺口', authorityFit: '权威匹配',
+    strategicValue: '战略价值', geoValue: 'GEO 价值',
+  };
+  const opportunityBand = (score) => score === null ? '证据不足'
+    : score >= 90 ? '强烈建议' : score >= 75 ? '建议' : score >= 50 ? '观察' : '低优先级';
   const suggestionStatusLabels = {
     PENDING: '待审核',
     ACCEPTED: '已接受',
     REJECTED: '已拒绝',
     EXPIRED: '已过期',
+  };
+  const suggestionCategoryLabels = {
+    RELATED: '相关词',
+    LONG_TAIL: '长尾词',
+    QUESTION: '问题词',
   };
 %>
 
@@ -62,6 +82,22 @@
     <article class="keyword-summary__card keyword-summary__card--partial"><span>部分覆盖</span><strong><%= keywordCenter.summary.partial %></strong></article>
     <article class="keyword-summary__card"><span>未覆盖</span><strong><%= keywordCenter.summary.none %></strong></article>
     <article class="keyword-summary__card"><span>证据不足</span><strong><%= keywordCenter.summary.unknown %></strong></article>
+  </section>
+
+  <section class="keyword-panel" data-ui="keyword-filter-panel">
+    <div class="keyword-panel__heading">
+      <div><p class="keyword-panel__kicker">Workbench Filters</p><h3>筛选关键词</h3></div>
+      <p>筛选由服务端执行，所有条件保持项目隔离。</p>
+    </div>
+    <form class="keyword-create-form" method="get" action="/projects/<%= keywordCenter.project.id %>/keywords">
+      <label class="keyword-field keyword-field--wide"><span>筛选文本</span><input name="q" value="<%= keywordCenter.filters.q || '' %>" placeholder="关键词"></label>
+      <label class="keyword-field"><span>词类筛选</span><select name="type"><option value="">全部</option><% Object.entries(typeLabels).forEach(([value, label]) => { %><option value="<%= value %>" <%= keywordCenter.filters.type === value ? 'selected' : '' %>><%= label %></option><% }) %></select></label>
+      <label class="keyword-field"><span>筛选 Intent</span><select name="intent"><option value="">全部</option><% Object.entries(intentLabels).forEach(([value, label]) => { %><option value="<%= value %>" <%= keywordCenter.filters.intent === value ? 'selected' : '' %>><%= label %></option><% }) %></select></label>
+      <label class="keyword-field"><span>筛选生命周期</span><select name="lifecycleStatus"><option value="">全部</option><% Object.entries(lifecycleLabels).forEach(([value, label]) => { %><option value="<%= value %>" <%= keywordCenter.filters.lifecycleStatus === value ? 'selected' : '' %>><%= label %></option><% }) %></select></label>
+      <label class="keyword-field"><span>筛选 Cluster</span><select name="groupId"><option value="">全部</option><% keywordCenter.groups.forEach((group) => { %><option value="<%= group.id %>" <%= keywordCenter.filters.groupId === group.id ? 'selected' : '' %>><%= group.name %></option><% }) %></select></label>
+      <button class="keyword-button keyword-button--primary" type="submit">应用筛选</button>
+      <a class="keyword-button" href="/projects/<%= keywordCenter.project.id %>/keywords">清除</a>
+    </form>
   </section>
 
   <% if (canWriteKeywords) { %>
@@ -110,6 +146,7 @@
             <option value="LOW">低</option>
           </select>
         </label>
+        <label class="keyword-field"><span>生命周期</span><select name="lifecycleStatus"><option value="DISCOVERED" selected>已发现</option><option value="EVALUATING">评估中</option><option value="APPROVED">已批准</option></select></label>
         <label class="keyword-field">
           <span>父词</span>
           <select name="parentKeywordId">
@@ -124,6 +161,14 @@
           <span>战略锁定</span>
         </label>
         <button class="keyword-button keyword-button--primary" type="submit">添加关键词</button>
+      </form>
+      <form class="keyword-create-form" data-ui="keyword-bulk-create-form" method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/bulk">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <label class="keyword-field keyword-field--wide"><span>批量添加（每行一个，最多 100 个）</span><textarea name="text" rows="5" required maxlength="30000" placeholder="符纸&#10;六壬法教&#10;民间信仰"></textarea></label>
+        <label class="keyword-field"><span>批量词类</span><select name="type" required><option value="CORE">核心词</option><option value="LONG_TAIL">长尾词</option><option value="BRAND">品牌词</option><option value="QUESTION">问题词</option><option value="LOCAL">地域词</option><option value="COMMERCIAL">商业词</option></select></label>
+        <label class="keyword-field"><span>批量等级</span><select name="priority"><option value="HIGH">高</option><option value="MEDIUM" selected>中</option><option value="LOW">低</option></select></label>
+        <input type="hidden" name="lifecycleStatus" value="DISCOVERED">
+        <button class="keyword-button keyword-button--primary" type="submit">批量添加</button>
       </form>
     </section>
   <% } %>
@@ -147,10 +192,15 @@
               <th>关键词</th>
               <th>类型 / 意图</th>
               <th>优先级</th>
+              <th>机会分</th>
+              <th>Target URL</th>
+              <th>Cannibalization</th>
               <th>内容覆盖</th>
+              <th>内容缺口</th>
               <th>搜索证据</th>
               <th>父关键词 / 分组</th>
               <th>状态</th>
+              <th>生命周期</th>
               <% if (canWriteKeywords) { %><th>操作</th><% } %>
             </tr>
           </thead>
@@ -158,6 +208,7 @@
             <% keywordCenter.keywords.forEach((keyword) => {
               const parent = keyword.parentKeywordId ? keywordById.get(keyword.parentKeywordId) : null;
               const keywordGroups = keyword.groupIds.map((id) => groupById.get(id)).filter(Boolean);
+              const keywordEntities = keyword.entityIds.map((id) => entityById.get(id)).filter(Boolean);
               const topMatch = keyword.coverage.matches[0];
             %>
               <tr data-ui="keyword-row" data-keyword-id="<%= keyword.id %>">
@@ -168,6 +219,16 @@
                     <% if (keyword.locked) { %><span class="keyword-lock">已锁定</span><% } %>
                   </div>
                 </td>
+                <td data-ui="keyword-target-url"><%= keyword.target.url || '未映射' %><small><%= keyword.target.state === 'INHERITED' ? '继承 Cluster' : keyword.target.state === 'AMBIGUOUS' ? 'Cluster 映射冲突' : keyword.target.state === 'DIRECT' ? '直接映射' : '' %></small></td>
+                <td data-ui="keyword-cannibalization">
+                  <% if (keyword.cannibalization) { %>
+                    <strong><%= keyword.cannibalization.risk %></strong>
+                    <small><%= keyword.cannibalization.recommendedAction || '无需动作' %> · 置信度 <%= keyword.cannibalization.confidence === null ? '未知' : Math.round(keyword.cannibalization.confidence * 100) + '%' %></small>
+                  <% } else { %>
+                    <span>未分析</span>
+                  <% } %>
+                  <% if (canWriteKeywords) { %><form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/cannibalization"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="keyword-button" type="submit"><%= keyword.cannibalization ? '重新分析' : '分析冲突' %></button></form><% } %>
+                </td>
                 <td>
                   <div class="keyword-meta-stack">
                     <span><%= typeLabels[keyword.type] || keyword.type %></span>
@@ -176,6 +237,29 @@
                 </td>
                 <td><span class="keyword-priority keyword-priority--<%= keyword.priority.toLowerCase() %>"><%= keyword.priority === 'HIGH' ? '高' : keyword.priority === 'LOW' ? '低' : '中' %></span></td>
                 <td>
+                  <div class="keyword-opportunity" data-ui="keyword-opportunity-score">
+                    <% if (keyword.opportunity) { %>
+                      <div class="keyword-opportunity__summary">
+                        <strong><%= keyword.opportunity.score === null ? 'N/A' : keyword.opportunity.score.toFixed(1) %></strong>
+                        <span><%= opportunityBand(keyword.opportunity.score) %></span>
+                        <small>置信度 <%= Math.round(keyword.opportunity.dataConfidence * 100) %>%</small>
+                      </div>
+                      <details class="keyword-opportunity__details">
+                        <summary>评分依据</summary>
+                        <dl><% Object.entries(keyword.opportunity.breakdown).forEach(([component, entry]) => { %><div><dt><%= opportunityComponentLabels[component] || component %></dt><dd><%= entry.state === 'KNOWN' ? entry.score.toFixed(1) : '证据不足' %> · 权重 <%= entry.weight %>%</dd></div><% }) %></dl>
+                      </details>
+                    <% } else { %>
+                      <span class="keyword-opportunity__empty">未评分</span>
+                    <% } %>
+                    <% if (canWriteKeywords) { %>
+                      <form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/opportunity-score">
+                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                        <button class="keyword-button" type="submit"><%= keyword.opportunity ? '重新评分' : '计算机会分' %></button>
+                      </form>
+                    <% } %>
+                  </div>
+                </td>
+                <td>
                   <div class="keyword-coverage keyword-coverage--<%= keyword.coverage.status.toLowerCase() %>" data-ui="keyword-coverage">
                     <strong><%= coverageLabels[keyword.coverage.status] %></strong>
                     <% if (topMatch) { %>
@@ -183,6 +267,26 @@
                       <small>证据分 <%= topMatch.score %> · 标题 <%= topMatch.titleMatch ? '✓' : '—' %> · H1 <%= topMatch.h1Match ? '✓' : '—' %></small>
                     <% } else { %>
                       <small><%= keyword.coverage.reason === 'NO_ACTIVE_PAGE_EVIDENCE' ? '暂无启用页面证据' : keyword.coverage.reason === 'NO_USABLE_SNAPSHOT_EVIDENCE' ? '暂无可用抓取快照' : '已有页面证据，但未发现匹配' %></small>
+                    <% } %>
+                  </div>
+                </td>
+                <td>
+                  <div class="keyword-meta-stack" data-ui="keyword-content-gap">
+                    <% if (keyword.contentGap) { %>
+                      <strong><%= keyword.contentGap.status === 'OPEN' ? '待规划' : keyword.contentGap.status === 'CONTENT_PLANNED' ? '内容已规划' : keyword.contentGap.status === 'IN_PROGRESS' ? '内容制作中' : keyword.contentGap.status === 'RESOLVED' ? '已解决' : '已忽略' %></strong>
+                      <small><%= keyword.contentGap.reasonCodes[0] === 'NO_ACTIVE_PAGE_EVIDENCE' ? '暂无启用页面证据' : keyword.contentGap.reasonCodes[0] === 'NO_USABLE_SNAPSHOT_EVIDENCE' ? '暂无可用抓取快照' : keyword.contentGap.reasonCodes[0] === 'NO_MATCH' ? '已有页面但未匹配' : '覆盖状态：' + keyword.contentGap.coverageStatus %></small>
+                      <% if (canWriteKeywords && keyword.contentGap.status === 'OPEN') { %><form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/content-gap/plan"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="keyword-button" type="submit">规划内容</button></form><% } %>
+                      <div data-ui="keyword-content-brief">
+                        <% if (keyword.contentGap.briefRequest) { %>
+                          <small><%= keyword.contentGap.briefRequest.status === 'PENDING' ? 'Brief 待提交' : keyword.contentGap.briefRequest.status === 'QUEUED' ? 'Brief 已排队' : keyword.contentGap.briefRequest.status === 'COMPLETED' ? 'Brief 已生成' : 'Brief 生成失败，可重试' %></small>
+                        <% } else if (canWriteKeywords && keyword.contentGap.status !== 'RESOLVED') { %>
+                          <form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/content-gap/brief"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="keyword-button" type="submit">生成建议 Brief</button></form>
+                        <% } %>
+                      </div>
+                      <a href="<%= keyword.contentGap.contentEntryHref %>">进入内容中心</a>
+                    <% } else { %>
+                      <span>未评估</span>
+                      <% if (canWriteKeywords) { %><form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/content-gap/plan"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="keyword-button" type="submit">评估并规划</button></form><% } %>
                     <% } %>
                   </div>
                 </td>
@@ -226,9 +330,11 @@
                   <div class="keyword-meta-stack">
                     <span>父词：<%= parent ? parent.text : '—' %></span>
                     <small>分组：<%= keywordGroups.length ? keywordGroups.map((group) => group.name).join('、') : '—' %></small>
+                    <small data-ui="keyword-entity-map">实体：<%= keywordEntities.length ? keywordEntities.map((entity) => entity.canonicalName).join('、') : '—' %></small>
                   </div>
                 </td>
                 <td><span class="keyword-status keyword-status--<%= keyword.status.toLowerCase() %>"><%= statusLabels[keyword.status] %></span></td>
+                <td><span class="keyword-status"><%= lifecycleLabels[keyword.lifecycleStatus] || keyword.lifecycleStatus %></span></td>
                 <% if (canWriteKeywords) { %>
                   <td>
                     <details class="keyword-actions">
@@ -261,6 +367,7 @@
                                 <option value="LOW" <%= keyword.priority === 'LOW' ? 'selected' : '' %>>低</option>
                               </select>
                             </label>
+                            <label><span>生命周期</span><select name="lifecycleStatus"><% Object.entries(lifecycleLabels).forEach(([value, label]) => { %><option value="<%= value %>" <%= keyword.lifecycleStatus === value ? 'selected' : '' %>><%= label %></option><% }) %></select></label>
                             <button class="keyword-button" type="submit">保存编辑</button>
                           </form>
 
@@ -306,6 +413,18 @@
                             <button class="keyword-button" type="submit">保存分组</button>
                           </form>
 
+                          <form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/entities">
+                            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                            <fieldset>
+                              <legend>关联实体</legend>
+                              <% if (!keywordCenter.entityOptions.length) { %><small>尚无可关联的活跃实体；请先在 GEO 实体页产生或确认实体。</small><% } %>
+                              <% keywordCenter.entityOptions.forEach((entity) => { %>
+                                <label class="keyword-check"><input type="checkbox" name="entityIds" value="<%= entity.id %>" <%= keyword.entityIds.includes(entity.id) ? 'checked' : '' %>><span><%= entity.canonicalName %> · <%= entity.entityType %></span></label>
+                              <% }) %>
+                            </fieldset>
+                            <button class="keyword-button" type="submit">保存实体</button>
+                          </form>
+
                           <form method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/archive">
                             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                             <% if (keyword.locked) { %><input type="hidden" name="acknowledgeLock" value="true"><% } %>
@@ -331,22 +450,64 @@
   </section>
 
   <div class="keyword-center__lower-grid">
-    <section class="keyword-panel">
+    <section class="keyword-panel" data-ui="keyword-cluster-panel">
       <div class="keyword-panel__heading">
-        <div><p class="keyword-panel__kicker">Topic Groups</p><h3>关键词分组</h3></div>
+        <div><p class="keyword-panel__kicker">Keyword Cluster</p><h3>关键词 Cluster</h3></div>
       </div>
       <% if (keywordCenter.groups.length) { %>
-        <div class="keyword-chip-list">
-          <% keywordCenter.groups.forEach((group) => { %><span class="keyword-chip"><%= group.name %></span><% }) %>
+        <div class="keyword-cluster-list">
+          <% keywordCenter.groups.forEach((group) => {
+            const primaryKeyword = group.primaryKeywordId ? keywordOptionById.get(group.primaryKeywordId) : null;
+            const groupEntities = group.entityIds.map((id) => entityById.get(id)).filter(Boolean);
+          %>
+            <article class="keyword-cluster-card" data-cluster-id="<%= group.id %>">
+              <div class="keyword-cluster-card__heading">
+                <strong><%= group.name %></strong>
+                <span>主词：<%= primaryKeyword ? primaryKeyword.text : '未设置' %></span>
+                <span data-ui="keyword-entity-map">实体：<%= groupEntities.length ? groupEntities.map((entity) => entity.canonicalName).join('、') : '—' %></span>
+              </div>
+              <div data-ui="keyword-cluster-content-brief">
+                <% if (group.briefRequest) { %>
+                  <small><%= group.briefRequest.status === 'PENDING' ? 'Brief 待提交' : group.briefRequest.status === 'QUEUED' ? 'Brief 已排队' : group.briefRequest.status === 'COMPLETED' ? 'Brief 已生成' : 'Brief 生成失败，可重试' %></small>
+                <% } else if (canWriteKeywords) { %>
+                  <form method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups/<%= group.id %>/content-brief"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="keyword-button" type="submit">从 Cluster 生成建议 Brief</button></form>
+                <% } %>
+              </div>
+              <% if (canWriteKeywords) { %>
+                <form class="keyword-inline-form" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups/<%= group.id %>/rename">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <label class="keyword-field"><span>Cluster 名称</span><input name="name" value="<%= group.name %>" required maxlength="160"></label>
+                  <button class="keyword-button" type="submit">重命名</button>
+                </form>
+                <form class="keyword-inline-form" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups/<%= group.id %>/primary-keyword">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <label class="keyword-field"><span>主词</span><select name="primaryKeywordId"><option value="">未设置</option><% keywordCenter.keywordOptions.filter((item) => item.status !== 'ARCHIVED').forEach((item) => { %><option value="<%= item.id %>" <%= group.primaryKeywordId === item.id ? 'selected' : '' %>><%= item.text %></option><% }) %></select></label>
+                  <button class="keyword-button" type="submit">设置主词</button>
+                </form>
+                <form class="keyword-cluster-assignment" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups/<%= group.id %>/keywords">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <fieldset><legend>批量加入成员词</legend><div class="keyword-chip-list"><% keywordCenter.keywordOptions.filter((item) => item.status !== 'ARCHIVED').forEach((item) => { %><label class="keyword-check"><input type="checkbox" name="keywordIds" value="<%= item.id %>"><span><%= item.text %></span></label><% }) %></div></fieldset>
+                  <label class="keyword-check"><input type="checkbox" name="acknowledgeLock" value="true"><span>确认调整锁定词</span></label>
+                  <button class="keyword-button" type="submit">批量加入</button>
+                </form>
+                <form class="keyword-cluster-assignment" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups/<%= group.id %>/entities">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <fieldset><legend>关联实体</legend><div class="keyword-chip-list"><% keywordCenter.entityOptions.forEach((entity) => { %><label class="keyword-check"><input type="checkbox" name="entityIds" value="<%= entity.id %>" <%= group.entityIds.includes(entity.id) ? 'checked' : '' %>><span><%= entity.canonicalName %> · <%= entity.entityType %></span></label><% }) %></div></fieldset>
+                  <% if (!keywordCenter.entityOptions.length) { %><small>尚无可关联的活跃实体；请先在 GEO 实体页产生或确认实体。</small><% } %>
+                  <button class="keyword-button" type="submit">保存实体</button>
+                </form>
+              <% } %>
+            </article>
+          <% }) %>
         </div>
       <% } else { %>
-        <p class="keyword-empty keyword-empty--compact">尚未建立分组。</p>
+        <p class="keyword-empty keyword-empty--compact">尚未建立 Keyword Cluster。</p>
       <% } %>
       <% if (canWriteKeywords) { %>
         <form class="keyword-inline-form" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-          <label class="keyword-field"><span>新分组</span><input name="name" required placeholder="例如：符纸专题"></label>
-          <button class="keyword-button" type="submit">创建分组</button>
+          <label class="keyword-field"><span>新 Cluster</span><input name="name" required placeholder="例如：符纸专题"></label>
+          <button class="keyword-button" type="submit">创建 Cluster</button>
         </form>
       <% } %>
     </section>
@@ -380,6 +541,14 @@
       <% if (!keywordCenter.suggestions.length) { %>
         <p class="keyword-empty keyword-empty--compact">暂无 AI 建议。建议不会自动创建、发布或修改关键词。</p>
       <% } else { %>
+        <% const pendingSuggestions = keywordCenter.suggestions.filter((suggestion) => suggestion.status === 'PENDING'); %>
+        <% if (pendingSuggestions.length && canWriteKeywords) { %>
+          <form id="keyword-suggestion-bulk-accept-form" class="keyword-inline-form" data-ui="keyword-suggestion-bulk-accept" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-suggestions/accept">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <span>勾选候选后批量入库；不会自动创建未选中的建议。</span>
+            <button class="keyword-button keyword-button--primary" type="submit">接受已选建议</button>
+          </form>
+        <% } %>
         <div class="keyword-suggestion-list">
           <% keywordCenter.suggestions.forEach((suggestion) => {
             const seedKeyword = keywordById.get(suggestion.seedKeywordId);
@@ -389,12 +558,14 @@
                 <div>
                   <strong><%= suggestion.suggestedText %></strong>
                   <small>来源核心词：<%= seedKeyword ? seedKeyword.text : '—' %></small>
+                  <small><%= suggestionCategoryLabels[suggestion.category] || suggestion.category %> · <%= suggestion.suggestedIntent ? (intentLabels[suggestion.suggestedIntent] || suggestion.suggestedIntent) : '未分类 Intent' %></small>
                 </div>
                 <span class="keyword-suggestion-status"><%= suggestionStatusLabels[suggestion.status] || suggestion.status %></span>
               </div>
               <p><%= suggestion.rationale || '未提供理由' %></p>
 
               <% if (suggestion.status === 'PENDING' && canWriteKeywords) { %>
+                <label class="keyword-check"><input form="keyword-suggestion-bulk-accept-form" type="checkbox" name="suggestionIds" value="<%= suggestion.id %>"><span>加入本次批量接受</span></label>
                 <div class="keyword-suggestion-actions">
                   <form data-ui="keyword-suggestion-accept" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-suggestions/<%= suggestion.id %>/accept">
                     <input type="hidden" name="_csrf" value="<%= csrfToken %>">

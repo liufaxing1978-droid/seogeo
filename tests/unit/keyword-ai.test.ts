@@ -44,8 +44,12 @@ const keywordExpansionFacts = keywordAiModule as unknown as {
       source?: string;
       status?: string;
     }>;
+    existingProjectKeywords: Array<{
+      id: string;
+      text: string;
+    }>;
   }): unknown;
-  keywordExpansionRequestKey(seed: { id: string; updatedAt: Date }): string;
+  keywordExpansionRequestKey(seed: { id: string; updatedAt: Date }, factSnapshot: unknown): string;
 };
 
 describe('keyword expansion structured output', () => {
@@ -149,6 +153,7 @@ describe('keyword expansion structured output', () => {
         timezone: 'Asia/Shanghai',
       },
       existingAcceptedChildren: [childB, childA],
+      existingProjectKeywords: [childB, childA, seedKeyword],
     });
 
     expect(snapshot).toEqual({
@@ -159,6 +164,7 @@ describe('keyword expansion structured output', () => {
         intent: 'INFORMATIONAL',
       },
       existingAcceptedChildren: ['符纸用途', '符纸历史'],
+      existingProjectKeywords: ['符纸', '符纸用途', '符纸历史'],
       context: {
         industry: '民间信仰',
         defaultLanguage: 'zh-CN',
@@ -166,8 +172,46 @@ describe('keyword expansion structured output', () => {
       },
     });
 
-    expect(keywordExpansionFacts.keywordExpansionRequestKey(seedKeyword)).toBe(
-      `keyword-expand:${seedKeyword.id}:${updatedAt.toISOString()}:keyword-expansion-v1`,
-    );
+    expect(keywordExpansionFacts.keywordExpansionRequestKey(seedKeyword, snapshot))
+      .toMatch(new RegExp(`^keyword-expand:${seedKeyword.id}:${updatedAt.toISOString()}:`));
+  });
+
+  it('includes all project keywords for de-duplication and keys generation by the fact snapshot', () => {
+    const seed = {
+      id: '00000000-0000-4000-8000-000000000010',
+      text: '符纸',
+      normalizedText: '符纸',
+      type: 'CORE',
+      intent: 'INFORMATIONAL',
+      language: 'zh-CN',
+      targetCountry: 'CN',
+      updatedAt: new Date('2026-09-03T01:00:00.000Z'),
+    };
+    const baseInput = {
+      seedKeyword: seed,
+      projectContext: { defaultLanguage: 'zh-CN', targetCountry: 'CN', industry: null },
+      existingAcceptedChildren: [],
+    };
+    const initial = keywordExpansionFacts.buildKeywordExpansionFactSnapshot({
+      ...baseInput,
+      existingProjectKeywords: [
+        { id: '00000000-0000-4000-8000-000000000012', text: '符纸用途' },
+        { id: '00000000-0000-4000-8000-000000000011', text: '传统符纸' },
+      ],
+    });
+    const afterAcceptance = keywordExpansionFacts.buildKeywordExpansionFactSnapshot({
+      ...baseInput,
+      existingProjectKeywords: [
+        { id: '00000000-0000-4000-8000-000000000011', text: '传统符纸' },
+        { id: '00000000-0000-4000-8000-000000000012', text: '符纸用途' },
+        { id: '00000000-0000-4000-8000-000000000013', text: '符纸怎么用' },
+      ],
+    });
+
+    expect(initial).toMatchObject({
+      existingProjectKeywords: ['传统符纸', '符纸用途'],
+    });
+    expect(keywordExpansionFacts.keywordExpansionRequestKey(seed, initial))
+      .not.toBe(keywordExpansionFacts.keywordExpansionRequestKey(seed, afterAcceptance));
   });
 });

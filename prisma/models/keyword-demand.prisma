@@ -28,6 +28,21 @@ enum KeywordStatus {
   ARCHIVED
 }
 
+enum KeywordLifecycleStatus {
+  DISCOVERED
+  EVALUATING
+  APPROVED
+  MAPPED
+  CONTENT_PLANNED
+  CONTENT_IN_PROGRESS
+  PUBLISHED
+  INDEXED
+  RANKING
+  AI_CITED
+  NEEDS_OPTIMIZATION
+  RETIRED
+}
+
 enum KeywordSource {
   MANUAL
   AI_ACCEPTED
@@ -47,6 +62,36 @@ enum KeywordDiscoveryStatus {
   REJECTED
 }
 
+enum KeywordCannibalizationRisk {
+  NONE
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum KeywordCannibalizationAction {
+  REVIEW
+  MERGE
+  REDIRECT
+  REPOSITION
+  CANONICAL_REVIEW
+}
+
+enum KeywordContentGapStatus {
+  OPEN
+  CONTENT_PLANNED
+  IN_PROGRESS
+  RESOLVED
+  IGNORED
+}
+
+enum KeywordContentBriefRequestStatus {
+  PENDING
+  QUEUED
+  COMPLETED
+  FAILED
+}
+
 model Keyword {
   id                  String          @id @default(uuid()) @db.Uuid
   projectId           String          @db.Uuid
@@ -56,6 +101,7 @@ model Keyword {
   intent              KeywordIntent?
   priority            KeywordPriority @default(MEDIUM)
   status              KeywordStatus   @default(ACTIVE)
+  lifecycleStatus     KeywordLifecycleStatus @default(DISCOVERED)
   locked              Boolean         @default(false)
   source              KeywordSource
   language            String?
@@ -69,12 +115,20 @@ model Keyword {
   parentEdges         KeywordRelation[]        @relation("KeywordParent")
   childEdge           KeywordRelation?         @relation("KeywordChild")
   groupMemberships    KeywordGroupMembership[]
+  primaryForGroups    KeywordGroup[]           @relation("KeywordGroupPrimary")
   seededSuggestions   KeywordSuggestion[]      @relation("KeywordSuggestionSeed")
   acceptedSuggestions KeywordSuggestion[]      @relation("KeywordSuggestionAccepted")
   auditEvents         KeywordAuditEvent[]
+  opportunitySnapshots KeywordOpportunitySnapshot[]
+  directTargetMapping KeywordTargetMapping? @relation("KeywordTargetMappingKeyword")
+  cannibalizationSnapshots KeywordCannibalizationSnapshot[] @relation("KeywordCannibalizationKeyword")
+  contentGaps KeywordContentGap[] @relation("KeywordContentGapKeyword")
+  entityMappings KeywordEntityMapping[] @relation("KeywordEntityMappingKeyword")
+  contentBriefRequests KeywordContentBriefRequest[] @relation("KeywordContentBriefRequestKeyword")
 
   @@unique([projectId, normalizedText])
   @@index([projectId, status])
+  @@index([projectId, lifecycleStatus])
   @@index([projectId, type])
   @@index([projectId, priority])
 }
@@ -95,18 +149,26 @@ model KeywordRelation {
 }
 
 model KeywordGroup {
-  id          String   @id @default(uuid()) @db.Uuid
-  projectId   String   @db.Uuid
-  name        String
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(uuid()) @db.Uuid
+  projectId        String   @db.Uuid
+  name             String
+  description      String?
+  primaryKeywordId String?  @db.Uuid
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  project     Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  memberships KeywordGroupMembership[]
+  project        Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  primaryKeyword Keyword?                 @relation("KeywordGroupPrimary", fields: [primaryKeywordId], references: [id], onDelete: SetNull)
+  memberships    KeywordGroupMembership[]
+  targetMapping  KeywordTargetMapping? @relation("KeywordTargetMappingGroup")
+  cannibalizationSnapshots KeywordCannibalizationSnapshot[] @relation("KeywordCannibalizationGroup")
+  contentGaps KeywordContentGap[] @relation("KeywordContentGapGroup")
+  entityMappings KeywordEntityMapping[] @relation("KeywordEntityMappingGroup")
+  contentBriefRequests KeywordContentBriefRequest[] @relation("KeywordContentBriefRequestGroup")
 
   @@unique([projectId, name])
   @@index([projectId])
+  @@index([projectId, primaryKeywordId])
 }
 
 model KeywordGroupMembership {
@@ -184,4 +246,142 @@ model KeywordAuditEvent {
 
   @@index([projectId, createdAt])
   @@index([keywordId, createdAt])
+}
+
+model KeywordOpportunitySnapshot {
+  id               String   @id @default(uuid()) @db.Uuid
+  projectId        String   @db.Uuid
+  keywordId        String   @db.Uuid
+  score            Float?
+  dataConfidence   Float
+  breakdown        Json
+  sourceProvenance Json
+  formulaVersion   String
+  createdByUserId  String?  @db.Uuid
+  createdAt        DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, keywordId, createdAt])
+  @@index([projectId, createdAt])
+}
+
+model KeywordTargetMapping {
+  id              String   @id @default(uuid()) @db.Uuid
+  projectId       String   @db.Uuid
+  keywordId       String?  @unique @db.Uuid
+  groupId         String?  @unique @db.Uuid
+  targetUrl       String
+  normalizedUrl   String
+  pageId          String?  @db.Uuid
+  createdByUserId String?  @db.Uuid
+  updatedByUserId String?  @db.Uuid
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword Keyword?      @relation("KeywordTargetMappingKeyword", fields: [keywordId], references: [id], onDelete: Cascade)
+  group   KeywordGroup? @relation("KeywordTargetMappingGroup", fields: [groupId], references: [id], onDelete: Cascade)
+  page    Page?         @relation(fields: [pageId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, normalizedUrl])
+  @@index([projectId, pageId])
+}
+
+model KeywordCannibalizationSnapshot {
+  id               String                      @id @default(uuid()) @db.Uuid
+  projectId        String                      @db.Uuid
+  keywordId        String?                     @db.Uuid
+  groupId          String?                     @db.Uuid
+  risk             KeywordCannibalizationRisk
+  recommendedAction KeywordCannibalizationAction?
+  urls             Json
+  reasons          Json
+  sourceProvenance Json
+  confidence       Float?
+  formulaVersion   String
+  createdByUserId  String?                     @db.Uuid
+  createdAt        DateTime                    @default(now())
+
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword Keyword?      @relation("KeywordCannibalizationKeyword", fields: [keywordId], references: [id], onDelete: Cascade)
+  group   KeywordGroup? @relation("KeywordCannibalizationGroup", fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, keywordId, createdAt])
+  @@index([projectId, groupId, createdAt])
+}
+
+model KeywordContentGap {
+  id               String                  @id @default(uuid()) @db.Uuid
+  projectId        String                  @db.Uuid
+  keywordId        String?                 @db.Uuid
+  groupId          String?                 @db.Uuid
+  coverageStatus   String
+  status           KeywordContentGapStatus @default(OPEN)
+  targetUrl        String?
+  reasonCodes      Json
+  sourceProvenance Json
+  createdByUserId  String?                 @db.Uuid
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword Keyword?      @relation("KeywordContentGapKeyword", fields: [keywordId], references: [id], onDelete: Cascade)
+  group   KeywordGroup? @relation("KeywordContentGapGroup", fields: [groupId], references: [id], onDelete: Cascade)
+  contentBriefRequests KeywordContentBriefRequest[]
+
+  @@unique([keywordId])
+  @@unique([groupId])
+  @@index([projectId, status])
+}
+
+model KeywordContentBriefRequest {
+  id             String                          @id @default(uuid()) @db.Uuid
+  projectId      String                          @db.Uuid
+  keywordId      String?                         @db.Uuid
+  groupId        String?                         @db.Uuid
+  contentGapId   String?                         @db.Uuid
+  aiTaskId       String?                         @unique @db.Uuid
+  contentBriefId String?                         @unique @db.Uuid
+  snapshotHash   String
+  factsSnapshot  Json
+  status         KeywordContentBriefRequestStatus @default(PENDING)
+  createdByUserId String?                        @db.Uuid
+  createdAt      DateTime                        @default(now())
+  updatedAt      DateTime                        @updatedAt
+
+  project       Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword       Keyword?           @relation("KeywordContentBriefRequestKeyword", fields: [keywordId], references: [id], onDelete: Cascade)
+  group         KeywordGroup?      @relation("KeywordContentBriefRequestGroup", fields: [groupId], references: [id], onDelete: Cascade)
+  contentGap    KeywordContentGap? @relation(fields: [contentGapId], references: [id], onDelete: Cascade)
+  aiTask        AiTask?            @relation(fields: [aiTaskId], references: [id], onDelete: SetNull)
+  contentBrief  ContentBrief?      @relation(fields: [contentBriefId], references: [id], onDelete: SetNull)
+
+  @@unique([contentGapId, snapshotHash])
+  @@unique([groupId, snapshotHash])
+  @@index([projectId, status, createdAt])
+  @@index([projectId, keywordId])
+  @@index([projectId, groupId])
+}
+
+model KeywordEntityMapping {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @db.Uuid
+  keywordId String?  @db.Uuid
+  groupId   String?  @db.Uuid
+  entityId  String   @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword Keyword?      @relation("KeywordEntityMappingKeyword", fields: [keywordId], references: [id], onDelete: Cascade)
+  group   KeywordGroup? @relation("KeywordEntityMappingGroup", fields: [groupId], references: [id], onDelete: Cascade)
+  entity  Entity        @relation(fields: [entityId], references: [id], onDelete: Restrict)
+
+  @@unique([keywordId, entityId])
+  @@unique([groupId, entityId])
+  @@index([projectId, keywordId])
+  @@index([projectId, groupId])
+  @@index([projectId, entityId])
 }

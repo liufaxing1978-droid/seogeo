@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Prisma, type AiTask } from '@prisma/client';
 import { z } from 'zod';
 import { NotFoundError } from '../../core/errors.js';
@@ -48,6 +49,7 @@ export interface KeywordExpansionProjectContext {
 export interface KeywordExpansionFactSnapshot {
   seedKeyword: KeywordExpansionSeedFact;
   existingAcceptedChildren: string[];
+  existingProjectKeywords: string[];
   context: KeywordExpansionProjectContext;
 }
 
@@ -70,6 +72,7 @@ export function buildKeywordExpansionFactSnapshot(input: {
   seedKeyword: KeywordExpansionSeedFact;
   projectContext: KeywordExpansionProjectContext;
   existingAcceptedChildren: KeywordExpansionChildFact[];
+  existingProjectKeywords: KeywordExpansionChildFact[];
 }): KeywordExpansionFactSnapshot {
   return {
     seedKeyword: {
@@ -81,6 +84,9 @@ export function buildKeywordExpansionFactSnapshot(input: {
     existingAcceptedChildren: [...input.existingAcceptedChildren]
       .sort((left, right) => left.id.localeCompare(right.id))
       .map((child) => child.text),
+    existingProjectKeywords: [...input.existingProjectKeywords]
+      .sort((left, right) => left.id.localeCompare(right.id))
+      .map((keyword) => keyword.text),
     context: {
       industry: input.projectContext.industry,
       defaultLanguage: input.projectContext.defaultLanguage,
@@ -89,17 +95,25 @@ export function buildKeywordExpansionFactSnapshot(input: {
   };
 }
 
-export function keywordExpansionRequestKey(seed: { id: string; updatedAt: Date }): string {
-  return `keyword-expand:${seed.id}:${seed.updatedAt.toISOString()}:${KEYWORD_EXPANSION_PROMPT_ID}`;
+export function keywordExpansionRequestKey(
+  seed: { id: string; updatedAt: Date },
+  factSnapshot: KeywordExpansionFactSnapshot,
+): string {
+  const factFingerprint = createHash('sha256')
+    .update(JSON.stringify(factSnapshot))
+    .digest('hex')
+    .slice(0, 16);
+  return `keyword-expand:${seed.id}:${seed.updatedAt.toISOString()}:${factFingerprint}:${KEYWORD_EXPANSION_PROMPT_ID}`;
 }
 
 export async function buildKeywordExpansionTaskInput(
   projectId: string,
   seedKeywordId: string,
 ): Promise<CreateAiTaskInput> {
-  const [project, seed] = await Promise.all([
+  const [project, seed, projectKeywords] = await Promise.all([
     projectRepository.findById(projectId),
     prisma.keyword.findFirst({ where: { id: seedKeywordId, projectId } }),
+    prisma.keyword.findMany({ where: { projectId }, select: { id: true, text: true } }),
   ]);
 
   if (!project) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
@@ -131,12 +145,13 @@ export async function buildKeywordExpansionTaskInput(
       targetCountry: project.targetCountry,
     },
     existingAcceptedChildren: children,
+    existingProjectKeywords: projectKeywords,
   });
 
   return {
     projectId,
     taskType: 'KEYWORD_EXPANSION',
-    requestKey: keywordExpansionRequestKey(seed),
+    requestKey: keywordExpansionRequestKey(seed, factSnapshot),
     promptVersion: KEYWORD_EXPANSION_PROMPT_ID,
     factSnapshot: factSnapshot as unknown as Prisma.InputJsonValue,
     sourceReferences: [{ type: 'KEYWORD', id: seed.id }] as Prisma.InputJsonValue,
@@ -174,8 +189,17 @@ export async function materializeKeywordSuggestions(
   });
   if (!seed) throw new NotFoundError('Keyword not found', 'KEYWORD_NOT_FOUND');
 
+  const existingKeywords = await tx.keyword.findMany({
+    where: { projectId: task.projectId },
+    select: { normalizedText: true },
+  });
+  const existingNormalized = new Set(existingKeywords.map((keyword) => keyword.normalizedText));
+  const newSuggestions = output.suggestions.filter((item) => (
+    !existingNormalized.has(normalizeKeywordText(item.text))
+  ));
+
   await tx.keywordSuggestion.createMany({
-    data: output.suggestions.map((item) => ({
+    data: newSuggestions.map((item) => ({
       projectId: task.projectId,
       seedKeywordId: seed.id,
       suggestedText: item.text.trim(),

@@ -195,6 +195,165 @@ async function seedOfficialSearchEvidence(
 }
 
 describe('P11-01 keyword center web UI', () => {
+  it('renders persisted P7 Entity links and only offers active project entities for keyword and Cluster mapping', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const keyword = await keywordService.createManual({ actorUserId: fixture.user.id, projectId: fixture.project.id, text: '实体关联词', type: 'CORE' });
+      const group = await prisma.keywordGroup.create({ data: { projectId: fixture.project.id, name: '实体 Cluster' } });
+      const active = await prisma.entity.create({ data: { projectId: fixture.project.id, entityType: 'TOPIC', canonicalName: '法事主题', normalizedName: `法事主题-${randomUUID()}` } });
+      await prisma.entity.create({ data: { projectId: fixture.project.id, entityType: 'TOPIC', canonicalName: '已归档实体', normalizedName: `已归档-${randomUUID()}`, status: 'ARCHIVED' } });
+      await prisma.keywordEntityMapping.create({ data: { projectId: fixture.project.id, keywordId: keyword.id, entityId: active.id } });
+      await prisma.keywordEntityMapping.create({ data: { projectId: fixture.project.id, groupId: group.id, entityId: active.id } });
+
+      const response = await request(createApp()).get(`/projects/${fixture.project.id}/keywords`).set('Cookie', fixture.sessionCookie).expect(200);
+      expect(response.text).toContain('data-ui="keyword-entity-map"');
+      expect(response.text).toContain('法事主题');
+      expect(response.text).not.toContain('已归档实体');
+      expect(response.text).toContain(`/projects/${fixture.project.id}/keywords/${keyword.id}/entities`);
+      expect(response.text).toContain(`/projects/${fixture.project.id}/keyword-groups/${group.id}/entities`);
+    } finally { await fixture.cleanup(); }
+  });
+
+  it('renders a persisted P5 content gap with the existing content-center handoff', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const keyword = await keywordService.createManual({ actorUserId: fixture.user.id, projectId: fixture.project.id, text: '超度法事', type: 'LONG_TAIL' });
+      await prisma.keywordContentGap.create({ data: { projectId: fixture.project.id, keywordId: keyword.id, coverageStatus: 'UNKNOWN', status: 'OPEN', reasonCodes: ['NO_ACTIVE_PAGE_EVIDENCE'], sourceProvenance: { coverageStatus: 'UNKNOWN' } } });
+
+      const response = await request(createApp()).get(`/projects/${fixture.project.id}/keywords`).set('Cookie', fixture.sessionCookie).expect(200);
+
+      expect(response.text).toContain('data-ui="keyword-content-gap"');
+      expect(response.text).toContain('暂无启用页面证据');
+      expect(response.text).toContain(`/projects/${fixture.project.id}/keywords/${keyword.id}/content-gap/plan`);
+      expect(response.text).toContain(`/projects/${fixture.project.id}/content`);
+    } finally { await fixture.cleanup(); }
+  });
+
+  it('renders a persisted P8 brief request as an advisory action without publishing content', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const keyword = await keywordService.createManual({ actorUserId: fixture.user.id, projectId: fixture.project.id, text: 'P8 页面 Brief', type: 'LONG_TAIL' });
+      const gap = await prisma.keywordContentGap.create({ data: { projectId: fixture.project.id, keywordId: keyword.id, coverageStatus: 'UNKNOWN', status: 'OPEN', reasonCodes: ['NO_ACTIVE_PAGE_EVIDENCE'], sourceProvenance: { coverageStatus: 'UNKNOWN' } } });
+      await prisma.keywordContentBriefRequest.create({ data: { projectId: fixture.project.id, keywordId: keyword.id, contentGapId: gap.id, snapshotHash: randomUUID(), factsSnapshot: { keywordId: keyword.id }, status: 'QUEUED', createdByUserId: fixture.user.id } });
+
+      const response = await request(createApp()).get(`/projects/${fixture.project.id}/keywords`).set('Cookie', fixture.sessionCookie).expect(200);
+
+      expect(response.text).toContain('data-ui="keyword-content-brief"');
+      expect(response.text).toContain('Brief 已排队');
+      expect(response.text).not.toContain('生成建议 Brief');
+      expect(response.text).not.toContain('/publication');
+    } finally { await fixture.cleanup(); }
+  });
+
+  it('renders an inherited Cluster Target URL instead of leaving a mapped member unmapped', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const keyword = await keywordService.createManual({ actorUserId: fixture.user.id, projectId: fixture.project.id, text: 'Cluster 法事', type: 'CORE' });
+      const group = await prisma.keywordGroup.create({ data: { projectId: fixture.project.id, name: 'Inherited target' } });
+      await prisma.keywordGroupMembership.create({ data: { projectId: fixture.project.id, groupId: group.id, keywordId: keyword.id } });
+      const url = `https://${fixture.project.primaryDomain}/cluster-guide`;
+      await prisma.keywordTargetMapping.create({ data: { projectId: fixture.project.id, groupId: group.id, targetUrl: url, normalizedUrl: url } });
+      const response = await request(createApp()).get(`/projects/${fixture.project.id}/keywords`).set('Cookie', fixture.sessionCookie).expect(200);
+      expect(response.text).toContain(url);
+      expect(response.text).toContain('继承');
+    } finally { await fixture.cleanup(); }
+  });
+  it('renders persisted P4 Target URL and latest cannibalization snapshot without inventing evidence', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const keyword = await keywordService.createManual({ actorUserId: fixture.user.id, projectId: fixture.project.id, text: '法事', type: 'CORE' });
+      const url = `https://${fixture.project.primaryDomain}/guide`;
+      await prisma.keywordTargetMapping.create({ data: { projectId: fixture.project.id, keywordId: keyword.id, targetUrl: url, normalizedUrl: url } });
+      await prisma.keywordCannibalizationSnapshot.create({ data: { projectId: fixture.project.id, keywordId: keyword.id, risk: 'MEDIUM', recommendedAction: 'REPOSITION', urls: [url], reasons: ['TARGET_MAPPING_CONFLICT'], sourceProvenance: { growthSnapshotId: null }, confidence: 0.7, formulaVersion: 'keyword-cannibalization-v1' } });
+      const response = await request(createApp()).get(`/projects/${fixture.project.id}/keywords`).set('Cookie', fixture.sessionCookie).expect(200);
+      expect(response.text).toContain(url);
+      expect(response.text).toContain('REPOSITION');
+    } finally { await fixture.cleanup(); }
+  });
+  it('renders persisted Keyword Cluster primary and management controls', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OWNER',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const keyword = await keywordService.createManual({
+        actorUserId: fixture.user.id,
+        projectId: fixture.project.id,
+        text: '符纸',
+        type: 'CORE',
+      });
+      const group = await keywordService.createGroup({
+        projectId: fixture.project.id,
+        name: '符纸专题',
+      });
+      await keywordService.setGroupPrimaryKeyword({
+        actorUserId: fixture.user.id,
+        projectId: fixture.project.id,
+        groupId: group.id,
+        primaryKeywordId: keyword.id,
+      });
+
+      const response = await request(createApp())
+        .get(`/projects/${fixture.project.id}/keywords`)
+        .set('Cookie', fixture.sessionCookie)
+        .expect(200);
+
+      expect(response.text).toContain('data-ui="keyword-cluster-panel"');
+      expect(response.text).toContain('关键词 Cluster');
+      expect(response.text).toContain('符纸专题');
+      expect(response.text).toContain('主词：符纸');
+      expect(response.text).toContain(`/keyword-groups/${group.id}/rename`);
+      expect(response.text).toContain(`/keyword-groups/${group.id}/primary-keyword`);
+      expect(response.text).toContain(`/keyword-groups/${group.id}/keywords`);
+      expect(response.text).toContain('批量加入成员词');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('renders persisted opportunity score confidence and explainable unknown dimensions', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OWNER',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const keyword = await keywordService.createManual({
+        actorUserId: fixture.user.id,
+        projectId: fixture.project.id,
+        text: '符纸怎么用',
+        type: 'QUESTION',
+        intent: 'INFORMATIONAL',
+      });
+      await request(createApp())
+        .post(`/projects/${fixture.project.id}/keywords/${keyword.id}/opportunity-score`)
+        .set('Cookie', fixture.sessionCookie)
+        .type('form')
+        .send({ _csrf: csrfFor(fixture) })
+        .expect(303);
+
+      const response = await request(createApp())
+        .get(`/projects/${fixture.project.id}/keywords`)
+        .set('Cookie', fixture.sessionCookie)
+        .expect(200);
+
+      expect(response.text).toContain('data-ui="keyword-opportunity-score"');
+      expect(response.text).toContain('N/A');
+      expect(response.text).toContain('置信度 15%');
+      expect(response.text).toContain('评分依据');
+      expect(response.text).toContain('项目相关度');
+      expect(response.text).toContain('证据不足');
+      expect(response.text).toContain(`/keywords/${keyword.id}/opportunity-score`);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it('renders keyword facts without fabricated ranking', async () => {
     const fixture = await seedAuthenticatedUser({
       role: 'OWNER',
@@ -521,6 +680,60 @@ describe('P11-01 keyword center web UI', () => {
           },
         },
       })).toMatchObject({ source: 'AI_ACCEPTED', text: '六壬符纸专题' });
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('renders expansion categories and a selected-suggestion batch acceptance control', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OPERATOR',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const { suggestion } = await seedPendingSuggestion(fixture, '符纸怎么保存');
+      const response = await request(createApp())
+        .get(`/projects/${fixture.project.id}/keywords`)
+        .set('Cookie', fixture.sessionCookie)
+        .expect(200);
+
+      expect(response.text).toContain('data-ui="keyword-suggestion-bulk-accept"');
+      expect(response.text).toContain('name="suggestionIds"');
+      expect(response.text).toContain(`value="${suggestion.id}"`);
+      expect(response.text).toContain('长尾词 · 信息型');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it('accepts selected suggestions through the web form and redirects', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OPERATOR',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const first = await seedPendingSuggestion(fixture, '传统符纸');
+      const second = await seedPendingSuggestion(fixture, '符纸怎么保存');
+      const response = await request(createApp())
+        .post(`/projects/${fixture.project.id}/keyword-suggestions/accept`)
+        .set('Cookie', fixture.sessionCookie)
+        .type('form')
+        .send({
+          _csrf: csrfFor(fixture),
+          suggestionIds: [first.suggestion.id, second.suggestion.id],
+        })
+        .expect(303);
+
+      expect(response.headers.location).toBe(`/projects/${fixture.project.id}/keywords`);
+      expect(await prisma.keywordSuggestion.count({
+        where: { projectId: fixture.project.id, status: 'ACCEPTED' },
+      })).toBe(2);
     } finally {
       await fixture.cleanup();
     }

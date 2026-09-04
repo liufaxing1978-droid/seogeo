@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { processDistributionPreparationJob } from '../../src/modules/distribution/distribution.worker.js';
 import { processGrowthMaterializationJob } from '../../src/modules/growth/growth.worker.js';
+import { processIndexNowSubmissionJob } from '../../src/modules/indexnow/indexnow.worker.js';
 import { processOptimizationAutopilotJob } from '../../src/modules/optimization-autopilot/autopilot.worker.js';
 import { processOptimizationFeedbackJob } from '../../src/modules/optimization-feedback/feedback.worker.js';
 import {
@@ -61,6 +62,13 @@ describe('worker bootstrap', () => {
 
     expect(definition).toMatchObject({
       processor: processDistributionPreparationJob,
+      concurrency: 2
+    });
+  });
+
+  it('activates the P9 IndexNow queue with the guarded processor at concurrency 2', () => {
+    expect(workerDefinitionForQueue('indexnow-submission')).toMatchObject({
+      processor: processIndexNowSubmissionJob,
       concurrency: 2
     });
   });

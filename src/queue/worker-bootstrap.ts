@@ -12,6 +12,12 @@ import {
 import { processDistributionPreparationJob } from '../modules/distribution/distribution.worker.js';
 import { processGeoAuditJob, type GeoAuditJobData } from '../modules/geo/geo.worker.js';
 import {
+  INDEXNOW_SUBMISSION_QUEUE_NAME,
+  INDEXNOW_WORKER_CONCURRENCY,
+  type IndexNowSubmissionJobData
+} from '../modules/indexnow/indexnow.queue.js';
+import { processIndexNowSubmissionJob } from '../modules/indexnow/indexnow.worker.js';
+import {
   GROWTH_MATERIALIZATION_QUEUE_NAME,
   GROWTH_MATERIALIZATION_WORKER_CONCURRENCY,
   processGrowthMaterializationJob,
@@ -226,6 +232,7 @@ export function workerDefinitionForQueue(
     | 'site-mutation-execution'
     | 'site-mutation-verification'
     | 'distribution-preparation'
+    | 'indexnow-submission'
 ) {
   if (name === SEARCH_CONSOLE_SYNC_QUEUE_NAME) {
     return {
@@ -309,6 +316,12 @@ export function workerDefinitionForQueue(
     return {
       processor: processDistributionPreparationJob,
       concurrency: DISTRIBUTION_PREPARATION_WORKER_CONCURRENCY
+    } as const;
+  }
+  if (name === INDEXNOW_SUBMISSION_QUEUE_NAME) {
+    return {
+      processor: processIndexNowSubmissionJob,
+      concurrency: INDEXNOW_WORKER_CONCURRENCY
     } as const;
   }
   throw new Error(`Unsupported worker definition: ${name}`);
@@ -569,6 +582,31 @@ export async function startWorkers() {
         name,
         async (job) => processDistributionPreparationJob({ name: job.name, data: job.data }),
         { connection, concurrency: DISTRIBUTION_PREPARATION_WORKER_CONCURRENCY }
+      );
+    }
+    if (name === INDEXNOW_SUBMISSION_QUEUE_NAME) {
+      return new Worker<IndexNowSubmissionJobData>(
+        name,
+        async (job) => {
+          try {
+            return await processIndexNowSubmissionJob({
+              data: job.data,
+              attemptsMade: job.attemptsMade,
+              opts: { attempts: job.opts.attempts }
+            });
+          } catch (error) {
+            const code = error && typeof error === 'object' && 'code' in error
+              ? (error as { code?: unknown }).code
+              : undefined;
+            if (code !== 'INDEXNOW_TRANSIENT_FAILURE'
+              && code !== 'INDEXNOW_NETWORK_ERROR'
+              && code !== 'INDEXNOW_TIMEOUT') {
+              job.discard();
+            }
+            throw error;
+          }
+        },
+        { connection, concurrency: INDEXNOW_WORKER_CONCURRENCY }
       );
     }
     if (name === 'ai') return new Worker<AiJobData>(name, processAiJob, { connection });

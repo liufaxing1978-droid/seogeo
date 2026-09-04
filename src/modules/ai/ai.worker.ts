@@ -225,7 +225,19 @@ export async function executeAiTask(taskId: string, dependencies: ExecuteAiTaskD
   } catch (error) {
     const code = errorCode(error);
     const httpStatus = error instanceof AiProviderError ? error.httpStatus : null;
-    await repository.failRun(task.id, run.id, { errorCode: code, errorMessage: safeErrorMessage(error), httpStatus });
+    await repository.failRun(
+      task.id,
+      run.id,
+      { errorCode: code, errorMessage: safeErrorMessage(error), httpStatus },
+      task.taskType === 'CONTENT_BRIEF'
+        ? async (tx) => {
+          await tx.keywordContentBriefRequest.updateMany({
+            where: { projectId: task.projectId, aiTaskId: task.id },
+            data: { status: 'FAILED' }
+          });
+        }
+        : undefined
+    );
     if (!providerCompleted) observability.emit({ event: 'ai.provider.request.failed', taskId: task.id, projectId: task.projectId, runId: run.id, provider: 'DEEPSEEK', model, promptVersion: task.promptVersion, httpStatus, errorCode: code });
     observability.emit({ event: 'ai.task.failed', taskId: task.id, projectId: task.projectId, runId: run.id, provider: 'DEEPSEEK', model, promptVersion: task.promptVersion, httpStatus, errorCode: code });
     if (task.taskType === 'OPTIMIZATION_PLAN_RANKING') {

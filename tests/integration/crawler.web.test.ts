@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { prisma } from '../../src/db/prisma.js';
 import { createApp } from '../../src/app.js';
@@ -90,6 +90,24 @@ async function fixture() {
   await prisma.sitemapUrl.create({
     data: { sitemapSourceId: source.id, normalizedUrl: page.normalizedUrl }
   });
+  await prisma.crawlerHealthSnapshot.create({
+    data: {
+      projectId: project.id,
+      crawlRunId: run.id,
+      status: 'DEGRADED',
+      calculationVersion: 'P9_CRAWLER_HEALTH_V1',
+      factsSnapshot: { pagesFailed: 1 }
+    }
+  });
+  await prisma.indexNowSubmissionBatch.create({
+    data: {
+      projectId: project.id,
+      status: 'COMPLETED',
+      attemptCount: 1,
+      responseStatusCode: 202,
+      urls: { create: { url: page.normalizedUrl, status: 'COMPLETED' } }
+    }
+  });
   return { project, run, page };
 }
 
@@ -103,6 +121,22 @@ describe('crawler web UI', () => {
     }
     expect(response.text).toContain('COMPLETED');
     expect(response.text).toContain('/projects/' + project.id + '/pages');
+  });
+
+  it('renders persisted crawler health and IndexNow history without a provider call or indexing claim', async () => {
+    const { project } = await fixture();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const response = await request(createApp()).get(`/projects/${project.id}/crawls`).expect(200);
+
+      expect(response.text).toContain('Crawler Health');
+      expect(response.text).toContain('DEGRADED');
+      expect(response.text).toContain('IndexNow 提交历史');
+      expect(response.text).toContain('提交已接受不代表已收录');
+      expect(response.text).toContain('COMPLETED');
+      expect(response.text).not.toContain('已收录成功');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally { fetchSpy.mockRestore(); }
   });
 
   it('renders crawl detail with robots, sitemap and page results', async () => {

@@ -21,6 +21,7 @@ export const QUEUE_NAMES = [
   'site-mutation-execution',
   'site-mutation-verification',
   'distribution-preparation',
+  'indexnow-submission',
   'ai',
   'report'
 ] as const;

@@ -43,7 +43,11 @@ const schema = z.object({
   DATAFORSEO_LOGIN: optionalNonBlankString,
   DATAFORSEO_PASSWORD: optionalNonBlankString,
   DATAFORSEO_BASE_URL: z.string().url().default('https://api.dataforseo.com'),
-  DATAFORSEO_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(30000)
+  DATAFORSEO_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(30000),
+  INDEXNOW_ENDPOINT: z.string().url().default('https://api.indexnow.org/indexnow'),
+  INDEXNOW_KEY: optionalNonBlankString,
+  INDEXNOW_KEY_LOCATION: optionalUrl,
+  INDEXNOW_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(15000)
 });
 
 export type RuntimeEnv = z.infer<typeof schema>;

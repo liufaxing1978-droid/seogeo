@@ -1,5 +1,6 @@
 import type {
   KeywordIntent,
+  KeywordLifecycleStatus,
   KeywordPriority,
   KeywordSource,
   KeywordStatus,
@@ -13,6 +14,7 @@ export interface CreateManualKeywordInput {
   type: KeywordType;
   intent?: KeywordIntent | null;
   priority?: KeywordPriority;
+  lifecycleStatus?: KeywordLifecycleStatus;
   parentKeywordId?: string | null;
   groupIds?: string[];
   language?: string | null;
@@ -58,6 +60,22 @@ export interface KeywordListRecord {
   intent: KeywordIntent | null;
   priority: KeywordPriority;
   status: KeywordStatus;
+  lifecycleStatus: KeywordLifecycleStatus;
   locked: boolean;
   source: KeywordSource;
+}
+
+export interface CreateManualKeywordsBulkInput {
+  actorUserId: string;
+  projectId: string;
+  text: string;
+  type: KeywordType;
+  intent?: KeywordIntent | null;
+  priority?: KeywordPriority;
+  lifecycleStatus?: KeywordLifecycleStatus;
+  groupIds?: string[];
+  language?: string | null;
+  targetCountry?: string | null;
+  notes?: string | null;
+  locked?: boolean;
 }

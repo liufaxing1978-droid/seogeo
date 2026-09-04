@@ -1,5 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
+import { buildKeywordWhere } from './keyword-filter.js';
+import type { KeywordListQuery } from './keyword.schema.js';
 
 type KeywordDb = Pick<
   Prisma.TransactionClient,
@@ -9,6 +11,7 @@ type KeywordDb = Pick<
   | 'keywordGroupMembership'
   | 'keywordSuggestion'
   | 'keywordAuditEvent'
+  | 'project'
 >;
 
 export class KeywordRepository {
@@ -28,10 +31,24 @@ export class KeywordRepository {
     });
   }
 
-  listKeywords(projectId: string) {
+  listKeywords(projectId: string, filters: KeywordListQuery = {}) {
+    return this.db.keyword.findMany({
+      where: buildKeywordWhere(projectId, filters),
+      orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }, { normalizedText: 'asc' }],
+    });
+  }
+
+  listNormalizedKeywords(projectId: string) {
     return this.db.keyword.findMany({
       where: { projectId },
-      orderBy: [{ priority: 'asc' }, { createdAt: 'asc' }, { normalizedText: 'asc' }],
+      select: { normalizedText: true },
+    });
+  }
+
+  findProjectKeywordDefaults(projectId: string) {
+    return this.db.project.findUnique({
+      where: { id: projectId },
+      select: { defaultLanguage: true, targetCountry: true },
     });
   }
 
@@ -69,6 +86,30 @@ export class KeywordRepository {
     return this.db.keywordGroup.findFirst({ where: { id: groupId, projectId } });
   }
 
+  findGroupByName(projectId: string, name: string) {
+    return this.db.keywordGroup.findUnique({
+      where: { projectId_name: { projectId, name } },
+    });
+  }
+
+  renameGroup(projectId: string, groupId: string, name: string) {
+    return this.db.keywordGroup.updateMany({
+      where: { id: groupId, projectId },
+      data: { name },
+    });
+  }
+
+  setGroupPrimaryKeyword(
+    projectId: string,
+    groupId: string,
+    primaryKeywordId: string | null,
+  ) {
+    return this.db.keywordGroup.updateMany({
+      where: { id: groupId, projectId },
+      data: { primaryKeywordId },
+    });
+  }
+
   listGroups(projectId: string) {
     return this.db.keywordGroup.findMany({
       where: { projectId },
@@ -80,6 +121,21 @@ export class KeywordRepository {
     return this.db.keywordGroupMembership.findMany({
       where: { projectId, keywordId },
       orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  listMembershipsForGroup(projectId: string, groupId: string) {
+    return this.db.keywordGroupMembership.findMany({
+      where: { projectId, groupId },
+      orderBy: [{ createdAt: 'asc' }, { keywordId: 'asc' }],
+    });
+  }
+
+  addGroupMemberships(projectId: string, groupId: string, keywordIds: string[]) {
+    if (keywordIds.length === 0) return Promise.resolve({ count: 0 });
+    return this.db.keywordGroupMembership.createMany({
+      data: keywordIds.map((keywordId) => ({ projectId, groupId, keywordId })),
+      skipDuplicates: true,
     });
   }
 
