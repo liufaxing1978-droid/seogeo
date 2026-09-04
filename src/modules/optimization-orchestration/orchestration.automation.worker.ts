@@ -180,18 +180,18 @@ async function executeAutomationRun(
     throw workerError('AUTOMATION_RUN_INVALID_STATE', 'Automation run is not executable');
   }
 
-  const definition = await deps.repository.findAutomationDefinition(run.definitionId);
-  if (!definition) {
-    throw workerError('AUTOMATION_DEFINITION_NOT_FOUND', 'Automation definition does not exist');
-  }
-  if (definition.projectId !== run.projectId) {
-    throw workerError('AUTOMATION_DEFINITION_PROJECT_MISMATCH', 'Automation definition project mismatch');
-  }
-  if (!definition.enabled) {
-    throw workerError('AUTOMATION_DEFINITION_DISABLED', 'Automation definition is disabled');
-  }
-
   try {
+    const definition = await deps.repository.findAutomationDefinition(run.definitionId);
+    if (!definition) {
+      throw workerError('AUTOMATION_DEFINITION_NOT_FOUND', 'Automation definition does not exist');
+    }
+    if (definition.projectId !== run.projectId) {
+      throw workerError('AUTOMATION_DEFINITION_PROJECT_MISMATCH', 'Automation definition project mismatch');
+    }
+    if (!definition.enabled) {
+      throw workerError('AUTOMATION_DEFINITION_DISABLED', 'Automation definition is disabled');
+    }
+
     await deps.actions.execute({
       actionType: definition.actionType,
       actionConfig: definition.actionConfig,
