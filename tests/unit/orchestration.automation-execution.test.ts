@@ -112,6 +112,30 @@ describe('OL-2 automation execution semantics', () => {
     expect(enqueueAutomationRun).toHaveBeenNthCalledWith(2, RUN_ID, PROJECT_ID);
   });
 
+  it('fails the persisted run instead of leaving an active QUEUED run when initial enqueue fails', async () => {
+    const { service, transitionAutomationRun, enqueueAutomationRun } = setup();
+    enqueueAutomationRun.mockRejectedValueOnce(new Error('queue unavailable'));
+
+    await expect(service.startAutomationRun({
+      definitionId: DEFINITION_ID,
+      projectId: PROJECT_ID,
+      source: 'MANUAL',
+      requestKey: 'manual-1'
+    })).rejects.toThrow('queue unavailable');
+
+    expect(transitionAutomationRun).toHaveBeenCalledWith({
+      runId: RUN_ID,
+      from: 'QUEUED',
+      to: 'FAILED',
+      patch: {
+        deadlineAt: null,
+        startedAt: null,
+        completedAt: new Date('2026-09-02T03:00:00.000Z'),
+        lastErrorCode: 'AUTOMATION_ENQUEUE_FAILED'
+      }
+    });
+  });
+
   it('records an overlap skip and does not enqueue a competing run', async () => {
     const active = automationRun({ id: ACTIVE_RUN_ID, status: 'RUNNING' });
     const { service, createAutomationRun, enqueueAutomationRun } = setup({ activeRun: active });
