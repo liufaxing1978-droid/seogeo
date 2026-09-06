@@ -56,6 +56,34 @@ describe('content quality rules V1', () => {
     ])).toMatchObject({ status: 'UNKNOWN', findingKey: 'INSUFFICIENT_COMPARABLE_HISTORY' });
   });
 
+  it('fails an observed loss of indexability before content comparability gating', () => {
+    expect(evaluateContentDecay([
+      eligibleSnapshot({ id: 'older' }),
+      eligibleSnapshot({ id: 'newer', capturedAt: new Date('2026-09-02T00:00:00.000Z'), indexable: false })
+    ])).toMatchObject({ status: 'FAIL', findingKey: 'CONTENT_DECAY_INDEXABILITY_LOST' });
+  });
+
+  it('fails an observed 2xx HTML to non-2xx regression before content comparability gating', () => {
+    expect(evaluateContentDecay([
+      eligibleSnapshot({ id: 'older' }),
+      eligibleSnapshot({ id: 'newer', capturedAt: new Date('2026-09-02T00:00:00.000Z'), statusCode: 404 })
+    ])).toMatchObject({ status: 'FAIL', findingKey: 'CONTENT_DECAY_HTTP_ELIGIBILITY_LOST' });
+  });
+
+  it('fails an observed 2xx HTML to non-HTML regression before content comparability gating', () => {
+    expect(evaluateContentDecay([
+      eligibleSnapshot({ id: 'older' }),
+      eligibleSnapshot({ id: 'newer', capturedAt: new Date('2026-09-02T00:00:00.000Z'), contentType: 'application/pdf' })
+    ])).toMatchObject({ status: 'FAIL', findingKey: 'CONTENT_DECAY_HTML_ELIGIBILITY_LOST' });
+  });
+
+  it('returns UNKNOWN when stable word count cannot rule out title and H1 decay', () => {
+    expect(evaluateContentDecay([
+      eligibleSnapshot({ id: 'older', wordCount: 900, title: null, h1: null }),
+      eligibleSnapshot({ id: 'newer', capturedAt: new Date('2026-09-02T00:00:00.000Z'), wordCount: 900, title: null, h1: null })
+    ])).toMatchObject({ status: 'UNKNOWN', findingKey: 'INSUFFICIENT_COMPARABLE_HISTORY' });
+  });
+
   it('uses snapshot id to make equal capture times deterministic', () => {
     expect(evaluateContentDecay([
       eligibleSnapshot({ id: 'z-newer', wordCount: 300 }),
@@ -69,8 +97,11 @@ describe('content quality rules V1', () => {
 
   it('surfaces an existing P5-A failed opportunity as immutable QA evidence', () => {
     expect(surfaceContentQaFinding(
-      { id: 'opportunity-1', opportunityKey: 'CONTENT_BODY_SUBSTANTIVE:v1', opportunityVersion: 1, status: 'OPEN', priority: 'HIGH' },
-      { id: 'signal-1', ruleKey: 'CONTENT_BODY_SUBSTANTIVE', ruleVersion: 1, status: 'FAIL' }
+      { id: 'opportunity-1', contentDocumentId: 'document-1', opportunityKey: 'CONTENT_BODY_SUBSTANTIVE:v1', opportunityVersion: 1, status: 'OPEN', priority: 'HIGH' },
+      {
+        id: 'signal-1', contentDocumentId: 'document-1', ruleKey: 'CONTENT_BODY_SUBSTANTIVE', ruleVersion: 1, status: 'FAIL',
+        sourceReferences: [{ type: 'PAGE_SNAPSHOT', id: 'snapshot-current' }]
+      }
     )).toMatchObject({
       status: 'FAIL',
       findingKey: 'CONTENT_QA_P5A_FAILED_OPPORTUNITY',
@@ -79,8 +110,26 @@ describe('content quality rules V1', () => {
         p5OpportunityId: 'opportunity-1',
         p5SignalId: 'signal-1',
         p5OpportunityStatus: 'OPEN',
-        p5SignalStatus: 'FAIL'
+        p5SignalStatus: 'FAIL',
+        sourceReferences: expect.arrayContaining([{ type: 'PAGE_SNAPSHOT', id: 'snapshot-current' }])
       }
     });
+  });
+
+  it('does not surface QA evidence when the P5-A opportunity and signal do not prove the same rule and document', () => {
+    expect(surfaceContentQaFinding(
+      { id: 'opportunity-1', contentDocumentId: 'document-1', opportunityKey: 'CONTENT_BODY_SUBSTANTIVE:v1', opportunityVersion: 1, status: 'OPEN', priority: 'HIGH' },
+      {
+        id: 'signal-1', contentDocumentId: 'document-2', ruleKey: 'CONTENT_H1_PRESENT', ruleVersion: 1, status: 'FAIL',
+        sourceReferences: [{ type: 'PAGE_SNAPSHOT', id: 'snapshot-current' }]
+      }
+    )).toMatchObject({ status: 'UNKNOWN', findingKey: 'CONTENT_QA_P5A_FAILED_OPPORTUNITY' });
+  });
+
+  it('does not surface QA evidence without the persisted P5-A snapshot reference', () => {
+    expect(surfaceContentQaFinding(
+      { id: 'opportunity-1', contentDocumentId: 'document-1', opportunityKey: 'CONTENT_BODY_SUBSTANTIVE:v1', opportunityVersion: 1, status: 'OPEN', priority: 'HIGH' },
+      { id: 'signal-1', contentDocumentId: 'document-1', ruleKey: 'CONTENT_BODY_SUBSTANTIVE', ruleVersion: 1, status: 'FAIL', sourceReferences: [] }
+    )).toMatchObject({ status: 'UNKNOWN', findingKey: 'CONTENT_QA_P5A_FAILED_OPPORTUNITY' });
   });
 });

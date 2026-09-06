@@ -57,6 +57,7 @@ export type P5ContentOpportunityStatus = 'OPEN' | 'IN_PROGRESS' | 'IGNORED' | 'V
 
 export interface P5ContentOpportunityReference {
   id: string;
+  contentDocumentId: string;
   opportunityKey: string;
   opportunityVersion: number;
   status: P5ContentOpportunityStatus;
@@ -65,7 +66,9 @@ export interface P5ContentOpportunityReference {
 
 export interface P5ContentSignalReference {
   id: string;
+  contentDocumentId: string;
   ruleKey: string;
   ruleVersion: number;
   status: ContentQualityStatus;
+  sourceReferences: ContentQualitySourceReference[];
 }

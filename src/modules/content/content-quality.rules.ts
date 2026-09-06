@@ -39,14 +39,16 @@ function evaluation(
   };
 }
 
+function is2xx(snapshot: ComparableSnapshot): boolean {
+  return snapshot.statusCode !== null && snapshot.statusCode >= 200 && snapshot.statusCode < 300;
+}
+
+function isHtml(snapshot: ComparableSnapshot): boolean {
+  return snapshot.contentType !== null && /^(text\/html|application\/xhtml\+xml)\b/i.test(snapshot.contentType.trim());
+}
+
 function isEligibleSnapshot(snapshot: ComparableSnapshot): boolean {
-  return snapshot.indexable === true
-    && snapshot.statusCode !== null
-    && snapshot.statusCode >= 200
-    && snapshot.statusCode < 300
-    && snapshot.contentType !== null
-    && /^(text\/html|application\/xhtml\+xml)\b/i.test(snapshot.contentType.trim())
-    && Number.isFinite(snapshot.capturedAt.getTime());
+  return snapshot.indexable === true && is2xx(snapshot) && isHtml(snapshot) && Number.isFinite(snapshot.capturedAt.getTime());
 }
 
 function orderedSnapshots(history: ComparableSnapshot[]): ComparableSnapshot[] {
@@ -115,11 +117,43 @@ export function evaluateContentDecay(history: ComparableSnapshot[]): ContentQual
   const previous = snapshots[0];
   const current = snapshots.at(-1);
 
-  if (!previous || !current || previous === current || !isEligibleSnapshot(previous) || !isEligibleSnapshot(current)) {
+  if (!previous || !current || previous === current || !Number.isFinite(previous.capturedAt.getTime()) || !Number.isFinite(current.capturedAt.getTime())) {
     return evaluation(
       'INSUFFICIENT_COMPARABLE_HISTORY', 'UNKNOWN', 'CONTENT_DECAY', 'MEDIUM',
       'At least two persisted, indexable 2xx HTML snapshots are required for a like-for-like decay comparison.',
       { sourceReferences: [] }
+    );
+  }
+
+  if (previous.indexable === true && current.indexable === false) {
+    return evaluation(
+      'CONTENT_DECAY_INDEXABILITY_LOST', 'FAIL', 'CONTENT_DECAY', 'HIGH',
+      'The persisted snapshots show a loss of indexability; review manually.',
+      decayEvidence(previous, current)
+    );
+  }
+
+  if (is2xx(previous) && isHtml(previous) && current.statusCode !== null && !is2xx(current)) {
+    return evaluation(
+      'CONTENT_DECAY_HTTP_ELIGIBILITY_LOST', 'FAIL', 'CONTENT_DECAY', 'HIGH',
+      'The persisted snapshots show a 2xx HTML page becoming non-2xx; review manually.',
+      decayEvidence(previous, current)
+    );
+  }
+
+  if (is2xx(previous) && isHtml(previous) && is2xx(current) && current.contentType !== null && !isHtml(current)) {
+    return evaluation(
+      'CONTENT_DECAY_HTML_ELIGIBILITY_LOST', 'FAIL', 'CONTENT_DECAY', 'HIGH',
+      'The persisted snapshots show a 2xx HTML page becoming non-HTML; review manually.',
+      decayEvidence(previous, current)
+    );
+  }
+
+  if (!isEligibleSnapshot(previous) || !isEligibleSnapshot(current)) {
+    return evaluation(
+      'INSUFFICIENT_COMPARABLE_HISTORY', 'UNKNOWN', 'CONTENT_DECAY', 'MEDIUM',
+      'At least two persisted, indexable 2xx HTML snapshots are required for a like-for-like decay comparison.',
+      decayEvidence(previous, current)
     );
   }
 
@@ -137,7 +171,9 @@ export function evaluateContentDecay(history: ComparableSnapshot[]): ContentQual
     );
   }
 
-  if (present(previous.title) === true && present(current.title) === false) {
+  const previousTitlePresent = present(previous.title);
+  const currentTitlePresent = present(current.title);
+  if (previousTitlePresent === true && currentTitlePresent === false) {
     return evaluation(
       'CONTENT_DECAY_TITLE_REMOVED', 'FAIL', 'CONTENT_DECAY', 'HIGH',
       'The persisted comparable snapshots show title removal; review manually.',
@@ -145,7 +181,9 @@ export function evaluateContentDecay(history: ComparableSnapshot[]): ContentQual
     );
   }
 
-  if (present(previous.h1) === true && present(current.h1) === false) {
+  const previousH1Present = present(previous.h1);
+  const currentH1Present = present(current.h1);
+  if (previousH1Present === true && currentH1Present === false) {
     return evaluation(
       'CONTENT_DECAY_H1_REMOVED', 'FAIL', 'CONTENT_DECAY', 'HIGH',
       'The persisted comparable snapshots show H1 removal; review manually.',
@@ -153,10 +191,7 @@ export function evaluateContentDecay(history: ComparableSnapshot[]): ContentQual
     );
   }
 
-  const hasObservedMeasure = wordCountDrop !== null
-    || (present(previous.title) !== null && present(current.title) !== null)
-    || (present(previous.h1) !== null && present(current.h1) !== null);
-  if (!hasObservedMeasure) {
+  if (wordCountDrop === null || previousTitlePresent === null || currentTitlePresent === null || previousH1Present === null || currentH1Present === null) {
     return evaluation(
       'INSUFFICIENT_COMPARABLE_HISTORY', 'UNKNOWN', 'CONTENT_DECAY', 'MEDIUM',
       'Comparable snapshots lack enough persisted content facts to assess decay.',
@@ -175,9 +210,11 @@ export function surfaceContentQaFinding(
   opportunity: P5ContentOpportunityReference | null,
   signal: P5ContentSignalReference | null
 ): ContentQualityEvaluation {
-  const sourceReferences = [
+  const snapshotSourceReferences = signal?.sourceReferences.filter((reference) => reference.type === 'PAGE_SNAPSHOT') ?? [];
+  const sourceReferences: ContentQualityEvidence['sourceReferences'] = [
     ...(opportunity ? [{ type: 'CONTENT_OPPORTUNITY' as const, id: opportunity.id }] : []),
-    ...(signal ? [{ type: 'CONTENT_SIGNAL' as const, id: signal.id }] : [])
+    ...(signal ? [{ type: 'CONTENT_SIGNAL' as const, id: signal.id }] : []),
+    ...snapshotSourceReferences
   ];
   const evidence = {
     sourceReferences,
@@ -195,7 +232,11 @@ export function surfaceContentQaFinding(
     } : {})
   };
 
-  if (!opportunity || !signal || signal.status === 'UNKNOWN') {
+  const relationshipMatches = opportunity !== null && signal !== null
+    && opportunity.contentDocumentId === signal.contentDocumentId
+    && opportunity.opportunityVersion === signal.ruleVersion
+    && opportunity.opportunityKey === `${signal.ruleKey}:v${signal.ruleVersion}`;
+  if (!relationshipMatches || snapshotSourceReferences.length === 0 || signal === null || signal.status === 'UNKNOWN') {
     return evaluation(
       'CONTENT_QA_P5A_FAILED_OPPORTUNITY', 'UNKNOWN', 'CONTENT_QA', 'MEDIUM',
       'A persisted P5-A opportunity and signal are required to assess this QA evidence.',
