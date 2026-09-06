@@ -6,6 +6,10 @@ import { contentQualityRepository, type ContentQualityRepository } from './conte
 export const CONTENT_QUALITY_QUEUE_NAME = 'content-quality';
 export interface ContentQualityJobData { projectId: string; runId: string; }
 
+export function buildContentQualityJobId(projectId: string, runId: string): string {
+  return `content-quality-${projectId}-${runId}`;
+}
+
 export interface ContentQualityQueue {
   getJob(jobId: string): Promise<{ getState(): Promise<string> } | undefined | null>;
   add(
@@ -41,20 +45,13 @@ export class ContentQualityService {
   ) {}
 
   async enqueueRun(projectId: string, actorId: string) {
-    const jobId = `content-quality-${projectId}`;
-    const existingJob = await this.queue.getJob(jobId);
-    if (existingJob) {
-      const state = await existingJob.getState();
-      if (state === 'active' || state === 'waiting' || state === 'delayed') {
-        const activeRun = await this.repository.findActiveRun(projectId);
-        if (!activeRun) throw Object.assign(new Error('Active content-quality job has no active run.'), { code: 'CONTENT_QUALITY_ACTIVE_RUN_MISSING' });
-        return { jobId, runId: activeRun.id, deduplicated: true };
-      }
+    const claim = await this.repository.claimActiveRun(projectId, actorId);
+    const run = claim.run;
+    const jobId = buildContentQualityJobId(projectId, run.id);
+    if (!claim.claimed) {
+      this.observability.emit({ event: 'content.quality.deduplicated', projectId, runId: run.id, deduplicatedCount: 1 });
+      return { jobId, runId: run.id, deduplicated: true };
     }
-    const activeRun = await this.repository.findActiveRun(projectId);
-    if (activeRun) return { jobId, runId: activeRun.id, deduplicated: true };
-
-    const run = await this.repository.createRun(projectId, actorId);
     try {
       await this.queue.add('content-quality-run', { projectId, runId: run.id }, {
         jobId,
@@ -64,10 +61,10 @@ export class ContentQualityService {
       });
     } catch (error) {
       await this.repository.failRun(projectId, run.id, queueErrorCode());
-      this.observability.emit({ event: 'content.quality.failed', projectId, runId: run.id, errorCode: queueErrorCode() });
+      this.observability.emit({ event: 'content.quality.failed', projectId, runId: run.id, failedCount: 1, errorCode: queueErrorCode() });
       throw error;
     }
-    this.observability.emit({ event: 'content.quality.queued', projectId, runId: run.id });
+    this.observability.emit({ event: 'content.quality.queued', projectId, runId: run.id, queuedCount: 1 });
     return { jobId, runId: run.id, deduplicated: false };
   }
 }

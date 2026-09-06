@@ -150,6 +150,7 @@ model ContentQualityRun {
   completedAt           DateTime?
   errorCode             String?
   requestedByActorId    String?
+  activeRunKey          String?                 @unique
   createdAt             DateTime                @default(now())
   updatedAt             DateTime                @updatedAt
 

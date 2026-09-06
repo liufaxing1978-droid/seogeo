@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
+import { contentQualityObservability, type ContentQualityObservability } from './content-quality.observability.js';
 import type {
   ComparableSnapshot,
   ContentQualityEvaluation,
@@ -28,6 +29,12 @@ function errorWithCode(message: string, code: string): Error & { code: string } 
   return Object.assign(new Error(message), { code });
 }
 
+function prismaCode(error: unknown): string | null {
+  return error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+    ? error.code
+    : null;
+}
+
 function asSourceReferences(value: Prisma.JsonValue): P5ContentSignalReference['sourceReferences'] {
   return Array.isArray(value) ? value as unknown as P5ContentSignalReference['sourceReferences'] : [];
 }
@@ -44,12 +51,25 @@ function snapshotIds(evidence: Prisma.JsonValue): string[] {
 }
 
 export class ContentQualityRepository {
-  constructor(private readonly db: PrismaClient = prisma) {}
+  constructor(
+    private readonly db: PrismaClient = prisma,
+    private readonly observability: ContentQualityObservability = contentQualityObservability
+  ) {}
 
-  createRun(projectId: string, actorId: string) {
-    return this.db.contentQualityRun.create({
-      data: { projectId, rulesetVersion: 1, requestedByActorId: actorId }
-    });
+  async claimActiveRun(projectId: string, actorId: string) {
+    const existing = await this.findActiveRun(projectId);
+    if (existing) return { run: existing, claimed: false };
+    try {
+      const run = await this.db.contentQualityRun.create({
+        data: { projectId, rulesetVersion: 1, requestedByActorId: actorId, activeRunKey: projectId }
+      });
+      return { run, claimed: true };
+    } catch (error) {
+      if (prismaCode(error) !== 'P2002') throw error;
+      const active = await this.findActiveRun(projectId);
+      if (active) return { run: active, claimed: false };
+      throw error;
+    }
   }
 
   findActiveRun(projectId: string) {
@@ -199,11 +219,11 @@ export class ContentQualityRepository {
   }
 
   completeRun(projectId: string, runId: string, inputDocumentCount: number, findingCount: number) {
-    return this.db.contentQualityRun.update({
-      where: { id: runId },
+    return this.db.contentQualityRun.updateMany({
+      where: { id: runId, projectId, status: 'RUNNING' },
       data: {
-        projectId,
         status: 'COMPLETED',
+        activeRunKey: null,
         inputDocumentCount,
         findingCount,
         completedAt: new Date(),
@@ -215,7 +235,7 @@ export class ContentQualityRepository {
   failRun(projectId: string, runId: string, errorCode: string) {
     return this.db.contentQualityRun.updateMany({
       where: { id: runId, projectId, status: { in: ['QUEUED', 'RUNNING'] } },
-      data: { status: 'FAILED', completedAt: new Date(), errorCode: errorCode.slice(0, 80) }
+      data: { status: 'FAILED', activeRunKey: null, completedAt: new Date(), errorCode: errorCode.slice(0, 80) }
     });
   }
 
@@ -226,13 +246,24 @@ export class ContentQualityRepository {
     actorId: string,
     reason?: string
   ) {
-    return this.db.$transaction(async (tx) => {
+    const updated = await this.serializable(async (tx) => {
       const finding = await tx.contentQualityFinding.findFirst({ where: { id: findingId, projectId } });
       if (!finding) throw errorWithCode('Content quality finding not found.', 'CONTENT_QUALITY_FINDING_NOT_FOUND');
       const allowed = (finding.status === 'OPEN' && (toStatus === 'IN_REVIEW' || toStatus === 'DISMISSED'))
         || (finding.status === 'IN_REVIEW' && (toStatus === 'OPEN' || toStatus === 'DISMISSED'));
       if (!allowed) throw errorWithCode('Content quality finding transition is not allowed.', 'CONTENT_QUALITY_INVALID_TRANSITION');
-      const updated = await tx.contentQualityFinding.update({ where: { id: finding.id }, data: { status: toStatus } });
+      const conditional = await tx.contentQualityFinding.updateMany({
+        where: {
+          id: finding.id,
+          projectId,
+          status: finding.status,
+          acceptedPublicationProposalId: null
+        },
+        data: { status: toStatus }
+      });
+      if (conditional.count !== 1) {
+        throw errorWithCode('Content quality finding changed during transition.', 'CONTENT_QUALITY_CONCURRENT_TRANSITION');
+      }
       await tx.contentQualityFindingHistory.create({
         data: {
           findingId: finding.id,
@@ -243,17 +274,26 @@ export class ContentQualityRepository {
           metadata: { program: 'P13-A', action: 'manual-transition' }
         }
       });
-      return updated;
+      return tx.contentQualityFinding.findUniqueOrThrow({ where: { id: finding.id } });
     });
+    this.observability.emit({
+      event: 'content.quality.finding.transitioned',
+      projectId,
+      findingId,
+      toStatus,
+      transitionCount: 1
+    });
+    return updated;
   }
 
   async acceptFinding(projectId: string, findingId: string, actorId: string) {
-    return this.db.$transaction(async (tx) => {
+    try {
+      const result = await this.serializable(async (tx) => {
       const finding = await tx.contentQualityFinding.findFirst({ where: { id: findingId, projectId } });
       if (!finding) throw errorWithCode('Content quality finding not found.', 'CONTENT_QUALITY_FINDING_NOT_FOUND');
       if (finding.acceptedPublicationProposalId) {
         const proposal = await tx.publicationProposal.findUnique({ where: { id: finding.acceptedPublicationProposalId } });
-        if (proposal) return proposal;
+        if (proposal) return { proposal, accepted: false };
         throw errorWithCode('Accepted finding proposal is missing.', 'CONTENT_QUALITY_ACCEPTANCE_CORRUPT');
       }
       if (finding.status !== 'OPEN' && finding.status !== 'IN_REVIEW') {
@@ -267,6 +307,7 @@ export class ContentQualityRepository {
           createdBy: actorId,
           sourceReferenceId: finding.id,
           sourceSnapshotId: snapshotIds(finding.evidence)[0] ?? null,
+          p13aFindingHandoffKey: finding.id,
           sourceMetadata: {
             program: 'P13-A',
             findingId: finding.id,
@@ -275,10 +316,18 @@ export class ContentQualityRepository {
           }
         }
       });
-      await tx.contentQualityFinding.update({
-        where: { id: finding.id },
+      const conditional = await tx.contentQualityFinding.updateMany({
+        where: {
+          id: finding.id,
+          projectId,
+          status: finding.status,
+          acceptedPublicationProposalId: null
+        },
         data: { status: 'ACCEPTED', acceptedPublicationProposalId: proposal.id }
       });
+      if (conditional.count !== 1) {
+        throw errorWithCode('Content quality finding changed during acceptance.', 'CONTENT_QUALITY_CONCURRENT_TRANSITION');
+      }
       await tx.contentQualityFindingHistory.create({
         data: {
           findingId: finding.id,
@@ -288,8 +337,34 @@ export class ContentQualityRepository {
           metadata: { program: 'P13-A', action: 'accept', publicationProposalId: proposal.id }
         }
       });
-      return proposal;
+      return { proposal, accepted: true };
     });
+      if (result.accepted) {
+        this.observability.emit({
+          event: 'content.quality.finding.accepted',
+          projectId,
+          findingId,
+          acceptedCount: 1
+        });
+      }
+      return result.proposal;
+    } catch (error) {
+      if (prismaCode(error) !== 'P2002') throw error;
+      const existing = await this.db.publicationProposal.findUnique({ where: { p13aFindingHandoffKey: findingId } });
+      if (!existing) throw error;
+      return existing;
+    }
+  }
+
+  private async serializable<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.db.$transaction(operation, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      } catch (error) {
+        if (prismaCode(error) !== 'P2034' || attempt === 2) throw error;
+      }
+    }
+    throw errorWithCode('Content quality transaction did not complete.', 'CONTENT_QUALITY_TRANSACTION_FAILED');
   }
 }
 

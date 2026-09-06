@@ -145,6 +145,7 @@ model PublicationProposal {
   sourceReferenceId String?
   sourceSnapshotId  String?
   sourceMetadata    Json?
+  p13aFindingHandoffKey String?                 @unique
   createdAt         DateTime                      @default(now())
 
   drafts ContentDraft[]
