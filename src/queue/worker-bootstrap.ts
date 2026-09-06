@@ -3,6 +3,7 @@ import { Queue, Worker } from 'bullmq';
 import { processAiJob, type AiJobData } from '../modules/ai/ai.worker.js';
 import { processCompetitorCrawlJob, type CompetitorCrawlJobData } from '../modules/competitor/competitor.worker.js';
 import { processContentRefreshJob, type ContentRefreshJobData } from '../modules/content/content.worker.js';
+import { processContentQualityJob, type ContentQualityJobData } from '../modules/content/content-quality.worker.js';
 import { processCrawlJob, type CrawlJobData } from '../modules/crawler/crawl.worker.js';
 import {
   DISTRIBUTION_PREPARATION_QUEUE_NAME,
@@ -308,6 +309,7 @@ export function workerDefinitionForQueue(
     | 'optimization-experiment-evaluation'
     | 'optimization-feedback-materialization'
     | 'visibility'
+    | 'content-quality'
     | 'visibility-extraction'
     | 'visibility-metrics'
     | 'visibility-monitoring'
@@ -368,6 +370,12 @@ export function workerDefinitionForQueue(
     return {
       processor: processVisibilityJob,
       concurrency: 2
+    } as const;
+  }
+  if (name === 'content-quality') {
+    return {
+      processor: processContentQualityJob,
+      concurrency: 1
     } as const;
   }
   if (name === 'visibility-extraction') {
@@ -530,6 +538,7 @@ export async function startWorkers() {
     if (name === 'seo-audit') return new Worker<SeoAuditJobData>(name, processSeoAuditJob, { connection });
     if (name === 'geo-audit') return new Worker<GeoAuditJobData>(name, processGeoAuditJob, { connection });
     if (name === 'content') return new Worker<ContentRefreshJobData>(name, processContentRefreshJob, { connection, concurrency: 2 });
+    if (name === 'content-quality') return new Worker<ContentQualityJobData>(name, processContentQualityJob, { connection, concurrency: 1 });
     if (name === 'competitor') return new Worker<CompetitorCrawlJobData>(name, processCompetitorCrawlJob, { connection, concurrency: 2 });
     if (name === SEARCH_CONSOLE_SYNC_QUEUE_NAME) {
       return new Worker<SearchConsoleSyncJobData>(name, processSearchConsoleSyncJob, {
