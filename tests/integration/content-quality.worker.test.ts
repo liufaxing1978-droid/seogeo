@@ -2,7 +2,7 @@ import type { Job } from 'bullmq';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../src/db/prisma.js';
 import { ContentQualityRepository } from '../../src/modules/content/content-quality.repository.js';
-import { ContentQualityObservability } from '../../src/modules/content/content-quality.observability.js';
+import { contentQualityObservability, ContentQualityObservability } from '../../src/modules/content/content-quality.observability.js';
 import {
   processContentQualityJob,
   type ContentQualityJobData
@@ -127,6 +127,7 @@ describe('P13-A persisted-facts content-quality worker', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
       throw new Error('P13-A must never fetch');
     });
+    const emitSpy = vi.spyOn(contentQualityObservability, 'emit');
 
     await processContentQualityJob({
       name: 'content-quality-run',
@@ -152,7 +153,14 @@ describe('P13-A persisted-facts content-quality worker', () => {
     expect(await prisma.contentDraft.count({ where: { projectId } })).toBe(0);
     expect(await prisma.publicationPlan.count({ where: { projectId } })).toBe(0);
     expect(await prisma.publicationExecution.count({ where: { projectId } })).toBe(0);
+    expect(emitSpy).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'content.quality.findings.materialized',
+      materializedCount: 3,
+      categoryCounts: { internalLinkSupport: 1, contentDecay: 1, contentQa: 1 },
+      priorityCounts: { info: 0, low: 0, medium: 1, high: 2 }
+    }));
     fetchSpy.mockRestore();
+    emitSpy.mockRestore();
   });
 
   it('accepts a finding into exactly one proposal without drafting or publication', async () => {

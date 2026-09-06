@@ -10,24 +10,37 @@ import {
 
 class ManualContentQualityQueue {
   calls: Array<{ name: string; data: ContentQualityJobData; options: Record<string, unknown> }> = [];
-  private state: string | null = null;
-  private readonly jobs = new Map<string, { name: string; data: ContentQualityJobData; options: Record<string, unknown> }>();
+  removals = 0;
+  private readonly jobs = new Map<string, {
+    name: string;
+    data: ContentQualityJobData;
+    options: Record<string, unknown>;
+    state: string;
+  }>();
 
-  async getJob() {
-    if (!this.state) return undefined;
-    return { getState: async () => this.state };
+  async getJob(jobId: string) {
+    const job = this.jobs.get(jobId);
+    if (!job) return undefined;
+    return {
+      getState: async () => job.state,
+      remove: async () => {
+        this.removals += 1;
+        this.jobs.delete(jobId);
+      }
+    };
   }
 
   async add(name: string, data: ContentQualityJobData, options: Record<string, unknown>) {
     const jobId = options.jobId as string;
     if (this.jobs.has(jobId)) return { id: jobId };
     this.calls.push({ name, data, options });
-    this.jobs.set(jobId, { name, data, options });
-    this.state = 'waiting';
+    this.jobs.set(jobId, { name, data, options, state: 'waiting' });
     return { id: jobId };
   }
 
-  complete() { this.state = 'completed'; }
+  complete(state: 'completed' | 'failed' = 'completed') {
+    for (const job of this.jobs.values()) job.state = state;
+  }
 }
 
 describe('P13-A manual content-quality queue', () => {
@@ -66,7 +79,7 @@ describe('P13-A manual content-quality queue', () => {
     const second = await service.enqueueRun(projectId, 'user-1');
 
     expect(first).toMatchObject({ deduplicated: false });
-    expect(first.jobId).toBe(`content-quality-${projectId}-${first.runId}`);
+    expect(first.jobId).toBe(`content-quality-${projectId}`);
     expect(second).toEqual({
       jobId: first.jobId,
       runId: first.runId,
@@ -104,9 +117,10 @@ describe('P13-A manual content-quality queue', () => {
 
     expect(second).toMatchObject({ deduplicated: false });
     expect(second.runId).not.toBe(first.runId);
-    expect(second.jobId).not.toBe(first.jobId);
+    expect(second.jobId).toBe(first.jobId);
     expect(queue.calls).toHaveLength(2);
     expect(queue.calls[1]?.data.runId).toBe(second.runId);
+    expect(queue.removals).toBe(1);
   });
 
   it('enqueues a durable subsequent run after a failed terminal job', async () => {
@@ -114,14 +128,15 @@ describe('P13-A manual content-quality queue', () => {
     const service = new ContentQualityService(queue as unknown as Queue<ContentQualityJobData>);
     const first = await service.enqueueRun(projectId, 'user-1');
     await new ContentQualityRepository().failRun(projectId, first.runId, 'TEST_FAILURE');
-    queue.complete();
+    queue.complete('failed');
 
     const second = await service.enqueueRun(projectId, 'user-1');
 
     expect(second).toMatchObject({ deduplicated: false });
     expect(second.runId).not.toBe(first.runId);
-    expect(second.jobId).not.toBe(first.jobId);
+    expect(second.jobId).toBe(first.jobId);
     expect(queue.calls).toHaveLength(2);
+    expect(queue.removals).toBe(1);
   });
 
   it('atomically deduplicates concurrent manual requests to one active run', async () => {

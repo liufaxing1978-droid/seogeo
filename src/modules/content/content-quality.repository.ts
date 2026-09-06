@@ -1,6 +1,11 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { prisma } from '../../db/prisma.js';
-import { contentQualityObservability, type ContentQualityObservability } from './content-quality.observability.js';
+import {
+  contentQualityObservability,
+  type ContentQualityCategoryCounts,
+  type ContentQualityObservability,
+  type ContentQualityPriorityCounts
+} from './content-quality.observability.js';
 import type {
   ComparableSnapshot,
   ContentQualityEvaluation,
@@ -23,6 +28,12 @@ export interface ContentQualityInputDocument {
 export interface ContentQualityInput {
   cutoffAt: Date;
   documents: ContentQualityInputDocument[];
+}
+
+export interface ContentQualityMaterialization {
+  count: number;
+  categoryCounts: ContentQualityCategoryCounts;
+  priorityCounts: ContentQualityPriorityCounts;
 }
 
 function errorWithCode(message: string, code: string): Error & { code: string } {
@@ -48,6 +59,27 @@ function snapshotIds(evidence: Prisma.JsonValue): string[] {
     const value = (reference as Record<string, unknown>);
     return value.type === 'PAGE_SNAPSHOT' && typeof value.id === 'string' ? [value.id] : [];
   });
+}
+
+function emptyCategoryCounts(): ContentQualityCategoryCounts {
+  return { internalLinkSupport: 0, contentDecay: 0, contentQa: 0 };
+}
+
+function emptyPriorityCounts(): ContentQualityPriorityCounts {
+  return { info: 0, low: 0, medium: 0, high: 0 };
+}
+
+function incrementMaterialization(
+  counts: ContentQualityMaterialization,
+  evaluation: ContentQualityEvaluation
+): void {
+  if (evaluation.category === 'INTERNAL_LINK_SUPPORT') counts.categoryCounts.internalLinkSupport += 1;
+  if (evaluation.category === 'CONTENT_DECAY') counts.categoryCounts.contentDecay += 1;
+  if (evaluation.category === 'CONTENT_QA') counts.categoryCounts.contentQa += 1;
+  if (evaluation.priority === 'INFO') counts.priorityCounts.info += 1;
+  if (evaluation.priority === 'LOW') counts.priorityCounts.low += 1;
+  if (evaluation.priority === 'MEDIUM') counts.priorityCounts.medium += 1;
+  if (evaluation.priority === 'HIGH') counts.priorityCounts.high += 1;
 }
 
 export class ContentQualityRepository {
@@ -165,9 +197,13 @@ export class ContentQualityRepository {
     projectId: string,
     runId: string,
     rows: Array<{ contentDocumentId: string; evaluation: ContentQualityEvaluation }>
-  ): Promise<number> {
+  ): Promise<ContentQualityMaterialization> {
     const now = new Date();
-    let materialized = 0;
+    const materialized: ContentQualityMaterialization = {
+      count: 0,
+      categoryCounts: emptyCategoryCounts(),
+      priorityCounts: emptyPriorityCounts()
+    };
     await this.db.$transaction(async (tx) => {
       for (const row of rows) {
         const { evaluation } = row;
@@ -196,7 +232,8 @@ export class ContentQualityRepository {
               lastDetectedAt: now
             }
           });
-          materialized += 1;
+          materialized.count += 1;
+          incrementMaterialization(materialized, evaluation);
           continue;
         }
         if (existing.status === 'OPEN' || existing.status === 'IN_REVIEW') {
@@ -211,7 +248,8 @@ export class ContentQualityRepository {
               lastDetectedAt: now
             }
           });
-          materialized += 1;
+          materialized.count += 1;
+          incrementMaterialization(materialized, evaluation);
         }
       }
     });

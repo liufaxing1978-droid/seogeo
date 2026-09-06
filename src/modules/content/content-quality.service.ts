@@ -6,12 +6,12 @@ import { contentQualityRepository, type ContentQualityRepository } from './conte
 export const CONTENT_QUALITY_QUEUE_NAME = 'content-quality';
 export interface ContentQualityJobData { projectId: string; runId: string; }
 
-export function buildContentQualityJobId(projectId: string, runId: string): string {
-  return `content-quality-${projectId}-${runId}`;
+export function buildContentQualityJobId(projectId: string, _runId: string): string {
+  return `content-quality-${projectId}`;
 }
 
 export interface ContentQualityQueue {
-  getJob(jobId: string): Promise<{ getState(): Promise<string> } | undefined | null>;
+  getJob(jobId: string): Promise<{ getState(): Promise<string>; remove(): Promise<void> } | undefined | null>;
   add(
     name: string,
     data: ContentQualityJobData,
@@ -53,6 +53,7 @@ export class ContentQualityService {
       return { jobId, runId: run.id, deduplicated: true };
     }
     try {
+      await this.removeRetainedTerminalJob(jobId);
       await this.queue.add('content-quality-run', { projectId, runId: run.id }, {
         jobId,
         attempts: 1,
@@ -66,6 +67,13 @@ export class ContentQualityService {
     }
     this.observability.emit({ event: 'content.quality.queued', projectId, runId: run.id, queuedCount: 1 });
     return { jobId, runId: run.id, deduplicated: false };
+  }
+
+  private async removeRetainedTerminalJob(jobId: string): Promise<void> {
+    const existing = await this.queue.getJob(jobId);
+    if (!existing) return;
+    const state = await existing.getState();
+    if (state === 'completed' || state === 'failed') await existing.remove();
   }
 }
 

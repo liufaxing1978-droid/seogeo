@@ -46,9 +46,16 @@ export async function processContentQualityJob(
       { contentDocumentId: document.id, evaluation: evaluateQa(document.opportunities, document.signals) }
     ]);
     const failed = evaluations.filter((row) => row.evaluation.status === 'FAIL');
-    const materializedCount = await repository.materializeFailures(projectId, runId, failed);
+    const materialized = await repository.materializeFailures(projectId, runId, failed);
     await repository.completeRun(projectId, runId, input.documents.length, failed.length);
-    observability.emit({ event: 'content.quality.findings.materialized', projectId, runId, materializedCount });
+    observability.emit({
+      event: 'content.quality.findings.materialized',
+      projectId,
+      runId,
+      materializedCount: materialized.count,
+      categoryCounts: materialized.categoryCounts,
+      priorityCounts: materialized.priorityCounts
+    });
     observability.emit({
       event: 'content.quality.completed',
       projectId,
