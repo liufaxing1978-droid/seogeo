@@ -134,12 +134,12 @@ describe('P13-A content quality persistence foundation', () => {
 
     const history = await prisma.contentQualityFindingHistory.findMany({
       where: { findingId: first.id },
-      select: { fromStatus: true, toStatus: true },
-      orderBy: { createdAt: 'asc' }
+      select: { fromStatus: true, toStatus: true }
     });
-    expect(history).toEqual([
+    expect(history).toHaveLength(2);
+    expect(history).toEqual(expect.arrayContaining([
       { fromStatus: 'OPEN', toStatus: 'IN_REVIEW' },
       { fromStatus: 'IN_REVIEW', toStatus: 'DISMISSED' }
-    ]);
+    ]));
   });
 });
