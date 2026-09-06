@@ -11,7 +11,11 @@ export function buildContentQualityJobId(projectId: string, _runId: string): str
 }
 
 export interface ContentQualityQueue {
-  getJob(jobId: string): Promise<{ getState(): Promise<string>; remove(): Promise<void> } | undefined | null>;
+  getJob(jobId: string): Promise<{
+    data: ContentQualityJobData;
+    getState(): Promise<string>;
+    remove(): Promise<void>;
+  } | undefined | null>;
   add(
     name: string,
     data: ContentQualityJobData,
@@ -45,15 +49,16 @@ export class ContentQualityService {
   ) {}
 
   async enqueueRun(projectId: string, actorId: string) {
+    const jobId = buildContentQualityJobId(projectId, '');
+    await this.reconcileTerminalRunJob(projectId, jobId);
     const claim = await this.repository.claimActiveRun(projectId, actorId);
     const run = claim.run;
-    const jobId = buildContentQualityJobId(projectId, run.id);
     if (!claim.claimed) {
       this.observability.emit({ event: 'content.quality.deduplicated', projectId, runId: run.id, deduplicatedCount: 1 });
       return { jobId, runId: run.id, deduplicated: true };
     }
     try {
-      await this.removeRetainedTerminalJob(jobId);
+      await this.reconcileTerminalRunJob(projectId, jobId);
       await this.queue.add('content-quality-run', { projectId, runId: run.id }, {
         jobId,
         attempts: 1,
@@ -69,11 +74,18 @@ export class ContentQualityService {
     return { jobId, runId: run.id, deduplicated: false };
   }
 
-  private async removeRetainedTerminalJob(jobId: string): Promise<void> {
+  private async reconcileTerminalRunJob(projectId: string, jobId: string): Promise<void> {
     const existing = await this.queue.getJob(jobId);
     if (!existing) return;
     const state = await existing.getState();
-    if (state === 'completed' || state === 'failed') await existing.remove();
+    if (state === 'completed' || state === 'failed') {
+      await existing.remove();
+      return;
+    }
+    const persistedRun = await this.repository.getRun(projectId, existing.data.runId);
+    if (persistedRun?.status === 'COMPLETED' || persistedRun?.status === 'FAILED') {
+      await existing.remove();
+    }
   }
 }
 

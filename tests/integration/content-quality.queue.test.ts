@@ -11,6 +11,7 @@ import {
 class ManualContentQualityQueue {
   calls: Array<{ name: string; data: ContentQualityJobData; options: Record<string, unknown> }> = [];
   removals = 0;
+  failRemoval = false;
   private readonly jobs = new Map<string, {
     name: string;
     data: ContentQualityJobData;
@@ -22,8 +23,10 @@ class ManualContentQualityQueue {
     const job = this.jobs.get(jobId);
     if (!job) return undefined;
     return {
+      data: job.data,
       getState: async () => job.state,
       remove: async () => {
+        if (this.failRemoval) throw new Error('active job cannot be removed');
         this.removals += 1;
         this.jobs.delete(jobId);
       }
@@ -38,7 +41,7 @@ class ManualContentQualityQueue {
     return { id: jobId };
   }
 
-  complete(state: 'completed' | 'failed' = 'completed') {
+  setState(state: string) {
     for (const job of this.jobs.values()) job.state = state;
   }
 }
@@ -111,7 +114,7 @@ describe('P13-A manual content-quality queue', () => {
     const repository = new ContentQualityRepository();
     await repository.startRun(projectId, first.runId);
     await repository.completeRun(projectId, first.runId, 0, 0);
-    queue.complete();
+    queue.setState('completed');
 
     const second = await service.enqueueRun(projectId, 'user-1');
 
@@ -128,7 +131,7 @@ describe('P13-A manual content-quality queue', () => {
     const service = new ContentQualityService(queue as unknown as Queue<ContentQualityJobData>);
     const first = await service.enqueueRun(projectId, 'user-1');
     await new ContentQualityRepository().failRun(projectId, first.runId, 'TEST_FAILURE');
-    queue.complete('failed');
+    queue.setState('failed');
 
     const second = await service.enqueueRun(projectId, 'user-1');
 
@@ -137,6 +140,48 @@ describe('P13-A manual content-quality queue', () => {
     expect(second.jobId).toBe(first.jobId);
     expect(queue.calls).toHaveLength(2);
     expect(queue.removals).toBe(1);
+  });
+
+  it.each(['COMPLETED', 'FAILED'] as const)(
+    'reconciles an active stale job whose persisted run is %s before creating a replacement',
+    async (terminalStatus) => {
+      const queue = new ManualContentQualityQueue();
+      const service = new ContentQualityService(queue as unknown as Queue<ContentQualityJobData>);
+      const repository = new ContentQualityRepository();
+      const first = await service.enqueueRun(projectId, 'user-1');
+      if (terminalStatus === 'COMPLETED') {
+        await repository.startRun(projectId, first.runId);
+        await repository.completeRun(projectId, first.runId, 0, 0);
+      } else {
+        await repository.failRun(projectId, first.runId, 'TEST_FAILURE');
+      }
+      queue.setState('active');
+
+      const second = await service.enqueueRun(projectId, 'user-2');
+
+      expect(second).toMatchObject({ jobId: first.jobId, deduplicated: false });
+      expect(second.runId).not.toBe(first.runId);
+      expect(queue.calls).toHaveLength(2);
+      expect(queue.calls[1]?.data.runId).toBe(second.runId);
+      expect(queue.removals).toBe(1);
+      expect(await prisma.contentQualityRun.findUniqueOrThrow({ where: { id: second.runId } }))
+        .toMatchObject({ status: 'QUEUED' });
+    }
+  );
+
+  it('does not create a replacement run when stale active-job removal cannot complete', async () => {
+    const queue = new ManualContentQualityQueue();
+    const service = new ContentQualityService(queue as unknown as Queue<ContentQualityJobData>);
+    const repository = new ContentQualityRepository();
+    const first = await service.enqueueRun(projectId, 'user-1');
+    await repository.failRun(projectId, first.runId, 'TEST_FAILURE');
+    queue.setState('active');
+    queue.failRemoval = true;
+
+    await expect(service.enqueueRun(projectId, 'user-2')).rejects.toThrow('active job cannot be removed');
+
+    expect(queue.calls).toHaveLength(1);
+    expect(await prisma.contentQualityRun.count({ where: { projectId, status: 'QUEUED' } })).toBe(0);
   });
 
   it('atomically deduplicates concurrent manual requests to one active run', async () => {

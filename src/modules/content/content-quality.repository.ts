@@ -111,6 +111,13 @@ export class ContentQualityRepository {
     });
   }
 
+  getRun(projectId: string, runId: string) {
+    return this.db.contentQualityRun.findFirst({
+      where: { id: runId, projectId },
+      select: { id: true, status: true }
+    });
+  }
+
   async startRun(projectId: string, runId: string): Promise<{ cutoffAt: Date } | null> {
     const cutoffAt = new Date();
     const updated = await this.db.contentQualityRun.updateMany({
