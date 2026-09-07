@@ -10,11 +10,9 @@ import { AppError, NotFoundError } from '../../core/errors.js';
 import { createContentBriefTask, createContentOptimizationTask } from '../ai/content-intelligence.js';
 import { aiTaskService } from '../ai/ai.service.js';
 import { contentQualityRepository } from './content-quality.repository.js';
-import { contentQualityService } from './content-quality.service.js';
+import { contentQualityService, type ContentQualityService } from './content-quality.service.js';
 import { contentService } from './content.service.js';
 import { contentWebRepository } from './content.web.repository.js';
-
-export const contentWebRoutes = Router();
 
 function render(res: any, bodyTemplate: string, locals: Record<string, unknown>) {
   return res.render('layout', { title: '内容', activeNav: 'content', currentProjectId: null, bodyTemplate, ...locals });
@@ -44,10 +42,33 @@ function record(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function snapshotValues(snapshot: Record<string, unknown> | undefined): Record<string, unknown> {
+type EvidenceSnapshotView = {
+  snapshotId?: string;
+  capturedAt?: unknown;
+  wordCount?: unknown;
+  title?: unknown;
+  h1?: unknown;
+  statusCode?: unknown;
+  contentType?: unknown;
+  indexable?: unknown;
+};
+
+type QualityEvidenceModel = {
+  status: string;
+  references: Array<{ type: 'PAGE_SNAPSHOT' | 'CONTENT_OPPORTUNITY' | 'CONTENT_SIGNAL'; id: string }>;
+  before: EvidenceSnapshotView;
+  after: EvidenceSnapshotView;
+  internalLink: { observed: number | null; required: number | null } | null;
+  p5Qa: {
+    opportunity: { id: string | null; key: string | null; version: number | null; status: string | null } | null;
+    signal: { id: string | null; ruleKey: string | null; ruleVersion: number | null; status: string | null } | null;
+  } | null;
+};
+
+function snapshotValues(snapshot: Record<string, unknown> | undefined): EvidenceSnapshotView {
   if (!snapshot) return {};
   return {
-    snapshotId: snapshot.id,
+    snapshotId: nullableString(snapshot.id) ?? undefined,
     capturedAt: snapshot.capturedAt,
     wordCount: snapshot.wordCount,
     title: snapshot.title,
@@ -58,27 +79,64 @@ function snapshotValues(snapshot: Record<string, unknown> | undefined): Record<s
   };
 }
 
-function evidenceModel(value: unknown, snapshots: Array<Record<string, unknown>> = []) {
+function nullableNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function evidenceModel(value: unknown, snapshots: Array<Record<string, unknown>> = []): QualityEvidenceModel {
   const evidence = record(value);
-  const references = Array.isArray(evidence.sourceReferences)
-    ? evidence.sourceReferences.map(record).filter((reference) => typeof reference.id === 'string')
-    : [];
+  const references: QualityEvidenceModel['references'] = [];
+  if (Array.isArray(evidence.sourceReferences)) {
+    for (const source of evidence.sourceReferences) {
+      const reference = record(source);
+      const id = nullableString(reference.id);
+      if (!id) continue;
+      if (reference.type === 'PAGE_SNAPSHOT') references.push({ type: 'PAGE_SNAPSHOT', id });
+      if (reference.type === 'CONTENT_OPPORTUNITY') references.push({ type: 'CONTENT_OPPORTUNITY', id });
+      if (reference.type === 'CONTENT_SIGNAL') references.push({ type: 'CONTENT_SIGNAL', id });
+    }
+  }
   const snapshotById = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot]));
   const previousId = typeof evidence.previousSnapshotId === 'string' ? evidence.previousSnapshotId : undefined;
   const currentId = typeof evidence.currentSnapshotId === 'string' ? evidence.currentSnapshotId : undefined;
-  const explicitBefore = record(evidence.before);
-  const explicitAfter = record(evidence.after);
+  const observedInternalLinkCount = nullableNumber(evidence.observedInternalLinkCount);
+  const requiredInternalLinkCount = nullableNumber(evidence.requiredInternalLinkCount);
+  const opportunityId = nullableString(evidence.p5OpportunityId);
+  const opportunityKey = nullableString(evidence.p5OpportunityKey);
+  const opportunityVersion = nullableNumber(evidence.p5OpportunityVersion);
+  const opportunityStatus = nullableString(evidence.p5OpportunityStatus);
+  const signalId = nullableString(evidence.p5SignalId);
+  const signalRuleKey = nullableString(evidence.p5SignalRuleKey);
+  const signalRuleVersion = nullableNumber(evidence.p5SignalRuleVersion);
+  const signalStatus = nullableString(evidence.p5SignalStatus);
   return {
     status: typeof evidence.status === 'string' ? evidence.status : 'UNKNOWN',
     references,
-    before: Object.keys(explicitBefore).length ? explicitBefore : {
+    before: {
       ...snapshotValues(snapshotById.get(previousId)),
       ...(evidence.previousWordCount !== undefined ? { wordCount: evidence.previousWordCount } : {}),
     },
-    after: Object.keys(explicitAfter).length ? explicitAfter : {
+    after: {
       ...snapshotValues(snapshotById.get(currentId)),
       ...(evidence.currentWordCount !== undefined ? { wordCount: evidence.currentWordCount } : {}),
     },
+    internalLink: observedInternalLinkCount !== null || requiredInternalLinkCount !== null
+      ? { observed: observedInternalLinkCount, required: requiredInternalLinkCount }
+      : null,
+    p5Qa: opportunityId || opportunityKey || opportunityVersion !== null || opportunityStatus || signalId || signalRuleKey || signalRuleVersion !== null || signalStatus
+      ? {
+        opportunity: opportunityId || opportunityKey || opportunityVersion !== null || opportunityStatus
+          ? { id: opportunityId, key: opportunityKey, version: opportunityVersion, status: opportunityStatus }
+          : null,
+        signal: signalId || signalRuleKey || signalRuleVersion !== null || signalStatus
+          ? { id: signalId, ruleKey: signalRuleKey, ruleVersion: signalRuleVersion, status: signalStatus }
+          : null,
+      }
+      : null,
   };
 }
 
@@ -109,6 +167,11 @@ const qualityTransitionSchema = z.object({
   status: z.enum(['IN_REVIEW', 'DISMISSED']),
   reason: z.string().trim().min(1).max(1_000),
 });
+
+export function createContentWebRoutes(
+  qualityService: Pick<ContentQualityService, 'enqueueRun'> = contentQualityService,
+) {
+  const contentWebRoutes = Router();
 
 contentWebRoutes.get('/projects/:id/content', async (req, res, next) => {
   try {
@@ -143,7 +206,7 @@ contentWebRoutes.post('/projects/:id/content/quality/runs', ...qualityWriteGuard
     const model = await contentWebRepository.getQualityCenter(projectId);
     if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
     assertFeature(model.project);
-    await contentQualityService.enqueueRun(model.project.id, req.auth!.userId);
+    await qualityService.enqueueRun(model.project.id, req.auth!.userId);
     res.redirect(303, `/projects/${model.project.id}/content/quality`);
   } catch (error) { next(qualityError(error)); }
 });
@@ -239,3 +302,8 @@ contentWebRoutes.get('/projects/:id/content/briefs/:briefId', async (req, res, n
     render(res, 'content/brief-show', { title: '内容 Brief', currentProjectId: model.project.id, ...model });
   } catch (error) { next(error); }
 });
+
+return contentWebRoutes;
+}
+
+export const contentWebRoutes = createContentWebRoutes();

@@ -98,6 +98,77 @@ describe('P13-A content quality review center web', () => {
     expect(detail.text).toContain('人工复核');
   });
 
+  it('renders allowlisted internal-link and P5 QA evidence instead of hiding persisted rule inputs', async () => {
+    const operator = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'STANDARD', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    cleanups.push(operator.cleanup);
+    const fixture = await createQualityFixture(operator.project.id);
+    const internalLinkFinding = await prisma.contentQualityFinding.create({
+      data: {
+        projectId: operator.project.id,
+        contentDocumentId: fixture.document.id,
+        findingKey: 'CONTENT_INTERNAL_LINK_SUPPORT',
+        ruleVersion: 1,
+        category: 'INTERNAL_LINK_SUPPORT',
+        priority: 'MEDIUM',
+        summary: '内部链接不足。',
+        evidence: {
+          status: 'FAIL',
+          sourceReferences: [{ type: 'PAGE_SNAPSHOT', id: fixture.afterSnapshot.id }],
+          observedInternalLinkCount: 1,
+          requiredInternalLinkCount: 3,
+        },
+        firstDetectedAt: new Date(),
+        lastDetectedAt: new Date(),
+      },
+    });
+    const qaFinding = await prisma.contentQualityFinding.create({
+      data: {
+        projectId: operator.project.id,
+        contentDocumentId: fixture.document.id,
+        findingKey: 'CONTENT_QA_P5A_FAILED_OPPORTUNITY',
+        ruleVersion: 1,
+        category: 'CONTENT_QA',
+        priority: 'HIGH',
+        summary: 'P5 QA 证据需人工审核。',
+        evidence: {
+          status: 'FAIL',
+          sourceReferences: [{ type: 'PAGE_SNAPSHOT', id: fixture.afterSnapshot.id }],
+          p5OpportunityId: randomUUID(),
+          p5OpportunityKey: 'CONTENT_BODY_SUBSTANTIVE:v2',
+          p5OpportunityVersion: 2,
+          p5OpportunityStatus: 'OPEN',
+          p5SignalId: randomUUID(),
+          p5SignalRuleKey: 'CONTENT_BODY_SUBSTANTIVE',
+          p5SignalRuleVersion: 2,
+          p5SignalStatus: 'FAIL',
+        },
+        firstDetectedAt: new Date(),
+        lastDetectedAt: new Date(),
+      },
+    });
+
+    const app = createApp();
+    const internalLinkDetail = await request(app)
+      .get(`/projects/${operator.project.id}/content/quality/${internalLinkFinding.id}`)
+      .set('Cookie', operator.sessionCookie)
+      .expect(200);
+    expect(internalLinkDetail.text).toContain('已观测内部链接数');
+    expect(internalLinkDetail.text).toContain('要求最少内部链接数');
+    expect(internalLinkDetail.text).toContain('1');
+    expect(internalLinkDetail.text).toContain('3');
+
+    const qaDetail = await request(app)
+      .get(`/projects/${operator.project.id}/content/quality/${qaFinding.id}`)
+      .set('Cookie', operator.sessionCookie)
+      .expect(200);
+    expect(qaDetail.text).toContain('P5 Opportunity ID');
+    expect(qaDetail.text).toContain('P5 Signal ID');
+    expect(qaDetail.text).toContain('CONTENT_BODY_SUBSTANTIVE:v2');
+    expect(qaDetail.text).toContain('CONTENT_BODY_SUBSTANTIVE');
+    expect(qaDetail.text).toContain('OPEN');
+    expect(qaDetail.text).toContain('FAIL');
+  });
+
   it('requires membership to read and CONTENT_WRITE plus CSRF to request analysis', async () => {
     const operator = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'STANDARD', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
     const viewer = await seedAuthenticatedUser({ role: 'VIEWER', planLevel: 'STANDARD', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
@@ -172,5 +243,14 @@ describe('P13-A content quality review center web', () => {
       .expect(200);
     expect(detail.text).toContain('查看发布提案详情');
     expect(detail.text).toContain('/publication/opportunities?proposalId=');
+    const acceptedFinding = await prisma.contentQualityFinding.findUniqueOrThrow({
+      where: { id: fixture.finding.id },
+      select: { acceptedPublicationProposalId: true },
+    });
+    const proposal = await request(app)
+      .get(`/projects/${operator.project.id}/publication/opportunities?proposalId=${acceptedFinding.acceptedPublicationProposalId}`)
+      .expect(200);
+    expect(proposal.text).toContain('P13-A content-quality finding');
+    expect(proposal.text).toContain(`proposal-${acceptedFinding.acceptedPublicationProposalId}`);
   });
 });

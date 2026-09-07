@@ -99,11 +99,13 @@ publicationWebRoutes.get('/projects/:id/publication', async (req, res, next) => 
 publicationWebRoutes.get('/projects/:id/publication/opportunities', async (req, res, next) => {
   try {
     const projectId = routeParam(req.params.id);
-    const model = await publicationWebRepository.listOpportunities(projectId);
+    const proposalId = typeof req.query.proposalId === 'string' ? req.query.proposalId : undefined;
+    const model = await publicationWebRepository.listOpportunities(projectId, proposalId);
     if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
     render(res, 'publication/opportunities', {
       currentProjectId: model.project.id,
       project: model.project,
+      selectedProposalId: proposalId ?? null,
       proposals: model.proposals.map((proposal) => ({ ...proposal, metadata: proposalMetadata(proposal.sourceMetadata) }))
     });
   } catch (error) { next(error); }

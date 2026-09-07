@@ -20,15 +20,31 @@
   <section class="panel product-table-panel" data-ui="content-quality-evidence">
     <div class="panel-header"><div><h2>快照证据与前后变化</h2><p class="muted">只读取规则存储的证据，不推断缺失字段。</p></div></div>
     <div class="table-wrap"><table><thead><tr><th>项</th><th>前</th><th>后</th></tr></thead><tbody>
-      <% const evidenceKeys = [...new Set([...Object.keys(evidence.before), ...Object.keys(evidence.after)])].filter((key) => key !== 'snapshotId' && key !== 'capturedAt'); %>
-      <% for (const key of evidenceKeys) { %><tr><td><%= key %></td><td><%= evidence.before[key] ?? '证据不足' %></td><td><%= evidence.after[key] ?? '证据不足' %></td></tr><% } %>
+      <% const snapshotFields = [['wordCount', '字数'], ['title', '标题'], ['h1', 'H1'], ['statusCode', 'HTTP 状态'], ['contentType', '内容类型'], ['indexable', '可索引']] ; const evidenceKeys = snapshotFields.filter(([key]) => Object.hasOwn(evidence.before, key) || Object.hasOwn(evidence.after, key)); %>
+      <% for (const [key, label] of evidenceKeys) { %><tr><td><%= label %></td><td><%= evidence.before[key] ?? '证据不足' %></td><td><%= evidence.after[key] ?? '证据不足' %></td></tr><% } %>
       <% if (!evidenceKeys.length) { %><tr><td colspan="3" class="muted">证据不足</td></tr><% } %>
     </tbody></table></div>
     <p class="muted">前快照：<code><%= evidence.before.snapshotId ?? '证据不足' %></code> · <%= evidence.before.capturedAt ? new Date(String(evidence.before.capturedAt)).toLocaleString('zh-CN') : '证据不足' %></p>
     <p class="muted">后快照：<code><%= evidence.after.snapshotId ?? '证据不足' %></code> · <%= evidence.after.capturedAt ? new Date(String(evidence.after.capturedAt)).toLocaleString('zh-CN') : '证据不足' %></p>
-    <p class="muted">关联快照：<%= evidence.references.map((reference) => reference.id).join('、') || '证据不足' %></p>
+    <p class="muted">关联证据：<%= evidence.references.map((reference) => reference.id).join('、') || '证据不足' %></p>
     <% if (finding.latestRun) { %><p class="muted">最近运行：<code><%= finding.latestRun.id %></code> · 规则集版本 <%= finding.latestRun.rulesetVersion %> · 快照截止时间 <%= finding.latestRun.inputSnapshotCutoffAt ? new Date(finding.latestRun.inputSnapshotCutoffAt).toLocaleString('zh-CN') : '证据不足' %></p><% } %>
   </section>
+
+  <% if (evidence.internalLink) { %>
+    <section class="panel" data-ui="content-quality-internal-link-evidence">
+      <h2>内部链接规则证据</h2>
+      <p>已观测内部链接数：<strong><%= evidence.internalLink.observed ?? '证据不足' %></strong></p>
+      <p>要求最少内部链接数：<strong><%= evidence.internalLink.required ?? '证据不足' %></strong></p>
+    </section>
+  <% } %>
+
+  <% if (evidence.p5Qa) { %>
+    <section class="panel" data-ui="content-quality-p5-qa-evidence">
+      <h2>P5 QA 规则证据</h2>
+      <% if (evidence.p5Qa.opportunity) { const opportunity = evidence.p5Qa.opportunity; %><p>P5 Opportunity ID：<code><%= opportunity.id ?? '证据不足' %></code> · Key：<%= opportunity.key ?? '证据不足' %> · 版本：<%= opportunity.version ?? '证据不足' %> · 状态：<%= opportunity.status ?? '证据不足' %></p><% } %>
+      <% if (evidence.p5Qa.signal) { const signal = evidence.p5Qa.signal; %><p>P5 Signal ID：<code><%= signal.id ?? '证据不足' %></code> · 规则：<%= signal.ruleKey ?? '证据不足' %> · 版本：<%= signal.ruleVersion ?? '证据不足' %> · 状态：<%= signal.status ?? '证据不足' %></p><% } %>
+    </section>
+  <% } %>
 
   <section class="panel" data-ui="content-quality-history">
     <div class="panel-header"><div><h2>审核历史</h2><p class="muted">每次人工状态变更均保留原因与时间。</p></div></div>
