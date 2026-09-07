@@ -1,11 +1,42 @@
 import type { AiTask } from '@prisma/client';
 import { Router } from 'express';
+import { z } from 'zod';
+import { requireAuthentication } from '../../auth/authentication.js';
+import { requireCsrf } from '../../auth/csrf.js';
 import { hasFeature } from '../../auth/feature-flags.js';
+import {
+  requireProjectCapability,
+  requireProjectMembership,
+} from '../../auth/project-access.js';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
 import { createContentBriefTask, createContentOptimizationTask } from '../ai/content-intelligence.js';
 import { aiTaskService, type AiTaskService } from '../ai/ai.service.js';
+import { contentQualityRepository } from './content-quality.repository.js';
+import { contentQualityService, type ContentQualityService } from './content-quality.service.js';
 import { contentService, type ContentService } from './content.service.js';
+
+const emptyBodySchema = z.object({}).strict();
+const paginationSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).max(100_000).default(0),
+}).strict();
+const runListSchema = paginationSchema.extend({
+  status: z.enum(['QUEUED', 'RUNNING', 'COMPLETED', 'FAILED']).optional(),
+}).strict();
+const findingListSchema = paginationSchema.extend({
+  status: z.enum(['OPEN', 'IN_REVIEW', 'ACCEPTED', 'DISMISSED']).optional(),
+  category: z.enum(['INTERNAL_LINK_SUPPORT', 'CONTENT_DECAY', 'CONTENT_QA']).optional(),
+  priority: z.enum(['INFO', 'LOW', 'MEDIUM', 'HIGH']).optional(),
+  contentDocumentId: z.string().uuid().optional(),
+  pageId: z.string().uuid().optional(),
+}).strict();
+const findingTransitionSchema = z.object({
+  status: z.enum(['OPEN', 'IN_REVIEW', 'DISMISSED']),
+  reason: z.string().trim().min(1).max(1_000),
+}).strict();
+
+export type ContentQualityApiService = Pick<ContentQualityService, 'enqueueRun'>;
 
 function safeTask(task: AiTask) {
   return { id: task.id, projectId: task.projectId, taskType: task.taskType, status: task.status, promptVersion: task.promptVersion, errorCode: task.errorCode, createdAt: task.createdAt, updatedAt: task.updatedAt };
@@ -25,8 +56,141 @@ async function requireDocument(projectId: string, documentId: string) {
   return document;
 }
 
-export function createContentRoutes(service: ContentService = contentService, aiService: AiTaskService = aiTaskService) {
+function routeParam(value: string | string[] | undefined): string {
+  const normalized = Array.isArray(value) ? value[0] : value;
+  if (!normalized) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
+  return normalized;
+}
+
+async function requireQualityFinding(projectId: string, findingId: string): Promise<void> {
+  const finding = await prisma.contentQualityFinding.findFirst({
+    where: { id: findingId, projectId },
+    select: { id: true },
+  });
+  if (!finding) {
+    throw new NotFoundError('Content quality finding not found', 'CONTENT_QUALITY_FINDING_NOT_FOUND');
+  }
+}
+
+function mapQualityError(error: unknown): unknown {
+  if (!error || typeof error !== 'object' || !('code' in error)) return error;
+  const code = error.code;
+  if (code === 'CONTENT_QUALITY_FINDING_NOT_FOUND') {
+    return new NotFoundError('Content quality finding not found', code);
+  }
+  if (code === 'CONTENT_QUALITY_INVALID_TRANSITION' || code === 'CONTENT_QUALITY_CONCURRENT_TRANSITION') {
+    return new AppError('Content quality finding transition is not allowed', 409, code);
+  }
+  return error;
+}
+
+export function createContentRoutes(
+  service: ContentService = contentService,
+  aiService: AiTaskService = aiTaskService,
+  qualityService: ContentQualityApiService = contentQualityService,
+) {
   const router = Router();
+  const qualityReadGuards = [
+    requireAuthentication(),
+    requireProjectMembership(),
+    requireProjectCapability('PROJECT_READ'),
+  ];
+  const qualityMutationGuards = [
+    requireAuthentication(),
+    requireCsrf(),
+    requireProjectMembership(),
+    requireProjectCapability('CONTENT_WRITE'),
+  ];
+
+  router.post('/projects/:projectId/content-quality/runs', ...qualityMutationGuards, async (req, res, next) => {
+    try {
+      emptyBodySchema.parse(req.body);
+      const projectId = routeParam(req.params.projectId);
+      const data = await qualityService.enqueueRun(projectId, req.auth!.userId);
+      res.status(202).json({ data });
+    } catch (error) { next(mapQualityError(error)); }
+  });
+
+  router.get('/projects/:projectId/content-quality/runs', ...qualityReadGuards, async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.projectId);
+      const query = runListSchema.parse(req.query);
+      const data = await prisma.contentQualityRun.findMany({
+        where: { projectId, ...(query.status ? { status: query.status } : {}) },
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        take: query.limit,
+        skip: query.offset,
+      });
+      res.json({ data });
+    } catch (error) { next(mapQualityError(error)); }
+  });
+
+  router.get('/projects/:projectId/content-quality/findings', ...qualityReadGuards, async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.projectId);
+      const query = findingListSchema.parse(req.query);
+      const data = await prisma.contentQualityFinding.findMany({
+        where: {
+          projectId,
+          ...(query.status ? { status: query.status } : {}),
+          ...(query.category ? { category: query.category } : {}),
+          ...(query.priority ? { priority: query.priority } : {}),
+          ...(query.contentDocumentId ? { contentDocumentId: query.contentDocumentId } : {}),
+          ...(query.pageId ? { document: { pageId: query.pageId } } : {}),
+        },
+        include: { document: { select: { id: true, pageId: true, canonicalUrl: true } } },
+        orderBy: [{ priority: 'desc' }, { lastDetectedAt: 'desc' }, { id: 'asc' }],
+        take: query.limit,
+        skip: query.offset,
+      });
+      res.json({ data });
+    } catch (error) { next(mapQualityError(error)); }
+  });
+
+  router.get('/projects/:projectId/content-quality/findings/:findingId', ...qualityReadGuards, async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.projectId);
+      const findingId = routeParam(req.params.findingId);
+      const data = await prisma.contentQualityFinding.findFirst({
+        where: { id: findingId, projectId },
+        include: {
+          document: { select: { id: true, pageId: true, canonicalUrl: true } },
+          latestRun: true,
+          history: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+        },
+      });
+      if (!data) throw new NotFoundError('Content quality finding not found', 'CONTENT_QUALITY_FINDING_NOT_FOUND');
+      res.json({ data });
+    } catch (error) { next(mapQualityError(error)); }
+  });
+
+  router.post('/projects/:projectId/content-quality/findings/:findingId/transition', ...qualityMutationGuards, async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.projectId);
+      const findingId = routeParam(req.params.findingId);
+      const body = findingTransitionSchema.parse(req.body);
+      await requireQualityFinding(projectId, findingId);
+      const data = await contentQualityRepository.transitionFinding(
+        projectId,
+        findingId,
+        body.status,
+        req.auth!.userId,
+        body.reason,
+      );
+      res.json({ data });
+    } catch (error) { next(mapQualityError(error)); }
+  });
+
+  router.post('/projects/:projectId/content-quality/findings/:findingId/accept', ...qualityMutationGuards, async (req, res, next) => {
+    try {
+      emptyBodySchema.parse(req.body);
+      const projectId = routeParam(req.params.projectId);
+      const findingId = routeParam(req.params.findingId);
+      await requireQualityFinding(projectId, findingId);
+      const proposal = await contentQualityRepository.acceptFinding(projectId, findingId, req.auth!.userId);
+      res.status(201).json({ data: { proposalId: proposal.id } });
+    } catch (error) { next(mapQualityError(error)); }
+  });
 
   router.get('/projects/:projectId/content/documents', async (req, res, next) => {
     try {
