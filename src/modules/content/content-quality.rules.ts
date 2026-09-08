@@ -114,8 +114,10 @@ export function evaluateInternalLinkSupport(facts: InternalLinkSupportFacts): Co
 
 export function evaluateContentDecay(history: ComparableSnapshot[]): ContentQualityEvaluation {
   const snapshots = orderedSnapshots(history);
-  const previous = snapshots[0];
   const current = snapshots.at(-1);
+  const previous = current
+    ? [...snapshots.slice(0, -1)].reverse().find(isEligibleSnapshot)
+    : undefined;
 
   if (!previous || !current || previous === current || !Number.isFinite(previous.capturedAt.getTime()) || !Number.isFinite(current.capturedAt.getTime())) {
     return evaluation(

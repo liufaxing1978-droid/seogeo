@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireAuthentication } from '../../auth/authentication.js';
 import { requireProjectCapability, requireProjectMembership } from '../../auth/project-access.js';
 import { NotFoundError } from '../../core/errors.js';
@@ -7,6 +8,7 @@ import { publicationWebRepository } from './publication.web.repository.js';
 function routeParam(value: string | string[]): string {
   return Array.isArray(value) ? value[0]! : value;
 }
+const proposalQuerySchema = z.object({ proposalId: z.string().uuid().optional() }).strict();
 
 function objectRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -105,7 +107,7 @@ publicationWebRoutes.get('/projects/:id/publication/opportunities',
   async (req, res, next) => {
   try {
     const projectId = routeParam(req.params.id);
-    const proposalId = typeof req.query.proposalId === 'string' ? req.query.proposalId : undefined;
+    const proposalId = proposalQuerySchema.parse(req.query).proposalId;
     const model = await publicationWebRepository.listOpportunities(projectId, proposalId);
     if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
     render(res, 'publication/opportunities', {

@@ -57,7 +57,7 @@ export class ContentQualityService {
       // A process can exit after reserving the durable QUEUED run but before
       // BullMQ receives the job. Re-add the deterministic job key so the next
       // manual request heals that dual-write window instead of stranding work.
-      if (run.status === 'QUEUED') {
+      if (run.status === 'QUEUED' || run.status === 'RUNNING') {
         await this.addRunJob(projectId, run.id, jobId);
       }
       this.observability.emit({ event: 'content.quality.deduplicated', projectId, runId: run.id, deduplicatedCount: 1 });

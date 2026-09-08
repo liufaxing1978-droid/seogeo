@@ -240,10 +240,9 @@ export class ContentQualityRepository {
             ruleVersion: evaluation.ruleVersion
           }
         };
-        const existing = await tx.contentQualityFinding.findUnique({ where });
-        if (!existing) {
-          await tx.contentQualityFinding.create({
-            data: {
+        await tx.contentQualityFinding.upsert({
+          where,
+          create: {
               projectId,
               contentDocumentId: row.contentDocumentId,
               latestRunId: runId,
@@ -255,27 +254,18 @@ export class ContentQualityRepository {
               evidence: evaluation.evidence as unknown as Prisma.InputJsonValue,
               firstDetectedAt: now,
               lastDetectedAt: now
-            }
-          });
-          materialized.count += 1;
-          incrementMaterialization(materialized, evaluation);
-          continue;
-        }
-        if (existing.status === 'OPEN' || existing.status === 'IN_REVIEW') {
-          await tx.contentQualityFinding.update({
-            where: { id: existing.id },
-            data: {
+          },
+          update: {
               latestRunId: runId,
               category: evaluation.category,
               priority: evaluation.priority,
               summary: evaluation.summary,
               evidence: evaluation.evidence as unknown as Prisma.InputJsonValue,
               lastDetectedAt: now
-            }
-          });
-          materialized.count += 1;
-          incrementMaterialization(materialized, evaluation);
-        }
+          }
+        });
+        materialized.count += 1;
+        incrementMaterialization(materialized, evaluation);
       }
     });
     return materialized;
