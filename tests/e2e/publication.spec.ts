@@ -1,8 +1,16 @@
 import { PrismaClient, type PlanLevel } from '@prisma/client';
 import { expect, test } from '@playwright/test';
+import type { BrowserContext } from '@playwright/test';
+import {
+  SESSION_COOKIE_NAME,
+  SESSION_TTL_MS,
+  SessionRepository,
+  createSessionToken,
+} from '../../src/auth/session.repository.js';
 
 const prisma = new PrismaClient();
 const projectIds: string[] = [];
+const userIds: string[] = [];
 
 async function cleanupProject(projectId: string) {
   await prisma.publicationRollbackProposal.deleteMany({ where: { projectId } }).catch(() => undefined);
@@ -23,8 +31,28 @@ async function cleanupProject(projectId: string) {
 
 test.afterAll(async () => {
   for (const projectId of projectIds) await cleanupProject(projectId);
+  await prisma.user.deleteMany({ where: { id: { in: userIds } } }).catch(() => undefined);
   await prisma.$disconnect();
 });
+
+async function authenticateProjectOwner(context: BrowserContext, projectId: string) {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const user = await prisma.user.create({
+    data: {
+      email: `p8-publication-${suffix}@example.com`,
+      normalizedEmail: `p8-publication-${suffix}@example.com`,
+      passwordHash: 'test-only-hash',
+      status: 'ACTIVE',
+    },
+  });
+  userIds.push(user.id);
+  await prisma.projectMembership.create({
+    data: { projectId, userId: user.id, role: 'OWNER', status: 'ACTIVE' },
+  });
+  const token = createSessionToken();
+  await new SessionRepository().create(user.id, token.tokenHash, new Date(Date.now() + SESSION_TTL_MS));
+  await context.addCookies([{ name: SESSION_COOKIE_NAME, value: token.rawToken, url: 'http://127.0.0.1:3000' }]);
+}
 
 async function createProject(label: string, planLevel: PlanLevel) {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -283,12 +311,13 @@ async function seedWorkflow(input: {
   return { project, site, channel, proposal, draft, plan, preview, execution, verification };
 }
 
-test('renders the persisted P8-A publication workflow from opportunity to VERIFIED', async ({ page }) => {
+test('renders the persisted P8-A publication workflow from opportunity to VERIFIED', async ({ page, context }) => {
   const fixture = await seedWorkflow({
     label: 'verified workspace',
     planLevel: 'ADVANCED',
     executionStatus: 'VERIFIED'
   });
+  await authenticateProjectOwner(context, fixture.project.id);
 
   await page.goto(`/projects/${fixture.project.id}/publication`);
   await expect(page.getByRole('main').getByRole('heading', { level: 1, name: '内容与发布' })).toBeVisible();
