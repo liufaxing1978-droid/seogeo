@@ -1,4 +1,5 @@
 import { isInProjectScope, normalizeCrawlUrl } from '../crawler/url-normalizer.js';
+import { ValidationError } from '../../core/errors.js';
 
 export type EffectiveTargetUrlResult =
   | { state: 'DIRECT' | 'INHERITED'; url: string; urls: string[] }
@@ -7,7 +8,7 @@ export type EffectiveTargetUrlResult =
 export function normalizeProjectTargetUrl(value: string, primaryDomain: string): string {
   const normalized = normalizeCrawlUrl(value);
   if (!isInProjectScope(new URL(normalized), primaryDomain)) {
-    throw new Error('Target URL must be within the project primary domain');
+    throw new ValidationError('Target URL must be within the project primary domain');
   }
   return normalized;
 }

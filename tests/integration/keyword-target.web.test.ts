@@ -60,4 +60,63 @@ describe('keyword Target URL web controls', () => {
       expect(await prisma.keywordTargetMapping.findUnique({ where: { keywordId: keyword.id } })).toBeNull();
     } finally { await fixture.cleanup(); }
   });
+
+  it('returns a validation error for an out-of-scope URL without persisting it', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OWNER', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const keyword = await keywordService.createManual({ actorUserId: fixture.user.id, projectId: fixture.project.id, text: '站外映射', type: 'CORE' });
+      const response = await request(createApp())
+        .post(`/projects/${fixture.project.id}/keywords/${keyword.id}/target-url`)
+        .set('Cookie', fixture.sessionCookie)
+        .type('form')
+        .send({ _csrf: csrfFor(fixture), targetUrl: 'https://example.net/outside' })
+        .expect(400);
+
+      expect(response.body).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+      expect(await prisma.keywordTargetMapping.findUnique({ where: { keywordId: keyword.id } })).toBeNull();
+    } finally { await fixture.cleanup(); }
+  });
+
+  it('enforces CSRF and CONTENT_WRITE before accepting a mapping', async () => {
+    const owner = await seedAuthenticatedUser({ role: 'OWNER', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    const viewer = await seedAuthenticatedUser({ role: 'VIEWER', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const ownerKeyword = await keywordService.createManual({ actorUserId: owner.user.id, projectId: owner.project.id, text: 'CSRF 映射', type: 'CORE' });
+      const viewerKeyword = await keywordService.createManual({ actorUserId: viewer.user.id, projectId: viewer.project.id, text: '只读映射', type: 'CORE' });
+      await request(createApp())
+        .post(`/projects/${owner.project.id}/keywords/${ownerKeyword.id}/target-url`)
+        .set('Cookie', owner.sessionCookie)
+        .type('form')
+        .send({ targetUrl: `https://${owner.project.primaryDomain}/` })
+        .expect(403);
+      await request(createApp())
+        .post(`/projects/${viewer.project.id}/keywords/${viewerKeyword.id}/target-url`)
+        .set('Cookie', viewer.sessionCookie)
+        .type('form')
+        .send({ _csrf: csrfFor(viewer), targetUrl: `https://${viewer.project.primaryDomain}/` })
+        .expect(403);
+    } finally {
+      await owner.cleanup();
+      await viewer.cleanup();
+    }
+  });
+
+  it('does not map a keyword that belongs to another project', async () => {
+    const owner = await seedAuthenticatedUser({ role: 'OWNER', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    const foreign = await seedAuthenticatedUser({ role: 'OWNER', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    try {
+      const keyword = await keywordService.createManual({ actorUserId: foreign.user.id, projectId: foreign.project.id, text: '外部项目词', type: 'CORE' });
+      await request(createApp())
+        .post(`/projects/${owner.project.id}/keywords/${keyword.id}/target-url`)
+        .set('Cookie', owner.sessionCookie)
+        .type('form')
+        .send({ _csrf: csrfFor(owner), targetUrl: `https://${owner.project.primaryDomain}/` })
+        .expect(404);
+
+      expect(await prisma.keywordTargetMapping.findUnique({ where: { keywordId: keyword.id } })).toBeNull();
+    } finally {
+      await owner.cleanup();
+      await foreign.cleanup();
+    }
+  });
 });

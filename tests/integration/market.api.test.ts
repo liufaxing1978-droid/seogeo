@@ -69,6 +69,26 @@ describe('P9-0A project market REST API', () => {
       expect(service.replaceMarkets).not.toHaveBeenCalled();
     } finally { await viewer.cleanup(); }
   });
+
+  it('hides another project markets from authenticated non-members', async () => {
+    const outsider = await seedAuthenticatedUser({ role: 'OWNER', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    const service = createService();
+    try {
+      const readResponse = await request(createApp({ marketService: service }))
+        .get(`/api/projects/${owner.project.id}/markets`)
+        .set('Cookie', outsider.sessionCookie);
+      const writeResponse = await request(createApp({ marketService: service }))
+        .put(`/api/projects/${owner.project.id}/markets`)
+        .set('Cookie', outsider.sessionCookie)
+        .set('X-CSRF-Token', deriveCsrfToken(env.SESSION_SECRET, outsider.csrfInput.sessionId, outsider.csrfInput.tokenHash))
+        .send({ markets: [] });
+
+      expect(readResponse.status).toBe(404);
+      expect(writeResponse.status).toBe(404);
+      expect(service.listResolvedMarkets).not.toHaveBeenCalled();
+      expect(service.replaceMarkets).not.toHaveBeenCalled();
+    } finally { await outsider.cleanup(); }
+  });
   it('GET returns resolved markets without invoking a write method', async () => {
     const service = createService({
       listResolvedMarkets: vi.fn().mockResolvedValue([
