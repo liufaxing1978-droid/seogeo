@@ -15,6 +15,7 @@ import type { ContentQualityApiService } from './modules/content/content.routes.
 import type { ContentService } from './modules/content/content.service.js';
 import { createContentWebRoutes } from './modules/content/content.web.routes.js';
 import { createCrawlRoutes } from './modules/crawler/crawl.routes.js';
+import { createCrawlWebRoutes } from './modules/crawler/crawl.web.routes.js';
 import type { CrawlService } from './modules/crawler/crawl.service.js';
 import type { IndexNowSubmissionService } from './modules/indexnow/indexnow.service.js';
 import {
@@ -209,6 +210,7 @@ export function createApp(options: AppOptions = {}) {
     options.keywordOpportunityService,
   ));
   app.use('/', createProjectAdminWebRoutes());
+  app.use('/', createCrawlWebRoutes(options.crawlService));
   app.use('/', webRoutes);
   app.use(errorHandler);
   return app;

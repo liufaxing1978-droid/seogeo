@@ -190,11 +190,11 @@
           <thead>
             <tr>
               <th>关键词</th>
+              <th>Target URL</th>
+              <th>Cannibalization</th>
               <th>类型 / 意图</th>
               <th>优先级</th>
               <th>机会分</th>
-              <th>Target URL</th>
-              <th>Cannibalization</th>
               <th>内容覆盖</th>
               <th>内容缺口</th>
               <th>搜索证据</th>
@@ -219,7 +219,20 @@
                     <% if (keyword.locked) { %><span class="keyword-lock">已锁定</span><% } %>
                   </div>
                 </td>
-                <td data-ui="keyword-target-url"><%= keyword.target.url || '未映射' %><small><%= keyword.target.state === 'INHERITED' ? '继承 Cluster' : keyword.target.state === 'AMBIGUOUS' ? 'Cluster 映射冲突' : keyword.target.state === 'DIRECT' ? '直接映射' : '' %></small></td>
+                <td data-ui="keyword-target-url">
+                  <div class="keyword-target-url">
+                    <span><%= keyword.target.url || '未映射' %></span>
+                    <small><%= keyword.target.state === 'INHERITED' ? '继承 Cluster' : keyword.target.state === 'AMBIGUOUS' ? 'Cluster 映射冲突' : keyword.target.state === 'DIRECT' ? '直接映射' : '' %></small>
+                    <% if (canWriteKeywords) { %>
+                      <form class="keyword-target-form" method="post" action="/projects/<%= keywordCenter.project.id %>/keywords/<%= keyword.id %>/target-url">
+                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                        <input type="url" name="targetUrl" value="<%= keyword.target.url || '' %>" placeholder="https://<%= keywordCenter.project.primaryDomain %>/..." required maxlength="2000">
+                        <% if (keyword.locked) { %><label class="keyword-check"><input type="checkbox" name="acknowledgeLock" value="true" required><span>确认修改锁定词</span></label><% } %>
+                        <button class="keyword-button" type="submit">保存映射</button>
+                      </form>
+                    <% } %>
+                  </div>
+                </td>
                 <td data-ui="keyword-cannibalization">
                   <% if (keyword.cannibalization) { %>
                     <strong><%= keyword.cannibalization.risk %></strong>

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuthentication } from '../auth/authentication.js';
 import { deriveCsrfToken, requireCsrf } from '../auth/csrf.js';
 import { hasFeature } from '../auth/feature-flags.js';
+import { hasProjectCapability } from '../auth/project-capabilities.js';
 import {
   requireProjectCapability,
   requireProjectMembership,
@@ -122,27 +123,37 @@ webRoutes.post('/projects', requireAuthentication(), requireCsrf(), async (req, 
   }
 });
 
-webRoutes.get('/projects/:id/crawls', async (req, res, next) => {
-  try {
-    const project = await projectService.get(req.params.id);
-    const [result, indexNow] = await Promise.all([
-      crawlRepository.listRuns(project.id, { limit: 100, offset: 0 }),
-      crawlerWebRepository.getProjectCrawlerHealthAndSubmissions(project.id)
-    ]);
-    render(res, 'crawls/index', {
-      title: '抓取历史',
-      activeNav: 'crawls',
-      currentProjectId: project.id,
-      project,
-      runs: result.data,
-      total: result.total,
-      latestHealth: indexNow.latestHealth,
-      submissions: indexNow.submissions
-    });
-  } catch (error) {
-    next(error);
-  }
-});
+webRoutes.get(
+  '/projects/:id/crawls',
+  requireAuthentication(),
+  requireProjectMembership(),
+  requireProjectCapability('PROJECT_READ'),
+  async (req, res, next) => {
+    try {
+      const projectId = Array.isArray(req.params.id) ? req.params.id[0]! : req.params.id;
+      const project = await projectService.get(projectId);
+      const membership = res.locals.projectMembership as { role: 'OWNER' | 'ADMIN' | 'OPERATOR' | 'VIEWER' };
+      const [result, indexNow] = await Promise.all([
+        crawlRepository.listRuns(project.id, { limit: 100, offset: 0 }),
+        crawlerWebRepository.getProjectCrawlerHealthAndSubmissions(project.id)
+      ]);
+      render(res, 'crawls/index', {
+        title: '抓取历史',
+        activeNav: 'crawls',
+        currentProjectId: project.id,
+        project,
+        runs: result.data,
+        total: result.total,
+        latestHealth: indexNow.latestHealth,
+        submissions: indexNow.submissions,
+        csrfToken: csrfTokenFor(req, res),
+        canRunCrawl: hasProjectCapability(membership.role, 'CRAWL_RUN'),
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 webRoutes.get('/crawls/:crawlId', async (req, res, next) => {
   try {

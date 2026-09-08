@@ -29,6 +29,7 @@ import { KeywordCannibalizationService } from './keyword-cannibalization.service
 import { KeywordContentGapService } from './keyword-content-gap.service.js';
 import { KeywordContentBriefService } from './keyword-content-brief.service.js';
 import { KeywordEntityService } from './keyword-entity.service.js';
+import { KeywordTargetService } from './keyword-target.service.js';
 import {
   keywordBulkCreateSchema,
   keywordCreateSchema,
@@ -46,6 +47,7 @@ import {
   keywordSuggestionDecisionSchema,
   keywordUpdateSchema,
   keywordEntityMappingSchema,
+  keywordTargetUrlSchema,
 } from './keyword.schema.js';
 
 function routeParam(value: string | string[] | undefined): string {
@@ -89,6 +91,7 @@ export function createKeywordWebRoutes(
   contentGapService = new KeywordContentGapService(),
   contentBriefService = new KeywordContentBriefService(),
   entityService = new KeywordEntityService(),
+  targetService = new KeywordTargetService(),
 ) {
   const router = Router();
   const readGuards = [
@@ -208,6 +211,25 @@ export function createKeywordWebRoutes(
       await cannibalizationService.calculateKeyword(projectId, routeParam(req.params.keywordId), req.auth!.userId);
       res.redirect(303, `/projects/${projectId}/keywords`);
     } catch (error) { next(error); }
+  });
+
+  router.post('/projects/:projectId/keywords/:keywordId/target-url', ...writeGuards, async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.projectId);
+      const input = keywordTargetUrlSchema.parse({
+        targetUrl: req.body?.targetUrl,
+        acknowledgeLock: formBoolean(req.body?.acknowledgeLock),
+      });
+      await targetService.setKeywordTargetUrl({
+        ...input,
+        actorUserId: req.auth!.userId,
+        projectId,
+        keywordId: routeParam(req.params.keywordId),
+      });
+      res.redirect(303, `/projects/${projectId}/keywords`);
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.post('/projects/:projectId/keywords/:keywordId/content-gap/plan', ...writeGuards, async (req, res, next) => {

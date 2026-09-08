@@ -5,6 +5,12 @@
     <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
   </div>
   <div class="actions">
+    <% if (canRunCrawl) { %>
+      <form method="post" action="/projects/<%= project.id %>/crawls">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button class="button" type="submit">启动全站抓取</button>
+      </form>
+    <% } %>
     <a class="button secondary" href="/projects/<%= project.id %>/pages">页面中心</a>
     <a class="button secondary" href="/projects/<%= project.id %>">项目详情</a>
   </div>
@@ -82,7 +88,7 @@
       </thead>
       <tbody>
         <% if (!runs.length) { %>
-          <tr><td class="empty-cell" colspan="8">暂无抓取记录。通过 API 发起首次抓取后会在这里显示。</td></tr>
+          <tr><td class="empty-cell" colspan="8">暂无抓取记录。启动首次全站抓取后会在这里显示。</td></tr>
         <% } %>
         <% runs.forEach((run) => { const badgeClass = run.status === 'COMPLETED' ? 'success' : run.status === 'FAILED' ? 'danger' : run.status === 'RUNNING' ? 'running' : 'neutral'; %>
           <tr>

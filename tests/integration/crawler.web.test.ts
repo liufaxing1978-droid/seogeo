@@ -1,19 +1,30 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { prisma } from '../../src/db/prisma.js';
 import { createApp } from '../../src/app.js';
+import { seedAuthenticatedUser } from '../helpers/auth-fixture.js';
+
+const authFixtures: Awaited<ReturnType<typeof seedAuthenticatedUser>>[] = [];
 
 beforeEach(async () => {
   await prisma.project.deleteMany();
 });
 
+afterEach(async () => {
+  for (const seeded of authFixtures.splice(0).reverse()) await seeded.cleanup();
+});
+
 async function fixture() {
-  const project = await prisma.project.create({
-    data: {
-      name: 'Crawler UI Project',
-      slug: `crawler-ui-${Date.now()}-${Math.random()}`,
-      primaryDomain: 'example.com'
-    }
+  const auth = await seedAuthenticatedUser({
+    role: 'OWNER',
+    planLevel: 'ENTERPRISE',
+    userStatus: 'ACTIVE',
+    membershipStatus: 'ACTIVE',
+  });
+  authFixtures.push(auth);
+  const project = await prisma.project.update({
+    where: { id: auth.project.id },
+    data: { name: 'Crawler UI Project', primaryDomain: 'example.com' },
   });
   const run = await prisma.crawlRun.create({
     data: {
@@ -108,13 +119,13 @@ async function fixture() {
       urls: { create: { url: page.normalizedUrl, status: 'COMPLETED' } }
     }
   });
-  return { project, run, page };
+  return { project, run, page, sessionCookie: auth.sessionCookie };
 }
 
 describe('crawler web UI', () => {
   it('renders crawl history with factual progress headings', async () => {
-    const { project } = await fixture();
-    const response = await request(createApp()).get(`/projects/${project.id}/crawls`).expect(200);
+    const { project, sessionCookie } = await fixture();
+    const response = await request(createApp()).get(`/projects/${project.id}/crawls`).set('Cookie', sessionCookie).expect(200);
 
     for (const heading of ['状态', '类型', '开始时间', '完成时间', '发现页面', '已抓取', '成功', '失败']) {
       expect(response.text).toContain(heading);
@@ -124,10 +135,10 @@ describe('crawler web UI', () => {
   });
 
   it('renders persisted crawler health and IndexNow history without a provider call or indexing claim', async () => {
-    const { project } = await fixture();
+    const { project, sessionCookie } = await fixture();
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     try {
-      const response = await request(createApp()).get(`/projects/${project.id}/crawls`).expect(200);
+      const response = await request(createApp()).get(`/projects/${project.id}/crawls`).set('Cookie', sessionCookie).expect(200);
 
       expect(response.text).toContain('Crawler Health');
       expect(response.text).toContain('DEGRADED');
