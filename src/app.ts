@@ -11,8 +11,9 @@ import { createCompetitorRoutes } from './modules/competitor/competitor.routes.j
 import type { CompetitorService } from './modules/competitor/competitor.service.js';
 import { competitorWebRoutes } from './modules/competitor/competitor.web.routes.js';
 import { createContentRoutes } from './modules/content/content.routes.js';
+import type { ContentQualityApiService } from './modules/content/content.routes.js';
 import type { ContentService } from './modules/content/content.service.js';
-import { contentWebRoutes } from './modules/content/content.web.routes.js';
+import { createContentWebRoutes } from './modules/content/content.web.routes.js';
 import { createCrawlRoutes } from './modules/crawler/crawl.routes.js';
 import type { CrawlService } from './modules/crawler/crawl.service.js';
 import type { IndexNowSubmissionService } from './modules/indexnow/indexnow.service.js';
@@ -99,6 +100,7 @@ export interface AppOptions {
   geoService?: GeoService;
   aiTaskService?: AiTaskService;
   contentService?: ContentService;
+  contentQualityService?: ContentQualityApiService;
   competitorService?: CompetitorService;
   keywordService?: KeywordService;
   keywordCoverageService?: KeywordCoverageService;
@@ -146,7 +148,11 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api', createOptimizationFeedbackRoutes(options.optimizationFeedbackApi));
   app.use('/api/v1', createGrowthExplanationRoutes(options.aiTaskService));
   app.use('/api/v1', createAiRoutes(options.aiTaskService));
-  app.use('/api/v1', createContentRoutes(options.contentService, options.aiTaskService));
+  app.use('/api/v1', createContentRoutes(
+    options.contentService,
+    options.aiTaskService,
+    options.contentQualityService,
+  ));
   app.use('/api/v1', createCompetitorRoutes(options.competitorService, options.aiTaskService));
   app.use('/api/v1', createKeywordRoutes(
     options.keywordService,
@@ -174,7 +180,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/v1', createVisibilityIntelligenceRoutes(options.visibilityExtractionQueue));
   app.use('/api/v1', createVisibilityMetricsRoutes(options.visibilityMetricsQueue));
   app.use('/api/v1', createVisibilityHistoryRoutes());
-  app.use('/', contentWebRoutes);
+  app.use('/', createContentWebRoutes(options.contentQualityService));
   app.use('/', publicationWebRoutes);
   app.use('/', distributionWebRoutes);
   app.use('/', competitorWebRoutes);

@@ -1,0 +1,64 @@
+import type { Job } from 'bullmq';
+import { contentQualityObservability } from './content-quality.observability.js';
+import { contentQualityRepository } from './content-quality.repository.js';
+import {
+  evaluateContentDecay,
+  evaluateInternalLinkSupport,
+  surfaceContentQaFindings
+} from './content-quality.rules.js';
+import type { ContentQualityJobData } from './content-quality.service.js';
+
+export type { ContentQualityJobData } from './content-quality.service.js';
+
+function errorCode(error: unknown): string {
+  if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string') {
+    return error.code.slice(0, 80);
+  }
+  return 'CONTENT_QUALITY_PROCESSING_FAILED';
+}
+
+export async function processContentQualityJob(
+  job: Job<ContentQualityJobData>
+) {
+  const repository = contentQualityRepository;
+  const observability = contentQualityObservability;
+  const { projectId, runId } = job.data;
+  const started = await repository.startRun(projectId, runId);
+  if (!started) return { projectId, runId, skipped: true, documentsProcessed: 0, findingCount: 0 };
+
+  observability.emit({ event: 'content.quality.started', projectId, runId, startedCount: 1 });
+  try {
+    const input = await repository.loadInput(projectId, started.cutoffAt);
+    const evaluations = input.documents.flatMap((document) => [
+      { contentDocumentId: document.id, evaluation: evaluateInternalLinkSupport(document) },
+      { contentDocumentId: document.id, evaluation: evaluateContentDecay(document.snapshots) },
+      ...surfaceContentQaFindings(document.opportunities, document.signals, document.latestPageSnapshotId)
+        .map((evaluation) => ({ contentDocumentId: document.id, evaluation }))
+    ]);
+    const failed = evaluations.filter((row) => row.evaluation.status === 'FAIL');
+    const materialized = await repository.materializeFailures(projectId, runId, failed);
+    await repository.completeRun(projectId, runId, input.documents.length, failed.length);
+    observability.emit({
+      event: 'content.quality.findings.materialized',
+      projectId,
+      runId,
+      materializedCount: materialized.count,
+      categoryCounts: materialized.categoryCounts,
+      priorityCounts: materialized.priorityCounts
+    });
+    observability.emit({
+      event: 'content.quality.completed',
+      projectId,
+      runId,
+      completedCount: 1,
+      documentCount: input.documents.length,
+      findingCount: failed.length
+    });
+    return { projectId, runId, documentsProcessed: input.documents.length, findingCount: failed.length };
+  } catch (error) {
+    const code = errorCode(error);
+    await repository.failRun(projectId, runId, code);
+    observability.emit({ event: 'content.quality.failed', projectId, runId, failedCount: 1, errorCode: code });
+    throw error;
+  }
+}

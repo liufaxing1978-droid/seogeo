@@ -145,10 +145,12 @@ model PublicationProposal {
   sourceReferenceId String?
   sourceSnapshotId  String?
   sourceMetadata    Json?
+  p13aFindingHandoffKey String?                 @unique
   createdAt         DateTime                      @default(now())
 
   drafts ContentDraft[]
   plans  PublicationPlan[]
+  contentQualityFindingAcceptance ContentQualityFinding? @relation("ContentQualityFindingAcceptedProposal")
 
   @@index([projectId, createdAt], map: "PublicationProposal_project_created_idx")
   @@index([projectId, sourceType], map: "PublicationProposal_project_source_idx")

@@ -51,11 +51,11 @@ export const publicationWebRepository = {
     return { project, sites, proposals, drafts, plans, executions, verifications };
   },
 
-  async listOpportunities(projectId: string) {
+  async listOpportunities(projectId: string, proposalId?: string) {
     const project = await prisma.project.findUnique({ where: { id: projectId }, select: PROJECT_SELECT });
     if (!project) return null;
     const proposals = await prisma.publicationProposal.findMany({
-      where: { projectId },
+      where: { projectId, ...(proposalId ? { id: proposalId } : {}) },
       include: { drafts: { select: { id: true, title: true, status: true }, take: 10 } },
       orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
       take: 100

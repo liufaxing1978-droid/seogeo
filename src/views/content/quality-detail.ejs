@@ -1,0 +1,75 @@
+<section class="product-center" data-ui="content-quality-detail">
+  <section class="product-center-hero">
+    <div>
+      <p class="eyebrow">规则发现 · <%= finding.findingKey %></p>
+      <h1>内容质量建议详情</h1>
+      <p class="muted"><a href="/projects/<%= project.id %>/content/quality">返回内容质量建议</a> · <%= finding.document.title ?? finding.document.canonicalUrl %></p>
+    </div>
+    <div><span class="badge"><%= finding.priority %></span> <span class="badge"><%= finding.status %></span></div>
+  </section>
+
+  <section class="truth-boundary-card">
+    <div>
+      <p class="eyebrow">规则判断</p>
+      <h2><%= finding.summary %></h2>
+      <p class="muted">规则版本：<%= finding.ruleVersion %> · 首次发现：<%= new Date(finding.firstDetectedAt).toLocaleString('zh-CN') %> · 最近发现：<%= new Date(finding.lastDetectedAt).toLocaleString('zh-CN') %></p>
+    </div>
+    <p class="boundary-note"><strong><%= evidence.status === 'UNKNOWN' ? '证据不足' : evidence.status %></strong></p>
+  </section>
+
+  <section class="panel product-table-panel" data-ui="content-quality-evidence">
+    <div class="panel-header"><div><h2>快照证据与前后变化</h2><p class="muted">只读取规则存储的证据，不推断缺失字段。</p></div></div>
+    <div class="table-wrap"><table><thead><tr><th>项</th><th>前</th><th>后</th></tr></thead><tbody>
+      <% const snapshotFields = [['wordCount', '字数'], ['title', '标题'], ['h1', 'H1'], ['statusCode', 'HTTP 状态'], ['contentType', '内容类型'], ['indexable', '可索引']] ; const evidenceKeys = snapshotFields.filter(([key]) => Object.hasOwn(evidence.before, key) || Object.hasOwn(evidence.after, key)); %>
+      <% for (const [key, label] of evidenceKeys) { %><tr><td><%= label %></td><td><%= evidence.before[key] ?? '证据不足' %></td><td><%= evidence.after[key] ?? '证据不足' %></td></tr><% } %>
+      <% if (!evidenceKeys.length) { %><tr><td colspan="3" class="muted">证据不足</td></tr><% } %>
+    </tbody></table></div>
+    <p class="muted">前快照：<code><%= evidence.before.snapshotId ?? '证据不足' %></code> · <%= evidence.before.capturedAt ? new Date(String(evidence.before.capturedAt)).toLocaleString('zh-CN') : '证据不足' %></p>
+    <p class="muted">后快照：<code><%= evidence.after.snapshotId ?? '证据不足' %></code> · <%= evidence.after.capturedAt ? new Date(String(evidence.after.capturedAt)).toLocaleString('zh-CN') : '证据不足' %></p>
+    <p class="muted">关联证据：<%= evidence.references.map((reference) => reference.id).join('、') || '证据不足' %></p>
+    <% if (finding.latestRun) { %><p class="muted">最近运行：<code><%= finding.latestRun.id %></code> · 规则集版本 <%= finding.latestRun.rulesetVersion %> · 快照截止时间 <%= finding.latestRun.inputSnapshotCutoffAt ? new Date(finding.latestRun.inputSnapshotCutoffAt).toLocaleString('zh-CN') : '证据不足' %></p><% } %>
+  </section>
+
+  <% if (evidence.internalLink) { %>
+    <section class="panel" data-ui="content-quality-internal-link-evidence">
+      <h2>内部链接规则证据</h2>
+      <p>已观测内部链接数：<strong><%= evidence.internalLink.observed ?? '证据不足' %></strong></p>
+      <p>要求最少内部链接数：<strong><%= evidence.internalLink.required ?? '证据不足' %></strong></p>
+    </section>
+  <% } %>
+
+  <% if (evidence.p5Qa) { %>
+    <section class="panel" data-ui="content-quality-p5-qa-evidence">
+      <h2>P5 QA 规则证据</h2>
+      <% if (evidence.p5Qa.opportunity) { const opportunity = evidence.p5Qa.opportunity; %><p>P5 Opportunity ID：<code><%= opportunity.id ?? '证据不足' %></code> · Key：<%= opportunity.key ?? '证据不足' %> · 版本：<%= opportunity.version ?? '证据不足' %> · 状态：<%= opportunity.status ?? '证据不足' %></p><% } %>
+      <% if (evidence.p5Qa.signal) { const signal = evidence.p5Qa.signal; %><p>P5 Signal ID：<code><%= signal.id ?? '证据不足' %></code> · 规则：<%= signal.ruleKey ?? '证据不足' %> · 版本：<%= signal.ruleVersion ?? '证据不足' %> · 状态：<%= signal.status ?? '证据不足' %></p><% } %>
+    </section>
+  <% } %>
+
+  <section class="panel" data-ui="content-quality-history">
+    <div class="panel-header"><div><h2>审核历史</h2><p class="muted">每次人工状态变更均保留原因与时间。</p></div></div>
+    <ul>
+      <% for (const item of finding.history) { %><li><strong><%= item.fromStatus %> → <%= item.toStatus %></strong> · <%= item.reason ?? '未填写原因' %> · <%= new Date(item.createdAt).toLocaleString('zh-CN') %></li><% } %>
+      <% if (!finding.history.length) { %><li class="muted">尚无审核历史。</li><% } %>
+    </ul>
+  </section>
+
+  <% if (finding.acceptedPublicationProposal) { %>
+    <section class="panel"><h2>已接受</h2><p><a href="/projects/<%= project.id %>/publication/opportunities?proposalId=<%= finding.acceptedPublicationProposal.id %>">查看发布提案详情</a></p></section>
+  <% } else if (canWriteQuality && (finding.status === 'OPEN' || finding.status === 'IN_REVIEW')) { %>
+    <section class="panel" data-ui="content-quality-review-actions">
+      <h2>人工审核</h2>
+      <% if (finding.status === 'OPEN') { %><form action="/projects/<%= project.id %>/content/quality/<%= finding.id %>/transition" method="post">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="status" value="IN_REVIEW">
+        <label>复核原因 <input name="reason" required maxlength="1000"></label><button class="button" type="submit">标记复核</button>
+      </form><% } %>
+      <form action="/projects/<%= project.id %>/content/quality/<%= finding.id %>/transition" method="post">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="status" value="DISMISSED">
+        <label>驳回原因 <input name="reason" required maxlength="1000"></label><button class="button" type="submit">驳回建议</button>
+      </form>
+      <% if (finding.status === 'IN_REVIEW') { %><form action="/projects/<%= project.id %>/content/quality/<%= finding.id %>/accept" method="post">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button" type="submit">接受并创建提案</button>
+      </form><% } %>
+    </section>
+  <% } %>
+</section>

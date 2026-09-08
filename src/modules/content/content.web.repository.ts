@@ -1,5 +1,38 @@
 import { prisma } from '../../db/prisma.js';
 
+function record(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function evidenceSnapshotIds(evidence: unknown): string[] {
+  const value = record(evidence);
+  const references = Array.isArray(value.sourceReferences) ? value.sourceReferences.map(record) : [];
+  return [...new Set([
+    ...references.flatMap((reference) => reference.type === 'PAGE_SNAPSHOT' && typeof reference.id === 'string' ? [reference.id] : []),
+    ...(typeof value.previousSnapshotId === 'string' ? [value.previousSnapshotId] : []),
+    ...(typeof value.currentSnapshotId === 'string' ? [value.currentSnapshotId] : []),
+  ])];
+}
+
+async function attachEvidenceSnapshots<T extends { evidence: unknown; projectId: string }>(findings: T[]) {
+  const ids = [...new Set(findings.flatMap((finding) => evidenceSnapshotIds(finding.evidence)))];
+  if (!ids.length) return findings.map((finding) => ({ ...finding, evidenceSnapshots: [] }));
+  const snapshots = await prisma.pageSnapshot.findMany({
+    where: { id: { in: ids }, page: { projectId: findings[0]?.projectId } },
+    select: { id: true, capturedAt: true, wordCount: true, title: true, h1: true, statusCode: true, contentType: true, indexable: true },
+  });
+  const byId = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot]));
+  return findings.map((finding) => ({
+    ...finding,
+    evidenceSnapshots: evidenceSnapshotIds(finding.evidence).flatMap((id) => {
+      const snapshot = byId.get(id);
+      return snapshot ? [snapshot] : [];
+    }),
+  }));
+}
+
 export const contentWebRepository = {
   async getCenter(projectId: string) {
     const project = await prisma.project.findUnique({ where: { id: projectId } });
@@ -41,5 +74,52 @@ export const contentWebRepository = {
     if (!project) return null;
     const brief = await prisma.contentBrief.findFirst({ where: { id: briefId, projectId } });
     return brief ? { project, brief } : null;
+  },
+
+  async getQualityCenter(projectId: string, filters: {
+    status?: 'OPEN' | 'IN_REVIEW' | 'ACCEPTED' | 'DISMISSED';
+    category?: 'INTERNAL_LINK_SUPPORT' | 'CONTENT_DECAY' | 'CONTENT_QA';
+    priority?: 'INFO' | 'LOW' | 'MEDIUM' | 'HIGH';
+  } = {}) {
+    const project = await prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) return null;
+    const [runs, findings] = await Promise.all([
+      prisma.contentQualityRun.findMany({
+        where: { projectId },
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        take: 20,
+      }),
+      prisma.contentQualityFinding.findMany({
+        where: {
+          projectId,
+          ...(filters.status ? { status: filters.status } : {}),
+          ...(filters.category ? { category: filters.category } : {}),
+          ...(filters.priority ? { priority: filters.priority } : {}),
+        },
+        include: {
+          document: { select: { id: true, canonicalUrl: true, title: true } },
+          latestRun: { select: { id: true, status: true, inputSnapshotCutoffAt: true, completedAt: true } },
+          acceptedPublicationProposal: { select: { id: true } },
+        },
+        orderBy: [{ priority: 'desc' }, { lastDetectedAt: 'desc' }, { id: 'asc' }],
+        take: 100,
+      }),
+    ]);
+    return { project, runs, findings: await attachEvidenceSnapshots(findings) };
+  },
+
+  async getQualityFinding(projectId: string, findingId: string) {
+    const project = await prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) return null;
+    const finding = await prisma.contentQualityFinding.findFirst({
+      where: { id: findingId, projectId },
+      include: {
+        document: { select: { id: true, canonicalUrl: true, title: true, latestPageSnapshotId: true } },
+        latestRun: true,
+        acceptedPublicationProposal: { select: { id: true, createdAt: true, reason: true } },
+        history: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] },
+      },
+    });
+    return finding ? { project, finding: (await attachEvidenceSnapshots([finding]))[0]! } : null;
   }
 };

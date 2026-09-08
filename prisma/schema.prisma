@@ -202,6 +202,8 @@ model Project {
   keywordContentBriefRequests KeywordContentBriefRequest[]
   indexNowSubmissionBatches IndexNowSubmissionBatch[]
   crawlerHealthSnapshots CrawlerHealthSnapshot[]
+  contentQualityRuns ContentQualityRun[]
+  contentQualityFindings ContentQualityFinding[]
 
   @@index([primaryDomain])
   @@index([status])
