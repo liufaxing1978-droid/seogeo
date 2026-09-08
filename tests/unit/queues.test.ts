@@ -8,6 +8,7 @@ describe('queue registry', () => {
       'seo-audit',
       'geo-audit',
       'content',
+      'content-quality',
       'competitor',
       'search-console-sync',
       'growth-materialization',
