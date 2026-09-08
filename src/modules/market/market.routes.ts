@@ -1,5 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { requireAuthentication } from '../../auth/authentication.js';
+import { requireCsrf } from '../../auth/csrf.js';
+import {
+  requireProjectCapability,
+  requireProjectMembership,
+} from '../../auth/project-access.js';
 import { AppError } from '../../core/errors.js';
 import { MarketService } from './market.service.js';
 import { marketRepository } from './market.repository.js';
@@ -38,24 +44,37 @@ export function createMarketRoutes(injectedService?: MarketApiPort) {
   const router = Router();
   const service: MarketApiPort = injectedService ?? new MarketService(marketRepository);
 
-  router.get('/projects/:projectId/markets', async (req, res, next) => {
-    try {
-      const projectId = routeParam(req.params.projectId);
-      res.json({ data: await service.listResolvedMarkets(projectId) });
-    } catch (error) {
-      try { asAppError(error); } catch (mapped) { next(mapped); }
-    }
-  });
+  router.get(
+    '/projects/:projectId/markets',
+    requireAuthentication(),
+    requireProjectMembership(),
+    requireProjectCapability('PROJECT_READ'),
+    async (req, res, next) => {
+      try {
+        const projectId = routeParam(req.params.projectId);
+        res.json({ data: await service.listResolvedMarkets(projectId) });
+      } catch (error) {
+        try { asAppError(error); } catch (mapped) { next(mapped); }
+      }
+    },
+  );
 
-  router.put('/projects/:projectId/markets', async (req, res, next) => {
-    try {
-      const input = marketWriteSchema.parse(req.body);
-      const projectId = routeParam(req.params.projectId);
-      res.json({ data: await service.replaceMarkets(projectId, input.markets) });
-    } catch (error) {
-      try { asAppError(error); } catch (mapped) { next(mapped); }
-    }
-  });
+  router.put(
+    '/projects/:projectId/markets',
+    requireAuthentication(),
+    requireCsrf(),
+    requireProjectMembership(),
+    requireProjectCapability('PROJECT_SETTINGS_WRITE'),
+    async (req, res, next) => {
+      try {
+        const input = marketWriteSchema.parse(req.body);
+        const projectId = routeParam(req.params.projectId);
+        res.json({ data: await service.replaceMarkets(projectId, input.markets) });
+      } catch (error) {
+        try { asAppError(error); } catch (mapped) { next(mapped); }
+      }
+    },
+  );
 
   return router;
 }

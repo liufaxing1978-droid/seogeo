@@ -1,13 +1,19 @@
 import { isInProjectScope, normalizeCrawlUrl } from '../crawler/url-normalizer.js';
+import { ValidationError } from '../../core/errors.js';
 
 export type EffectiveTargetUrlResult =
   | { state: 'DIRECT' | 'INHERITED'; url: string; urls: string[] }
   | { state: 'UNMAPPED' | 'AMBIGUOUS'; url: null; urls: string[] };
 
 export function normalizeProjectTargetUrl(value: string, primaryDomain: string): string {
-  const normalized = normalizeCrawlUrl(value);
+  let normalized: string;
+  try {
+    normalized = normalizeCrawlUrl(value);
+  } catch {
+    throw new ValidationError('Target URL must use HTTP or HTTPS and must not contain credentials');
+  }
   if (!isInProjectScope(new URL(normalized), primaryDomain)) {
-    throw new Error('Target URL must be within the project primary domain');
+    throw new ValidationError('Target URL must be within the project primary domain');
   }
   return normalized;
 }
