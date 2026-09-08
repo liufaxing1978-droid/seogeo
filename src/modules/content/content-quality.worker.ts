@@ -4,7 +4,7 @@ import { contentQualityRepository } from './content-quality.repository.js';
 import {
   evaluateContentDecay,
   evaluateInternalLinkSupport,
-  surfaceContentQaFinding
+  surfaceContentQaFindings
 } from './content-quality.rules.js';
 import type { ContentQualityEvaluation } from './content-quality.types.js';
 import type { ContentQualityJobData } from './content-quality.service.js';
@@ -16,16 +16,6 @@ function errorCode(error: unknown): string {
     return error.code.slice(0, 80);
   }
   return 'CONTENT_QUALITY_PROCESSING_FAILED';
-}
-
-function evaluateQa(
-  opportunities: Parameters<typeof surfaceContentQaFinding>[0][],
-  signals: Parameters<typeof surfaceContentQaFinding>[1][]
-): ContentQualityEvaluation {
-  const evaluations = opportunities.flatMap((opportunity) => signals.map((signal) => surfaceContentQaFinding(opportunity, signal)));
-  return evaluations.find((evaluation) => evaluation.status === 'FAIL')
-    ?? evaluations[0]
-    ?? surfaceContentQaFinding(null, null);
 }
 
 export async function processContentQualityJob(
@@ -43,7 +33,8 @@ export async function processContentQualityJob(
     const evaluations = input.documents.flatMap((document) => [
       { contentDocumentId: document.id, evaluation: evaluateInternalLinkSupport(document) },
       { contentDocumentId: document.id, evaluation: evaluateContentDecay(document.snapshots) },
-      { contentDocumentId: document.id, evaluation: evaluateQa(document.opportunities, document.signals) }
+      ...surfaceContentQaFindings(document.opportunities, document.signals)
+        .map((evaluation) => ({ contentDocumentId: document.id, evaluation }))
     ]);
     const failed = evaluations.filter((row) => row.evaluation.status === 'FAIL');
     const materialized = await repository.materializeFailures(projectId, runId, failed);

@@ -84,6 +84,11 @@ describe('P13-A content quality review center web', () => {
     expect(center.text).toContain('证据不足');
     expect(center.text).toContain(fixture.run.id);
     expect(center.text).toContain(fixture.finding.summary);
+    expect(center.text).toContain('name="category"');
+    expect(center.text).toContain('name="status"');
+    expect(center.text).toContain('name="priority"');
+    expect(center.text).toContain(`/projects/${operator.project.id}/content/documents/${fixture.document.id}`);
+    expect(center.text).toContain(new Date(fixture.afterSnapshot.capturedAt).toLocaleString('zh-CN'));
     expect(center.text).not.toContain('发布执行');
 
     const detail = await request(createApp())
@@ -96,6 +101,32 @@ describe('P13-A content quality review center web', () => {
     expect(detail.text).toContain('300');
     expect(detail.text).toContain('IN_REVIEW');
     expect(detail.text).toContain('人工复核');
+
+    const otherFinding = await prisma.contentQualityFinding.create({
+      data: {
+        projectId: operator.project.id,
+        contentDocumentId: fixture.document.id,
+        findingKey: 'FILTERED_QA_FIXTURE',
+        ruleVersion: 1,
+        category: 'CONTENT_QA',
+        priority: 'LOW',
+        summary: 'This finding must be filtered out.',
+        evidence: { status: 'FAIL', sourceReferences: [] },
+        firstDetectedAt: new Date(),
+        lastDetectedAt: new Date(),
+      },
+    });
+    const filtered = await request(createApp())
+      .get(`/projects/${operator.project.id}/content/quality?category=CONTENT_DECAY&status=OPEN&priority=HIGH`)
+      .set('Cookie', operator.sessionCookie)
+      .expect(200);
+    expect(filtered.text).toContain(fixture.finding.summary);
+    expect(filtered.text).not.toContain(otherFinding.summary);
+
+    await request(createApp())
+      .get(`/projects/${operator.project.id}/content/quality?category=NOT_A_CATEGORY`)
+      .set('Cookie', operator.sessionCookie)
+      .expect(400);
   });
 
   it('renders allowlisted internal-link and P5 QA evidence instead of hiding persisted rule inputs', async () => {
@@ -249,8 +280,13 @@ describe('P13-A content quality review center web', () => {
     });
     const proposal = await request(app)
       .get(`/projects/${operator.project.id}/publication/opportunities?proposalId=${acceptedFinding.acceptedPublicationProposalId}`)
+      .set('Cookie', operator.sessionCookie)
       .expect(200);
     expect(proposal.text).toContain('P13-A content-quality finding');
     expect(proposal.text).toContain(`proposal-${acceptedFinding.acceptedPublicationProposalId}`);
+
+    await request(app)
+      .get(`/projects/${operator.project.id}/publication/opportunities?proposalId=${acceptedFinding.acceptedPublicationProposalId}`)
+      .expect(401);
   });
 });

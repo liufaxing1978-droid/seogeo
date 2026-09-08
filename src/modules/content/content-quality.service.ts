@@ -54,24 +54,34 @@ export class ContentQualityService {
     const claim = await this.repository.claimActiveRun(projectId, actorId);
     const run = claim.run;
     if (!claim.claimed) {
+      // A process can exit after reserving the durable QUEUED run but before
+      // BullMQ receives the job. Re-add the deterministic job key so the next
+      // manual request heals that dual-write window instead of stranding work.
+      if (run.status === 'QUEUED') {
+        await this.addRunJob(projectId, run.id, jobId);
+      }
       this.observability.emit({ event: 'content.quality.deduplicated', projectId, runId: run.id, deduplicatedCount: 1 });
       return { jobId, runId: run.id, deduplicated: true };
     }
+    await this.addRunJob(projectId, run.id, jobId);
+    this.observability.emit({ event: 'content.quality.queued', projectId, runId: run.id, queuedCount: 1 });
+    return { jobId, runId: run.id, deduplicated: false };
+  }
+
+  private async addRunJob(projectId: string, runId: string, jobId: string): Promise<void> {
     try {
       await this.reconcileTerminalRunJob(projectId, jobId);
-      await this.queue.add('content-quality-run', { projectId, runId: run.id }, {
+      await this.queue.add('content-quality-run', { projectId, runId }, {
         jobId,
         attempts: 1,
         removeOnComplete: 100,
         removeOnFail: 100
       });
     } catch (error) {
-      await this.repository.failRun(projectId, run.id, queueErrorCode());
-      this.observability.emit({ event: 'content.quality.failed', projectId, runId: run.id, failedCount: 1, errorCode: queueErrorCode() });
+      await this.repository.failRun(projectId, runId, queueErrorCode());
+      this.observability.emit({ event: 'content.quality.failed', projectId, runId, failedCount: 1, errorCode: queueErrorCode() });
       throw error;
     }
-    this.observability.emit({ event: 'content.quality.queued', projectId, runId: run.id, queuedCount: 1 });
-    return { jobId, runId: run.id, deduplicated: false };
   }
 
   private async reconcileTerminalRunJob(projectId: string, jobId: string): Promise<void> {

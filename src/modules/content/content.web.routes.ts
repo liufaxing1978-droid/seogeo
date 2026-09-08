@@ -63,6 +63,7 @@ type QualityEvidenceModel = {
     opportunity: { id: string | null; key: string | null; version: number | null; status: string | null } | null;
     signal: { id: string | null; ruleKey: string | null; ruleVersion: number | null; status: string | null } | null;
   } | null;
+  sourceSnapshotCapturedAt?: unknown;
 };
 
 function snapshotValues(snapshot: Record<string, unknown> | undefined): EvidenceSnapshotView {
@@ -113,6 +114,8 @@ function evidenceModel(value: unknown, snapshots: Array<Record<string, unknown>>
   const signalRuleKey = nullableString(evidence.p5SignalRuleKey);
   const signalRuleVersion = nullableNumber(evidence.p5SignalRuleVersion);
   const signalStatus = nullableString(evidence.p5SignalStatus);
+  const sourceSnapshotCapturedAt = snapshotById.get(currentId)?.capturedAt
+    ?? references.map((reference) => snapshotById.get(reference.id)?.capturedAt).find((capturedAt) => capturedAt !== undefined);
   return {
     status: typeof evidence.status === 'string' ? evidence.status : 'UNKNOWN',
     references,
@@ -137,6 +140,7 @@ function evidenceModel(value: unknown, snapshots: Array<Record<string, unknown>>
           : null,
       }
       : null,
+    sourceSnapshotCapturedAt,
   };
 }
 
@@ -167,6 +171,19 @@ const qualityTransitionSchema = z.object({
   status: z.enum(['IN_REVIEW', 'DISMISSED']),
   reason: z.string().trim().min(1).max(1_000),
 });
+function optionalQualityFilter<T extends readonly [string, ...string[]]>(values: T) {
+  return z.preprocess((value) => value === '' ? undefined : value, z.enum(values).optional());
+}
+const qualityFilterSchema = z.object({
+  status: optionalQualityFilter(['OPEN', 'IN_REVIEW', 'ACCEPTED', 'DISMISSED']),
+  category: optionalQualityFilter(['INTERNAL_LINK_SUPPORT', 'CONTENT_DECAY', 'CONTENT_QA']),
+  priority: optionalQualityFilter(['INFO', 'LOW', 'MEDIUM', 'HIGH']),
+}).strict();
+type QualityFilters = {
+  status?: 'OPEN' | 'IN_REVIEW' | 'ACCEPTED' | 'DISMISSED';
+  category?: 'INTERNAL_LINK_SUPPORT' | 'CONTENT_DECAY' | 'CONTENT_QA';
+  priority?: 'INFO' | 'LOW' | 'MEDIUM' | 'HIGH';
+};
 
 export function createContentWebRoutes(
   qualityService: Pick<ContentQualityService, 'enqueueRun'> = contentQualityService,
@@ -185,7 +202,8 @@ contentWebRoutes.get('/projects/:id/content', async (req, res, next) => {
 contentWebRoutes.get('/projects/:id/content/quality', ...qualityReadGuards, async (req, res, next) => {
   try {
     const projectId = routeParam(req.params.id);
-    const model = await contentWebRepository.getQualityCenter(projectId);
+    const filters = qualityFilterSchema.parse(req.query) as QualityFilters;
+    const model = await contentWebRepository.getQualityCenter(projectId, filters);
     if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
     assertFeature(model.project);
     const membership = res.locals.projectMembership as { role: Parameters<typeof hasProjectCapability>[0] };
@@ -195,6 +213,7 @@ contentWebRoutes.get('/projects/:id/content/quality', ...qualityReadGuards, asyn
       csrfToken: csrfTokenFor(req, res),
       canWriteQuality: hasProjectCapability(membership.role, 'CONTENT_WRITE'),
       evidenceModel,
+      filters,
       ...model,
     });
   } catch (error) { next(qualityError(error)); }

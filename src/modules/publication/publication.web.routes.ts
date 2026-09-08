@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { requireAuthentication } from '../../auth/authentication.js';
+import { requireProjectCapability, requireProjectMembership } from '../../auth/project-access.js';
 import { NotFoundError } from '../../core/errors.js';
 import { publicationWebRepository } from './publication.web.repository.js';
 
@@ -96,7 +98,11 @@ publicationWebRoutes.get('/projects/:id/publication', async (req, res, next) => 
   } catch (error) { next(error); }
 });
 
-publicationWebRoutes.get('/projects/:id/publication/opportunities', async (req, res, next) => {
+publicationWebRoutes.get('/projects/:id/publication/opportunities',
+  requireAuthentication(),
+  requireProjectMembership(),
+  requireProjectCapability('PROJECT_READ'),
+  async (req, res, next) => {
   try {
     const projectId = routeParam(req.params.id);
     const proposalId = typeof req.query.proposalId === 'string' ? req.query.proposalId : undefined;
@@ -109,7 +115,8 @@ publicationWebRoutes.get('/projects/:id/publication/opportunities', async (req, 
       proposals: model.proposals.map((proposal) => ({ ...proposal, metadata: proposalMetadata(proposal.sourceMetadata) }))
     });
   } catch (error) { next(error); }
-});
+  }
+);
 
 publicationWebRoutes.get('/projects/:id/publication/drafts', async (req, res, next) => {
   try {

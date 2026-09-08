@@ -76,7 +76,11 @@ export const contentWebRepository = {
     return brief ? { project, brief } : null;
   },
 
-  async getQualityCenter(projectId: string) {
+  async getQualityCenter(projectId: string, filters: {
+    status?: 'OPEN' | 'IN_REVIEW' | 'ACCEPTED' | 'DISMISSED';
+    category?: 'INTERNAL_LINK_SUPPORT' | 'CONTENT_DECAY' | 'CONTENT_QA';
+    priority?: 'INFO' | 'LOW' | 'MEDIUM' | 'HIGH';
+  } = {}) {
     const project = await prisma.project.findUnique({ where: { id: projectId } });
     if (!project) return null;
     const [runs, findings] = await Promise.all([
@@ -86,7 +90,12 @@ export const contentWebRepository = {
         take: 20,
       }),
       prisma.contentQualityFinding.findMany({
-        where: { projectId },
+        where: {
+          projectId,
+          ...(filters.status ? { status: filters.status } : {}),
+          ...(filters.category ? { category: filters.category } : {}),
+          ...(filters.priority ? { priority: filters.priority } : {}),
+        },
         include: {
           document: { select: { id: true, canonicalUrl: true, title: true } },
           latestRun: { select: { id: true, status: true, inputSnapshotCutoffAt: true, completedAt: true } },

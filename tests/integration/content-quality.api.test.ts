@@ -307,6 +307,20 @@ describe('P13-A content quality API', () => {
     const finding = await createFinding(fixture.project.id);
     const api = `/api/v1/projects/${fixture.project.id}/content-quality/findings/${finding.id}/accept`;
 
+    await request(createApp())
+      .post(api)
+      .set('Cookie', fixture.sessionCookie)
+      .set('X-CSRF-Token', csrfFor(fixture))
+      .send({})
+      .expect(409);
+
+    await request(createApp())
+      .post(`/api/v1/projects/${fixture.project.id}/content-quality/findings/${finding.id}/transition`)
+      .set('Cookie', fixture.sessionCookie)
+      .set('X-CSRF-Token', csrfFor(fixture))
+      .send({ status: 'IN_REVIEW', reason: 'Reviewed before proposal handoff.' })
+      .expect(200);
+
     const first = await request(createApp())
       .post(api)
       .set('Cookie', fixture.sessionCookie)

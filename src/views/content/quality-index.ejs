@@ -36,12 +36,18 @@
 
   <section class="panel product-table-panel" data-ui="content-quality-findings">
     <div class="panel-header"><div><h2>规则发现</h2><p class="muted">优先级和状态来自规则执行；缺少可比证据时明确标记为“证据不足”。</p></div></div>
+    <form method="get" class="filter-row" data-ui="content-quality-filters">
+      <label>类别 <select name="category"><option value="">全部</option><% for (const value of ['INTERNAL_LINK_SUPPORT', 'CONTENT_DECAY', 'CONTENT_QA']) { %><option value="<%= value %>" <%= filters.category === value ? 'selected' : '' %>><%= value %></option><% } %></select></label>
+      <label>状态 <select name="status"><option value="">全部</option><% for (const value of ['OPEN', 'IN_REVIEW', 'ACCEPTED', 'DISMISSED']) { %><option value="<%= value %>" <%= filters.status === value ? 'selected' : '' %>><%= value %></option><% } %></select></label>
+      <label>优先级 <select name="priority"><option value="">全部</option><% for (const value of ['INFO', 'LOW', 'MEDIUM', 'HIGH']) { %><option value="<%= value %>" <%= filters.priority === value ? 'selected' : '' %>><%= value %></option><% } %></select></label>
+      <button class="button button-secondary" type="submit">筛选</button>
+    </form>
     <div class="table-wrap"><table><thead><tr><th>优先级</th><th>状态</th><th>规则版本</th><th>页面</th><th>建议</th><th>快照证据</th><th>最后发现</th></tr></thead><tbody>
-      <% for (const finding of findings) { const evidence = evidenceModel(finding.evidence); %><tr>
+      <% for (const finding of findings) { const evidence = evidenceModel(finding.evidence, finding.evidenceSnapshots); %><tr>
         <td><span class="badge"><%= finding.priority %></span></td><td><%= finding.status %></td><td><%= finding.ruleVersion %></td>
-        <td><%= finding.document.title ?? finding.document.canonicalUrl %></td>
+        <td><a href="/projects/<%= project.id %>/content/documents/<%= finding.document.id %>"><%= finding.document.title ?? finding.document.canonicalUrl %></a></td>
         <td><a href="/projects/<%= project.id %>/content/quality/<%= finding.id %>"><%= finding.summary %></a></td>
-        <td><%= evidence.status === 'UNKNOWN' ? '证据不足' : (evidence.references.map((reference) => reference.id).join('、') || '证据不足') %></td>
+        <td><%= evidence.sourceSnapshotCapturedAt ? new Date(String(evidence.sourceSnapshotCapturedAt)).toLocaleString('zh-CN') : '证据不足' %></td>
         <td><%= new Date(finding.lastDetectedAt).toLocaleString('zh-CN') %></td>
       </tr><% } %>
       <% if (!findings.length) { %><tr><td colspan="7" class="muted">暂无规则发现。</td></tr><% } %>

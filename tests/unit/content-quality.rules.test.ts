@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   evaluateContentDecay,
   evaluateInternalLinkSupport,
-  surfaceContentQaFinding
+  surfaceContentQaFinding,
+  surfaceContentQaFindings
 } from '../../src/modules/content/content-quality.rules.js';
 import type { ComparableSnapshot } from '../../src/modules/content/content-quality.types.js';
 
@@ -131,5 +132,25 @@ describe('content quality rules V1', () => {
       { id: 'opportunity-1', contentDocumentId: 'document-1', opportunityKey: 'CONTENT_BODY_SUBSTANTIVE:v1', opportunityVersion: 1, status: 'OPEN', priority: 'HIGH' },
       { id: 'signal-1', contentDocumentId: 'document-1', ruleKey: 'CONTENT_BODY_SUBSTANTIVE', ruleVersion: 1, status: 'FAIL', sourceReferences: [] }
     )).toMatchObject({ status: 'UNKNOWN', findingKey: 'CONTENT_QA_P5A_FAILED_OPPORTUNITY' });
+  });
+
+  it('surfaces each independently matching actionable P5-A failure once and excludes duplicate internal-link or ignored evidence', () => {
+    const opportunities = [
+      { id: 'body-opportunity', contentDocumentId: 'document-1', opportunityKey: 'CONTENT_BODY_SUBSTANTIVE:v1', opportunityVersion: 1, status: 'OPEN' as const, priority: 'HIGH' as const },
+      { id: 'title-opportunity', contentDocumentId: 'document-1', opportunityKey: 'CONTENT_TITLE_PRESENT:v1', opportunityVersion: 1, status: 'IN_PROGRESS' as const, priority: 'HIGH' as const },
+      { id: 'ignored-opportunity', contentDocumentId: 'document-1', opportunityKey: 'CONTENT_H1_PRESENT:v1', opportunityVersion: 1, status: 'IGNORED' as const, priority: 'HIGH' as const },
+      { id: 'link-opportunity', contentDocumentId: 'document-1', opportunityKey: 'CONTENT_INTERNAL_LINK_SUPPORT:v1', opportunityVersion: 1, status: 'OPEN' as const, priority: 'MEDIUM' as const },
+    ];
+    const signals = [
+      { id: 'body-signal', contentDocumentId: 'document-1', ruleKey: 'CONTENT_BODY_SUBSTANTIVE', ruleVersion: 1, status: 'FAIL' as const, sourceReferences: [{ type: 'PAGE_SNAPSHOT' as const, id: 'snapshot-current' }] },
+      { id: 'title-signal', contentDocumentId: 'document-1', ruleKey: 'CONTENT_TITLE_PRESENT', ruleVersion: 1, status: 'FAIL' as const, sourceReferences: [{ type: 'PAGE_SNAPSHOT' as const, id: 'snapshot-current' }] },
+      { id: 'ignored-signal', contentDocumentId: 'document-1', ruleKey: 'CONTENT_H1_PRESENT', ruleVersion: 1, status: 'FAIL' as const, sourceReferences: [{ type: 'PAGE_SNAPSHOT' as const, id: 'snapshot-current' }] },
+      { id: 'link-signal', contentDocumentId: 'document-1', ruleKey: 'CONTENT_INTERNAL_LINK_SUPPORT', ruleVersion: 1, status: 'FAIL' as const, sourceReferences: [{ type: 'PAGE_SNAPSHOT' as const, id: 'snapshot-current' }] },
+    ];
+
+    expect(surfaceContentQaFindings(opportunities, signals)).toMatchObject([
+      { status: 'FAIL', findingKey: 'CONTENT_QA_P5A_CONTENT_BODY_SUBSTANTIVE', evidence: { p5OpportunityId: 'body-opportunity', p5SignalId: 'body-signal' } },
+      { status: 'FAIL', findingKey: 'CONTENT_QA_P5A_CONTENT_TITLE_PRESENT', evidence: { p5OpportunityId: 'title-opportunity', p5SignalId: 'title-signal' } },
+    ]);
   });
 });

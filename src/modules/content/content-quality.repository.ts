@@ -61,6 +61,13 @@ function snapshotIds(evidence: Prisma.JsonValue): string[] {
   });
 }
 
+function sourceSnapshotId(evidence: Prisma.JsonValue): string | null {
+  if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) return null;
+  const currentSnapshotId = (evidence as Record<string, unknown>).currentSnapshotId;
+  if (typeof currentSnapshotId === 'string') return currentSnapshotId;
+  return snapshotIds(evidence)[0] ?? null;
+}
+
 function emptyCategoryCounts(): ContentQualityCategoryCounts {
   return { internalLinkSupport: 0, contentDecay: 0, contentQa: 0 };
 }
@@ -341,7 +348,7 @@ export class ContentQualityRepository {
         if (proposal) return { proposal, accepted: false };
         throw errorWithCode('Accepted finding proposal is missing.', 'CONTENT_QUALITY_ACCEPTANCE_CORRUPT');
       }
-      if (finding.status !== 'OPEN' && finding.status !== 'IN_REVIEW') {
+      if (finding.status !== 'IN_REVIEW') {
         throw errorWithCode('Content quality finding is not eligible for acceptance.', 'CONTENT_QUALITY_INVALID_TRANSITION');
       }
       const proposal = await tx.publicationProposal.create({
@@ -351,7 +358,7 @@ export class ContentQualityRepository {
           reason: `P13-A content-quality finding: ${finding.summary}`,
           createdBy: actorId,
           sourceReferenceId: finding.id,
-          sourceSnapshotId: snapshotIds(finding.evidence)[0] ?? null,
+          sourceSnapshotId: sourceSnapshotId(finding.evidence),
           p13aFindingHandoffKey: finding.id,
           sourceMetadata: {
             program: 'P13-A',

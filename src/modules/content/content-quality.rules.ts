@@ -253,3 +253,31 @@ export function surfaceContentQaFinding(
     evidence
   );
 }
+
+/**
+ * P13-A is a projection of P5-A evidence. Pair each persisted opportunity
+ * with its one matching rule signal rather than cross-joining all rows, so
+ * independent rule failures keep independent stable finding identities.
+ */
+export function surfaceContentQaFindings(
+  opportunities: P5ContentOpportunityReference[],
+  signals: P5ContentSignalReference[]
+): ContentQualityEvaluation[] {
+  const signalsByRule = new Map<string, P5ContentSignalReference>(
+    signals
+      .filter((signal) => signal.status === 'FAIL' && signal.ruleKey !== 'CONTENT_INTERNAL_LINK_SUPPORT')
+      .map((signal) => [`${signal.contentDocumentId}:${signal.ruleKey}:v${signal.ruleVersion}`, signal] as const)
+  );
+
+  return opportunities
+    .filter((opportunity) => opportunity.status === 'OPEN' || opportunity.status === 'IN_PROGRESS')
+    .filter((opportunity) => opportunity.opportunityKey !== `CONTENT_INTERNAL_LINK_SUPPORT:v${opportunity.opportunityVersion}`)
+    .sort((left, right) => left.opportunityKey.localeCompare(right.opportunityKey) || left.id.localeCompare(right.id))
+    .flatMap((opportunity) => {
+      const signal = signalsByRule.get(`${opportunity.contentDocumentId}:${opportunity.opportunityKey}`);
+      if (!signal) return [];
+      const result = surfaceContentQaFinding(opportunity, signal);
+      if (result.status !== 'FAIL') return [];
+      return [{ ...result, findingKey: `CONTENT_QA_P5A_${signal.ruleKey}` }];
+    });
+}

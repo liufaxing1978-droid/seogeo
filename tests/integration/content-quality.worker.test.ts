@@ -143,7 +143,7 @@ describe('P13-A persisted-facts content-quality worker', () => {
     expect(findings.map((finding) => finding.findingKey)).toEqual([
       'CONTENT_DECAY_WORD_COUNT_DROP',
       'CONTENT_INTERNAL_LINK_SUPPORT',
-      'CONTENT_QA_P5A_FAILED_OPPORTUNITY'
+      'CONTENT_QA_P5A_CONTENT_BODY_SUBSTANTIVE'
     ]);
     expect(findings.find((finding) => finding.findingKey === 'CONTENT_DECAY_WORD_COUNT_DROP')?.evidence).toMatchObject({
       previousSnapshotId,
@@ -173,6 +173,8 @@ describe('P13-A persisted-facts content-quality worker', () => {
       new ContentQualityObservability((event) => events.push(event))
     );
 
+    await repository.transitionFinding(projectId, finding.id, 'IN_REVIEW', 'reviewer-1', 'Reviewed evidence.');
+
     const first = await repository.acceptFinding(projectId, finding.id, 'reviewer-1');
     const second = await repository.acceptFinding(projectId, finding.id, 'reviewer-1');
 
@@ -181,6 +183,7 @@ describe('P13-A persisted-facts content-quality worker', () => {
     expect(first).toMatchObject({
       sourceType: 'CONTENT_REFRESH',
       sourceReferenceId: finding.id,
+      sourceSnapshotId: currentSnapshotId,
       sourceMetadata: expect.objectContaining({
         program: 'P13-A',
         findingId: finding.id,
@@ -188,7 +191,7 @@ describe('P13-A persisted-facts content-quality worker', () => {
         snapshotIds: expect.arrayContaining([previousSnapshotId, currentSnapshotId])
       })
     });
-    expect(await prisma.contentQualityFindingHistory.count({ where: { findingId: finding.id } })).toBe(1);
+    expect(await prisma.contentQualityFindingHistory.count({ where: { findingId: finding.id } })).toBe(2);
     expect(await prisma.contentDraft.count({ where: { projectId } })).toBe(0);
     expect(await prisma.publicationPlan.count({ where: { projectId } })).toBe(0);
     expect(await prisma.publicationExecution.count({ where: { projectId } })).toBe(0);
@@ -256,6 +259,8 @@ describe('P13-A persisted-facts content-quality worker', () => {
     });
     const repository = new ContentQualityRepository();
 
+    await repository.transitionFinding(projectId, finding.id, 'IN_REVIEW', 'reviewer-1', 'Reviewed evidence.');
+
     const results = await Promise.all([
       repository.acceptFinding(projectId, finding.id, 'reviewer-1'),
       repository.acceptFinding(projectId, finding.id, 'reviewer-2')
@@ -283,6 +288,8 @@ describe('P13-A persisted-facts content-quality worker', () => {
     });
     const repository = new ContentQualityRepository();
 
+    await repository.transitionFinding(projectId, finding.id, 'IN_REVIEW', 'reviewer-1', 'Reviewed evidence.');
+
     const settled = await Promise.allSettled([
       repository.acceptFinding(projectId, finding.id, 'reviewer-1'),
       repository.transitionFinding(projectId, finding.id, 'DISMISSED', 'reviewer-2', 'Not applicable.')
@@ -292,7 +299,7 @@ describe('P13-A persisted-facts content-quality worker', () => {
     const history = await prisma.contentQualityFindingHistory.findMany({ where: { findingId: finding.id } });
     expect(settled.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
     expect(['ACCEPTED', 'DISMISSED']).toContain(persisted.status);
-    expect(history).toHaveLength(1);
+    expect(history).toHaveLength(2);
     expect(await prisma.publicationProposal.count({ where: { projectId, sourceReferenceId: finding.id } })).toBe(
       persisted.status === 'ACCEPTED' ? 1 : 0
     );

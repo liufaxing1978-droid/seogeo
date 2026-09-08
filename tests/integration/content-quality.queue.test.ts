@@ -107,6 +107,31 @@ describe('P13-A manual content-quality queue', () => {
     ]));
   });
 
+  it('recovers a queued persisted run when its queue job is missing', async () => {
+    const queue = new ManualContentQualityQueue();
+    const repository = new ContentQualityRepository();
+    const service = new ContentQualityService(queue as unknown as Queue<ContentQualityJobData>, repository);
+    const stranded = await repository.claimActiveRun(projectId, 'user-1');
+
+    const recovered = await service.enqueueRun(projectId, 'user-2');
+
+    expect(stranded.claimed).toBe(true);
+    expect(recovered).toEqual({
+      jobId: `content-quality-${projectId}`,
+      runId: stranded.run.id,
+      deduplicated: true
+    });
+    expect(queue.calls).toHaveLength(1);
+    expect(queue.calls[0]).toMatchObject({
+      name: 'content-quality-run',
+      data: { projectId, runId: stranded.run.id },
+      options: { jobId: `content-quality-${projectId}` }
+    });
+    expect(await prisma.contentQualityRun.count({
+      where: { projectId, status: { in: ['QUEUED', 'RUNNING'] } }
+    })).toBe(1);
+  });
+
   it('enqueues a durable subsequent run after a retained terminal job', async () => {
     const queue = new ManualContentQualityQueue();
     const service = new ContentQualityService(queue as unknown as Queue<ContentQualityJobData>);
