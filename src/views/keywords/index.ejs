@@ -482,6 +482,7 @@
                 <form class="keyword-inline-form" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups/<%= group.id %>/primary-keyword">
                   <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                   <label class="keyword-field"><span>主词</span><select name="primaryKeywordId"><option value="">未设置</option><% keywordCenter.keywordOptions.filter((item) => item.status !== 'ARCHIVED').forEach((item) => { %><option value="<%= item.id %>" <%= group.primaryKeywordId === item.id ? 'selected' : '' %>><%= item.text %></option><% }) %></select></label>
+                  <label class="keyword-check"><input type="checkbox" name="acknowledgeLock" value="true"><span>确认调整锁定词</span></label>
                   <button class="keyword-button" type="submit">设置主词</button>
                 </form>
                 <form class="keyword-cluster-assignment" method="post" action="/projects/<%= keywordCenter.project.id %>/keyword-groups/<%= group.id %>/keywords">
