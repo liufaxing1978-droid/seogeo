@@ -90,7 +90,7 @@ function decayEvidence(
 
 export function evaluateInternalLinkSupport(facts: InternalLinkSupportFacts): ContentQualityEvaluation {
   const sourceReferences = [{ type: 'PAGE_SNAPSHOT' as const, id: facts.latestPageSnapshotId }];
-  if (facts.internalLinkCount === null) {
+  if (facts.internalLinkCount === null || !facts.latestSnapshot || !isEligibleSnapshot(facts.latestSnapshot)) {
     return evaluation(
       'CONTENT_INTERNAL_LINK_SUPPORT', 'UNKNOWN', 'INTERNAL_LINK_SUPPORT', 'MEDIUM',
       'Internal-link support cannot be assessed from the persisted snapshot.',
@@ -261,7 +261,8 @@ export function surfaceContentQaFinding(
  */
 export function surfaceContentQaFindings(
   opportunities: P5ContentOpportunityReference[],
-  signals: P5ContentSignalReference[]
+  signals: P5ContentSignalReference[],
+  latestPageSnapshotId: string
 ): ContentQualityEvaluation[] {
   const signalsByRule = new Map<string, P5ContentSignalReference>(
     signals
@@ -276,6 +277,7 @@ export function surfaceContentQaFindings(
     .flatMap((opportunity) => {
       const signal = signalsByRule.get(`${opportunity.contentDocumentId}:${opportunity.opportunityKey}`);
       if (!signal) return [];
+      if (!signal.sourceReferences.some((reference) => reference.type === 'PAGE_SNAPSHOT' && reference.id === latestPageSnapshotId)) return [];
       const result = surfaceContentQaFinding(opportunity, signal);
       if (result.status !== 'FAIL') return [];
       return [{ ...result, findingKey: `CONTENT_QA_P5A_${signal.ruleKey}` }];

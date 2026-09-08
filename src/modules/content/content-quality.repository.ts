@@ -20,6 +20,7 @@ export interface ContentQualityInputDocument {
   pageId: string;
   latestPageSnapshotId: string;
   internalLinkCount: number | null;
+  latestSnapshot: ComparableSnapshot | null;
   snapshots: ComparableSnapshot[];
   opportunities: P5ContentOpportunityReference[];
   signals: P5ContentSignalReference[];
@@ -131,7 +132,16 @@ export class ContentQualityRepository {
       where: { id: runId, projectId, status: 'QUEUED' },
       data: { status: 'RUNNING', startedAt: cutoffAt, inputSnapshotCutoffAt: cutoffAt, errorCode: null }
     });
-    return updated.count === 1 ? { cutoffAt } : null;
+    if (updated.count === 1) return { cutoffAt };
+    // BullMQ can redeliver a stalled job after its worker process disappears.
+    // The materialization path is idempotent, so resuming the same durable
+    // RUNNING input cutoff is safer than completing the job while leaving the
+    // project permanently reserved.
+    const running = await this.db.contentQualityRun.findFirst({
+      where: { id: runId, projectId, status: 'RUNNING' },
+      select: { inputSnapshotCutoffAt: true }
+    });
+    return running?.inputSnapshotCutoffAt ? { cutoffAt: running.inputSnapshotCutoffAt } : null;
   }
 
   async loadInput(projectId: string, cutoffAt: Date): Promise<ContentQualityInput> {
@@ -200,6 +210,7 @@ export class ContentQualityRepository {
       cutoffAt,
       documents: documents.map((document) => ({
         ...document,
+        latestSnapshot: (snapshotsByPage.get(document.pageId) ?? []).find((snapshot) => snapshot.id === document.latestPageSnapshotId) ?? null,
         snapshots: snapshotsByPage.get(document.pageId) ?? [],
         opportunities: opportunitiesByDocument.get(document.id) ?? [],
         signals: signalsByDocument.get(document.id) ?? []

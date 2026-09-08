@@ -59,10 +59,10 @@
   <% } else if (canWriteQuality && (finding.status === 'OPEN' || finding.status === 'IN_REVIEW')) { %>
     <section class="panel" data-ui="content-quality-review-actions">
       <h2>人工审核</h2>
-      <form action="/projects/<%= project.id %>/content/quality/<%= finding.id %>/transition" method="post">
+      <% if (finding.status === 'OPEN') { %><form action="/projects/<%= project.id %>/content/quality/<%= finding.id %>/transition" method="post">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="status" value="IN_REVIEW">
         <label>复核原因 <input name="reason" required maxlength="1000"></label><button class="button" type="submit">标记复核</button>
-      </form>
+      </form><% } %>
       <form action="/projects/<%= project.id %>/content/quality/<%= finding.id %>/transition" method="post">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="status" value="DISMISSED">
         <label>驳回原因 <input name="reason" required maxlength="1000"></label><button class="button" type="submit">驳回建议</button>

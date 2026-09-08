@@ -242,6 +242,24 @@ describe('P13-A persisted-facts content-quality worker', () => {
     loadInput.mockRestore();
   });
 
+  it('safely re-enters a persisted RUNNING run after a stalled worker redelivery', async () => {
+    const run = await prisma.contentQualityRun.create({
+      data: { projectId, rulesetVersion: 1, requestedByActorId: 'user-1', activeRunKey: projectId }
+    });
+    const repository = new ContentQualityRepository();
+    await repository.startRun(projectId, run.id);
+
+    const result = await processContentQualityJob({
+      name: 'content-quality-run',
+      data: { projectId, runId: run.id }
+    } as Job<ContentQualityJobData>);
+
+    expect(result).toMatchObject({ documentsProcessed: 1 });
+    expect(result).not.toHaveProperty('skipped');
+    expect(await prisma.contentQualityRun.findUniqueOrThrow({ where: { id: run.id } }))
+      .toMatchObject({ status: 'COMPLETED', activeRunKey: null });
+  });
+
   it('returns one proposal and one acceptance history row for concurrent acceptance', async () => {
     const finding = await prisma.contentQualityFinding.create({
       data: {

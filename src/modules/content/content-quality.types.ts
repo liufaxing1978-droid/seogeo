@@ -40,7 +40,9 @@ export interface ContentQualityEvaluation {
   evidence: ContentQualityEvidence;
 }
 
-export type InternalLinkSupportFacts = Pick<ContentFacts, 'latestPageSnapshotId' | 'internalLinkCount'>;
+export interface InternalLinkSupportFacts extends Pick<ContentFacts, 'latestPageSnapshotId' | 'internalLinkCount'> {
+  latestSnapshot: ComparableSnapshot | null;
+}
 
 export interface ComparableSnapshot {
   id: string;

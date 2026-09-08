@@ -6,7 +6,6 @@ import {
   evaluateInternalLinkSupport,
   surfaceContentQaFindings
 } from './content-quality.rules.js';
-import type { ContentQualityEvaluation } from './content-quality.types.js';
 import type { ContentQualityJobData } from './content-quality.service.js';
 
 export type { ContentQualityJobData } from './content-quality.service.js';
@@ -33,7 +32,7 @@ export async function processContentQualityJob(
     const evaluations = input.documents.flatMap((document) => [
       { contentDocumentId: document.id, evaluation: evaluateInternalLinkSupport(document) },
       { contentDocumentId: document.id, evaluation: evaluateContentDecay(document.snapshots) },
-      ...surfaceContentQaFindings(document.opportunities, document.signals)
+      ...surfaceContentQaFindings(document.opportunities, document.signals, document.latestPageSnapshotId)
         .map((evaluation) => ({ contentDocumentId: document.id, evaluation }))
     ]);
     const failed = evaluations.filter((row) => row.evaluation.status === 'FAIL');

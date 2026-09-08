@@ -7,10 +7,11 @@ import {
 } from '../../src/modules/content/content-quality.rules.js';
 import type { ComparableSnapshot } from '../../src/modules/content/content-quality.types.js';
 
-function facts(input: { internalLinkCount?: number | null } = {}) {
+function facts(input: { internalLinkCount?: number | null; latestSnapshot?: ComparableSnapshot | null } = {}) {
   return {
     latestPageSnapshotId: 'snapshot-current',
     internalLinkCount: 3,
+    latestSnapshot: eligibleSnapshot(),
     ...input
   };
 }
@@ -41,6 +42,13 @@ describe('content quality rules V1', () => {
     expect(evaluation.evidence).not.toHaveProperty('targetPageId');
     expect(evaluation.evidence).not.toHaveProperty('sourcePageId');
     expect(evaluation.evidence).toMatchObject({ observedInternalLinkCount: 1 });
+  });
+
+  it('returns UNKNOWN for internal-link support when the latest page snapshot is not eligible', () => {
+    expect(evaluateInternalLinkSupport(facts({
+      internalLinkCount: 1,
+      latestSnapshot: eligibleSnapshot({ indexable: false }),
+    }))).toMatchObject({ status: 'UNKNOWN' });
   });
 
   it('detects only an observed comparable regression', () => {
@@ -148,9 +156,17 @@ describe('content quality rules V1', () => {
       { id: 'link-signal', contentDocumentId: 'document-1', ruleKey: 'CONTENT_INTERNAL_LINK_SUPPORT', ruleVersion: 1, status: 'FAIL' as const, sourceReferences: [{ type: 'PAGE_SNAPSHOT' as const, id: 'snapshot-current' }] },
     ];
 
-    expect(surfaceContentQaFindings(opportunities, signals)).toMatchObject([
+    expect(surfaceContentQaFindings(opportunities, signals, 'snapshot-current')).toMatchObject([
       { status: 'FAIL', findingKey: 'CONTENT_QA_P5A_CONTENT_BODY_SUBSTANTIVE', evidence: { p5OpportunityId: 'body-opportunity', p5SignalId: 'body-signal' } },
       { status: 'FAIL', findingKey: 'CONTENT_QA_P5A_CONTENT_TITLE_PRESENT', evidence: { p5OpportunityId: 'title-opportunity', p5SignalId: 'title-signal' } },
     ]);
+  });
+
+  it('does not surface P5 QA when its failure evidence is not from the current snapshot', () => {
+    expect(surfaceContentQaFindings(
+      [{ id: 'opportunity-1', contentDocumentId: 'document-1', opportunityKey: 'CONTENT_TITLE_PRESENT:v1', opportunityVersion: 1, status: 'OPEN', priority: 'HIGH' }],
+      [{ id: 'signal-1', contentDocumentId: 'document-1', ruleKey: 'CONTENT_TITLE_PRESENT', ruleVersion: 1, status: 'FAIL', sourceReferences: [{ type: 'PAGE_SNAPSHOT', id: 'old-snapshot' }] }],
+      'current-snapshot'
+    )).toEqual([]);
   });
 });
