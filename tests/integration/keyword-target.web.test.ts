@@ -61,18 +61,24 @@ describe('keyword Target URL web controls', () => {
     } finally { await fixture.cleanup(); }
   });
 
-  it('returns a validation error for an out-of-scope URL without persisting it', async () => {
+  it('returns a validation error for unsafe or out-of-scope URLs without persisting them', async () => {
     const fixture = await seedAuthenticatedUser({ role: 'OWNER', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
     try {
       const keyword = await keywordService.createManual({ actorUserId: fixture.user.id, projectId: fixture.project.id, text: '站外映射', type: 'CORE' });
-      const response = await request(createApp())
-        .post(`/projects/${fixture.project.id}/keywords/${keyword.id}/target-url`)
-        .set('Cookie', fixture.sessionCookie)
-        .type('form')
-        .send({ _csrf: csrfFor(fixture), targetUrl: 'https://example.net/outside' })
-        .expect(400);
+      for (const targetUrl of [
+        'https://example.net/outside',
+        `ftp://${fixture.project.primaryDomain}/archive`,
+        `https://user:pass@${fixture.project.primaryDomain}/private`,
+      ]) {
+        const response = await request(createApp())
+          .post(`/projects/${fixture.project.id}/keywords/${keyword.id}/target-url`)
+          .set('Cookie', fixture.sessionCookie)
+          .type('form')
+          .send({ _csrf: csrfFor(fixture), targetUrl })
+          .expect(400);
 
-      expect(response.body).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+        expect(response.body).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+      }
       expect(await prisma.keywordTargetMapping.findUnique({ where: { keywordId: keyword.id } })).toBeNull();
     } finally { await fixture.cleanup(); }
   });

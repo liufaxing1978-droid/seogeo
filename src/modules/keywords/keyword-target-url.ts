@@ -6,7 +6,12 @@ export type EffectiveTargetUrlResult =
   | { state: 'UNMAPPED' | 'AMBIGUOUS'; url: null; urls: string[] };
 
 export function normalizeProjectTargetUrl(value: string, primaryDomain: string): string {
-  const normalized = normalizeCrawlUrl(value);
+  let normalized: string;
+  try {
+    normalized = normalizeCrawlUrl(value);
+  } catch {
+    throw new ValidationError('Target URL must use HTTP or HTTPS and must not contain credentials');
+  }
   if (!isInProjectScope(new URL(normalized), primaryDomain)) {
     throw new ValidationError('Target URL must be within the project primary domain');
   }
