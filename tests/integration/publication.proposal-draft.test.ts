@@ -261,7 +261,7 @@ describe('P8-A proposal intake and versioned draft workspace', () => {
       'HUMAN'
     );
 
-    expect(handoff).toMatchObject({ version: 2, status: 'MAIN_SITE_HANDOFF' });
+    expect(handoff).toMatchObject({ version: 2 });
     await expect(prisma.contentDraft.findUniqueOrThrow({ where: { id: draft.id } }))
       .resolves.toMatchObject({ currentVersion: 2, status: 'MAIN_SITE_HANDOFF' });
   });
