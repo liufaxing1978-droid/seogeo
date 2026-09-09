@@ -4,7 +4,10 @@
     <h1><%= draft.title %></h1>
     <p class="muted"><%= project.name %> · <%= draft.status %> · <%= draft.generatedBy %></p>
   </div>
-  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts">返回草稿</a></div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts">返回草稿</a>
+  <% if (draft.status !== 'ARCHIVED') { %><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/edit">编辑草稿</a><% } %>
+  <% if (draft.status !== 'ARCHIVED' && !draft.plans.length && csrfToken) { %><form method="post" action="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/archive" style="display:inline"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button secondary" type="submit">归档草稿</button></form><% } %>
+  <% if (canDelete) { %><form method="post" action="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/delete" style="display:inline" onsubmit="return confirm('确定删除此草稿及其版本、引用来源吗？此操作不可恢复。')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button danger" type="submit">删除草稿</button></form><% } %></div>
 </section>
 
 <section class="panel">
@@ -51,6 +54,7 @@
 
 <section class="panel">
   <h2>引用来源</h2>
+  <p><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/sources/new">添加引用来源</a></p>
   <% for (const source of draft.sourceRefs) { %><p><strong><%= source.title %></strong><% if (source.sourceUrl) { %> · <%= source.sourceUrl %><% } %> · <%= source.sourceType %></p><% } %>
   <% if (!draft.sourceRefs.length) { %><p class="muted">尚无引用来源。</p><% } %>
 </section>

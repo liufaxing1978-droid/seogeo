@@ -1,0 +1,26 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Content Draft Source</p>
+    <h1>添加引用来源</h1>
+    <p class="muted"><%= draft.title %></p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>">返回草稿</a></div>
+</section>
+
+<section class="panel">
+  <p class="muted">引用来源用于标示资料出处，不会触发 AI、发布计划或网站写入。</p>
+  <form method="post" action="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/sources">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <div class="form-grid">
+      <label>标题<input name="title" required maxlength="500" value="<%= values.title ?? '' %>"></label>
+      <label>资料类型<input name="sourceType" required maxlength="64" value="<%= values.sourceType ?? 'PUBLIC_WEB' %>"></label>
+      <label>来源 URL（可选）<input name="sourceUrl" type="url" maxlength="2048" value="<%= values.sourceUrl ?? '' %>"></label>
+      <label>作者（可选）<input name="author" maxlength="300" value="<%= values.author ?? '' %>"></label>
+      <label>出版方／保存者（可选）<input name="publisher" maxlength="300" value="<%= values.publisher ?? '' %>"></label>
+    </div>
+    <% if (errors.title) { %><p class="error"><%= errors.title.join(' ') %></p><% } %>
+    <% if (errors.sourceType) { %><p class="error"><%= errors.sourceType.join(' ') %></p><% } %>
+    <% if (errors.sourceUrl) { %><p class="error"><%= errors.sourceUrl.join(' ') %></p><% } %>
+    <p><button class="button" type="submit">保存引用来源</button></p>
+  </form>
+</section>
