@@ -261,7 +261,9 @@ publicationWebRoutes.get('/projects/:id/publication/drafts/:draftId/manual-site-
         currentProjectId: model.project.id,
         ...model,
         csrfToken: csrfTokenFor(req, res),
-        canWrite: res.locals.projectMembership.capabilities.includes('CONTENT_WRITE')
+        canWrite: Array.isArray(res.locals.projectMembership.capabilities)
+          ? res.locals.projectMembership.capabilities.includes('CONTENT_WRITE')
+          : ['OWNER', 'ADMIN', 'EDITOR'].includes(res.locals.projectMembership.role)
       });
     } catch (error) { next(error); }
   }
