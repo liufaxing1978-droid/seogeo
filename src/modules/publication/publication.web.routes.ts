@@ -252,6 +252,39 @@ publicationWebRoutes.get('/projects/:id/publication/drafts/:draftId', requireAut
   } catch (error) { next(error); }
 });
 
+publicationWebRoutes.get('/projects/:id/publication/drafts/:draftId/manual-site-handoff',
+  requireAuthentication(), requireProjectMembership(), requireProjectCapability('PROJECT_READ'), async (req, res, next) => {
+    try {
+      const model = await publicationWebRepository.getDraft(routeParam(req.params.id), routeParam(req.params.draftId));
+      if (!model) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
+      render(res, 'publication/manual-site-handoff', {
+        currentProjectId: model.project.id,
+        ...model,
+        csrfToken: csrfTokenFor(req, res),
+        canWrite: Array.isArray(res.locals.projectMembership.capabilities)
+          ? res.locals.projectMembership.capabilities.includes('CONTENT_WRITE')
+          : ['OWNER', 'ADMIN', 'EDITOR'].includes(res.locals.projectMembership.role)
+      });
+    } catch (error) { next(error); }
+  }
+);
+
+publicationWebRoutes.post('/projects/:id/publication/drafts/:draftId/manual-site-handoff/:state',
+  requireAuthentication(), requireCsrf(), requireProjectMembership(), requireProjectCapability('CONTENT_WRITE'), async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.id); const draftId = routeParam(req.params.draftId);
+      const target = routeParam(req.params.state);
+      const status = target === 'ready' ? 'MAIN_SITE_HANDOFF' : target === 'published' ? 'MAIN_SITE_PUBLISHED' : null;
+      if (!status) throw new NotFoundError('Manual handoff state not found', 'PUBLICATION_HANDOFF_STATE_NOT_FOUND');
+      const model = await publicationWebRepository.getDraft(projectId, draftId);
+      if (!model) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
+      if (model.draft.status === 'ARCHIVED') throw new AppError('Archived drafts cannot be handed off', 409, 'PUBLICATION_DRAFT_ARCHIVED');
+      await publicationService.saveDraftVersion(draftId, model.draft.currentVersion, { status }, 'HUMAN');
+      res.redirect(303, `/projects/${projectId}/publication/drafts/${draftId}/manual-site-handoff`);
+    } catch (error) { next(error); }
+  }
+);
+
 publicationWebRoutes.post('/projects/:id/publication/drafts/:draftId/delete',
   requireAuthentication(), requireCsrf(), requireProjectMembership(), requireProjectCapability('PROJECT_SETTINGS_WRITE'),
   async (req, res, next) => {

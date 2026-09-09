@@ -246,6 +246,26 @@ describe('P8-A proposal intake and versioned draft workspace', () => {
     ]);
   });
 
+  it('records the human handoff to the main site as a versioned draft state', async () => {
+    const project = await createProject('P8 manual main-site handoff');
+    const service = new PublicationService();
+    const proposal = await service.createManualProposal(project.id, { reason: 'Manual main-site handoff' }, 'editor-5');
+    const draft = await service.createDraftFromProposal(proposal.id, {
+      title: '六壬伏英馆', body: '发布包正文', language: 'zh-CN', generatedBy: 'HUMAN'
+    });
+
+    const handoff = await service.saveDraftVersion(
+      draft.id,
+      draft.currentVersion,
+      { status: 'MAIN_SITE_HANDOFF' },
+      'HUMAN'
+    );
+
+    expect(handoff).toMatchObject({ version: 2 });
+    await expect(prisma.contentDraft.findUniqueOrThrow({ where: { id: draft.id } }))
+      .resolves.toMatchObject({ currentVersion: 2, status: 'MAIN_SITE_HANDOFF' });
+  });
+
   it('keeps source references bounded and explicitly unverified-by-schema even for AI-suggested sources', async () => {
     const project = await createProject('P8 source references');
     const service = new PublicationService();
