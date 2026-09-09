@@ -4,7 +4,8 @@ import { requireAuthentication } from '../../auth/authentication.js';
 import { deriveCsrfToken, requireCsrf } from '../../auth/csrf.js';
 import { requireProjectCapability, requireProjectMembership } from '../../auth/project-access.js';
 import { env } from '../../config/env.js';
-import { NotFoundError } from '../../core/errors.js';
+import { AppError, NotFoundError } from '../../core/errors.js';
+import { prisma } from '../../db/prisma.js';
 import { publicationService } from './publication.service.js';
 import { publicationWebRepository } from './publication.web.repository.js';
 
@@ -45,6 +46,14 @@ const manualDraftFormSchema = z.object({
   author: z.string().trim().max(300).optional(),
   language: z.string().trim().min(2).max(32),
   reason: z.string().trim().min(1).max(1_000)
+}).strict();
+
+const sourceReferenceFormSchema = z.object({
+  title: z.string().trim().min(1).max(500),
+  sourceUrl: z.union([z.literal(''), z.string().url().max(2_048)]).optional(),
+  sourceType: z.string().trim().min(1).max(64),
+  author: z.string().trim().max(300).optional(),
+  publisher: z.string().trim().max(300).optional()
 }).strict();
 
 function nullableText(value: string | undefined): string | null {
@@ -223,7 +232,7 @@ publicationWebRoutes.post(
   }
 );
 
-publicationWebRoutes.get('/projects/:id/publication/drafts/:draftId', async (req, res, next) => {
+publicationWebRoutes.get('/projects/:id/publication/drafts/:draftId', requireAuthentication(), requireProjectMembership(), requireProjectCapability('PROJECT_READ'), async (req, res, next) => {
   try {
     const projectId = routeParam(req.params.id);
     const draftId = routeParam(req.params.draftId);
@@ -236,10 +245,149 @@ publicationWebRoutes.get('/projects/:id/publication/drafts/:draftId', async (req
       ...model,
       latestPlan,
       validation,
-      schemaJson: prettyJson(model.draft.schemaJson)
+      schemaJson: prettyJson(model.draft.schemaJson),
+      csrfToken: csrfTokenFor(req, res),
+      canDelete: !model.draft.plans.length && ['OWNER', 'ADMIN'].includes(res.locals.projectMembership.role)
     });
   } catch (error) { next(error); }
 });
+
+publicationWebRoutes.post('/projects/:id/publication/drafts/:draftId/delete',
+  requireAuthentication(), requireCsrf(), requireProjectMembership(), requireProjectCapability('PROJECT_SETTINGS_WRITE'),
+  async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.id); const draftId = routeParam(req.params.draftId);
+      const draft = await prisma.contentDraft.findFirst({ where: { id: draftId, projectId }, include: { _count: { select: { plans: true } } } });
+      if (!draft) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
+      if (draft._count.plans > 0) throw new AppError('Planned drafts cannot be deleted', 409, 'PUBLICATION_DRAFT_DELETE_BLOCKED');
+      await prisma.contentDraft.delete({ where: { id: draft.id } });
+      res.redirect(303, `/projects/${projectId}/publication/drafts`);
+    } catch (error) { next(error); }
+  }
+);
+
+publicationWebRoutes.get(
+  '/projects/:id/publication/drafts/:draftId/edit',
+  requireAuthentication(),
+  requireProjectMembership(),
+  requireProjectCapability('CONTENT_WRITE'),
+  async (req, res, next) => {
+    try {
+      const model = await publicationWebRepository.getDraft(routeParam(req.params.id), routeParam(req.params.draftId));
+      if (!model) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
+      if (model.draft.status === 'ARCHIVED') throw new AppError('Archived drafts cannot be edited', 409, 'PUBLICATION_DRAFT_ARCHIVED');
+      render(res, 'publication/edit-draft', { currentProjectId: model.project.id, ...model, values: model.draft, errors: {}, csrfToken: csrfTokenFor(req, res) });
+    } catch (error) { next(error); }
+  }
+);
+
+publicationWebRoutes.post(
+  '/projects/:id/publication/drafts/:draftId',
+  requireAuthentication(), requireCsrf(), requireProjectMembership(), requireProjectCapability('CONTENT_WRITE'),
+  async (req, res, next) => {
+    const projectId = routeParam(req.params.id); const draftId = routeParam(req.params.draftId);
+    const values = { ...(req.body ?? {}) } as Record<string, unknown>; delete values._csrf;
+    try {
+      const input = manualDraftFormSchema.parse({ ...values, reason: '保存人工草稿新版本' });
+      const model = await publicationWebRepository.getDraft(projectId, draftId);
+      if (!model) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
+      if (model.draft.status === 'ARCHIVED') throw new AppError('Archived drafts cannot be edited', 409, 'PUBLICATION_DRAFT_ARCHIVED');
+      await publicationService.saveDraftVersion(draftId, model.draft.currentVersion, {
+        title: input.title, slugCandidate: nullableText(input.slugCandidate), body: input.body, excerpt: nullableText(input.excerpt), metaTitle: nullableText(input.metaTitle), metaDescription: nullableText(input.metaDescription), canonicalCandidate: nullableText(input.canonicalCandidate), author: nullableText(input.author), language: input.language
+      }, 'HUMAN');
+      res.redirect(303, `/projects/${projectId}/publication/drafts/${draftId}`);
+    } catch (error) {
+      if (!(error instanceof z.ZodError)) return next(error);
+      const model = await publicationWebRepository.getDraft(projectId, draftId).catch(() => null); if (!model) return next(error);
+      res.status(400); render(res, 'publication/edit-draft', { currentProjectId: model.project.id, ...model, values, errors: error.flatten().fieldErrors, csrfToken: csrfTokenFor(req, res) });
+    }
+  }
+);
+
+publicationWebRoutes.post(
+  '/projects/:id/publication/drafts/:draftId/archive',
+  requireAuthentication(),
+  requireCsrf(),
+  requireProjectMembership(),
+  requireProjectCapability('CONTENT_WRITE'),
+  async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.id);
+      const draftId = routeParam(req.params.draftId);
+      const model = await publicationWebRepository.getDraft(projectId, draftId);
+      if (!model) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
+      if (model.draft.plans.length > 0) {
+        throw new AppError('Planned drafts cannot be archived', 409, 'PUBLICATION_DRAFT_ARCHIVE_BLOCKED');
+      }
+      await publicationService.saveDraftVersion(draftId, model.draft.currentVersion, { status: 'ARCHIVED' }, 'HUMAN');
+      res.redirect(303, `/projects/${projectId}/publication/drafts/${draftId}`);
+    } catch (error) { next(error); }
+  }
+);
+
+publicationWebRoutes.get(
+  '/projects/:id/publication/drafts/:draftId/sources/new',
+  requireAuthentication(),
+  requireProjectMembership(),
+  requireProjectCapability('CONTENT_WRITE'),
+  async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.id);
+      const draftId = routeParam(req.params.draftId);
+      const model = await publicationWebRepository.getDraft(projectId, draftId);
+      if (!model) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
+      render(res, 'publication/new-source-reference', {
+        currentProjectId: model.project.id,
+        project: model.project,
+        draft: model.draft,
+        values: { sourceType: 'PUBLIC_WEB' },
+        errors: {},
+        csrfToken: csrfTokenFor(req, res)
+      });
+    } catch (error) { next(error); }
+  }
+);
+
+publicationWebRoutes.post(
+  '/projects/:id/publication/drafts/:draftId/sources',
+  requireAuthentication(),
+  requireCsrf(),
+  requireProjectMembership(),
+  requireProjectCapability('CONTENT_WRITE'),
+  async (req, res, next) => {
+    const projectId = routeParam(req.params.id);
+    const draftId = routeParam(req.params.draftId);
+    const values = { ...(req.body ?? {}) } as Record<string, unknown>;
+    delete values._csrf;
+    try {
+      const input = sourceReferenceFormSchema.parse(values);
+      const model = await publicationWebRepository.getDraft(projectId, draftId);
+      if (!model) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
+      await publicationService.addSourceReference(draftId, {
+        title: input.title,
+        sourceUrl: nullableText(input.sourceUrl),
+        sourceType: input.sourceType,
+        author: nullableText(input.author),
+        publisher: nullableText(input.publisher),
+        userProvided: true
+      });
+      res.redirect(303, `/projects/${projectId}/publication/drafts/${draftId}`);
+    } catch (error) {
+      if (!(error instanceof z.ZodError)) return next(error);
+      const model = await publicationWebRepository.getDraft(projectId, draftId).catch(() => null);
+      if (!model) return next(error);
+      res.status(400);
+      render(res, 'publication/new-source-reference', {
+        currentProjectId: model.project.id,
+        project: model.project,
+        draft: model.draft,
+        values,
+        errors: error.flatten().fieldErrors,
+        csrfToken: csrfTokenFor(req, res)
+      });
+    }
+  }
+);
 
 publicationWebRoutes.get('/projects/:id/publication/plans/:planId', async (req, res, next) => {
   try {
