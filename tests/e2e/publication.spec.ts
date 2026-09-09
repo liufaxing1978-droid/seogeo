@@ -338,6 +338,13 @@ test('renders the persisted P8-A publication workflow from opportunity to VERIFI
   await expect(page.getByText('确定性验证', { exact: true })).toBeVisible();
   await expect(page.getByText('DeepSeek 建议', { exact: true })).toBeVisible();
   await expect(page.getByText('AI 推荐，人来决定')).toBeVisible();
+  await expect(page.getByRole('link', { name: '主站发布包' })).toBeVisible();
+
+  await page.goto(`/projects/${fixture.project.id}/publication/drafts/${fixture.draft.id}/manual-site-handoff`);
+  await expect(page.getByRole('heading', { level: 1, name: '主站发布包' })).toBeVisible();
+  await expect(page.getByText('此页面不会调用或写入主站。')).toBeVisible();
+  await expect(page.getByRole('button', { name: '标记：已交给主站' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '标记：已在主站发布' })).toBeVisible();
 
   await page.goto(`/projects/${fixture.project.id}/publication/plans/${fixture.plan.id}`);
   await expect(page.getByRole('heading', { level: 1, name: '发布预览' })).toBeVisible();

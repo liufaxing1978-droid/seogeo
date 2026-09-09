@@ -6,6 +6,7 @@
   </div>
   <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts">返回草稿</a>
   <% if (draft.status !== 'ARCHIVED') { %><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/edit">编辑草稿</a><% } %>
+  <% if (draft.status !== 'ARCHIVED') { %><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/manual-site-handoff">主站发布包</a><% } %>
   <% if (draft.status !== 'ARCHIVED' && !draft.plans.length && csrfToken) { %><form method="post" action="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/archive" style="display:inline"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button secondary" type="submit">归档草稿</button></form><% } %>
   <% if (canDelete) { %><form method="post" action="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/delete" style="display:inline" onsubmit="return confirm('确定删除此草稿及其版本、引用来源吗？此操作不可恢复。')"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button danger" type="submit">删除草稿</button></form><% } %></div>
 </section>

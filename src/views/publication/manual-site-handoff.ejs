@@ -1,0 +1,15 @@
+<section class="page-header">
+  <div><p class="eyebrow">Manual Main-site Handoff · V<%= draft.currentVersion %></p><h1>主站发布包</h1><p class="muted">仅供人工复制到兴善堂主站；此页面不会调用或写入主站。</p></div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>">返回草稿</a></div>
+</section>
+
+<section class="panel">
+  <h2>人工发布清单</h2>
+  <ol><li>在兴善堂主站后台新建文章并粘贴下方内容。</li><li>填写标题、摘要、Meta 标题、Meta 描述、URL slug 与规范 URL。</li><li>保存为草稿，人工复核后再发布。</li><li>发布完成后回到此页标记“已在主站发布”。</li></ol>
+  <% if (canWrite && draft.status !== 'MAIN_SITE_HANDOFF' && draft.status !== 'MAIN_SITE_PUBLISHED') { %><form method="post" action="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/manual-site-handoff/ready"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button" type="submit">标记：已交给主站</button></form><% } %>
+  <% if (canWrite && draft.status !== 'MAIN_SITE_PUBLISHED') { %><form method="post" action="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/manual-site-handoff/published" style="margin-top:.75rem"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button secondary" type="submit">标记：已在主站发布</button></form><% } %>
+  <% if (draft.status === 'MAIN_SITE_PUBLISHED') { %><p><strong>已记录为人工主站发布。</strong></p><% } %>
+</section>
+
+<section class="panel"><h2>页面信息</h2><div class="table-wrap"><table><tbody><tr><th>标题</th><td><%= draft.title %></td></tr><tr><th>Slug</th><td><%= draft.slugCandidate ?? '—' %></td></tr><tr><th>摘要</th><td><%= draft.excerpt ?? '—' %></td></tr><tr><th>Meta 标题</th><td><%= draft.metaTitle ?? '—' %></td></tr><tr><th>Meta 描述</th><td><%= draft.metaDescription ?? '—' %></td></tr><tr><th>规范 URL</th><td><%= draft.canonicalCandidate ?? '—' %></td></tr><tr><th>语言</th><td><%= draft.language %></td></tr></tbody></table></div></section>
+<section class="panel"><h2>正文（复制到主站）</h2><textarea readonly rows="28" style="width:100%"><%= draft.body %></textarea></section>

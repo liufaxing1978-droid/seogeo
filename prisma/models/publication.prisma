@@ -28,6 +28,8 @@ enum ContentGeneratedBy {
 enum ContentDraftStatus {
   DRAFT
   READY_FOR_REVIEW
+  MAIN_SITE_HANDOFF
+  MAIN_SITE_PUBLISHED
   ARCHIVED
 }
 
