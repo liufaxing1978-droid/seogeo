@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuthentication } from '../../auth/authentication.js';
+import { deriveCsrfToken, requireCsrf } from '../../auth/csrf.js';
 import { requireProjectCapability, requireProjectMembership } from '../../auth/project-access.js';
+import { env } from '../../config/env.js';
 import { NotFoundError } from '../../core/errors.js';
+import { publicationService } from './publication.service.js';
 import { publicationWebRepository } from './publication.web.repository.js';
 
 function routeParam(value: string | string[]): string {
@@ -29,6 +32,27 @@ function stringValue(value: unknown): string | null {
 function prettyJson(value: unknown): string {
   if (value === null || value === undefined) return '';
   try { return JSON.stringify(value, null, 2); } catch { return String(value); }
+}
+
+const manualDraftFormSchema = z.object({
+  title: z.string().trim().min(1).max(300),
+  slugCandidate: z.string().trim().max(200).optional(),
+  body: z.string().trim().min(1).max(200_000),
+  excerpt: z.string().trim().max(2_000).optional(),
+  metaTitle: z.string().trim().max(300).optional(),
+  metaDescription: z.string().trim().max(1_000).optional(),
+  canonicalCandidate: z.union([z.literal(''), z.string().url().max(2_048)]).optional(),
+  author: z.string().trim().max(300).optional(),
+  language: z.string().trim().min(2).max(32),
+  reason: z.string().trim().min(1).max(1_000)
+}).strict();
+
+function nullableText(value: string | undefined): string | null {
+  return value ? value : null;
+}
+
+function csrfTokenFor(req: any, res: any): string {
+  return deriveCsrfToken(env.SESSION_SECRET, req.auth!.sessionId, res.locals.authSessionTokenHash);
 }
 
 function validationModel(value: unknown) {
@@ -131,6 +155,73 @@ publicationWebRoutes.get('/projects/:id/publication/drafts', async (req, res, ne
     });
   } catch (error) { next(error); }
 });
+
+publicationWebRoutes.get(
+  '/projects/:id/publication/drafts/new',
+  requireAuthentication(),
+  requireProjectMembership(),
+  requireProjectCapability('CONTENT_WRITE'),
+  async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.id);
+      const model = await publicationWebRepository.listDrafts(projectId);
+      if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
+      render(res, 'publication/new-draft', {
+        currentProjectId: model.project.id,
+        project: model.project,
+        values: { language: 'zh-CN', reason: '人工创建内容草稿' },
+        errors: {},
+        csrfToken: csrfTokenFor(req, res)
+      });
+    } catch (error) { next(error); }
+  }
+);
+
+publicationWebRoutes.post(
+  '/projects/:id/publication/drafts',
+  requireAuthentication(),
+  requireCsrf(),
+  requireProjectMembership(),
+  requireProjectCapability('CONTENT_WRITE'),
+  async (req, res, next) => {
+    const projectId = routeParam(req.params.id);
+    const values = { ...(req.body ?? {}) } as Record<string, unknown>;
+    delete values._csrf;
+    try {
+      const input = manualDraftFormSchema.parse(values);
+      const proposal = await publicationService.createManualProposal(
+        projectId,
+        { reason: input.reason },
+        `web:${req.auth!.userId}`
+      );
+      const draft = await publicationService.createDraftFromProposal(proposal.id, {
+        title: input.title,
+        slugCandidate: nullableText(input.slugCandidate),
+        body: input.body,
+        excerpt: nullableText(input.excerpt),
+        metaTitle: nullableText(input.metaTitle),
+        metaDescription: nullableText(input.metaDescription),
+        canonicalCandidate: nullableText(input.canonicalCandidate),
+        author: nullableText(input.author),
+        language: input.language,
+        generatedBy: 'HUMAN'
+      });
+      res.redirect(303, `/projects/${projectId}/publication/drafts/${draft.id}`);
+    } catch (error) {
+      if (!(error instanceof z.ZodError)) return next(error);
+      const model = await publicationWebRepository.listDrafts(projectId).catch(() => null);
+      if (!model) return next(error);
+      res.status(400);
+      render(res, 'publication/new-draft', {
+        currentProjectId: model.project.id,
+        project: model.project,
+        values,
+        errors: error.flatten().fieldErrors,
+        csrfToken: csrfTokenFor(req, res)
+      });
+    }
+  }
+);
 
 publicationWebRoutes.get('/projects/:id/publication/drafts/:draftId', async (req, res, next) => {
   try {

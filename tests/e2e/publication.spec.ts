@@ -389,3 +389,16 @@ test('keeps STANDARD publication workspace export-only and hides Git execution c
   await expect(page.getByRole('button', { name: '执行 Draft PR' })).toHaveCount(0);
   await expect(page.getByText('Standard 套餐仅提供导出补丁，不执行 Git 写入。')).toBeVisible();
 });
+
+test('renders an unpublished manual draft form without AI generation controls', async ({ page, context }) => {
+  const project = await createProject('manual draft form', 'ENTERPRISE');
+  await authenticateProjectOwner(context, project.id);
+
+  await page.goto(`/projects/${project.id}/publication/drafts/new`);
+
+  await expect(page.getByRole('heading', { level: 1, name: '新建人工草稿' })).toBeVisible();
+  await expect(page.getByLabel('标题', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('正文')).toBeVisible();
+  await expect(page.getByText('保存后仅创建内部草稿，不会发布到网站。')).toBeVisible();
+  await expect(page.getByText(/DeepSeek/i)).toHaveCount(0);
+});
