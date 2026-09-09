@@ -1,0 +1,29 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Human Editorial Workspace · P8-A</p>
+    <h1>新建人工草稿</h1>
+    <p class="muted"><%= project.name %> · 保存后仅创建内部草稿，不会发布到网站。</p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts">返回内容草稿</a></div>
+</section>
+
+<section class="panel">
+  <p class="muted">此表单不调用 AI，不创建发布计划，也不执行网站写入。</p>
+  <form action="/projects/<%= project.id %>/publication/drafts" method="post" class="form-grid">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <label>标题<input name="title" required maxlength="300" value="<%= values.title ?? '' %>"></label>
+    <% if (errors.title) { %><p class="error"><%= errors.title.join(' ') %></p><% } %>
+    <label>URL slug（可选）<input name="slugCandidate" maxlength="200" value="<%= values.slugCandidate ?? '' %>"></label>
+    <label>正文<textarea name="body" required rows="16" maxlength="200000"><%= values.body ?? '' %></textarea></label>
+    <% if (errors.body) { %><p class="error"><%= errors.body.join(' ') %></p><% } %>
+    <label>摘要（可选）<textarea name="excerpt" rows="3" maxlength="2000"><%= values.excerpt ?? '' %></textarea></label>
+    <label>Meta 标题（可选）<input name="metaTitle" maxlength="300" value="<%= values.metaTitle ?? '' %>"></label>
+    <label>Meta 描述（可选）<textarea name="metaDescription" rows="3" maxlength="1000"><%= values.metaDescription ?? '' %></textarea></label>
+    <label>规范 URL（可选）<input name="canonicalCandidate" type="url" maxlength="2048" value="<%= values.canonicalCandidate ?? '' %>"></label>
+    <label>作者（可选）<input name="author" maxlength="300" value="<%= values.author ?? '' %>"></label>
+    <label>语言<input name="language" required maxlength="32" value="<%= values.language ?? 'zh-CN' %>"></label>
+    <label>创建原因<textarea name="reason" required rows="3" maxlength="1000"><%= values.reason ?? '人工创建内容草稿' %></textarea></label>
+    <% if (errors.reason) { %><p class="error"><%= errors.reason.join(' ') %></p><% } %>
+    <div class="form-actions"><button class="button" type="submit">保存人工草稿</button></div>
+  </form>
+</section>
