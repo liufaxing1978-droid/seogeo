@@ -67,7 +67,7 @@ export const publicationWebRepository = {
     const project = await prisma.project.findUnique({ where: { id: projectId }, select: PROJECT_SELECT });
     if (!project) return null;
     const drafts = await prisma.contentDraft.findMany({
-      where: { projectId },
+      where: { projectId, status: { not: 'ARCHIVED' } },
       include: { sourceProposal: true, _count: { select: { versions: true, sourceRefs: true, plans: true } } },
       orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
       take: 100
