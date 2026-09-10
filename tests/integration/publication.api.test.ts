@@ -1,7 +1,10 @@
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
+import { deriveCsrfToken } from '../../src/auth/csrf.js';
 import { createApp } from '../../src/app.js';
+import { env } from '../../src/config/env.js';
 import { prisma } from '../../src/db/prisma.js';
+import { seedAuthenticatedUser } from '../helpers/auth-fixture.js';
 
 const projectIds: string[] = [];
 
@@ -23,6 +26,10 @@ async function createProject(
 }
 
 type Call = { name: string; args: unknown[] };
+
+function csrfFor(fixture: Awaited<ReturnType<typeof seedAuthenticatedUser>>): string {
+  return deriveCsrfToken(env.SESSION_SECRET, fixture.csrfInput.sessionId, fixture.csrfInput.tokenHash);
+}
 
 function createFakePublicationApi(input: {
   planOwnerProjectId?: string;
@@ -96,19 +103,42 @@ afterAll(async () => {
 });
 
 describe('P8-A bounded publication REST API', () => {
-  it('allows STANDARD workspace reads/creates with bounded lists and server-derived actor identity', async () => {
-    const project = await createProject('standard workspace', 'STANDARD');
+  it('rejects unauthenticated reads and mutations before publication handlers run', async () => {
+    const projectId = '00000000-0000-4000-8000-000000000001';
     const fake = createFakePublicationApi();
     const app = appWithPublicationApi(fake.api);
 
     await request(app)
+      .get(`/api/v1/projects/${projectId}/publication/proposals`)
+      .expect(401)
+      .expect(({ body }) => expect(body.error.code).toBe('AUTHENTICATION_REQUIRED'));
+
+    await request(app)
+      .post(`/api/v1/projects/${projectId}/publication/proposals`)
+      .send({ sourceType: 'MANUAL', reason: 'must not reach publication handler' })
+      .expect(401)
+      .expect(({ body }) => expect(body.error.code).toBe('AUTHENTICATION_REQUIRED'));
+
+    expect(fake.calls).toEqual([]);
+  });
+
+  it('allows STANDARD workspace reads/creates with bounded lists and server-derived actor identity', async () => {
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'STANDARD', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    const project = fixture.project;
+    const fake = createFakePublicationApi();
+    const app = appWithPublicationApi(fake.api);
+    const csrf = csrfFor(fixture);
+
+    await request(app)
       .get(`/api/v1/projects/${project.id}/publication/proposals`)
+      .set('Cookie', fixture.sessionCookie)
       .query({ limit: 101 })
       .expect(400)
       .expect(({ body }) => expect(body.error.code).toBe('VALIDATION_ERROR'));
 
     const list = await request(app)
       .get(`/api/v1/projects/${project.id}/publication/proposals`)
+      .set('Cookie', fixture.sessionCookie)
       .query({ limit: 100, offset: 3 })
       .expect(200);
     expect(list.body.meta).toEqual({ limit: 100, offset: 3 });
@@ -116,6 +146,8 @@ describe('P8-A bounded publication REST API', () => {
 
     const created = await request(app)
       .post(`/api/v1/projects/${project.id}/publication/proposals`)
+      .set('Cookie', fixture.sessionCookie)
+      .set('X-CSRF-Token', csrf)
       .send({ sourceType: 'MANUAL', reason: 'Create a bounded manual publication proposal' })
       .expect(201);
     expect(created.body.data).toMatchObject({
@@ -129,20 +161,25 @@ describe('P8-A bounded publication REST API', () => {
     ]);
     expect(fake.calls.filter((call) => call.name === 'createProposal')[0]?.args[2])
       .toBe(`project-api:${project.id}`);
+    await fixture.cleanup();
   });
 
   it('rejects oversized/unknown bodies and client attempts to override approval facts', async () => {
-    const project = await createProject('strict bodies', 'ADVANCED');
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ADVANCED', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    const project = fixture.project;
     const fake = createFakePublicationApi({ planOwnerProjectId: project.id });
     const app = appWithPublicationApi(fake.api);
+    const csrf = csrfFor(fixture);
 
     await request(app)
       .post(`/api/v1/projects/${project.id}/publication/proposals`)
+      .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf)
       .send({ sourceType: 'MANUAL', reason: 'x'.repeat(1001) })
       .expect(400);
 
     await request(app)
       .post(`/api/v1/projects/${project.id}/publication/drafts`)
+      .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf)
       .send({
         proposalId: 'proposal-1',
         title: 'x'.repeat(301),
@@ -153,6 +190,7 @@ describe('P8-A bounded publication REST API', () => {
 
     await request(app)
       .post(`/api/v1/projects/${project.id}/publication/plans/plan-1/approve`)
+      .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf)
       .send({
         expectedPlanHash: 'a'.repeat(64),
         expectedContentHash: 'b'.repeat(64),
@@ -165,24 +203,29 @@ describe('P8-A bounded publication REST API', () => {
       .expect(({ body }) => expect(body.error.code).toBe('VALIDATION_ERROR'));
 
     expect(fake.calls.some((call) => call.name === 'approvePlan')).toBe(false);
+    await fixture.cleanup();
   });
 
   it('fails STANDARD execution and verification before restricted publication actions are touched', async () => {
-    const project = await createProject('standard execution gate', 'STANDARD');
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'STANDARD', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    const project = fixture.project;
     const fake = createFakePublicationApi({
       planOwnerProjectId: project.id,
       executionOwnerProjectId: project.id
     });
     const app = appWithPublicationApi(fake.api);
+    const csrf = csrfFor(fixture);
 
     await request(app)
       .post(`/api/v1/projects/${project.id}/publication/plans/plan-1/execute`)
+      .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf)
       .send({})
       .expect(403)
       .expect(({ body }) => expect(body.error.code).toBe('FEATURE_NOT_AVAILABLE'));
 
     await request(app)
       .post(`/api/v1/projects/${project.id}/publication/executions/execution-1/verify`)
+      .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf)
       .send({})
       .expect(403)
       .expect(({ body }) => expect(body.error.code).toBe('FEATURE_NOT_AVAILABLE'));
@@ -191,19 +234,23 @@ describe('P8-A bounded publication REST API', () => {
     expect(fake.calls.some((call) => call.name === 'executePlan')).toBe(false);
     expect(fake.calls.some((call) => call.name === 'getExecution')).toBe(false);
     expect(fake.calls.some((call) => call.name === 'verifyExecution')).toBe(false);
+    await fixture.cleanup();
   });
 
   it('allows ADVANCED execution, derives actors server-side, and hides cross-project resources', async () => {
-    const owner = await createProject('advanced owner', 'ADVANCED');
+    const fixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ADVANCED', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    const owner = fixture.project;
     const other = await createProject('advanced other', 'ADVANCED');
     const fake = createFakePublicationApi({
       planOwnerProjectId: owner.id,
       executionOwnerProjectId: owner.id
     });
     const app = appWithPublicationApi(fake.api);
+    const csrf = csrfFor(fixture);
 
     const approval = await request(app)
       .post(`/api/v1/projects/${owner.id}/publication/plans/plan-1/approve`)
+      .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf)
       .send({
         expectedPlanHash: 'a'.repeat(64),
         expectedContentHash: 'b'.repeat(64),
@@ -215,31 +262,35 @@ describe('P8-A bounded publication REST API', () => {
 
     const execution = await request(app)
       .post(`/api/v1/projects/${owner.id}/publication/plans/plan-1/execute`)
+      .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf)
       .send({})
       .expect(202);
     expect(execution.body.data.id).toBe('execution-created');
 
     const verification = await request(app)
       .post(`/api/v1/projects/${owner.id}/publication/executions/execution-1/verify`)
+      .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf)
       .send({})
       .expect(202);
     expect(verification.body.data.queued).toBe(true);
 
     await request(app)
       .post(`/api/v1/projects/${other.id}/publication/plans/plan-1/approve`)
+      .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf)
       .send({
         expectedPlanHash: 'a'.repeat(64),
         expectedContentHash: 'b'.repeat(64),
         expectedPreviewHash: 'c'.repeat(64)
       })
       .expect(404)
-      .expect(({ body }) => expect(body.error.code).toBe('PUBLICATION_PLAN_NOT_FOUND'));
+      .expect(({ body }) => expect(body.error.code).toBe('PROJECT_NOT_FOUND'));
 
     await request(app)
       .post(`/api/v1/projects/${other.id}/publication/executions/execution-1/verify`)
+      .set('Cookie', fixture.sessionCookie).set('X-CSRF-Token', csrf)
       .send({})
       .expect(404)
-      .expect(({ body }) => expect(body.error.code).toBe('PUBLICATION_EXECUTION_NOT_FOUND'));
+      .expect(({ body }) => expect(body.error.code).toBe('PROJECT_NOT_FOUND'));
 
     expect(fake.calls.filter((call) => call.name === 'executePlan')).toEqual([
       { name: 'executePlan', args: [owner.id, 'plan-1', `project-api:${owner.id}`] }
@@ -247,5 +298,6 @@ describe('P8-A bounded publication REST API', () => {
     expect(fake.calls.filter((call) => call.name === 'verifyExecution')).toEqual([
       { name: 'verifyExecution', args: [owner.id, 'execution-1', `project-api:${owner.id}`] }
     ]);
+    await fixture.cleanup();
   });
 });
