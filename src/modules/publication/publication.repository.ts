@@ -337,6 +337,46 @@ export class PublicationRepository {
     });
   }
 
+  purgeUnplannedDraft(projectId: string, draftId: string, actorUserId?: string | null) {
+    return prisma.$transaction(async (tx) => {
+      const draft = await tx.contentDraft.findFirst({
+        where: { id: draftId, projectId },
+        select: {
+          id: true,
+          projectId: true,
+          title: true,
+          slugCandidate: true,
+          _count: { select: { plans: true, versions: true, sourceRefs: true } }
+        }
+      });
+      if (!draft) return { outcome: 'NOT_FOUND' as const };
+      if (draft._count.plans > 0) return { outcome: 'PLANNED' as const };
+
+      await tx.$executeRaw`SELECT set_config('seogeo.allow_content_draft_purge', 'on', true)`;
+      await tx.contentSourceReference.deleteMany({ where: { draftId: draft.id } });
+      await tx.contentDraftVersion.deleteMany({ where: { draftId: draft.id } });
+      await tx.contentDraft.delete({ where: { id: draft.id } });
+      await tx.securityAuditEvent.create({
+        data: {
+          eventType: 'CONTENT_DRAFT_PURGED',
+          actorUserId: actorUserId ?? null,
+          projectId: draft.projectId
+        }
+      });
+
+      return {
+        outcome: 'PURGED' as const,
+        draft: {
+          id: draft.id,
+          title: draft.title,
+          slugCandidate: draft.slugCandidate,
+          versionCount: draft._count.versions,
+          sourceCount: draft._count.sourceRefs
+        }
+      };
+    });
+  }
+
   createSourceReference(input: CreateContentSourceReferenceInput) {
     return prisma.contentSourceReference.create({
       data: {

@@ -6,7 +6,7 @@ import { requireProjectCapability, requireProjectMembership } from '../../auth/p
 import { env } from '../../config/env.js';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
-import { publicationService } from './publication.service.js';
+import { PublicationServiceError, publicationService } from './publication.service.js';
 import { publicationWebRepository } from './publication.web.repository.js';
 
 function routeParam(value: string | string[]): string {
@@ -54,6 +54,10 @@ const sourceReferenceFormSchema = z.object({
   sourceType: z.string().trim().min(1).max(64),
   author: z.string().trim().max(300).optional(),
   publisher: z.string().trim().max(300).optional()
+}).strict();
+
+const permanentDeleteFormSchema = z.object({
+  confirmation: z.literal('永久删除')
 }).strict();
 
 function nullableText(value: string | undefined): string | null {
@@ -254,7 +258,7 @@ publicationWebRoutes.get('/projects/:id/publication/drafts/:draftId', requireAut
       validation,
       schemaJson: prettyJson(model.draft.schemaJson),
       csrfToken: csrfTokenFor(req, res),
-      canDelete: false
+      canPermanentlyDelete: !model.draft.plans.length && res.locals.projectMembership.role === 'OWNER'
     });
   } catch (error) { next(error); }
 });
@@ -292,17 +296,67 @@ publicationWebRoutes.post('/projects/:id/publication/drafts/:draftId/manual-site
   }
 );
 
-publicationWebRoutes.post('/projects/:id/publication/drafts/:draftId/delete',
-  requireAuthentication(), requireCsrf(), requireProjectMembership(), requireProjectCapability('PROJECT_SETTINGS_WRITE'),
+publicationWebRoutes.get('/projects/:id/publication/drafts/:draftId/delete',
+  requireAuthentication(), requireProjectMembership(), requireProjectCapability('PROJECT_SETTINGS_WRITE'),
   async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.id); const draftId = routeParam(req.params.draftId);
-      const draft = await prisma.contentDraft.findFirst({ where: { id: draftId, projectId }, include: { _count: { select: { plans: true } } } });
-      if (!draft) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
-      if (draft._count.plans > 0) throw new AppError('Planned drafts cannot be archived', 409, 'PUBLICATION_DRAFT_ARCHIVE_BLOCKED');
-      await publicationService.saveDraftVersion(draft.id, draft.currentVersion, { status: 'ARCHIVED' }, 'HUMAN');
-      res.redirect(303, `/projects/${projectId}/publication/drafts/${draft.id}`);
+      if (res.locals.projectMembership.role !== 'OWNER') {
+        throw new AppError('Only the project owner can permanently delete drafts', 403, 'PROJECT_OWNER_REQUIRED');
+      }
+      const model = await publicationWebRepository.getDraft(projectId, draftId);
+      if (!model) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
+      if (model.draft.plans.length > 0) {
+        throw new AppError('Planned drafts cannot be permanently deleted', 409, 'PUBLICATION_DRAFT_DELETE_BLOCKED');
+      }
+      render(res, 'publication/delete-draft', {
+        currentProjectId: model.project.id,
+        ...model,
+        csrfToken: csrfTokenFor(req, res),
+        error: null
+      });
     } catch (error) { next(error); }
+  }
+);
+
+publicationWebRoutes.post('/projects/:id/publication/drafts/:draftId/delete',
+  requireAuthentication(), requireCsrf(), requireProjectMembership(), requireProjectCapability('PROJECT_SETTINGS_WRITE'),
+  async (req, res, next) => {
+    const projectId = routeParam(req.params.id); const draftId = routeParam(req.params.draftId);
+    try {
+      if (res.locals.projectMembership.role !== 'OWNER') {
+        throw new AppError('Only the project owner can permanently delete drafts', 403, 'PROJECT_OWNER_REQUIRED');
+      }
+      const values = { ...(req.body ?? {}) } as Record<string, unknown>; delete values._csrf;
+      permanentDeleteFormSchema.parse(values);
+      const deleted = await publicationService.purgeUnplannedDraft(projectId, draftId, req.auth!.userId);
+      console.info({
+        event: 'publication.draft.purged',
+        projectId,
+        draftId: deleted.id,
+        actorUserId: req.auth!.userId,
+        versionCount: deleted.versionCount,
+        sourceCount: deleted.sourceCount
+      });
+      res.redirect(303, `/projects/${projectId}/publication/drafts`);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const model = await publicationWebRepository.getDraft(projectId, draftId).catch(() => null);
+        if (!model) return next(new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND'));
+        res.status(400);
+        return render(res, 'publication/delete-draft', {
+          currentProjectId: model.project.id,
+          ...model,
+          csrfToken: csrfTokenFor(req, res),
+          error: '请输入“永久删除”后再确认。'
+        });
+      }
+      if (error instanceof PublicationServiceError) {
+        const status = error.code === 'CONTENT_DRAFT_NOT_FOUND' ? 404 : 409;
+        return next(new AppError(error.message, status, error.code));
+      }
+      next(error);
+    }
   }
 );
 
