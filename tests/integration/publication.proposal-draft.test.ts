@@ -266,6 +266,26 @@ describe('P8-A proposal intake and versioned draft workspace', () => {
       .resolves.toMatchObject({ currentVersion: 2, status: 'MAIN_SITE_HANDOFF' });
   });
 
+  it('permanently purges an unplanned draft together with immutable versions and sources', async () => {
+    const project = await createProject('P8 permanent draft purge');
+    const service = new PublicationService() as PublicationService & {
+      purgeUnplannedDraft(projectId: string, draftId: string): Promise<void>;
+    };
+    const proposal = await service.createManualProposal(project.id, { reason: 'Permanent deletion test' }, 'owner-1');
+    const draft = await service.createDraftFromProposal(proposal.id, {
+      title: '待永久删除草稿', slugCandidate: 'permanent-delete-test', body: 'body', language: 'zh-CN', generatedBy: 'HUMAN'
+    });
+    await service.addSourceReference(draft.id, {
+      title: '待删除引用', sourceType: 'USER_PROVIDED', userProvided: true
+    });
+
+    await service.purgeUnplannedDraft(project.id, draft.id);
+
+    await expect(prisma.contentDraft.findUnique({ where: { id: draft.id } })).resolves.toBeNull();
+    await expect(prisma.contentDraftVersion.count({ where: { draftId: draft.id } })).resolves.toBe(0);
+    await expect(prisma.contentSourceReference.count({ where: { draftId: draft.id } })).resolves.toBe(0);
+  });
+
   it('keeps source references bounded and explicitly unverified-by-schema even for AI-suggested sources', async () => {
     const project = await createProject('P8 source references');
     const service = new PublicationService();
