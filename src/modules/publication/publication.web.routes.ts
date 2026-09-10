@@ -198,6 +198,13 @@ publicationWebRoutes.post(
     delete values._csrf;
     try {
       const input = manualDraftFormSchema.parse(values);
+      if (input.slugCandidate) {
+        const existing = await prisma.contentDraft.findFirst({
+          where: { projectId, slugCandidate: input.slugCandidate, status: { not: 'ARCHIVED' } },
+          select: { id: true }
+        });
+        if (existing) return res.redirect(303, `/projects/${projectId}/publication/drafts/${existing.id}/edit`);
+      }
       const proposal = await publicationService.createManualProposal(
         projectId,
         { reason: input.reason },
