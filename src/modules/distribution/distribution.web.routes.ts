@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { requireAuthentication } from '../../auth/authentication.js';
+import { requireProjectMembership } from '../../auth/project-access.js';
 import { NotFoundError } from '../../core/errors.js';
 import { distributionWebRepository } from './distribution.web.repository.js';
 
@@ -17,6 +19,12 @@ function render(res: any, bodyTemplate: string, locals: Record<string, unknown>)
 }
 
 export const distributionWebRoutes = Router();
+
+distributionWebRoutes.use(
+  '/projects/:id/distribution',
+  requireAuthentication(),
+  requireProjectMembership(),
+);
 
 distributionWebRoutes.get('/projects/:id/distribution', async (req, res, next) => {
   try {

@@ -2,6 +2,12 @@ import { Prisma, type DistributionMode, type DistributionPlatform, type PlanLeve
 import { Queue } from 'bullmq';
 import { Router } from 'express';
 import { z } from 'zod';
+import { requireAuthentication } from '../../auth/authentication.js';
+import { requireCsrf } from '../../auth/csrf.js';
+import {
+  requireProjectCapability,
+  requireProjectMembership,
+} from '../../auth/project-access.js';
 import { requireFeature } from '../../auth/require-feature.js';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
@@ -317,8 +323,23 @@ function routeParam(value: string | string[]): string {
   return Array.isArray(value) ? value[0]! : value;
 }
 
-function distributionGate() {
-  return requireFeature('PUBLICATION_DISTRIBUTION');
+function distributionReadGuards() {
+  return [
+    requireAuthentication(),
+    requireProjectMembership(),
+    requireProjectCapability('PROJECT_READ'),
+    requireFeature('PUBLICATION_DISTRIBUTION'),
+  ];
+}
+
+function distributionMutationGuards() {
+  return [
+    requireAuthentication(),
+    requireCsrf(),
+    requireProjectMembership(),
+    requireProjectCapability('DISTRIBUTION_EXECUTE'),
+    requireFeature('PUBLICATION_DISTRIBUTION'),
+  ];
 }
 
 async function requireTarget(api: DistributionApiPort, projectId: string, targetId: string) {
@@ -330,7 +351,7 @@ async function requireTarget(api: DistributionApiPort, projectId: string, target
 export function createDistributionRoutes(api: DistributionApiPort = defaultDistributionApi) {
   const router = Router();
 
-  router.get('/projects/:projectId/distribution', distributionGate(), async (req, res, next) => {
+  router.get('/projects/:projectId/distribution', ...distributionReadGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const data = await api.listCenter(projectId);
@@ -338,7 +359,7 @@ export function createDistributionRoutes(api: DistributionApiPort = defaultDistr
     } catch (error) { next(error); }
   });
 
-  router.post('/projects/:projectId/distribution/targets', distributionGate(), async (req, res, next) => {
+  router.post('/projects/:projectId/distribution/targets', ...distributionMutationGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const body = createTargetSchema.parse(req.body);
@@ -348,7 +369,7 @@ export function createDistributionRoutes(api: DistributionApiPort = defaultDistr
     } catch (error) { next(error); }
   });
 
-  router.post('/projects/:projectId/distribution/targets/:targetId/prepare', distributionGate(), async (req, res, next) => {
+  router.post('/projects/:projectId/distribution/targets/:targetId/prepare', ...distributionMutationGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const targetId = routeParam(req.params.targetId);
@@ -359,7 +380,7 @@ export function createDistributionRoutes(api: DistributionApiPort = defaultDistr
     } catch (error) { next(error); }
   });
 
-  router.post('/projects/:projectId/distribution/targets/:targetId/artifacts/:artifactId/approve', distributionGate(), async (req, res, next) => {
+  router.post('/projects/:projectId/distribution/targets/:targetId/artifacts/:artifactId/approve', ...distributionMutationGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const targetId = routeParam(req.params.targetId);
@@ -371,7 +392,7 @@ export function createDistributionRoutes(api: DistributionApiPort = defaultDistr
     } catch (error) { next(error); }
   });
 
-  router.post('/projects/:projectId/distribution/targets/:targetId/artifacts/:artifactId/publish', distributionGate(), async (req, res, next) => {
+  router.post('/projects/:projectId/distribution/targets/:targetId/artifacts/:artifactId/publish', ...distributionMutationGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const targetId = routeParam(req.params.targetId);
@@ -390,7 +411,7 @@ export function createDistributionRoutes(api: DistributionApiPort = defaultDistr
     } catch (error) { next(error); }
   });
 
-  router.post('/projects/:projectId/distribution/targets/:targetId/artifacts/:artifactId/verify', distributionGate(), async (req, res, next) => {
+  router.post('/projects/:projectId/distribution/targets/:targetId/artifacts/:artifactId/verify', ...distributionMutationGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const targetId = routeParam(req.params.targetId);
@@ -405,7 +426,7 @@ export function createDistributionRoutes(api: DistributionApiPort = defaultDistr
     } catch (error) { next(error); }
   });
 
-  router.post('/projects/:projectId/distribution/targets/:targetId/artifacts/:artifactId/manual-result', distributionGate(), async (req, res, next) => {
+  router.post('/projects/:projectId/distribution/targets/:targetId/artifacts/:artifactId/manual-result', ...distributionMutationGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const targetId = routeParam(req.params.targetId);

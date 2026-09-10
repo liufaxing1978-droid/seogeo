@@ -1,10 +1,18 @@
 import { PrismaClient, type PlanLevel } from '@prisma/client';
 import { expect, test } from '@playwright/test';
+import type { BrowserContext } from '@playwright/test';
 import { DistributionRepository } from '../../src/modules/distribution/distribution.repository.js';
 import { PublicationRepository } from '../../src/modules/publication/publication.repository.js';
+import {
+  SESSION_COOKIE_NAME,
+  SESSION_TTL_MS,
+  SessionRepository,
+  createSessionToken,
+} from '../../src/auth/session.repository.js';
 
 const prisma = new PrismaClient();
 const projectIds: string[] = [];
+const userIds: string[] = [];
 
 async function seedVerifiedPrimary(planLevel: PlanLevel, label: string) {
   const publication = new PublicationRepository();
@@ -203,11 +211,32 @@ test.afterAll(async () => {
   for (const projectId of projectIds) {
     await prisma.project.delete({ where: { id: projectId } }).catch(() => undefined);
   }
+  await prisma.user.deleteMany({ where: { id: { in: userIds } } }).catch(() => undefined);
   await prisma.$disconnect();
 });
 
-test('renders Community GEO as an explicit manual-review workflow without automatic publishing', async ({ page }) => {
+async function authenticateProjectOwner(context: BrowserContext, projectId: string) {
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const user = await prisma.user.create({
+    data: {
+      email: `p8c-distribution-${suffix}@example.com`,
+      normalizedEmail: `p8c-distribution-${suffix}@example.com`,
+      passwordHash: 'test-only-hash',
+      status: 'ACTIVE',
+    },
+  });
+  userIds.push(user.id);
+  await prisma.projectMembership.create({
+    data: { projectId, userId: user.id, role: 'OWNER', status: 'ACTIVE' },
+  });
+  const token = createSessionToken();
+  await new SessionRepository().create(user.id, token.tokenHash, new Date(Date.now() + SESSION_TTL_MS));
+  await context.addCookies([{ name: SESSION_COOKIE_NAME, value: token.rawToken, url: 'http://127.0.0.1:3000' }]);
+}
+
+test('renders Community GEO as an explicit manual-review workflow without automatic publishing', async ({ page, context }) => {
   const fixture = await seedCommunityFixture();
+  await authenticateProjectOwner(context, fixture.project.id);
 
   await page.goto(`/projects/${fixture.project.id}/distribution`);
   await expect(page.getByText('ORIGINAL', { exact: true })).toBeVisible();
@@ -226,8 +255,9 @@ test('renders Community GEO as an explicit manual-review workflow without automa
   await expect(page.getByText('must-not-render', { exact: true })).toHaveCount(0);
 });
 
-test('renders Entity Suggestion as source-backed prepare-only review with no publish or manual-result controls', async ({ page }) => {
+test('renders Entity Suggestion as source-backed prepare-only review with no publish or manual-result controls', async ({ page, context }) => {
   const fixture = await seedEntityFixture();
+  await authenticateProjectOwner(context, fixture.project.id);
 
   await page.goto(`/projects/${fixture.project.id}/distribution`);
   await expect(page.getByText('ORIGINAL', { exact: true })).toBeVisible();

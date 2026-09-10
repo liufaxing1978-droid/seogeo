@@ -1,10 +1,17 @@
 import request from 'supertest';
 import { afterAll, describe, expect, it } from 'vitest';
+import { deriveCsrfToken } from '../../src/auth/csrf.js';
 import { createApp } from '../../src/app.js';
+import { env } from '../../src/config/env.js';
 import { prisma } from '../../src/db/prisma.js';
+import { seedAuthenticatedUser } from '../helpers/auth-fixture.js';
 
 const projectIds: string[] = [];
 type Call = { name: string; args: unknown[] };
+
+function csrfFor(fixture: Awaited<ReturnType<typeof seedAuthenticatedUser>>): string {
+  return deriveCsrfToken(env.SESSION_SECRET, fixture.csrfInput.sessionId, fixture.csrfInput.tokenHash);
+}
 
 async function createProject(planLevel: 'STANDARD' | 'ADVANCED' | 'ENTERPRISE') {
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -68,14 +75,18 @@ afterAll(async () => {
 
 describe('P8-C bounded distribution API gates', () => {
   it('gates community/entity creation by plan and passes only normalized community target context', async () => {
-    const standard = await createProject('STANDARD');
-    const advanced = await createProject('ADVANCED');
-    const enterprise = await createProject('ENTERPRISE');
+    const standardFixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'STANDARD', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    const advancedFixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ADVANCED', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    const enterpriseFixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    const standard = standardFixture.project;
+    const advanced = advancedFixture.project;
+    const enterprise = enterpriseFixture.project;
     const publicationId = '22222222-2222-4222-8222-222222222222';
 
     const standardFake = fakeApi();
     await request(app(standardFake.api))
       .post(`/api/v1/projects/${standard.id}/distribution/targets`)
+      .set('Cookie', standardFixture.sessionCookie).set('X-CSRF-Token', csrfFor(standardFixture))
       .send({
         publicationId,
         platform: 'REDDIT',
@@ -90,6 +101,7 @@ describe('P8-C bounded distribution API gates', () => {
     const advancedFake = fakeApi();
     await request(app(advancedFake.api))
       .post(`/api/v1/projects/${advanced.id}/distribution/targets`)
+      .set('Cookie', advancedFixture.sessionCookie).set('X-CSRF-Token', csrfFor(advancedFixture))
       .send({
         publicationId,
         platform: 'JIANSHU',
@@ -122,6 +134,7 @@ describe('P8-C bounded distribution API gates', () => {
     const advancedEntityFake = fakeApi();
     await request(app(advancedEntityFake.api))
       .post(`/api/v1/projects/${advanced.id}/distribution/targets`)
+      .set('Cookie', advancedFixture.sessionCookie).set('X-CSRF-Token', csrfFor(advancedFixture))
       .send({ publicationId, platform: 'WIKIDATA', mode: 'ENTITY_SUGGESTION', targetKey: 'entity' })
       .expect(403)
       .expect(({ body }) => expect(body.error.code).toBe('FEATURE_NOT_AVAILABLE'));
@@ -130,13 +143,18 @@ describe('P8-C bounded distribution API gates', () => {
     const enterpriseFake = fakeApi();
     await request(app(enterpriseFake.api))
       .post(`/api/v1/projects/${enterprise.id}/distribution/targets`)
+      .set('Cookie', enterpriseFixture.sessionCookie).set('X-CSRF-Token', csrfFor(enterpriseFixture))
       .send({ publicationId, platform: 'WIKIDATA', mode: 'ENTITY_SUGGESTION', targetKey: 'entity' })
       .expect(201);
     expect(enterpriseFake.calls.filter((call) => call.name === 'createTarget')).toHaveLength(1);
+    await standardFixture.cleanup();
+    await advancedFixture.cleanup();
+    await enterpriseFixture.cleanup();
   });
 
   it('hides cross-project targets before prepare or approval work', async () => {
-    const owner = await createProject('ADVANCED');
+    const ownerFixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ADVANCED', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    const owner = ownerFixture.project;
     const other = await createProject('ADVANCED');
     const fake = fakeApi({ ownerProjectId: owner.id });
     const targetId = '33333333-3333-4333-8333-333333333333';
@@ -144,19 +162,25 @@ describe('P8-C bounded distribution API gates', () => {
 
     await request(app(fake.api))
       .post(`/api/v1/projects/${other.id}/distribution/targets/${targetId}/prepare`)
+      .set('Cookie', ownerFixture.sessionCookie).set('X-CSRF-Token', csrfFor(ownerFixture))
       .send({ sourceContentVersion: 1 })
-      .expect(404);
+      .expect(404)
+      .expect(({ body }) => expect(body.error.code).toBe('PROJECT_NOT_FOUND'));
     await request(app(fake.api))
       .post(`/api/v1/projects/${other.id}/distribution/targets/${targetId}/artifacts/${artifactId}/approve`)
+      .set('Cookie', ownerFixture.sessionCookie).set('X-CSRF-Token', csrfFor(ownerFixture))
       .send({})
-      .expect(404);
+      .expect(404)
+      .expect(({ body }) => expect(body.error.code).toBe('PROJECT_NOT_FOUND'));
 
     expect(fake.calls.some((call) => call.name === 'prepareTarget')).toBe(false);
     expect(fake.calls.some((call) => call.name === 'approveArtifact')).toBe(false);
+    await ownerFixture.cleanup();
   });
 
   it('keeps PREPARE_ONLY entity targets out of publish/manual-result/verify service paths', async () => {
-    const enterprise = await createProject('ENTERPRISE');
+    const enterpriseFixture = await seedAuthenticatedUser({ role: 'OPERATOR', planLevel: 'ENTERPRISE', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE' });
+    const enterprise = enterpriseFixture.project;
     const fake = fakeApi({
       ownerProjectId: enterprise.id,
       platform: 'WIKIDATA',
@@ -169,16 +193,19 @@ describe('P8-C bounded distribution API gates', () => {
 
     await request(targetApp)
       .post(`/api/v1/projects/${enterprise.id}/distribution/targets/${targetId}/artifacts/${artifactId}/publish`)
+      .set('Cookie', enterpriseFixture.sessionCookie).set('X-CSRF-Token', csrfFor(enterpriseFixture))
       .send({})
       .expect(409)
       .expect(({ body }) => expect(body.error.code).toBe('DISTRIBUTION_NOT_SUPPORTED'));
     await request(targetApp)
       .post(`/api/v1/projects/${enterprise.id}/distribution/targets/${targetId}/artifacts/${artifactId}/manual-result`)
+      .set('Cookie', enterpriseFixture.sessionCookie).set('X-CSRF-Token', csrfFor(enterpriseFixture))
       .send({ publicUrl: 'https://www.wikidata.org/wiki/Q123' })
       .expect(409)
       .expect(({ body }) => expect(body.error.code).toBe('DISTRIBUTION_MANUAL_ONLY_REQUIRED'));
     await request(targetApp)
       .post(`/api/v1/projects/${enterprise.id}/distribution/targets/${targetId}/artifacts/${artifactId}/verify`)
+      .set('Cookie', enterpriseFixture.sessionCookie).set('X-CSRF-Token', csrfFor(enterpriseFixture))
       .send({})
       .expect(409)
       .expect(({ body }) => expect(body.error.code).toBe('DISTRIBUTION_VERIFY_NOT_SUPPORTED'));
@@ -187,5 +214,6 @@ describe('P8-C bounded distribution API gates', () => {
     expect(fake.calls.some((call) => call.name === 'publishArtifact')).toBe(false);
     expect(fake.calls.some((call) => call.name === 'recordManualResult')).toBe(false);
     expect(fake.calls.some((call) => call.name === 'verifyArtifact')).toBe(false);
+    await enterpriseFixture.cleanup();
   });
 });

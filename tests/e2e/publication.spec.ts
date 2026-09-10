@@ -366,13 +366,14 @@ test('renders the persisted P8-A publication workflow from opportunity to VERIFI
   await expect(page.getByText('canonical')).toBeVisible();
 });
 
-test('shows stale approval and deterministic canonical blockers without claiming success', async ({ page }) => {
+test('shows stale approval and deterministic canonical blockers without claiming success', async ({ page, context }) => {
   const fixture = await seedWorkflow({
     label: 'stale workspace',
     planLevel: 'ADVANCED',
     executionStatus: 'STALE_REVIEW_REQUIRED',
     canonicalBlocked: true
   });
+  await authenticateProjectOwner(context, fixture.project.id);
 
   await page.goto(`/projects/${fixture.project.id}/publication/plans/${fixture.plan.id}`);
   await expect(page.getByText('CANONICAL_MISMATCH', { exact: true })).toBeVisible();
@@ -384,11 +385,12 @@ test('shows stale approval and deterministic canonical blockers without claiming
   await expect(page.getByText('VERIFIED', { exact: true })).toHaveCount(0);
 });
 
-test('keeps STANDARD publication workspace export-only and hides Git execution controls', async ({ page }) => {
+test('keeps STANDARD publication workspace export-only and hides Git execution controls', async ({ page, context }) => {
   const fixture = await seedWorkflow({
     label: 'standard export workspace',
     planLevel: 'STANDARD'
   });
+  await authenticateProjectOwner(context, fixture.project.id);
 
   await page.goto(`/projects/${fixture.project.id}/publication`);
   await expect(page.getByRole('heading', { level: 1, name: '内容与发布' })).toBeVisible();

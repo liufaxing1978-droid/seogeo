@@ -117,6 +117,12 @@ function render(res: any, bodyTemplate: string, locals: Record<string, unknown>)
 
 export const publicationWebRoutes = Router();
 
+publicationWebRoutes.use(
+  '/projects/:id/publication',
+  requireAuthentication(),
+  requireProjectMembership(),
+);
+
 publicationWebRoutes.get('/projects/:id/publication', async (req, res, next) => {
   try {
     const projectId = routeParam(req.params.id);

@@ -2,7 +2,10 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createAuthRoutes } from './auth/auth.routes.js';
-import { authenticationMiddleware } from './auth/authentication.js';
+import {
+  authenticationMiddleware,
+} from './auth/authentication.js';
+import { securityHeadersMiddleware } from './auth/security-headers.js';
 import { env } from './config/env.js';
 import { errorHandler } from './core/http.js';
 import { createAiRoutes } from './modules/ai/ai.routes.js';
@@ -130,6 +133,7 @@ export function createApp(options: AppOptions = {}) {
   const app = express();
   configureTrustProxy(app, env.TRUST_PROXY_HOPS);
   app.disable('x-powered-by');
+  app.use(securityHeadersMiddleware);
   app.set('view engine', 'ejs');
   app.set('views', path.join(here, 'views'));
   app.use(express.json());

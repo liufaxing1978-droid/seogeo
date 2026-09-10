@@ -2,6 +2,12 @@ import type { Prisma } from '@prisma/client';
 import { Queue, type JobsOptions } from 'bullmq';
 import { Router } from 'express';
 import { z } from 'zod';
+import { requireAuthentication } from '../../auth/authentication.js';
+import { requireCsrf } from '../../auth/csrf.js';
+import {
+  requireProjectCapability,
+  requireProjectMembership,
+} from '../../auth/project-access.js';
 import { requireFeature } from '../../auth/require-feature.js';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
@@ -372,18 +378,39 @@ const defaultPublicationApi: PublicationApiPort = {
   }
 };
 
-function workspaceGate() {
-  return requireFeature('PUBLICATION_WORKSPACE');
+function workspaceReadGuards() {
+  return [
+    requireAuthentication(),
+    requireProjectMembership(),
+    requireProjectCapability('PROJECT_READ'),
+    requireFeature('PUBLICATION_WORKSPACE'),
+  ];
 }
 
-function executionGate() {
-  return requireFeature('PUBLICATION_GIT_EXECUTION');
+function workspaceMutationGuards() {
+  return [
+    requireAuthentication(),
+    requireCsrf(),
+    requireProjectMembership(),
+    requireProjectCapability('PUBLICATION_PREPARE'),
+    requireFeature('PUBLICATION_WORKSPACE'),
+  ];
+}
+
+function executionMutationGuards() {
+  return [
+    requireAuthentication(),
+    requireCsrf(),
+    requireProjectMembership(),
+    requireProjectCapability('PUBLICATION_EXECUTE'),
+    requireFeature('PUBLICATION_GIT_EXECUTION'),
+  ];
 }
 
 export function createPublicationRoutes(api: PublicationApiPort = defaultPublicationApi) {
   const router = Router();
 
-  router.get('/projects/:projectId/publication/proposals', workspaceGate(), async (req, res, next) => {
+  router.get('/projects/:projectId/publication/proposals', ...workspaceReadGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const pagination = paginationSchema.parse(req.query);
@@ -394,7 +421,7 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
     }
   });
 
-  router.post('/projects/:projectId/publication/proposals', workspaceGate(), async (req, res, next) => {
+  router.post('/projects/:projectId/publication/proposals', ...workspaceMutationGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const body = createProposalSchema.parse(req.body);
@@ -405,7 +432,7 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
     }
   });
 
-  router.get('/projects/:projectId/publication/drafts', workspaceGate(), async (req, res, next) => {
+  router.get('/projects/:projectId/publication/drafts', ...workspaceReadGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const pagination = paginationSchema.parse(req.query);
@@ -416,7 +443,7 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
     }
   });
 
-  router.post('/projects/:projectId/publication/drafts', workspaceGate(), async (req, res, next) => {
+  router.post('/projects/:projectId/publication/drafts', ...workspaceMutationGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const body = createDraftSchema.parse(req.body);
@@ -427,7 +454,7 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
     }
   });
 
-  router.get('/projects/:projectId/publication/drafts/:draftId', workspaceGate(), async (req, res, next) => {
+  router.get('/projects/:projectId/publication/drafts/:draftId', ...workspaceReadGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const draftId = routeParam(req.params.draftId);
@@ -439,7 +466,7 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
     }
   });
 
-  router.post('/projects/:projectId/publication/drafts/:draftId/versions', workspaceGate(), async (req, res, next) => {
+  router.post('/projects/:projectId/publication/drafts/:draftId/versions', ...workspaceMutationGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const draftId = routeParam(req.params.draftId);
@@ -451,7 +478,7 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
     }
   });
 
-  router.get('/projects/:projectId/publication/plans', workspaceGate(), async (req, res, next) => {
+  router.get('/projects/:projectId/publication/plans', ...workspaceReadGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const pagination = paginationSchema.parse(req.query);
@@ -462,7 +489,7 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
     }
   });
 
-  router.post('/projects/:projectId/publication/plans', workspaceGate(), async (req, res, next) => {
+  router.post('/projects/:projectId/publication/plans', ...workspaceMutationGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const body = createPlanSchema.parse(req.body);
@@ -473,7 +500,7 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
     }
   });
 
-  router.get('/projects/:projectId/publication/plans/:planId', workspaceGate(), async (req, res, next) => {
+  router.get('/projects/:projectId/publication/plans/:planId', ...workspaceReadGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const planId = routeParam(req.params.planId);
@@ -485,7 +512,7 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
     }
   });
 
-  router.post('/projects/:projectId/publication/plans/:planId/approve', workspaceGate(), async (req, res, next) => {
+  router.post('/projects/:projectId/publication/plans/:planId/approve', ...workspaceMutationGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const planId = routeParam(req.params.planId);
@@ -499,7 +526,7 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
     }
   });
 
-  router.post('/projects/:projectId/publication/plans/:planId/execute', executionGate(), async (req, res, next) => {
+  router.post('/projects/:projectId/publication/plans/:planId/execute', ...executionMutationGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const planId = routeParam(req.params.planId);
@@ -513,7 +540,7 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
     }
   });
 
-  router.get('/projects/:projectId/publication/executions/:executionId', workspaceGate(), async (req, res, next) => {
+  router.get('/projects/:projectId/publication/executions/:executionId', ...workspaceReadGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const executionId = routeParam(req.params.executionId);
@@ -527,7 +554,7 @@ export function createPublicationRoutes(api: PublicationApiPort = defaultPublica
     }
   });
 
-  router.post('/projects/:projectId/publication/executions/:executionId/verify', executionGate(), async (req, res, next) => {
+  router.post('/projects/:projectId/publication/executions/:executionId/verify', ...executionMutationGuards(), async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.projectId);
       const executionId = routeParam(req.params.executionId);

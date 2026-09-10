@@ -14,6 +14,13 @@ afterEach(async () => {
 });
 
 describe('manual publication drafts web UI', () => {
+  it('rejects an unauthenticated publication workspace request', async () => {
+    await request(app)
+      .get('/projects/00000000-0000-4000-8000-000000000001/publication')
+      .expect(401)
+      .expect(({ body }) => expect(body.error.code).toBe('AUTHENTICATION_REQUIRED'));
+  });
+
   it('renders a human-only draft form with no publication action', async () => {
     const fixture = await seedAuthenticatedUser({
       role: 'OWNER',
