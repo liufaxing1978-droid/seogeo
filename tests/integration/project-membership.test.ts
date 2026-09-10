@@ -47,6 +47,19 @@ afterEach(async () => {
 });
 
 describe('P10-A project membership API', () => {
+  it('returns PROJECT_NOT_FOUND instead of an internal error for a malformed project id', async () => {
+    const owner = await seed({
+      role: 'OWNER', planLevel: 'ADVANCED', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE',
+    });
+
+    const response = await request(createApp())
+      .get(`/api/projects/${owner.project.id.slice(0, -1)}`)
+      .set('Cookie', owner.sessionCookie);
+
+    expect(response.status).toBe(404);
+    expect(response.body).toMatchObject({ error: { code: 'PROJECT_NOT_FOUND' } });
+  });
+
   it('allows ADMIN/OWNER membership reads but denies VIEWER', async () => {
     const owner = await seed({
       role: 'OWNER', planLevel: 'ADVANCED', userStatus: 'ACTIVE', membershipStatus: 'ACTIVE',
