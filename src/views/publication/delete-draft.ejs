@@ -1,0 +1,20 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Owner-only destructive action</p>
+    <h1>永久删除草稿</h1>
+    <p class="muted"><%= project.name %> · <%= draft.title %></p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>">取消</a></div>
+</section>
+
+<section class="panel">
+  <h2>此操作不可恢复</h2>
+  <p>将永久删除这条草稿、全部 <strong><%= draft.versions.length %></strong> 个版本及 <strong><%= draft.sourceRefs.length %></strong> 条引用来源。</p>
+  <p>已有发布计划的草稿不允许永久删除。</p>
+  <% if (error) { %><p class="error"><%= error %></p><% } %>
+  <form method="post" action="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/delete">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <label>确认文字<input name="confirmation" required autocomplete="off" placeholder="请输入：永久删除"></label>
+    <p><button class="button danger" type="submit">确认永久删除</button></p>
+  </form>
+</section>

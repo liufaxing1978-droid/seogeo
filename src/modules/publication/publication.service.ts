@@ -351,6 +351,23 @@ export class PublicationService {
     return version;
   }
 
+  async purgeUnplannedDraft(projectId: string, draftId: string, actorUserId?: string | null) {
+    const normalizedProjectId = requiredText(projectId, 'project id', 100);
+    const normalizedDraftId = requiredText(draftId, 'draft id', 100);
+    const result = await this.repository.purgeUnplannedDraft(
+      normalizedProjectId,
+      normalizedDraftId,
+      actorUserId ?? null
+    );
+    if (result.outcome === 'NOT_FOUND') {
+      serviceError('CONTENT_DRAFT_NOT_FOUND', 'Content draft not found');
+    }
+    if (result.outcome === 'PLANNED') {
+      serviceError('PUBLICATION_DRAFT_DELETE_BLOCKED', 'Planned drafts cannot be permanently deleted');
+    }
+    return result.draft;
+  }
+
   async addSourceReference(draftId: string, input: SourceReferenceInput) {
     const draft = await this.repository.getDraft(draftId);
     if (!draft) serviceError('CONTENT_DRAFT_NOT_FOUND', 'Content draft not found');

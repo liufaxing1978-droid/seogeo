@@ -409,3 +409,22 @@ test('renders an unpublished manual draft form without AI generation controls', 
   await expect(page.getByText('保存后仅创建内部草稿，不会发布到网站。')).toBeVisible();
   await expect(page.getByText(/DeepSeek/i)).toHaveCount(0);
 });
+
+test('lets the project owner permanently delete an unplanned manual draft after typed confirmation', async ({ page, context }) => {
+  const project = await createProject('permanent draft deletion', 'ENTERPRISE');
+  await authenticateProjectOwner(context, project.id);
+
+  await page.goto(`/projects/${project.id}/publication/drafts/new`);
+  await page.getByLabel('标题', { exact: true }).fill('待永久删除草稿');
+  await page.getByLabel('URL slug').fill('permanent-delete-e2e');
+  await page.getByLabel('正文').fill('仅用于永久删除端到端验证。');
+  await page.getByRole('button', { name: '保存人工草稿' }).click();
+
+  await page.getByRole('link', { name: '永久删除' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: '永久删除草稿' })).toBeVisible();
+  await page.getByLabel('确认文字').fill('永久删除');
+  await page.getByRole('button', { name: '确认永久删除' }).click();
+
+  await expect(page).toHaveURL(`/projects/${project.id}/publication/drafts`);
+  await expect(page.getByRole('link', { name: '待永久删除草稿' })).toHaveCount(0);
+});
