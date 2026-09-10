@@ -247,7 +247,7 @@ publicationWebRoutes.get('/projects/:id/publication/drafts/:draftId', requireAut
       validation,
       schemaJson: prettyJson(model.draft.schemaJson),
       csrfToken: csrfTokenFor(req, res),
-      canDelete: !model.draft.plans.length && ['OWNER', 'ADMIN'].includes(res.locals.projectMembership.role)
+      canDelete: false
     });
   } catch (error) { next(error); }
 });
@@ -292,9 +292,9 @@ publicationWebRoutes.post('/projects/:id/publication/drafts/:draftId/delete',
       const projectId = routeParam(req.params.id); const draftId = routeParam(req.params.draftId);
       const draft = await prisma.contentDraft.findFirst({ where: { id: draftId, projectId }, include: { _count: { select: { plans: true } } } });
       if (!draft) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
-      if (draft._count.plans > 0) throw new AppError('Planned drafts cannot be deleted', 409, 'PUBLICATION_DRAFT_DELETE_BLOCKED');
-      await prisma.contentDraft.delete({ where: { id: draft.id } });
-      res.redirect(303, `/projects/${projectId}/publication/drafts`);
+      if (draft._count.plans > 0) throw new AppError('Planned drafts cannot be archived', 409, 'PUBLICATION_DRAFT_ARCHIVE_BLOCKED');
+      await publicationService.saveDraftVersion(draft.id, draft.currentVersion, { status: 'ARCHIVED' }, 'HUMAN');
+      res.redirect(303, `/projects/${projectId}/publication/drafts/${draft.id}`);
     } catch (error) { next(error); }
   }
 );
