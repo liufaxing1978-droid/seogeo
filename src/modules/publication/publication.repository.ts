@@ -113,6 +113,34 @@ export class PublicationRepository {
     });
   }
 
+  getDraftForMainSiteSync(projectId: string, draftId: string) {
+    return prisma.contentDraft.findFirst({
+      where: { id: draftId, projectId },
+      select: {
+        id: true,
+        projectId: true,
+        currentVersion: true,
+        status: true,
+      }
+    });
+  }
+
+  getMainSiteDraftSync(draftId: string, draftVersion: number) {
+    return prisma.mainSiteDraftSync.findUnique({
+      where: { draftId_draftVersion: { draftId, draftVersion } }
+    });
+  }
+
+  createMainSiteDraftSync(input: {
+    projectId: string;
+    draftId: string;
+    draftVersion: number;
+    mainArticleId: string;
+    section: string;
+  }) {
+    return prisma.mainSiteDraftSync.create({ data: input });
+  }
+
   async getNextPlanVersion(proposalId: string): Promise<number> {
     const latest = await prisma.publicationPlan.findFirst({
       where: { proposalId },
