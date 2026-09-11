@@ -1,0 +1,7 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+WORKDIR /app
+COPY dist ./dist
+COPY src/views ./dist/src/views
+COPY src/public ./dist/src/public
