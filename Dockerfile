@@ -12,7 +12,7 @@ RUN npm ci
 
 COPY . .
 RUN DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build npx prisma generate
-RUN NODE_OPTIONS=--max-old-space-size=1024 npm run build
+RUN NODE_OPTIONS=--max-old-space-size=1536 npm run build
 
 FROM build AS migration
 CMD ["npx", "prisma", "migrate", "deploy"]
