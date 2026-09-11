@@ -47,7 +47,10 @@ const schema = z.object({
   INDEXNOW_ENDPOINT: z.string().url().default('https://api.indexnow.org/indexnow'),
   INDEXNOW_KEY: optionalNonBlankString,
   INDEXNOW_KEY_LOCATION: optionalUrl,
-  INDEXNOW_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(15000)
+  INDEXNOW_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(15000),
+  XINGSHANTANG_CMS_API_BASE_URL: optionalUrl,
+  XINGSHANTANG_CMS_API_CLIENT_ID: optionalNonBlankString,
+  XINGSHANTANG_CMS_API_SECRET: optionalNonBlankString,
 });
 
 export type RuntimeEnv = z.infer<typeof schema>;
