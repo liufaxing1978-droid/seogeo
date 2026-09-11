@@ -8,6 +8,7 @@
   <% if (draft.status !== 'ARCHIVED') { %><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/edit">编辑草稿</a><% } %>
   <% if (draft.status !== 'ARCHIVED') { %><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/manual-site-handoff">主站发布包</a><% } %>
   <% if (draft.status !== 'ARCHIVED') { %><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/main-site-draft-sync">复制到主站草稿</a><% } %>
+  <% if (draft.status !== 'ARCHIVED') { %><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/schema">编辑并应用 Schema</a><% } %>
   <% if (draft.status !== 'ARCHIVED' && !draft.plans.length && csrfToken) { %><form method="post" action="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/archive" style="display:inline"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button secondary" type="submit">归档草稿</button></form><% } %>
   <% if (canPermanentlyDelete) { %><a class="button danger" href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/delete">永久删除</a><% } %>
   </div>
@@ -65,4 +66,5 @@
 <section class="panel">
   <h2>Schema Candidate</h2>
   <pre><code><%= schemaJson || '未设置' %></code></pre>
+  <% if (draft.status !== 'ARCHIVED') { %><p><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/schema">编辑并应用 Schema</a></p><% } %>
 </section>

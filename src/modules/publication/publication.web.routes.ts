@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { requireAuthentication } from '../../auth/authentication.js';
 import { deriveCsrfToken, requireCsrf } from '../../auth/csrf.js';
 import { requireProjectCapability, requireProjectMembership } from '../../auth/project-access.js';
@@ -71,6 +72,30 @@ const permanentDeleteFormSchema = z.object({
 const mainSiteDraftSyncFormSchema = z.object({
   section: z.enum(MAIN_SITE_SECTIONS)
 }).strict();
+
+const schemaEditorFormSchema = z.object({
+  schemaJson: z.string().trim().min(2).max(100_000)
+}).strict();
+
+function parseSchemaJson(value: string): Prisma.InputJsonObject {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new AppError('Schema 必须是有效的 JSON。', 400, 'PUBLICATION_SCHEMA_JSON_INVALID');
+  }
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+    throw new AppError('Schema 必须是一个 JSON-LD 对象。', 400, 'PUBLICATION_SCHEMA_JSON_INVALID');
+  }
+  const schema = parsed as Record<string, unknown>;
+  const context = schema['@context']; const type = schema['@type'];
+  const validContext = context === 'https://schema.org' || context === 'http://schema.org';
+  const validType = typeof type === 'string' ? Boolean(type.trim()) : Array.isArray(type) && type.length > 0;
+  if (!validContext || !validType) {
+    throw new AppError('Schema 需包含 @context（https://schema.org）和 @type。', 400, 'PUBLICATION_SCHEMA_JSON_INVALID');
+  }
+  return schema as Prisma.InputJsonObject;
+}
 
 function nullableText(value: string | undefined): string | null {
   return value ? value : null;
@@ -310,6 +335,94 @@ publicationWebRoutes.get('/projects/:id/publication/drafts/:draftId/manual-site-
           : ['OWNER', 'ADMIN', 'EDITOR'].includes(res.locals.projectMembership.role)
       });
     } catch (error) { next(error); }
+  }
+);
+
+publicationWebRoutes.get('/projects/:id/publication/drafts/:draftId/schema',
+  requireAuthentication(), requireProjectMembership(), requireProjectCapability('PROJECT_READ'), async (req, res, next) => {
+    try {
+      const model = await publicationWebRepository.getDraft(routeParam(req.params.id), routeParam(req.params.draftId));
+      if (!model) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
+      const latestMainSiteSync = model.draft.mainSiteDraftSyncs
+        .slice().sort((left, right) => right.draftVersion - left.draftVersion)[0] ?? null;
+      render(res, 'publication/schema-editor', {
+        currentProjectId: model.project.id,
+        ...model,
+        values: { schemaJson: prettyJson(model.draft.schemaJson) },
+        error: null,
+        success: req.query.success === '1',
+        synced: req.query.synced === '1',
+        latestMainSiteSync,
+        configured: Boolean(mainSiteDraftSyncService()),
+        canWrite: canWriteContent(res),
+        csrfToken: csrfTokenFor(req, res)
+      });
+    } catch (error) { next(error); }
+  }
+);
+
+publicationWebRoutes.post('/projects/:id/publication/drafts/:draftId/schema',
+  requireAuthentication(), requireCsrf(), requireProjectMembership(), requireProjectCapability('CONTENT_WRITE'), async (req, res, next) => {
+    const projectId = routeParam(req.params.id); const draftId = routeParam(req.params.draftId);
+    const values = objectRecord(req.body); delete values._csrf;
+    try {
+      const input = schemaEditorFormSchema.parse(values);
+      const model = await publicationWebRepository.getDraft(projectId, draftId);
+      if (!model) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
+      if (model.draft.status === 'ARCHIVED') throw new AppError('Archived drafts cannot be edited', 409, 'PUBLICATION_DRAFT_ARCHIVED');
+      await publicationService.saveDraftVersion(draftId, model.draft.currentVersion, { schemaJson: parseSchemaJson(input.schemaJson) }, 'HUMAN');
+      res.redirect(303, `/projects/${projectId}/publication/drafts/${draftId}/schema?success=1`);
+    } catch (error) {
+      if (!(error instanceof z.ZodError || error instanceof AppError || error instanceof PublicationServiceError)) return next(error);
+      const model = await publicationWebRepository.getDraft(projectId, draftId).catch(() => null);
+      if (!model) return next(error);
+      const latestMainSiteSync = model.draft.mainSiteDraftSyncs
+        .slice().sort((left, right) => right.draftVersion - left.draftVersion)[0] ?? null;
+      res.status(error instanceof z.ZodError || error instanceof AppError ? 400 : 409);
+      render(res, 'publication/schema-editor', {
+        currentProjectId: model.project.id,
+        ...model,
+        values: { schemaJson: typeof values.schemaJson === 'string' ? values.schemaJson : '' },
+        error: error instanceof z.ZodError ? '请粘贴有效的 JSON-LD。' : error.message,
+        success: false,
+        synced: false,
+        latestMainSiteSync,
+        configured: Boolean(mainSiteDraftSyncService()),
+        canWrite: canWriteContent(res),
+        csrfToken: csrfTokenFor(req, res)
+      });
+    }
+  }
+);
+
+publicationWebRoutes.post('/projects/:id/publication/drafts/:draftId/schema/sync-main-site',
+  requireAuthentication(), requireCsrf(), requireProjectMembership(), requireProjectCapability('CONTENT_WRITE'), async (req, res, next) => {
+    const projectId = routeParam(req.params.id); const draftId = routeParam(req.params.draftId);
+    try {
+      const service = mainSiteDraftSyncService();
+      if (!service) throw new AppError('Main-site CMS connection is not configured', 503, 'MAIN_SITE_CMS_NOT_CONFIGURED');
+      await service.syncSchemaToExistingMainSiteDraft({ projectId, draftId, actorId: req.auth!.userId });
+      res.redirect(303, `/projects/${projectId}/publication/drafts/${draftId}/schema?synced=1`);
+    } catch (error) {
+      if (!(error instanceof MainSiteDraftSyncServiceError || error instanceof XingshantangCmsError || error instanceof AppError)) return next(error);
+      const model = await publicationWebRepository.getDraft(projectId, draftId).catch(() => null);
+      if (!model) return next(error);
+      const latestMainSiteSync = model.draft.mainSiteDraftSyncs
+        .slice().sort((left, right) => right.draftVersion - left.draftVersion)[0] ?? null;
+      res.status(error instanceof AppError ? error.status : 409);
+      render(res, 'publication/schema-editor', {
+        currentProjectId: model.project.id,
+        ...model,
+        values: { schemaJson: prettyJson(model.draft.schemaJson) },
+        error: error.message,
+        success: false,
+        synced: false,
+        latestMainSiteSync,
+        configured: Boolean(mainSiteDraftSyncService()),
+        canWrite: canWriteContent(res),
+        csrfToken: csrfTokenFor(req, res)
+      });
+    }
   }
 );
 

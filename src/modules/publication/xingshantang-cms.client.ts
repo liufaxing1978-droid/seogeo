@@ -10,6 +10,7 @@ export type XingshantangCmsConfig = { baseUrl: string; clientId: string; secret:
 export type CreateMainSiteDraftInput = {
   title: string; slug: string; section: MainSiteSection; summary: string; body: string;
 };
+export type UpdateMainSiteDraftSchemaInput = { articleId: string; schemaJson: Record<string, unknown> };
 type FetchLike = typeof fetch;
 type ClientRuntime = { now?: () => number; nonce?: () => string };
 
@@ -107,6 +108,30 @@ export class XingshantangCmsClient {
     if (!parsed.success) {
       throw new XingshantangCmsError('Main-site CMS returned an invalid response', 'XINGSHANTANG_CMS_INVALID_RESPONSE', response.status, false);
     }
+    return { articleId: parsed.data.article.id, status: parsed.data.article.status };
+  }
+
+  async updateDraftSchema(input: UpdateMainSiteDraftSchemaInput): Promise<{ articleId: string; status: 'draft' }> {
+    const path = `/api/v1/articles/${encodeURIComponent(input.articleId)}/schema`;
+    const body = JSON.stringify({ schemaJson: input.schemaJson });
+    const timestamp = String(this.now());
+    const nonce = this.nonce();
+    const headers = new Headers({
+      accept: 'application/json', 'content-type': 'application/json', 'x-client-id': this.config.clientId,
+      'x-timestamp': timestamp, 'x-nonce': nonce,
+      'x-signature': sign(this.config.secret, 'PUT', path, timestamp, nonce, body),
+    });
+    let response: Response;
+    try {
+      response = await this.fetchImpl(new URL(path, this.origin), { method: 'PUT', headers, body, signal: AbortSignal.timeout(10_000) });
+    } catch {
+      throw new XingshantangCmsError('Main-site CMS request failed', 'XINGSHANTANG_CMS_NETWORK_ERROR', null, true);
+    }
+    if (response.status !== 200) {
+      throw new XingshantangCmsError('Main-site CMS rejected the Schema update', 'XINGSHANTANG_CMS_SCHEMA_UPDATE_FAILED', response.status, response.status >= 500 || response.status === 429);
+    }
+    const parsed = successSchema.safeParse(await response.json().catch(() => null));
+    if (!parsed.success) throw new XingshantangCmsError('Main-site CMS returned an invalid response', 'XINGSHANTANG_CMS_INVALID_RESPONSE', response.status, false);
     return { articleId: parsed.data.article.id, status: parsed.data.article.status };
   }
 }

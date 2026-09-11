@@ -10,7 +10,7 @@ const draft = {
 };
 const draftVersion = {
   title: '六壬伏英馆', slugCandidate: 'fuyingguan', body: '# 六壬伏英馆',
-  excerpt: '文化介绍', metaDescription: null,
+  excerpt: '文化介绍', metaDescription: null, schemaJson: { '@context': 'https://schema.org', '@type': 'FAQPage' },
 };
 
 function fixtures() {
@@ -20,9 +20,13 @@ function fixtures() {
     getDraftForMainSiteSync: vi.fn().mockResolvedValue(draft),
     getDraftVersion: vi.fn().mockResolvedValue(draftVersion),
     getMainSiteDraftSync: existing,
+    getLatestMainSiteDraftSync: vi.fn().mockResolvedValue(null),
     createMainSiteDraftSync: vi.fn().mockResolvedValue(created),
   };
-  const cms = { createDraft: vi.fn().mockResolvedValue({ articleId: 'main-1', status: 'draft' as const }) };
+  const cms = {
+    createDraft: vi.fn().mockResolvedValue({ articleId: 'main-1', status: 'draft' as const }),
+    updateDraftSchema: vi.fn().mockResolvedValue({ articleId: 'main-1', status: 'draft' as const }),
+  };
   return { repository, cms, created };
 }
 
@@ -60,6 +64,34 @@ describe('MainSiteDraftSyncService', () => {
 
     await expect(service.syncDraftVersion({ projectId: draft.projectId, draftId: draft.id, section: '六壬文化', actorId: 'user-1' }))
       .rejects.toMatchObject({ code: 'MAIN_SITE_DRAFT_SLUG_REQUIRED' } satisfies Partial<MainSiteDraftSyncServiceError>);
+    expect(cms.createDraft).not.toHaveBeenCalled();
+  });
+
+  it('updates Schema on the existing main-site draft without creating another article', async () => {
+    const { repository, cms, created } = fixtures();
+    repository.getLatestMainSiteDraftSync.mockResolvedValue(created);
+    cms.updateDraftSchema.mockResolvedValue({ articleId: created.mainArticleId, status: 'draft' });
+    const service = new MainSiteDraftSyncService(repository, cms);
+
+    await expect(service.syncSchemaToExistingMainSiteDraft({ projectId: draft.projectId, draftId: draft.id, actorId: 'user-1' })).resolves.toEqual(created);
+    expect(cms.updateDraftSchema).toHaveBeenCalledWith({ articleId: created.mainArticleId, schemaJson: draftVersion.schemaJson });
+    expect(cms.createDraft).not.toHaveBeenCalled();
+    expect(repository.createMainSiteDraftSync).not.toHaveBeenCalled();
+  });
+
+  it('uses the latest main-site draft when Schema was saved as a newer SEO draft version', async () => {
+    const { repository, cms, created } = fixtures();
+    repository.getDraftForMainSiteSync.mockResolvedValue({ ...draft, currentVersion: 4 });
+    repository.getDraftVersion.mockResolvedValue({ ...draftVersion, schemaJson: { '@context': 'https://schema.org', '@type': 'Article' } });
+    repository.getLatestMainSiteDraftSync.mockResolvedValue({ ...created, draftVersion: 3 });
+    const service = new MainSiteDraftSyncService(repository, cms);
+
+    await service.syncSchemaToExistingMainSiteDraft({ projectId: draft.projectId, draftId: draft.id, actorId: 'user-1' });
+
+    expect(cms.updateDraftSchema).toHaveBeenCalledWith({
+      articleId: created.mainArticleId,
+      schemaJson: { '@context': 'https://schema.org', '@type': 'Article' }
+    });
     expect(cms.createDraft).not.toHaveBeenCalled();
   });
 });

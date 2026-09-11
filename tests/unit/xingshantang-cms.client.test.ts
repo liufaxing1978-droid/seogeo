@@ -27,6 +27,19 @@ function jsonResponse(body: unknown, status = 201): Response {
 }
 
 describe('XingshantangCmsClient', () => {
+  it('updates only Schema on an existing main-site draft with a signed PUT request', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ article: { id: 'main-article-1', status: 'draft' } }, 200));
+    const client = new XingshantangCmsClient(config, fetchImpl, { now: () => 1_789_000_000_000, nonce: () => 'nonce-schema' });
+    const schemaJson = { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: [] };
+
+    await expect(client.updateDraftSchema({ articleId: 'main-article-1', schemaJson })).resolves.toEqual({ articleId: 'main-article-1', status: 'draft' });
+
+    const [rawUrl, init] = fetchImpl.mock.calls[0]!;
+    expect(String(rawUrl)).toBe('https://xingshantang.org/api/v1/articles/main-article-1/schema');
+    expect(init?.method).toBe('PUT');
+    expect(init?.body).toBe(JSON.stringify({ schemaJson }));
+  });
+
   it('creates a main-site draft with the exact signed payload and never exposes the secret in the URL', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({
       article: { id: 'main-article-1', status: 'draft' },

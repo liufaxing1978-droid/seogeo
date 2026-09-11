@@ -1,0 +1,40 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Schema Candidate · V<%= draft.currentVersion %></p>
+    <h1>编辑并应用 Schema</h1>
+    <p class="muted">保存会创建一个 SEO 草稿新版本；同步只更新已有的主站草稿，不会自动发布，也不会新增主站文章。</p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>">返回草稿</a></div>
+</section>
+
+<% if (success) { %><section class="panel"><p><strong>Schema 已保存。</strong> 现在可同步到主站草稿。</p></section><% } %>
+<% if (synced) { %><section class="panel"><p><strong>已同步到主站草稿。</strong> 主站仍保持 draft，需在主站后台自行发布。</p></section><% } %>
+<% if (error) { %><section class="panel"><p class="error"><%= error %></p></section><% } %>
+
+<section class="panel">
+  <h2>JSON-LD</h2>
+  <p class="muted">仅接受含 <code>@context</code>（https://schema.org）及 <code>@type</code> 的 JSON-LD 对象。</p>
+  <% if (canWrite) { %>
+    <form method="post" action="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/schema">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <label for="schemaJson">Schema JSON</label>
+      <textarea id="schemaJson" name="schemaJson" rows="22" spellcheck="false" required><%= values.schemaJson %></textarea>
+      <p><button class="button" type="submit">保存 Schema 为新版本</button></p>
+    </form>
+  <% } else { %><pre><code><%= values.schemaJson || '未设置' %></code></pre><% } %>
+</section>
+
+<section class="panel">
+  <h2>同步到主站草稿</h2>
+  <% if (!latestMainSiteSync) { %>
+    <p class="muted">请先通过“复制到主站草稿”创建一篇主站 draft，之后才能在不重复建文的情况下同步 Schema。</p>
+  <% } else { %>
+    <p>目标主站草稿：<code><%= latestMainSiteSync.mainArticleId %></code> · 栏目：<%= latestMainSiteSync.section %></p>
+    <% if (!configured) { %><p class="muted">主站连接尚未配置。</p><% } else if (canWrite) { %>
+      <form method="post" action="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/schema/sync-main-site">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button class="button" type="submit">同步 Schema 到现有主站草稿</button>
+      </form>
+    <% } %>
+  <% } %>
+</section>

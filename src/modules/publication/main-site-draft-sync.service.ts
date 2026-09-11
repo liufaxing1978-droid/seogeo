@@ -1,4 +1,4 @@
-import { MAIN_SITE_SECTIONS, type MainSiteSection, type CreateMainSiteDraftInput } from './xingshantang-cms.client.js';
+import { MAIN_SITE_SECTIONS, type MainSiteSection, type CreateMainSiteDraftInput, type UpdateMainSiteDraftSchemaInput } from './xingshantang-cms.client.js';
 
 type SyncableDraft = {
   id: string;
@@ -13,6 +13,7 @@ type SyncableDraftVersion = {
   body: string;
   excerpt: string | null;
   metaDescription: string | null;
+  schemaJson?: unknown;
 };
 
 export type MainSiteDraftSyncRecord = {
@@ -28,11 +29,13 @@ export interface MainSiteDraftSyncRepository {
   getDraftForMainSiteSync(projectId: string, draftId: string): Promise<SyncableDraft | null>;
   getDraftVersion(draftId: string, version: number): Promise<SyncableDraftVersion | null>;
   getMainSiteDraftSync(draftId: string, draftVersion: number): Promise<MainSiteDraftSyncRecord | null>;
+  getLatestMainSiteDraftSync(draftId: string): Promise<MainSiteDraftSyncRecord | null>;
   createMainSiteDraftSync(input: Omit<MainSiteDraftSyncRecord, 'id'>): Promise<MainSiteDraftSyncRecord>;
 }
 
 export interface MainSiteDraftCmsClient {
   createDraft(input: CreateMainSiteDraftInput): Promise<{ articleId: string; status: 'draft' }>;
+  updateDraftSchema(input: UpdateMainSiteDraftSchemaInput): Promise<{ articleId: string; status: 'draft' }>;
 }
 
 export class MainSiteDraftSyncServiceError extends Error {
@@ -44,6 +47,14 @@ export class MainSiteDraftSyncServiceError extends Error {
 
 function validSection(section: string): section is MainSiteSection {
   return (MAIN_SITE_SECTIONS as readonly string[]).includes(section);
+}
+
+function validSchemaJson(value: unknown): value is Record<string, unknown> {
+  if (!value || Array.isArray(value) || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  const context = record['@context']; const type = record['@type'];
+  return (context === 'https://schema.org' || context === 'http://schema.org')
+    && (typeof type === 'string' ? type.trim().length > 0 : Array.isArray(type) && type.length > 0);
 }
 
 export class MainSiteDraftSyncService {
@@ -94,5 +105,20 @@ export class MainSiteDraftSyncService {
       mainArticleId: created.articleId,
       section: input.section
     });
+  }
+
+  async syncSchemaToExistingMainSiteDraft(input: { projectId: string; draftId: string; actorId: string }): Promise<MainSiteDraftSyncRecord> {
+    const draft = await this.repository.getDraftForMainSiteSync(input.projectId, input.draftId);
+    if (!draft) throw new MainSiteDraftSyncServiceError('PUBLICATION_DRAFT_NOT_FOUND', 'Content draft not found');
+    if (draft.status === 'ARCHIVED') throw new MainSiteDraftSyncServiceError('MAIN_SITE_DRAFT_ARCHIVED', 'Archived drafts cannot be synced');
+    const version = await this.repository.getDraftVersion(draft.id, draft.currentVersion);
+    if (!version) throw new MainSiteDraftSyncServiceError('MAIN_SITE_DRAFT_VERSION_NOT_FOUND', 'Content draft version not found');
+    if (!validSchemaJson(version.schemaJson)) throw new MainSiteDraftSyncServiceError('MAIN_SITE_SCHEMA_INVALID', 'A valid Schema candidate is required');
+    // Saving Schema creates a new SEO draft version. Reuse the existing main-site
+    // article for this logical draft instead of creating a duplicate article.
+    const existing = await this.repository.getLatestMainSiteDraftSync(draft.id);
+    if (!existing) throw new MainSiteDraftSyncServiceError('MAIN_SITE_DRAFT_SYNC_REQUIRED', 'Sync this draft to the main site before updating Schema');
+    await this.cms.updateDraftSchema({ articleId: existing.mainArticleId, schemaJson: version.schemaJson });
+    return existing;
   }
 }

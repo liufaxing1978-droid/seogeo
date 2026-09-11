@@ -131,6 +131,13 @@ export class PublicationRepository {
     });
   }
 
+  getLatestMainSiteDraftSync(draftId: string) {
+    return prisma.mainSiteDraftSync.findFirst({
+      where: { draftId },
+      orderBy: [{ draftVersion: 'desc' }, { id: 'asc' }]
+    });
+  }
+
   createMainSiteDraftSync(input: {
     projectId: string;
     draftId: string;
