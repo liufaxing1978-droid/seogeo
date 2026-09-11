@@ -47,6 +47,7 @@ describe('XingshantangCmsClient', () => {
     expect(init?.method).toBe('POST');
     expect(init?.body).toBe(JSON.stringify({
       ...payload,
+      body: '<h2>六壬伏英馆</h2>',
       status: 'draft',
       isPinned: false,
       isRecommended: false,

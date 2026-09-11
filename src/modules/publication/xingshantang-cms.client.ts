@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import { renderMainSiteArticleHtml } from './main-site-article-html.js';
 
 export const MAIN_SITE_SECTIONS = [
   '最新消息', '六壬文化', '民宗文献', '会员专区', '购物专区', '联系我们',
@@ -70,7 +71,8 @@ export class XingshantangCmsClient {
   async createDraft(input: CreateMainSiteDraftInput): Promise<{ articleId: string; status: 'draft' }> {
     const path = '/api/v1/articles';
     const body = JSON.stringify({
-      title: input.title, slug: input.slug, section: input.section, summary: input.summary, body: input.body,
+      title: input.title, slug: input.slug, section: input.section, summary: input.summary,
+      body: renderMainSiteArticleHtml(input.body),
       status: 'draft', isPinned: false, isRecommended: false, membersOnly: false,
     });
     const timestamp = String(this.now());
