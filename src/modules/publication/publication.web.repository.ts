@@ -83,6 +83,7 @@ export const publicationWebRepository = {
       include: {
         sourceProposal: true,
         versions: { orderBy: [{ version: 'desc' }, { id: 'asc' }], take: 20 },
+        mainSiteDraftSyncs: { orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 20 },
         sourceRefs: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 50 },
         plans: {
           include: { preview: true, site: true, channel: true, executions: { orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], take: 10 } },

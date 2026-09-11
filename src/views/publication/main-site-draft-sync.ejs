@@ -1,0 +1,42 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Main Site Draft Sync · V<%= draft.currentVersion %></p>
+    <h1>复制到主站草稿</h1>
+    <p class="muted">将「<%= draft.title %>」创建为兴善堂主站草稿。此操作不会发布文章。</p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>">返回内容草稿</a></div>
+</section>
+
+<section class="panel">
+  <h2>同步信息</h2>
+  <div class="table-wrap"><table><tbody>
+    <tr><th>当前版本</th><td>V<%= draft.currentVersion %></td></tr>
+    <tr><th>Slug</th><td><%= draft.slugCandidate ?? '未设置（请先编辑草稿）' %></td></tr>
+    <tr><th>主站状态</th><td><%= existing ? '已创建草稿' : '尚未同步' %></td></tr>
+    <% if (existing) { %><tr><th>主站文章 ID</th><td><%= existing.mainArticleId %></td></tr><tr><th>已选栏目</th><td><%= existing.section %></td></tr><% } %>
+  </tbody></table></div>
+</section>
+
+<% if (existing) { %>
+  <section class="panel"><p><strong>当前版本已经同步到主站草稿。</strong>再次打开不会重复创建；编辑并保存草稿形成新版本后，才可再次同步。</p></section>
+<% } else if (!configured) { %>
+  <section class="panel"><p><strong>主站连接尚未配置。</strong>请由管理员补齐 CMS API 配置后再同步。</p></section>
+<% } else { %>
+  <section class="panel">
+    <h2>选择主站栏目</h2>
+    <p class="muted">默认「六壬文化」。您可在每次同步前重新选择。文章只会出现在主站后台的草稿箱，仍需在主站审核发布。</p>
+    <% if (error) { %><p class="alert danger"><%= error %></p><% } %>
+    <% if (!draft.slugCandidate) { %><p class="alert danger">请先回到内容草稿设置 URL slug，再同步。</p><% } %>
+    <% if (canWrite && draft.slugCandidate) { %>
+      <form method="post" action="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/main-site-draft-sync">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <label>栏目
+          <select name="section">
+            <% for (const section of sections) { %><option value="<%= section %>" <%= selectedSection === section ? 'selected' : '' %>><%= section %></option><% } %>
+          </select>
+        </label>
+        <p><button class="button primary" type="submit">创建主站草稿</button></p>
+      </form>
+    <% } else if (!canWrite) { %><p class="muted">您没有创建主站草稿的权限。</p><% } %>
+  </section>
+<% } %>

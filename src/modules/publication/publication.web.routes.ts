@@ -6,8 +6,11 @@ import { requireProjectCapability, requireProjectMembership } from '../../auth/p
 import { env } from '../../config/env.js';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
+import { MainSiteDraftSyncService, MainSiteDraftSyncServiceError } from './main-site-draft-sync.service.js';
 import { PublicationServiceError, publicationService } from './publication.service.js';
+import { publicationRepository } from './publication.repository.js';
 import { publicationWebRepository } from './publication.web.repository.js';
+import { MAIN_SITE_SECTIONS, XingshantangCmsClient, XingshantangCmsError } from './xingshantang-cms.client.js';
 
 function routeParam(value: string | string[]): string {
   return Array.isArray(value) ? value[0]! : value;
@@ -58,6 +61,10 @@ const sourceReferenceFormSchema = z.object({
 
 const permanentDeleteFormSchema = z.object({
   confirmation: z.literal('永久删除')
+}).strict();
+
+const mainSiteDraftSyncFormSchema = z.object({
+  section: z.enum(MAIN_SITE_SECTIONS)
 }).strict();
 
 function nullableText(value: string | undefined): string | null {
@@ -113,6 +120,21 @@ function render(res: any, bodyTemplate: string, locals: Record<string, unknown>)
     ...locals,
     title: 'P8-A 发布工作区'
   });
+}
+
+function mainSiteDraftSyncService(): MainSiteDraftSyncService | null {
+  const { XINGSHANTANG_CMS_API_BASE_URL: baseUrl, XINGSHANTANG_CMS_API_CLIENT_ID: clientId, XINGSHANTANG_CMS_API_SECRET: secret } = env;
+  if (!baseUrl || !clientId || !secret) return null;
+  return new MainSiteDraftSyncService(
+    publicationRepository,
+    new XingshantangCmsClient({ baseUrl, clientId, secret })
+  );
+}
+
+function canWriteContent(res: any): boolean {
+  return Array.isArray(res.locals.projectMembership.capabilities)
+    ? res.locals.projectMembership.capabilities.includes('CONTENT_WRITE')
+    : ['OWNER', 'ADMIN', 'EDITOR'].includes(res.locals.projectMembership.role);
 }
 
 export const publicationWebRoutes = Router();
@@ -283,6 +305,58 @@ publicationWebRoutes.get('/projects/:id/publication/drafts/:draftId/manual-site-
           : ['OWNER', 'ADMIN', 'EDITOR'].includes(res.locals.projectMembership.role)
       });
     } catch (error) { next(error); }
+  }
+);
+
+publicationWebRoutes.get('/projects/:id/publication/drafts/:draftId/main-site-draft-sync',
+  requireAuthentication(), requireProjectMembership(), requireProjectCapability('PROJECT_READ'), async (req, res, next) => {
+    try {
+      const model = await publicationWebRepository.getDraft(routeParam(req.params.id), routeParam(req.params.draftId));
+      if (!model) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
+      const existing = model.draft.mainSiteDraftSyncs.find((sync) => sync.draftVersion === model.draft.currentVersion) ?? null;
+      render(res, 'publication/main-site-draft-sync', {
+        currentProjectId: model.project.id,
+        ...model,
+        existing,
+        sections: MAIN_SITE_SECTIONS,
+        selectedSection: '六壬文化',
+        configured: Boolean(mainSiteDraftSyncService()),
+        canWrite: canWriteContent(res),
+        error: null,
+        csrfToken: csrfTokenFor(req, res)
+      });
+    } catch (error) { next(error); }
+  }
+);
+
+publicationWebRoutes.post('/projects/:id/publication/drafts/:draftId/main-site-draft-sync',
+  requireAuthentication(), requireCsrf(), requireProjectMembership(), requireProjectCapability('CONTENT_WRITE'), async (req, res, next) => {
+    const projectId = routeParam(req.params.id); const draftId = routeParam(req.params.draftId);
+    const values = objectRecord(req.body); delete values._csrf;
+    try {
+      const { section } = mainSiteDraftSyncFormSchema.parse(values);
+      const service = mainSiteDraftSyncService();
+      if (!service) throw new AppError('Main-site CMS connection is not configured', 503, 'MAIN_SITE_CMS_NOT_CONFIGURED');
+      await service.syncDraftVersion({ projectId, draftId, section, actorId: req.auth!.userId });
+      res.redirect(303, `/projects/${projectId}/publication/drafts/${draftId}/main-site-draft-sync?success=1`);
+    } catch (error) {
+      if (!(error instanceof z.ZodError || error instanceof MainSiteDraftSyncServiceError || error instanceof XingshantangCmsError || error instanceof AppError)) return next(error);
+      const model = await publicationWebRepository.getDraft(projectId, draftId).catch(() => null);
+      if (!model) return next(error);
+      const existing = model.draft.mainSiteDraftSyncs.find((sync) => sync.draftVersion === model.draft.currentVersion) ?? null;
+      res.status(error instanceof z.ZodError ? 400 : 409);
+      render(res, 'publication/main-site-draft-sync', {
+        currentProjectId: model.project.id,
+        ...model,
+        existing,
+        sections: MAIN_SITE_SECTIONS,
+        selectedSection: typeof values.section === 'string' && MAIN_SITE_SECTIONS.includes(values.section as typeof MAIN_SITE_SECTIONS[number]) ? values.section : '六壬文化',
+        configured: Boolean(mainSiteDraftSyncService()),
+        canWrite: canWriteContent(res),
+        error: error instanceof z.ZodError ? '请选择有效的主站栏目。' : error.message,
+        csrfToken: csrfTokenFor(req, res)
+      });
+    }
   }
 );
 
