@@ -54,6 +54,39 @@
 <section class="panel"><div class="panel-header"><div><h2>Visibility 指标</h2><p class="muted">尚无完成的 P6-C metric snapshot。页面访问不会触发采样或指标计算。</p></div></div></section>
 <% } %>
 
+<section class="panel">
+  <div class="panel-header"><div><h2>采样预算设置</h2><p class="muted">金额以 USD 计；设置预算后，采样 worker 会在每次官方 API 请求前预检。</p></div></div>
+  <form method="post" action="/projects/<%= project.id %>/visibility/settings" class="form-grid">
+    <label>每日预算（USD）<input name="dailyBudgetUsd" inputmode="decimal" value="<%= settings?.dailyBudgetMicros == null ? '' : (settings.dailyBudgetMicros / 1000000).toFixed(6).replace(/0+$/, '').replace(/\.$/, '') %>" placeholder="例如 2" /></label>
+    <label>默认单次预算（USD）<input name="defaultRunBudgetUsd" inputmode="decimal" value="<%= settings?.defaultRunBudgetMicros == null ? '' : (settings.defaultRunBudgetMicros / 1000000).toFixed(6).replace(/0+$/, '').replace(/\.$/, '') %>" placeholder="例如 0.5" /></label>
+    <label>每次最多观察数<input name="maxObservationsPerRun" type="number" min="1" max="500" required value="<%= settings?.maxObservationsPerRun ?? 100 %>" /></label>
+    <label class="checkbox"><input name="schedulingEnabled" type="checkbox" <%= settings?.schedulingEnabled ? 'checked' : '' %> /> 定时采样策略已启用（调度器接入前不会自动发起请求）</label>
+    <div class="form-actions"><button type="submit">保存采样设置</button></div>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="panel-header"><div><h2>启动一次采样</h2><p class="muted">仅对已选 Prompt Set 和启用的官方 API Provider 创建一次受预算保护的采样运行。</p></div></div>
+  <% const enabledProviders = providers.filter((provider) => provider.enabled && provider.channel === 'API'); %>
+  <form method="post" action="/projects/<%= project.id %>/visibility/runs" class="form-grid">
+    <label>监测查询组
+      <select name="promptSetId" required>
+        <option value="">选择 Prompt Set</option>
+        <% for (const promptSet of promptSets) { %><option value="<%= promptSet.id %>"><%= promptSet.name %>（<%= promptSet.defaultLocale ?? '默认语言' %> / <%= promptSet.defaultCountry ?? '默认地区' %>）</option><% } %>
+      </select>
+    </label>
+    <label>Provider
+      <select name="providerConfigId" required>
+        <option value="">选择 Provider</option>
+        <% for (const provider of enabledProviders) { %><option value="<%= provider.id %>"><%= provider.provider %> · <%= provider.model %> · <%= provider.groundingMode %></option><% } %>
+      </select>
+    </label>
+    <label>本次观察数上限<input name="maxObservations" type="number" min="1" max="500" required value="1" /></label>
+    <label>本次预算上限（USD，可留空使用默认单次预算）<input name="budgetCeilingUsd" inputmode="decimal" placeholder="例如 0.4" /></label>
+    <div class="form-actions"><button type="submit" <%= enabledProviders.length && promptSets.length ? '' : 'disabled' %>>创建并启动采样</button></div>
+  </form>
+</section>
+
 <section class="metric-grid compact analysis-metric-grid">
   <article class="metric-card">
     <div class="metric-title">Provider 配置</div>

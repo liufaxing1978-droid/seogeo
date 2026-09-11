@@ -1,10 +1,15 @@
 import request from 'supertest';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../../src/app.js';
 import { prisma } from '../../src/db/prisma.js';
+import { visibilityRunService } from '../../src/modules/visibility/visibility-run.service.js';
 
 beforeEach(async () => {
   await prisma.project.deleteMany();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 async function createVisibilityWebFixture() {
@@ -129,10 +134,81 @@ describe('P6-A AI Visibility web UI', () => {
     expect(response.text).toContain('预算');
     expect(response.text).toContain(`/projects/${project.id}/visibility/prompts`);
     expect(response.text).toContain(`/projects/${project.id}/visibility/runs/${run.id}`);
+    expect(response.text).toContain('采样预算设置');
+    expect(response.text).toContain('启动一次采样');
+    expect(response.text).toContain(`action="/projects/${project.id}/visibility/settings"`);
+    expect(response.text).toContain(`action="/projects/${project.id}/visibility/runs"`);
     expect(response.text).not.toContain('ChatGPT 网页端排名');
     expect(response.text).not.toContain('Mention Rate');
     expect(response.text).not.toContain('Citation Rate');
     expect(response.text).not.toContain('<div class="metric-title">Share of Voice</div>');
+  });
+
+  it('saves a budget and queues a selected manual sampling run from the visibility center', async () => {
+    const { project, provider, promptSet } = await createVisibilityWebFixture();
+    const queuedRun = { id: 'queued-run-id' };
+    const createManualRun = vi.spyOn(visibilityRunService, 'createManualRun').mockResolvedValue(queuedRun as never);
+
+    await request(createApp())
+      .post(`/projects/${project.id}/visibility/settings`)
+      .type('form')
+      .send({
+        dailyBudgetUsd: '2',
+        defaultRunBudgetUsd: '0.5',
+        maxObservationsPerRun: '10',
+        schedulingEnabled: 'on'
+      })
+      .expect(303)
+      .expect('Location', `/projects/${project.id}/visibility`);
+
+    const settings = await prisma.visibilityProjectSettings.findUniqueOrThrow({ where: { projectId: project.id } });
+    expect(settings).toMatchObject({
+      dailyBudgetMicros: 2_000_000,
+      defaultRunBudgetMicros: 500_000,
+      maxObservationsPerRun: 10,
+      schedulingEnabled: true
+    });
+
+    await request(createApp())
+      .post(`/projects/${project.id}/visibility/runs`)
+      .type('form')
+      .send({
+        promptSetId: promptSet.id,
+        providerConfigId: provider.id,
+        maxObservations: '4',
+        budgetCeilingUsd: '0.4'
+      })
+      .expect(303)
+      .expect('Location', `/projects/${project.id}/visibility/runs/${queuedRun.id}`);
+
+    expect(createManualRun).toHaveBeenCalledWith(project.id, {
+      promptSetId: promptSet.id,
+      providerConfigIds: [provider.id],
+      maxObservations: 4,
+      budgetCeilingMicros: 400_000
+    });
+  });
+
+  it('does not queue paid sampling when neither a run nor default budget is configured', async () => {
+    const { project, provider, promptSet } = await createVisibilityWebFixture();
+    await prisma.visibilityProjectSettings.update({
+      where: { projectId: project.id },
+      data: { defaultRunBudgetMicros: null }
+    });
+    const createManualRun = vi.spyOn(visibilityRunService, 'createManualRun');
+
+    await request(createApp())
+      .post(`/projects/${project.id}/visibility/runs`)
+      .type('form')
+      .send({
+        promptSetId: promptSet.id,
+        providerConfigId: provider.id,
+        maxObservations: '1'
+      })
+      .expect(400)
+      .expect(({ body }) => expect(body.error.code).toBe('VISIBILITY_BUDGET_REQUIRED'));
+
+    expect(createManualRun).not.toHaveBeenCalled();
   });
 
   it('renders Prompt Monitor with immutable-version wording and project-scoped creation forms', async () => {

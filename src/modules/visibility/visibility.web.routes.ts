@@ -3,6 +3,8 @@ import { hasFeature, type Feature } from '../../auth/feature-flags.js';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
 import { visibilityPromptService } from './visibility-prompts.service.js';
+import { visibilityRunService } from './visibility-run.service.js';
+import { visibilitySettingsService } from './visibility-settings.service.js';
 import { visibilityWebRepository } from './visibility.web.repository.js';
 
 async function requireVisibilityProject(projectId: string, feature: Feature) {
@@ -23,6 +25,29 @@ function optionalText(value: unknown) {
   return trimmed || null;
 }
 
+function parseUsdMicros(value: unknown, field: string) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return null;
+  const match = /^(\d+)(?:\.(\d{1,6}))?$/.exec(text);
+  if (!match) throw new AppError(`${field} must be a non-negative USD amount with at most 6 decimal places`, 400, 'INVALID_VISIBILITY_BUDGET');
+  const whole = Number(match[1]);
+  const fraction = Number((match[2] ?? '').padEnd(6, '0'));
+  if (!Number.isSafeInteger(whole) || whole > 9_000_000_000 || !Number.isSafeInteger(whole * 1_000_000 + fraction)) {
+    throw new AppError(`${field} is too large`, 400, 'INVALID_VISIBILITY_BUDGET');
+  }
+  return whole * 1_000_000 + fraction;
+}
+
+function parseInteger(value: unknown, field: string, min: number, max: number) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!/^\d+$/.test(text)) throw new AppError(`${field} must be an integer`, 400, 'INVALID_VISIBILITY_FORM');
+  const parsed = Number(text);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new AppError(`${field} must be between ${min} and ${max}`, 400, 'INVALID_VISIBILITY_FORM');
+  }
+  return parsed;
+}
+
 export const visibilityWebRoutes = Router();
 
 visibilityWebRoutes.get('/projects/:id/visibility', async (req, res, next) => {
@@ -38,6 +63,39 @@ visibilityWebRoutes.get('/projects/:id/visibility', async (req, res, next) => {
       bodyTemplate: 'visibility/index',
       ...data
     });
+  } catch (error) { next(error); }
+});
+
+visibilityWebRoutes.post('/projects/:id/visibility/settings', async (req, res, next) => {
+  try {
+    await requireVisibilityProject(req.params.id, 'AI_VISIBILITY');
+    await visibilitySettingsService.update(req.params.id, {
+      dailyBudgetMicros: parseUsdMicros(req.body.dailyBudgetUsd, 'dailyBudgetUsd'),
+      defaultRunBudgetMicros: parseUsdMicros(req.body.defaultRunBudgetUsd, 'defaultRunBudgetUsd'),
+      maxObservationsPerRun: parseInteger(req.body.maxObservationsPerRun, 'maxObservationsPerRun', 1, 500),
+      defaultCurrency: 'USD',
+      schedulingEnabled: req.body.schedulingEnabled === 'on'
+    });
+    res.redirect(303, `/projects/${req.params.id}/visibility`);
+  } catch (error) { next(error); }
+});
+
+visibilityWebRoutes.post('/projects/:id/visibility/runs', async (req, res, next) => {
+  try {
+    await requireVisibilityProject(req.params.id, 'AI_VISIBILITY');
+    const settings = await visibilitySettingsService.getOrCreate(req.params.id);
+    const budgetCeilingMicros = parseUsdMicros(req.body.budgetCeilingUsd, 'budgetCeilingUsd');
+    if (budgetCeilingMicros === null && settings.defaultRunBudgetMicros === null) {
+      throw new AppError('Configure a run budget before starting paid sampling', 400, 'VISIBILITY_BUDGET_REQUIRED');
+    }
+    const providerConfigId = typeof req.body.providerConfigId === 'string' ? req.body.providerConfigId : '';
+    const run = await visibilityRunService.createManualRun(req.params.id, {
+      promptSetId: typeof req.body.promptSetId === 'string' ? req.body.promptSetId : '',
+      providerConfigIds: [providerConfigId],
+      maxObservations: parseInteger(req.body.maxObservations, 'maxObservations', 1, 500),
+      budgetCeilingMicros
+    });
+    res.redirect(303, `/projects/${req.params.id}/visibility/runs/${run.id}`);
   } catch (error) { next(error); }
 });
 

@@ -33,11 +33,15 @@ export class VisibilityWebRepository {
     });
     if (!project) return null;
 
-    const [settings, providers, promptSetCount, promptCount, recentRuns, observationCount, spend, latestSnapshot, openAlertCount] = await Promise.all([
+    const [settings, providers, promptSets, promptSetCount, promptCount, recentRuns, observationCount, spend, latestSnapshot, openAlertCount] = await Promise.all([
       prisma.visibilityProjectSettings.findUnique({ where: { projectId } }),
       prisma.visibilityProviderConfig.findMany({
         where: { projectId },
         orderBy: [{ provider: 'asc' }, { model: 'asc' }, { id: 'asc' }]
+      }),
+      prisma.visibilityPromptSet.findMany({
+        where: { projectId, status: 'ACTIVE' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }]
       }),
       prisma.visibilityPromptSet.count({ where: { projectId } }),
       prisma.visibilityPrompt.count({ where: { projectId } }),
@@ -135,6 +139,7 @@ export class VisibilityWebRepository {
       project,
       settings,
       providers,
+      promptSets,
       promptSetCount,
       promptCount,
       recentRuns,
