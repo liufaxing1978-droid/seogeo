@@ -10,6 +10,7 @@ import { MainSiteDraftSyncService, MainSiteDraftSyncServiceError } from './main-
 import { PublicationServiceError, publicationService } from './publication.service.js';
 import { publicationRepository } from './publication.repository.js';
 import { publicationWebRepository } from './publication.web.repository.js';
+import { suggestPendingSourceReferences } from './source-reference-suggestions.js';
 import { MAIN_SITE_SECTIONS, XingshantangCmsClient, XingshantangCmsError } from './xingshantang-cms.client.js';
 
 function routeParam(value: string | string[]): string {
@@ -57,6 +58,10 @@ const sourceReferenceFormSchema = z.object({
   sourceType: z.string().trim().min(1).max(64),
   author: z.string().trim().max(300).optional(),
   publisher: z.string().trim().max(300).optional()
+}).strict();
+
+const sourceSuggestionSelectionSchema = z.object({
+  selected: z.union([z.string().min(1).max(500), z.array(z.string().min(1).max(500)).max(10)]).optional()
 }).strict();
 
 const permanentDeleteFormSchema = z.object({
@@ -518,6 +523,51 @@ publicationWebRoutes.get(
         errors: {},
         csrfToken: csrfTokenFor(req, res)
       });
+    } catch (error) { next(error); }
+  }
+);
+
+publicationWebRoutes.get(
+  '/projects/:id/publication/drafts/:draftId/sources/suggestions',
+  requireAuthentication(),
+  requireProjectMembership(),
+  requireProjectCapability('CONTENT_WRITE'),
+  async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.id);
+      const draftId = routeParam(req.params.draftId);
+      const model = await publicationWebRepository.getDraft(projectId, draftId);
+      if (!model) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
+      render(res, 'publication/source-reference-suggestions', {
+        currentProjectId: model.project.id,
+        project: model.project,
+        draft: model.draft,
+        suggestions: suggestPendingSourceReferences(model.draft),
+        csrfToken: csrfTokenFor(req, res)
+      });
+    } catch (error) { next(error); }
+  }
+);
+
+publicationWebRoutes.post(
+  '/projects/:id/publication/drafts/:draftId/sources/suggestions',
+  requireAuthentication(),
+  requireCsrf(),
+  requireProjectMembership(),
+  requireProjectCapability('CONTENT_WRITE'),
+  async (req, res, next) => {
+    try {
+      const projectId = routeParam(req.params.id);
+      const draftId = routeParam(req.params.draftId);
+      const model = await publicationWebRepository.getDraft(projectId, draftId);
+      if (!model) throw new NotFoundError('Content draft not found', 'PUBLICATION_DRAFT_NOT_FOUND');
+      const parsed = sourceSuggestionSelectionSchema.parse(objectRecord(req.body));
+      const selected = new Set(Array.isArray(parsed.selected) ? parsed.selected : parsed.selected ? [parsed.selected] : []);
+      for (const source of suggestPendingSourceReferences(model.draft)) {
+        if (!selected.has(source.title)) continue;
+        await publicationService.addSourceReference(draftId, { ...source, userProvided: true });
+      }
+      res.redirect(303, `/projects/${projectId}/publication/drafts/${draftId}`);
     } catch (error) { next(error); }
   }
 );

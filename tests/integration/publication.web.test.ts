@@ -85,4 +85,34 @@ describe('manual publication drafts web UI', () => {
     expect(draft.sourceProposal).toMatchObject({ sourceType: 'MANUAL', reason: '为品牌词伏英馆创建独立的人工草稿。' });
     expect(draft.plans).toHaveLength(0);
   });
+
+  it('shows pending source suggestions without writing them to the draft', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OWNER',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE'
+    });
+    fixtures.push(fixture);
+    const draft = await prisma.contentDraft.create({
+      data: {
+        projectId: fixture.project.id,
+        title: '六壬伏英馆文化导读',
+        slugCandidate: 'fuyingguan-sources',
+        body: '六壬伏英馆在广东、香港及南洋传播，并与民间信仰和符籙文化相关。',
+        language: 'zh-CN',
+        generatedBy: 'HUMAN'
+      }
+    });
+
+    const response = await request(app)
+      .get(`/projects/${fixture.project.id}/publication/drafts/${draft.id}/sources/suggestions`)
+      .set('Cookie', fixture.sessionCookie);
+
+    expect(response.status).toBe(200);
+    expect(response.text).toContain('生成的待核验引用');
+    expect(response.text).toContain('六壬伏英馆的门内传承与坛馆资料');
+    expect(response.text).toContain('保存选中来源');
+    expect(await prisma.contentSourceReference.count({ where: { draftId: draft.id } })).toBe(0);
+  });
 });

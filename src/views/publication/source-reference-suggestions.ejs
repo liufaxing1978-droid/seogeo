@@ -1,0 +1,18 @@
+<section class="page-header">
+  <div>
+    <p class="eyebrow">Content Draft Source</p>
+    <h1>生成的待核验引用</h1>
+    <p class="muted">依据正文主题生成。不会添加网址、作者或出版方，也不会伪造外部来源。</p>
+  </div>
+  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>">返回草稿</a></div>
+</section>
+<section class="panel">
+  <form method="post" action="/projects/<%= project.id %>/publication/drafts/<%= draft.id %>/sources/suggestions">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <% for (const source of suggestions) { %>
+      <label class="check-row"><input type="checkbox" name="selected" value="<%= source.title %>" checked> <strong><%= source.title %></strong> · <%= source.sourceType %> · 待补充真实资料</label>
+    <% } %>
+    <p class="muted">保存后仅添加你勾选的条目；文章正文、版本和主站草稿不会变化。</p>
+    <p><button class="button" type="submit">保存选中来源</button></p>
+  </form>
+</section>
