@@ -344,7 +344,7 @@ publicationWebRoutes.post('/projects/:id/publication/drafts/:draftId/main-site-d
       const model = await publicationWebRepository.getDraft(projectId, draftId).catch(() => null);
       if (!model) return next(error);
       const existing = model.draft.mainSiteDraftSyncs.find((sync) => sync.draftVersion === model.draft.currentVersion) ?? null;
-      res.status(error instanceof z.ZodError ? 400 : 409);
+      res.status(error instanceof z.ZodError ? 400 : error instanceof AppError ? error.status : 409);
       render(res, 'publication/main-site-draft-sync', {
         currentProjectId: model.project.id,
         ...model,

@@ -21,7 +21,7 @@
 
 ---
 
-### Task 1: 保护主站文章 API 的重复 slug 创建
+### Task 1: 保护主站文章 API 的重复 slug 创建（代码与定向测试完成；等待服务器连接恢复后发布）
 
 **Files:**
 - Modify: `/var/www/xingshantang/current/server/routes/api-articles.js:48-65`
@@ -77,7 +77,7 @@ Run: 使用主站既有 release 脚本创建新 release、切换 `current`、`pm
 
 Expected: 站点健康正常，主站后台既有内容不变。
 
-### Task 2: 增加 SEO GEO 的 CMS 配置与签名客户端
+### Task 2: 增加 SEO GEO 的 CMS 配置与签名客户端（完成）
 
 **Files:**
 - Modify: `src/config/env.ts`
@@ -141,7 +141,7 @@ git add src/config/env.ts src/modules/publication/xingshantang-cms.client.ts tes
 git commit -m "feat: add signed main-site draft client"
 ```
 
-### Task 3: 持久化每个内容版本的同步结果
+### Task 3: 持久化每个内容版本的同步结果（完成）
 
 **Files:**
 - Modify: `prisma/models/publication.prisma`
@@ -209,7 +209,7 @@ git add prisma src/modules/publication/main-site-draft-sync.service.ts tests/int
 git commit -m "feat: persist main-site draft syncs"
 ```
 
-### Task 4: 加入受保护的页面操作与栏目选择
+### Task 4: 加入受保护的页面操作与栏目选择（完成，待生产验证）
 
 **Files:**
 - Modify: `src/modules/publication/publication.web.repository.ts`
