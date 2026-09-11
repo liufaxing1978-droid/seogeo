@@ -25,7 +25,7 @@
 **Files:**
 - Modify: `/var/www/xingshantang/current/server/db/repositories/articles.js`
 - Modify: `/var/www/xingshantang/current/server/routes/api-articles.js`
-- Modify: `/var/www/xingshantang/current/server/views/site/article.ejs`
+- Modify: `/var/www/xingshantang/current/server/routes/site.js`
 - Test: `/var/www/xingshantang/current/tests/http/api-articles.test.js`
 
 **Interfaces:**
@@ -36,7 +36,7 @@
 - [ ] **Step 2: Run the focused main-site test file** and confirm each new assertion fails before implementation.
 - [ ] **Step 3: Add `schemaJson: input.schemaJson || null` to article creation and repository update handling.**
 - [ ] **Step 4: Add `validateSchemaJson` in `api-articles.js` and implement `PUT /:id/schema`; reject absent/deleted with 404, non-draft with 409, malformed JSON-LD with 400; snapshot then persist only `schemaJson`.**
-- [ ] **Step 5: In `article.ejs`, conditionally render `<script type="application/ld+json">` only when `article.status === 'published'`; serialize with `JSON.stringify(schemaJson).replaceAll('<', '\\u003c')`.**
+- [ ] **Step 5: In `site.js`, retain the existing generated `Article` object and pass `[defaultArticleSchema, article.schemaJson]` to the existing site layout only for a published article with valid Schema; retain the layout's escaped JSON serialization.**
 - [ ] **Step 6: Re-run focused tests and `npm test`; reload PM2 only after HTTP checks are green.**
 - [ ] **Step 7: Commit** with `feat: support schema on main-site draft articles`.
 
