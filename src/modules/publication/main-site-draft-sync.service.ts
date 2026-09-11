@@ -35,7 +35,7 @@ export interface MainSiteDraftSyncRepository {
 
 export interface MainSiteDraftCmsClient {
   createDraft(input: CreateMainSiteDraftInput): Promise<{ articleId: string; status: 'draft' }>;
-  updateDraftSchema(input: UpdateMainSiteDraftSchemaInput): Promise<{ articleId: string; status: 'draft' }>;
+  updateDraftSchema(input: UpdateMainSiteDraftSchemaInput): Promise<{ articleId: string; status: 'draft' | 'published' }>;
 }
 
 export class MainSiteDraftSyncServiceError extends Error {

@@ -14,7 +14,10 @@ export type UpdateMainSiteDraftSchemaInput = { articleId: string; schemaJson: Re
 type FetchLike = typeof fetch;
 type ClientRuntime = { now?: () => number; nonce?: () => string };
 
-const successSchema = z.object({ article: z.object({ id: z.string().min(1), status: z.literal('draft') }) });
+const createDraftSuccessSchema = z.object({ article: z.object({ id: z.string().min(1), status: z.literal('draft') }) });
+const schemaUpdateSuccessSchema = z.object({
+  article: z.object({ id: z.string().min(1), status: z.enum(['draft', 'published']) }),
+});
 const errorSchema = z.object({ error: z.object({ code: z.string().min(1) }).passthrough() });
 
 export class XingshantangCmsError extends Error {
@@ -104,14 +107,14 @@ export class XingshantangCmsClient {
     try { payload = await response.json(); } catch {
       throw new XingshantangCmsError('Main-site CMS returned an invalid response', 'XINGSHANTANG_CMS_INVALID_RESPONSE', response.status, false);
     }
-    const parsed = successSchema.safeParse(payload);
+    const parsed = createDraftSuccessSchema.safeParse(payload);
     if (!parsed.success) {
       throw new XingshantangCmsError('Main-site CMS returned an invalid response', 'XINGSHANTANG_CMS_INVALID_RESPONSE', response.status, false);
     }
     return { articleId: parsed.data.article.id, status: parsed.data.article.status };
   }
 
-  async updateDraftSchema(input: UpdateMainSiteDraftSchemaInput): Promise<{ articleId: string; status: 'draft' }> {
+  async updateDraftSchema(input: UpdateMainSiteDraftSchemaInput): Promise<{ articleId: string; status: 'draft' | 'published' }> {
     const path = `/api/v1/articles/${encodeURIComponent(input.articleId)}/schema`;
     const body = JSON.stringify({ schemaJson: input.schemaJson });
     const timestamp = String(this.now());
@@ -130,7 +133,7 @@ export class XingshantangCmsClient {
     if (response.status !== 200) {
       throw new XingshantangCmsError('Main-site CMS rejected the Schema update', 'XINGSHANTANG_CMS_SCHEMA_UPDATE_FAILED', response.status, response.status >= 500 || response.status === 429);
     }
-    const parsed = successSchema.safeParse(await response.json().catch(() => null));
+    const parsed = schemaUpdateSuccessSchema.safeParse(await response.json().catch(() => null));
     if (!parsed.success) throw new XingshantangCmsError('Main-site CMS returned an invalid response', 'XINGSHANTANG_CMS_INVALID_RESPONSE', response.status, false);
     return { articleId: parsed.data.article.id, status: parsed.data.article.status };
   }

@@ -40,6 +40,17 @@ describe('XingshantangCmsClient', () => {
     expect(init?.body).toBe(JSON.stringify({ schemaJson }));
   });
 
+  it('accepts a published article response when updating Schema', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({
+      article: { id: 'main-article-published', status: 'published' },
+    }, 200));
+    const client = new XingshantangCmsClient(config, fetchImpl);
+    const schemaJson = { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: [] };
+
+    await expect(client.updateDraftSchema({ articleId: 'main-article-published', schemaJson }))
+      .resolves.toEqual({ articleId: 'main-article-published', status: 'published' });
+  });
+
   it('creates a main-site draft with the exact signed payload and never exposes the secret in the URL', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({
       article: { id: 'main-article-1', status: 'draft' },
