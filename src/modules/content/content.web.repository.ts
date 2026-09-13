@@ -33,6 +33,10 @@ async function attachEvidenceSnapshots<T extends { evidence: unknown; projectId:
   }));
 }
 
+function isContentUrl(value: string): boolean {
+  try { return !new URL(value).pathname.toLowerCase().startsWith('/cdn-cgi/'); } catch { return false; }
+}
+
 export const contentWebRepository = {
   async getCenter(projectId: string) {
     const project = await prisma.project.findUnique({ where: { id: projectId } });
@@ -42,17 +46,22 @@ export const contentWebRepository = {
         where: { projectId },
         include: { _count: { select: { signals: true, opportunities: true, briefs: true } } },
         orderBy: [{ extractedAt: 'desc' }, { canonicalUrl: 'asc' }],
-        take: 100
+        take: 120
       }),
       prisma.contentOpportunity.findMany({
         where: { projectId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
         include: { document: { select: { id: true, canonicalUrl: true, title: true } } },
         orderBy: [{ priority: 'desc' }, { lastDetectedAt: 'desc' }],
-        take: 50
+        take: 70
       }),
       prisma.contentBrief.findMany({ where: { projectId }, orderBy: { createdAt: 'desc' }, take: 20 })
     ]);
-    return { project, documents, openOpportunities, briefs };
+    return {
+      project,
+      documents: documents.filter((document) => isContentUrl(document.canonicalUrl)).slice(0, 100),
+      openOpportunities: openOpportunities.filter((opportunity) => isContentUrl(opportunity.document.canonicalUrl)).slice(0, 50),
+      briefs
+    };
   },
 
   async getDocument(projectId: string, documentId: string) {

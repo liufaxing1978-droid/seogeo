@@ -44,3 +44,7 @@ export function isInProjectScope(url: URL, primaryDomain: string): boolean {
 
   return host === bare || host === `www.${bare}`;
 }
+
+export function isCrawlablePageUrl(url: URL): boolean {
+  return !url.pathname.toLowerCase().startsWith('/cdn-cgi/');
+}

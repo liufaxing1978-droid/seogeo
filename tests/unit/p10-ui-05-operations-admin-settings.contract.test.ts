@@ -48,6 +48,7 @@ describe('P10 UI-05 optimization, members, settings contract', () => {
     expect(view).toContain('LAST_PROJECT_OWNER_REQUIRED');
     expect(view).toContain('PROJECT_MEMBER_MANAGE_BASIC');
     expect(view).toContain('PROJECT_MEMBER_MANAGE_ALL');
+    expect(view).toContain("role === 'VIEWER' ? 'selected' : ''");
   });
 
   it('keeps member mutations behind existing CSRF/capability/service boundaries', () => {

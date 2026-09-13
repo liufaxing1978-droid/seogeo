@@ -106,6 +106,9 @@ describe('P7-A Search Console settings web UI', () => {
     expect(response.text).not.toContain(credential.id);
     expect(response.text).not.toContain('ciphertext');
     expect(response.text).not.toContain('refresh_token');
+    expect(response.text).toContain('选择或更换 Property');
+    expect(response.text).toContain('重新连接 Google Account');
+    expect(response.text).toContain('/assets/js/search-console-settings.js');
   });
 
   it('renders NOT_CONNECTED without touching OAuth configuration', async () => {
@@ -114,5 +117,7 @@ describe('P7-A Search Console settings web UI', () => {
     expect(response.text).toContain('NOT_CONNECTED');
     expect(response.text).toContain('连接 Google Search Console');
     expect(response.text).toContain('只读');
+    expect(response.text).toContain('data-search-console-connect');
+    expect(response.text).toContain('/assets/js/search-console-settings.js');
   });
 });

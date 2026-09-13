@@ -3,6 +3,10 @@ import { prisma } from '../../db/prisma.js';
 import type { EvaluatedContentRule } from './content-rules.js';
 import type { ContentDocumentRecord, ContentFacts, ContentPageSource } from './content.types.js';
 
+function isContentPageUrl(value: string): boolean {
+  try { return !new URL(value).pathname.toLowerCase().startsWith('/cdn-cgi/'); } catch { return false; }
+}
+
 export interface ContentRepository {
   listLatestOwnedPageSources(projectId: string): Promise<ContentPageSource[]>;
   upsertContentDocument(facts: ContentFacts): Promise<ContentDocumentRecord>;
@@ -25,7 +29,7 @@ export const contentRepository: ContentRepository = {
     const latest = new Map<string, (typeof snapshots)[number]>();
     for (const snapshot of snapshots) if (!latest.has(snapshot.pageId)) latest.set(snapshot.pageId, snapshot);
 
-    return [...latest.values()].map((snapshot) => ({
+    return [...latest.values()].filter((snapshot) => isContentPageUrl(snapshot.page.normalizedUrl)).map((snapshot) => ({
       projectId: snapshot.page.projectId,
       pageId: snapshot.page.id,
       normalizedUrl: snapshot.page.normalizedUrl,

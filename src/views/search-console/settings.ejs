@@ -1,4 +1,5 @@
 <% const fmt = (value) => value ? new Date(value).toLocaleString('zh-CN') : '—'; %>
+<div data-search-console-root data-project-id="<%= project.id %>">
 <section class="page-header">
   <div>
     <p class="eyebrow">P7-A · Search Console</p>
@@ -44,7 +45,8 @@
     <div class="empty-state">
       <h3>尚未连接 Search Console</h3>
       <p>连接 Google Search Console 后，可选择项目对应的 Search Console Property 并同步只读搜索表现数据。</p>
-      <span class="button secondary" aria-disabled="true">连接 Google Search Console</span>
+      <button class="button secondary" type="button" data-search-console-connect>连接 Google Search Console</button>
+      <p class="muted" data-search-console-status aria-live="polite"></p>
     </div>
   <% } else { %>
     <div class="table-wrap"><table>
@@ -54,8 +56,20 @@
         <tr><th>权限</th><td><%= property?.permissionState ?? '—' %></td><th>当前状态</th><td><strong><%= uiState %></strong></td></tr>
       </tbody>
     </table></div>
+    <div class="actions" style="margin-top: 1rem">
+      <button class="button secondary" type="button" data-search-console-properties>选择或更换 Property</button>
+      <button class="button secondary" type="button" data-search-console-reconnect>重新连接 Google Account</button>
+      <button class="button danger" type="button" data-search-console-disconnect>断开连接</button>
+    </div>
+    <div data-search-console-property-picker hidden style="margin-top: 1rem">
+      <label for="search-console-property">可用 Property</label>
+      <select id="search-console-property" data-search-console-property></select>
+      <button class="button" type="button" data-search-console-bind-property>确认选择</button>
+    </div>
+    <p class="muted" data-search-console-status aria-live="polite"></p>
   <% } %>
 </section>
+</div>
 
 <section class="panel">
   <div class="panel-header"><div><h2>同步健康</h2><p class="muted">Growth V1 使用两个连续 28 天稳定窗口；缺失日期不会被当作 0。</p></div></div>

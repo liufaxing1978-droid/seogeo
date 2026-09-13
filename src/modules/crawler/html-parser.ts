@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import * as cheerio from 'cheerio';
-import { isInProjectScope, normalizeCrawlUrl } from './url-normalizer.js';
+import { isCrawlablePageUrl, isInProjectScope, normalizeCrawlUrl } from './url-normalizer.js';
 
 export type StructuredEntityRole =
   | 'ROOT'
@@ -169,7 +169,7 @@ function collectLinks($: cheerio.CheerioAPI, pageUrl: string) {
     }
 
     const url = new URL(normalized);
-    if (isInProjectScope(url, primaryDomain)) {
+    if (isInProjectScope(url, primaryDomain) && isCrawlablePageUrl(url)) {
       internalLinksCount += 1;
       if (!internalSeen.has(normalized)) {
         internalSeen.add(normalized);

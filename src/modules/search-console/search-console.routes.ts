@@ -106,6 +106,9 @@ export function createSearchConsoleRoutes(injectedService?: SearchConsoleService
     try {
       const input = callbackQuerySchema.parse(req.query);
       const data = await service().completeGoogleOAuth(input.code, input.state);
+      if (req.get('accept')?.includes('text/html')) {
+        return res.redirect(303, `/projects/${encodeURIComponent(data.projectId)}/search-console?connected=1`);
+      }
       res.json({ data });
     } catch (error) {
       try { asAppError(error); } catch (mapped) { next(mapped); }

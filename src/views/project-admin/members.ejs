@@ -108,7 +108,7 @@
         <div>
           <p class="eyebrow">Existing user only</p>
           <h2>添加或重新激活成员</h2>
-          <p class="muted">此入口不会创建新账号或开放 public signup；目标邮箱必须对应现有 ACTIVE User。</p>
+          <p class="muted">此入口不会创建新账号或开放 public signup；目标邮箱必须对应现有 ACTIVE User。默认角色为权限最低的 VIEWER，请仅在确有管理需要时提升权限。</p>
         </div>
       </div>
       <form action="/projects/<%= project.id %>/members" method="post" class="form-grid admin-member-form">
@@ -117,7 +117,7 @@
         <label>角色
           <select name="role" required>
             <% const addRoles = canManageAll ? ['OWNER', 'ADMIN', 'OPERATOR', 'VIEWER'] : ['OPERATOR', 'VIEWER']; %>
-            <% for (const role of addRoles) { %><option value="<%= role %>"><%= role %></option><% } %>
+            <% for (const role of addRoles) { %><option value="<%= role %>" <%= role === 'VIEWER' ? 'selected' : '' %>><%= role %></option><% } %>
           </select>
         </label>
         <div class="actions"><button class="button" type="submit">添加成员</button></div>

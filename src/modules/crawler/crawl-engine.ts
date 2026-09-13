@@ -5,7 +5,7 @@ import { fetchPage } from './http-fetcher.js';
 import { parseHtml, type ParsedPageSignals } from './html-parser.js';
 import { loadRobotsPolicy } from './robots.service.js';
 import { limitSitemapDocuments, parseSitemap } from './sitemap.service.js';
-import { isInProjectScope, normalizeCrawlUrl } from './url-normalizer.js';
+import { isCrawlablePageUrl, isInProjectScope, normalizeCrawlUrl } from './url-normalizer.js';
 import { assertPublicHttpTarget } from './network-policy.js';
 import {
   renderPage,
@@ -155,26 +155,27 @@ export async function executeCrawlRun(
         childSitemaps = parsed.sitemapUrls;
       }
 
+      const crawlableParsedUrls = parsedUrls.filter((entry) => isCrawlablePageUrl(new URL(entry.url)));
       const source = await repository.saveSitemapSource({
         crawlRunId,
         url: sitemapUrl,
         statusCode: factualStatus(sitemapFetch.statusCode),
         type: parsedType,
         parseError,
-        discoveredUrlCount: parsedType === 'URLSET' ? parsedUrls.length : childSitemaps.length
+        discoveredUrlCount: parsedType === 'URLSET' ? crawlableParsedUrls.length : childSitemaps.length
       });
 
-      if (parsedUrls.length > 0) {
+      if (crawlableParsedUrls.length > 0) {
         await repository.saveSitemapUrls(
           source.id,
-          parsedUrls.map((entry) => ({
+          crawlableParsedUrls.map((entry) => ({
             normalizedUrl: entry.url,
             lastmod: entry.lastmod,
             changefreq: entry.changefreq,
             priority: entry.priority
           }))
         );
-        sitemapPageUrls.push(...parsedUrls.map((entry) => entry.url));
+        sitemapPageUrls.push(...crawlableParsedUrls.map((entry) => entry.url));
       }
 
       for (const child of limitSitemapDocuments(childSitemaps, MAX_SITEMAP_DOCUMENTS)) {
@@ -196,6 +197,7 @@ export async function executeCrawlRun(
         return;
       }
       if (!isInProjectScope(new URL(normalized), primaryDomain)) return;
+      if (!isCrawlablePageUrl(new URL(normalized))) return;
       if (queued.has(normalized)) return;
       queued.add(normalized);
       frontier.push(normalized);

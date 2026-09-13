@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isInProjectScope, normalizeCrawlUrl } from '../../src/modules/crawler/url-normalizer.js';
+import { isCrawlablePageUrl, isInProjectScope, normalizeCrawlUrl } from '../../src/modules/crawler/url-normalizer.js';
 
 describe('normalizeCrawlUrl', () => {
   it('normalizes host, default port, fragment, and query ordering', () => {
@@ -57,5 +57,18 @@ describe('isInProjectScope', () => {
     'https://example.org/'
   ])('rejects external, unrelated subdomain, and look-alike hosts: %s', (input) => {
     expect(isInProjectScope(new URL(input), 'example.com')).toBe(false);
+  });
+});
+
+describe('isCrawlablePageUrl', () => {
+  it.each([
+    'https://example.com/cdn-cgi/l/email-protection',
+    'https://example.com/CDN-CGI/challenge-platform/h/g/orchestrate/chl_page/v1',
+  ])('rejects Cloudflare runtime endpoints: %s', (input) => {
+    expect(isCrawlablePageUrl(new URL(input))).toBe(false);
+  });
+
+  it('keeps ordinary public content paths crawlable', () => {
+    expect(isCrawlablePageUrl(new URL('https://example.com/articles/hello'))).toBe(true);
   });
 });

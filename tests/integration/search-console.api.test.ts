@@ -184,6 +184,23 @@ describe('P7-A Search Console REST API', () => {
     expect(transport.exchangeCalls).toBe(1);
   });
 
+  it('returns a browser OAuth callback to the project Property-selection page', async () => {
+    const project = await createProject('browser oauth callback');
+    const { app } = createFixtureApp();
+    const started = await request(app)
+      .post(`/api/projects/${project.id}/search-console/oauth/start`)
+      .send({})
+      .expect(201);
+    const state = new URL(started.body.data.authorizationUrl).searchParams.get('state')!;
+
+    await request(app)
+      .get('/api/search-console/oauth/callback')
+      .set('Accept', 'text/html')
+      .query({ code: 'fixture-code', state })
+      .expect(303)
+      .expect('Location', `/projects/${project.id}/search-console?connected=1`);
+  });
+
   it('lists only readable properties and binds an exact authorized property', async () => {
     const project = await createProject('property binding');
     const { app } = createFixtureApp();

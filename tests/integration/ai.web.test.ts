@@ -121,6 +121,8 @@ describe('P4 AI Analysis Center web UI', () => {
     expect(response.text).toContain(geoAudit.id);
     expect(response.text).toContain('AI Visibility');
     expect(response.text).toContain('P6');
+    expect(response.text).toContain('配置 AI Visibility');
+    expect(response.text).toContain(`/projects/${project.id}/visibility/prompts`);
     expect(response.text).not.toContain('api-key-fixture-secret');
   });
 

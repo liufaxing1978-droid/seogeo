@@ -121,7 +121,8 @@ export function createSearchConsoleWebRoutes() {
         property,
         latestSnapshot,
         coverage,
-        uiState
+        uiState,
+        pageScripts: ['/assets/js/search-console-settings.js']
       });
     } catch (error) { next(error); }
   });

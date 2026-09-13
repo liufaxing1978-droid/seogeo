@@ -1,4 +1,5 @@
 import express from 'express';
+import { fileURLToPath } from 'node:url';
 import request from 'supertest';
 import { afterEach, describe, expect, it } from 'vitest';
 import { authenticationMiddleware } from '../../src/auth/authentication.js';
@@ -43,7 +44,7 @@ class FakeLoginAttemptLimiter implements LoginAttemptLimiter {
 function createTestApp(limiter = new FakeLoginAttemptLimiter()) {
   const app = express();
   app.set('view engine', 'ejs');
-  app.set('views', new URL('../../src/views', import.meta.url).pathname);
+  app.set('views', fileURLToPath(new URL('../../src/views', import.meta.url)));
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.use(authenticationMiddleware);
