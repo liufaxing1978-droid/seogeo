@@ -30,7 +30,7 @@
     if (button) button.disabled = true;
     setStatus('正在读取该 Google Account 可访问的 Property…');
     try {
-      const response = await fetch(`${apiBase}/properties`, { headers: { Accept: 'application/json' } });
+      const response = await fetch(`${apiBase}/properties`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
       const body = await responseBody(response);
       if (!response.ok || !Array.isArray(body?.data)) throw new Error(body?.error?.code ?? `PROPERTIES_${response.status}`);
       select.replaceChildren();
