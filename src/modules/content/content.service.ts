@@ -5,7 +5,7 @@ import { contentObservability, type ContentObservability } from './content-obser
 export interface ContentRefreshJobData { projectId: string; }
 
 export interface ContentQueue {
-  getJob(jobId: string): Promise<{ getState(): Promise<string> } | undefined | null>;
+  getJob(jobId: string): Promise<{ getState(): Promise<string>; remove(): Promise<void> } | undefined | null>;
   add(name: string, data: ContentRefreshJobData, options: { jobId: string; attempts: number; removeOnComplete?: number; removeOnFail?: number }): Promise<unknown>;
 }
 
@@ -33,6 +33,7 @@ export class ContentService {
     if (existing) {
       const state = await existing.getState();
       if (state === 'active' || state === 'waiting' || state === 'delayed') return { jobId, deduplicated: true };
+      await existing.remove();
     }
     await this.queue.add('content-refresh', { projectId }, { jobId, attempts: 1, removeOnComplete: 100, removeOnFail: 100 });
     this.observability.emit({ event: 'content.refresh.queued', projectId });

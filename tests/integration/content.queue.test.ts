@@ -27,4 +27,27 @@ describe('P5-A content refresh queue', () => {
     expect(added).toHaveLength(1);
     expect(added[0]?.options).toMatchObject({ jobId: 'content-refresh-project-1', attempts: 1 });
   });
+
+  it('replaces a retained completed job so a later manual refresh runs again', async () => {
+    const added: Array<{ name: string; data: ContentRefreshJobData; options: Record<string, unknown> }> = [];
+    let removed = 0;
+    const queue = {
+      async getJob() {
+        return {
+          async getState() { return 'completed'; },
+          async remove() { removed += 1; }
+        };
+      },
+      async add(name: string, data: ContentRefreshJobData, options: Record<string, unknown>) {
+        added.push({ name, data, options });
+        return {};
+      }
+    } as unknown as Queue<ContentRefreshJobData>;
+
+    const result = await new ContentService(queue).enqueueRefresh('project-1');
+
+    expect(result).toEqual({ jobId: 'content-refresh-project-1', deduplicated: false });
+    expect(removed).toBe(1);
+    expect(added).toHaveLength(1);
+  });
 });
