@@ -156,12 +156,12 @@ function qualityError(error: unknown): unknown {
   return error;
 }
 
-const qualityReadGuards = [
+const contentReadGuards = [
   requireAuthentication(),
   requireProjectMembership(),
   requireProjectCapability('PROJECT_READ'),
 ];
-const qualityWriteGuards = [
+const contentWriteGuards = [
   requireAuthentication(),
   requireCsrf(),
   requireProjectMembership(),
@@ -190,16 +190,16 @@ export function createContentWebRoutes(
 ) {
   const contentWebRoutes = Router();
 
-contentWebRoutes.get('/projects/:id/content', async (req, res, next) => {
+contentWebRoutes.get('/projects/:id/content', ...contentReadGuards, async (req, res, next) => {
   try {
-    const model = await contentWebRepository.getCenter(req.params.id);
+    const model = await contentWebRepository.getCenter(routeParam(req.params.id));
     if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
     assertFeature(model.project);
-    render(res, 'content/index', { title: '内容中心', currentProjectId: model.project.id, ...model });
+    render(res, 'content/index', { title: '内容中心', currentProjectId: model.project.id, csrfToken: csrfTokenFor(req, res), ...model });
   } catch (error) { next(error); }
 });
 
-contentWebRoutes.get('/projects/:id/content/quality', ...qualityReadGuards, async (req, res, next) => {
+contentWebRoutes.get('/projects/:id/content/quality', ...contentReadGuards, async (req, res, next) => {
   try {
     const projectId = routeParam(req.params.id);
     const filters = qualityFilterSchema.parse(req.query) as QualityFilters;
@@ -219,7 +219,7 @@ contentWebRoutes.get('/projects/:id/content/quality', ...qualityReadGuards, asyn
   } catch (error) { next(qualityError(error)); }
 });
 
-contentWebRoutes.post('/projects/:id/content/quality/runs', ...qualityWriteGuards, async (req, res, next) => {
+contentWebRoutes.post('/projects/:id/content/quality/runs', ...contentWriteGuards, async (req, res, next) => {
   try {
     const projectId = routeParam(req.params.id);
     const model = await contentWebRepository.getQualityCenter(projectId);
@@ -230,7 +230,7 @@ contentWebRoutes.post('/projects/:id/content/quality/runs', ...qualityWriteGuard
   } catch (error) { next(qualityError(error)); }
 });
 
-contentWebRoutes.get('/projects/:id/content/quality/:findingId', ...qualityReadGuards, async (req, res, next) => {
+contentWebRoutes.get('/projects/:id/content/quality/:findingId', ...contentReadGuards, async (req, res, next) => {
   try {
     const projectId = routeParam(req.params.id);
     const findingId = routeParam(req.params.findingId);
@@ -249,7 +249,7 @@ contentWebRoutes.get('/projects/:id/content/quality/:findingId', ...qualityReadG
   } catch (error) { next(qualityError(error)); }
 });
 
-contentWebRoutes.post('/projects/:id/content/quality/:findingId/transition', ...qualityWriteGuards, async (req, res, next) => {
+contentWebRoutes.post('/projects/:id/content/quality/:findingId/transition', ...contentWriteGuards, async (req, res, next) => {
   try {
     const projectId = routeParam(req.params.id);
     const findingId = routeParam(req.params.findingId);
@@ -262,7 +262,7 @@ contentWebRoutes.post('/projects/:id/content/quality/:findingId/transition', ...
   } catch (error) { next(qualityError(error)); }
 });
 
-contentWebRoutes.post('/projects/:id/content/quality/:findingId/accept', ...qualityWriteGuards, async (req, res, next) => {
+contentWebRoutes.post('/projects/:id/content/quality/:findingId/accept', ...contentWriteGuards, async (req, res, next) => {
   try {
     const projectId = routeParam(req.params.id);
     const findingId = routeParam(req.params.findingId);
@@ -274,9 +274,9 @@ contentWebRoutes.post('/projects/:id/content/quality/:findingId/accept', ...qual
   } catch (error) { next(qualityError(error)); }
 });
 
-contentWebRoutes.post('/projects/:id/content/refresh', async (req, res, next) => {
+contentWebRoutes.post('/projects/:id/content/refresh', ...contentWriteGuards, async (req, res, next) => {
   try {
-    const model = await contentWebRepository.getCenter(req.params.id);
+    const model = await contentWebRepository.getCenter(routeParam(req.params.id));
     if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
     assertFeature(model.project);
     await contentService.enqueueRefresh(model.project.id);
@@ -284,18 +284,18 @@ contentWebRoutes.post('/projects/:id/content/refresh', async (req, res, next) =>
   } catch (error) { next(error); }
 });
 
-contentWebRoutes.get('/projects/:id/content/documents/:documentId', async (req, res, next) => {
+contentWebRoutes.get('/projects/:id/content/documents/:documentId', ...contentReadGuards, async (req, res, next) => {
   try {
-    const model = await contentWebRepository.getDocument(req.params.id, req.params.documentId);
+    const model = await contentWebRepository.getDocument(routeParam(req.params.id), routeParam(req.params.documentId));
     if (!model) throw new NotFoundError('Content document not found', 'CONTENT_DOCUMENT_NOT_FOUND');
     assertFeature(model.project);
-    render(res, 'content/document-show', { title: model.document.title ?? '内容详情', currentProjectId: model.project.id, ...model });
+    render(res, 'content/document-show', { title: model.document.title ?? '内容详情', currentProjectId: model.project.id, csrfToken: csrfTokenFor(req, res), ...model });
   } catch (error) { next(error); }
 });
 
-contentWebRoutes.post('/projects/:id/content/documents/:documentId/brief', async (req, res, next) => {
+contentWebRoutes.post('/projects/:id/content/documents/:documentId/brief', ...contentWriteGuards, async (req, res, next) => {
   try {
-    const model = await contentWebRepository.getDocument(req.params.id, req.params.documentId);
+    const model = await contentWebRepository.getDocument(routeParam(req.params.id), routeParam(req.params.documentId));
     if (!model) throw new NotFoundError('Content document not found', 'CONTENT_DOCUMENT_NOT_FOUND');
     assertFeature(model.project);
     const task = await createContentBriefTask(model.project.id, model.document.id, aiTaskService);
@@ -303,9 +303,9 @@ contentWebRoutes.post('/projects/:id/content/documents/:documentId/brief', async
   } catch (error) { next(error); }
 });
 
-contentWebRoutes.post('/projects/:id/content/documents/:documentId/optimization', async (req, res, next) => {
+contentWebRoutes.post('/projects/:id/content/documents/:documentId/optimization', ...contentWriteGuards, async (req, res, next) => {
   try {
-    const model = await contentWebRepository.getDocument(req.params.id, req.params.documentId);
+    const model = await contentWebRepository.getDocument(routeParam(req.params.id), routeParam(req.params.documentId));
     if (!model) throw new NotFoundError('Content document not found', 'CONTENT_DOCUMENT_NOT_FOUND');
     assertFeature(model.project);
     const task = await createContentOptimizationTask(model.project.id, model.document.id, aiTaskService);
@@ -313,9 +313,9 @@ contentWebRoutes.post('/projects/:id/content/documents/:documentId/optimization'
   } catch (error) { next(error); }
 });
 
-contentWebRoutes.get('/projects/:id/content/briefs/:briefId', async (req, res, next) => {
+contentWebRoutes.get('/projects/:id/content/briefs/:briefId', ...contentReadGuards, async (req, res, next) => {
   try {
-    const model = await contentWebRepository.getBrief(req.params.id, req.params.briefId);
+    const model = await contentWebRepository.getBrief(routeParam(req.params.id), routeParam(req.params.briefId));
     if (!model) throw new NotFoundError('Content brief not found', 'CONTENT_BRIEF_NOT_FOUND');
     assertFeature(model.project);
     render(res, 'content/brief-show', { title: '内容 Brief', currentProjectId: model.project.id, ...model });

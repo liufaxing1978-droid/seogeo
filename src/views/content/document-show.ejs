@@ -19,8 +19,8 @@
 </tbody></table></div></section>
 
 <section class="panel"><h2>DeepSeek 建议</h2><p class="muted">以下操作只创建 AI 建议任务，不会修改抓取、SEO 或 GEO 事实。</p><div class="actions">
-<form action="/projects/<%= project.id %>/content/documents/<%= document.id %>/brief" method="post"><button class="button" type="submit">生成 Content Brief</button></form>
-<form action="/projects/<%= project.id %>/content/documents/<%= document.id %>/optimization" method="post"><button class="button secondary" type="submit">生成优化建议</button></form>
+<form action="/projects/<%= project.id %>/content/documents/<%= document.id %>/brief" method="post"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button" type="submit">生成 Content Brief</button></form>
+<form action="/projects/<%= project.id %>/content/documents/<%= document.id %>/optimization" method="post"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button secondary" type="submit">生成优化建议</button></form>
 </div>
 <% if (document.briefs.length) { %><div class="table-wrap" style="margin-top:16px"><table><thead><tr><th>Brief</th><th>Prompt</th><th>创建时间</th></tr></thead><tbody><% for (const brief of document.briefs) { %><tr><td><a href="/projects/<%= project.id %>/content/briefs/<%= brief.id %>"><%= brief.id %></a></td><td><%= brief.promptVersion %></td><td><%= new Date(brief.createdAt).toLocaleString('zh-CN') %></td></tr><% } %></tbody></table></div><% } %>
 </section>
