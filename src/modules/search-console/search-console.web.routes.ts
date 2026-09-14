@@ -1,5 +1,9 @@
 import { Router } from 'express';
+import { requireAuthentication } from '../../auth/authentication.js';
+import { deriveCsrfToken, requireCsrf } from '../../auth/csrf.js';
 import { hasFeature } from '../../auth/feature-flags.js';
+import { requireProjectCapability, requireProjectMembership } from '../../auth/project-access.js';
+import { env } from '../../config/env.js';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
 import {
@@ -7,6 +11,7 @@ import {
   assessStableWindowCoverage,
   resolveStableWindows
 } from '../growth/gsc-window.js';
+import { searchConsoleSyncService, type SearchConsoleSyncService } from './search-console-sync.service.js';
 
 type SearchConsoleUiState =
   | 'NOT_CONNECTED'
@@ -37,8 +42,33 @@ async function requireSearchConsoleProject(projectId: string) {
   return project;
 }
 
-export function createSearchConsoleWebRoutes() {
+function csrfTokenFor(req: any, res: any): string | null {
+  const tokenHash = res.locals.authSessionTokenHash;
+  if (!req.auth || typeof tokenHash !== 'string') return null;
+  return deriveCsrfToken(env.SESSION_SECRET, req.auth.sessionId, tokenHash);
+}
+
+export function createSearchConsoleWebRoutes(
+  syncService: Pick<SearchConsoleSyncService, 'enqueueStableWindow'> = searchConsoleSyncService
+) {
   const router = Router();
+
+  router.post(
+    '/projects/:id/search-console/sync',
+    requireAuthentication(),
+    requireCsrf(),
+    requireProjectMembership(),
+    requireProjectCapability('SEO_RUN'),
+    async (req, res, next) => {
+      try {
+        const projectId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        if (!projectId) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
+        const project = await requireSearchConsoleProject(projectId);
+        const queued = await syncService.enqueueStableWindow(project.id);
+        res.redirect(303, `/projects/${encodeURIComponent(project.id)}/search-console?syncQueued=${queued.queuedDateCount}`);
+      } catch (error) { next(error); }
+    }
+  );
 
   router.get('/projects/:id/search-console', async (req, res, next) => {
     try {
@@ -122,6 +152,8 @@ export function createSearchConsoleWebRoutes() {
         latestSnapshot,
         coverage,
         uiState,
+        csrfToken: csrfTokenFor(req, res),
+        syncQueuedDateCount: req.query.syncQueued === '56' ? 56 : null,
         pageScripts: ['/assets/js/search-console-settings.js']
       });
     } catch (error) { next(error); }

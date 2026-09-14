@@ -61,6 +61,15 @@
       <button class="button secondary" type="button" data-search-console-reconnect>重新连接 Google Account</button>
       <button class="button danger" type="button" data-search-console-disconnect>断开连接</button>
     </div>
+    <% if (property && csrfToken) { %>
+      <form method="post" action="/projects/<%= project.id %>/search-console/sync" class="actions" style="margin-top: 1rem">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button class="button" type="submit">立即同步最近 56 天数据</button>
+      </form>
+      <% if (syncQueuedDateCount) { %>
+        <p class="muted" role="status">已提交 <%= syncQueuedDateCount %> 天同步任务；数据会在完成后自动显示。</p>
+      <% } %>
+    <% } %>
     <div data-search-console-property-picker hidden style="margin-top: 1rem">
       <label for="search-console-property">可用 Property</label>
       <select id="search-console-property" data-search-console-property></select>
