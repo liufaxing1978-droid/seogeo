@@ -499,10 +499,7 @@
     try {
       const response = await fetch(`${apiBase}/autopilot-policy/revisions`, {
         method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
+        headers: mutationHeaders(),
         body: JSON.stringify({
           requestId: crypto.randomUUID(),
           expectedUpdatedAt: root.dataset.policyUpdatedAt || null,

@@ -1,5 +1,8 @@
 import { Router, type Request, type RequestHandler } from 'express';
 import { z } from 'zod';
+import { requireAuthentication } from '../../auth/authentication.js';
+import { requireCsrf } from '../../auth/csrf.js';
+import { requireProjectCapability, requireProjectMembership } from '../../auth/project-access.js';
 import { requireFeature } from '../../auth/require-feature.js';
 import { AppError } from '../../core/errors.js';
 import {
@@ -169,11 +172,25 @@ export function createOptimizationOperationsRoutes(
   actorResolver: OperationsActorResolver = unavailableActorResolver,
 ) {
   const router = Router();
-  const gated = [validateProjectId, requireFeature('OPTIMIZATION_OPERATIONS_CENTER')] as const;
+  const readGuards = [
+    requireAuthentication(),
+    validateProjectId,
+    requireProjectMembership(),
+    requireFeature('OPTIMIZATION_OPERATIONS_CENTER'),
+    requireProjectCapability('PROJECT_READ'),
+  ] as const;
+  const policyWriteGuards = [
+    requireAuthentication(),
+    requireCsrf(),
+    validateProjectId,
+    requireProjectMembership(),
+    requireFeature('OPTIMIZATION_OPERATIONS_CENTER'),
+    requireProjectCapability('AUTOPILOT_POLICY_REVISE'),
+  ] as const;
 
   router.get(
     '/projects/:projectId/optimization/operations',
-    ...gated,
+    ...readGuards,
     async (req, res, next) => {
       try {
         const projectId = projectIdSchema.parse(req.params.projectId);
@@ -190,7 +207,7 @@ export function createOptimizationOperationsRoutes(
     read: (projectId: string, limit: number, offset: number) => Promise<unknown>,
     schema = paginationSchema,
   ) => {
-    router.get(path, ...gated, async (req, res, next) => {
+    router.get(path, ...readGuards, async (req, res, next) => {
       try {
         const projectId = projectIdSchema.parse(req.params.projectId);
         const pagination = schema.parse(req.query);
@@ -221,7 +238,7 @@ export function createOptimizationOperationsRoutes(
 
   router.get(
     '/projects/:projectId/optimization/autopilot-policy',
-    ...gated,
+    ...readGuards,
     async (req, res, next) => {
       try {
         const projectId = projectIdSchema.parse(req.params.projectId);
@@ -241,7 +258,7 @@ export function createOptimizationOperationsRoutes(
 
   router.post(
     '/projects/:projectId/optimization/autopilot-policy/revisions',
-    ...gated,
+    ...policyWriteGuards,
     async (req, res, next) => {
       try {
         const projectId = projectIdSchema.parse(req.params.projectId);

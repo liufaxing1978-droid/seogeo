@@ -1,5 +1,7 @@
 import { Router, type RequestHandler } from 'express';
+import { requireAuthentication } from '../../auth/authentication.js';
 import { deriveCsrfToken } from '../../auth/csrf.js';
+import { requireProjectCapability, requireProjectMembership } from '../../auth/project-access.js';
 import { requireFeature } from '../../auth/require-feature.js';
 import { env } from '../../config/env.js';
 import { z } from 'zod';
@@ -146,7 +148,10 @@ export function createOptimizationOperationsWebRoutes(
 
   router.get(
     '/projects/:id/optimization',
+    requireAuthentication(),
     validateProjectId,
+    requireProjectMembership(),
+    requireProjectCapability('PROJECT_READ'),
     requireFeature('OPTIMIZATION_OPERATIONS_CENTER'),
     async (req, res, next) => {
       try {
