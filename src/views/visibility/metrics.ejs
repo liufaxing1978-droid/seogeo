@@ -38,6 +38,7 @@
     </div>
   </div>
   <form method="post" action="/projects/<%= project.id %>/visibility/metrics/snapshots" class="form-grid" style="margin-top:16px">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <label>窗口开始
       <input type="datetime-local" name="windowStart" value="<%= formWindowStart %>" required>
     </label>

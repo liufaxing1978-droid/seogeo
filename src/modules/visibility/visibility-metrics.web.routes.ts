@@ -1,7 +1,11 @@
 import { Queue } from 'bullmq';
 import { Router } from 'express';
 import { z } from 'zod';
+import { requireAuthentication } from '../../auth/authentication.js';
+import { deriveCsrfToken, requireCsrf } from '../../auth/csrf.js';
 import { hasFeature } from '../../auth/feature-flags.js';
+import { requireProjectCapability, requireProjectMembership } from '../../auth/project-access.js';
+import { env } from '../../config/env.js';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
 import { createRedisConnection } from '../../queue/connection.js';
@@ -79,6 +83,18 @@ function datetimeLocal(date: Date) {
   return date.toISOString().slice(0, 16);
 }
 
+function csrfTokenFor(req: any, res: any): string {
+  const tokenHash = res.locals.authSessionTokenHash;
+  if (!req.auth || typeof tokenHash !== 'string') {
+    throw new AppError('Authentication required', 401, 'AUTHENTICATION_REQUIRED');
+  }
+  return deriveCsrfToken(env.SESSION_SECRET, req.auth.sessionId, tokenHash);
+}
+
+function routeParam(value: string | string[]): string {
+  return Array.isArray(value) ? value[0]! : value;
+}
+
 export function createVisibilityMetricsWebRoutes(
   metricsQueue: VisibilityMetricsQueue = new VisibilityMetricsQueue(
     new LazyVisibilityMetricsWebQueuePort()
@@ -86,10 +102,17 @@ export function createVisibilityMetricsWebRoutes(
   metricsService = new VisibilityMetricsService()
 ) {
   const router = Router();
+  router.use(
+    '/projects/:id/visibility/metrics',
+    requireAuthentication(),
+    requireProjectMembership(),
+    requireProjectCapability('PROJECT_READ'),
+  );
+  const writeGuards = [requireCsrf(), requireProjectCapability('CONTENT_WRITE')];
 
   router.get('/projects/:id/visibility/metrics', async (req, res, next) => {
     try {
-      const projectId = req.params.id;
+      const projectId = routeParam(req.params.id);
       await requireMetricsProject(projectId);
       const query = querySchema.parse(req.query);
       const data = await visibilityMetricsWebRepository.getMetricsPage(projectId, query.snapshotId);
@@ -106,6 +129,7 @@ export function createVisibilityMetricsWebRoutes(
         currentProjectId: data.project.id,
         breadcrumbs: ['项目', data.project.name, 'AI Visibility', 'Visibility 指标'],
         bodyTemplate: 'visibility/metrics',
+        csrfToken: csrfTokenFor(req, res),
         formWindowStart: datetimeLocal(data.snapshot?.windowStart ?? sevenDaysAgo),
         formWindowEnd: datetimeLocal(data.snapshot?.windowEnd ?? now),
         ...data
@@ -113,11 +137,13 @@ export function createVisibilityMetricsWebRoutes(
     } catch (error) { next(error); }
   });
 
-  router.post('/projects/:id/visibility/metrics/snapshots', async (req, res, next) => {
+  router.post('/projects/:id/visibility/metrics/snapshots', ...writeGuards, async (req, res, next) => {
     try {
-      const projectId = req.params.id;
+      const projectId = routeParam(req.params.id);
       await requireMetricsProject(projectId);
-      const input = generationSchema.parse(req.body);
+      const formBody = { ...(req.body ?? {}) };
+      delete formBody._csrf;
+      const input = generationSchema.parse(formBody);
       const requestTime = new Date();
       const snapshot = await metricsService.prepareSnapshot({
         projectId,

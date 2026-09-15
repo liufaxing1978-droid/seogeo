@@ -23,6 +23,7 @@
 <section class="panel">
   <div class="panel-header"><div><h2>新建规则</h2><p class="muted">数值阈值单位为 basis points；500 bp = 5.0 个百分点。</p></div></div>
   <form method="post" action="/projects/<%= project.id %>/visibility/alerts/rules" class="form-grid">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <label>名称<input name="name" required maxlength="120" placeholder="Owned Mention Rate 下滑" /></label>
     <label>规则类型<select name="ruleType" required>
       <option value="OWNED_MENTION_RATE_DROP">Owned Mention Rate Drop</option>
@@ -49,6 +50,7 @@
           <td><strong><%= rule.name %></strong></td><td><code><%= rule.ruleType %></code></td><td><%= rule.severity %></td><td><%= rule.thresholdBasisPoints == null ? '状态型' : `${rule.thresholdBasisPoints} bp` %></td><td><%= rule.enabled ? '启用' : '停用' %></td>
           <td>
             <form method="post" action="/projects/<%= project.id %>/visibility/alerts/rules/<%= rule.id %>" class="inline-form">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
               <input name="name" value="<%= rule.name %>" required maxlength="120" />
               <select name="severity"><option <%= rule.severity === 'INFO' ? 'selected' : '' %>>INFO</option><option <%= rule.severity === 'WARNING' ? 'selected' : '' %>>WARNING</option><option <%= rule.severity === 'CRITICAL' ? 'selected' : '' %>>CRITICAL</option></select>
               <input name="thresholdBasisPoints" type="number" min="1" max="10000" value="<%= rule.thresholdBasisPoints ?? '' %>" placeholder="状态型留空" />
@@ -82,7 +84,7 @@
             <% } else { %>—<% } %>
           </td>
           <td>
-            <% if (alert.status === 'OPEN') { %><form method="post" action="/projects/<%= project.id %>/visibility/alerts/<%= alert.id %>/acknowledge"><button class="button secondary" type="submit">确认</button></form><% } else { %><%= alert.status === 'RESOLVED' ? '已解决' : '已确认' %><% } %>
+            <% if (alert.status === 'OPEN') { %><form method="post" action="/projects/<%= project.id %>/visibility/alerts/<%= alert.id %>/acknowledge"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button secondary" type="submit">确认</button></form><% } else { %><%= alert.status === 'RESOLVED' ? '已解决' : '已确认' %><% } %>
           </td>
         </tr>
       <% } %>
