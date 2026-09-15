@@ -22,7 +22,6 @@ describe('P10 UI-02 core pages contract', () => {
     expect(login).toContain('autocomplete="username"');
     expect(login).toContain('autocomplete="current-password"');
     expect(login).not.toContain('name="remember');
-    expect(login).not.toContain('忘记密码');
     expect(login).not.toContain('注册');
     expect(css).toContain('.auth-login-page');
   });

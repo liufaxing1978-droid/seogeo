@@ -141,6 +141,10 @@ export function createAuthRoutes(options: AuthRoutesOptions = {}) {
     res.render('auth/login', { returnPath });
   });
 
+  routes.get('/password-help', (_req, res) => {
+    res.render('auth/password-help');
+  });
+
   routes.post('/login', async (req, res, next) => {
     try {
       const rawEmail = typeof req.body?.email === 'string' ? req.body.email : '';
