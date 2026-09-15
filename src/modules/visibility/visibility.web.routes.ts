@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { requireAuthentication } from '../../auth/authentication.js';
-import { requireCsrf } from '../../auth/csrf.js';
+import { deriveCsrfToken, requireCsrf } from '../../auth/csrf.js';
 import { requireProjectCapability, requireProjectMembership } from '../../auth/project-access.js';
+import { env } from '../../config/env.js';
 import { hasFeature, type Feature } from '../../auth/feature-flags.js';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
@@ -25,6 +26,7 @@ function optionalText(value: unknown) {
   const trimmed = value.trim();
   return trimmed || null;
 }
+function csrfTokenFor(req: any, res: any) { return deriveCsrfToken(env.SESSION_SECRET, req.auth!.sessionId, res.locals.authSessionTokenHash); }
 
 export const visibilityWebRoutes = Router();
 visibilityWebRoutes.use('/projects/:id/visibility', requireAuthentication(), requireProjectMembership(), requireProjectCapability('PROJECT_READ'));
@@ -57,6 +59,7 @@ visibilityWebRoutes.get('/projects/:id/visibility/prompts', async (req, res, nex
       currentProjectId: data.project.id,
       breadcrumbs: ['项目', data.project.name, 'AI Visibility', 'Prompt 监控'],
       bodyTemplate: 'visibility/prompts',
+      csrfToken: csrfTokenFor(req, res),
       ...data
     });
   } catch (error) { next(error); }

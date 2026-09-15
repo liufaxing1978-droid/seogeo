@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { requireAuthentication } from '../../auth/authentication.js';
-import { requireCsrf } from '../../auth/csrf.js';
+import { deriveCsrfToken, requireCsrf } from '../../auth/csrf.js';
 import { requireProjectCapability, requireProjectMembership } from '../../auth/project-access.js';
+import { env } from '../../config/env.js';
 import { hasFeature } from '../../auth/feature-flags.js';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { createCompetitorGapTask } from '../ai/competitor-intelligence.js';
@@ -17,6 +18,7 @@ const competitorWriteGuards = [requireCsrf(), requireProjectCapability('CONTENT_
 function render(res: any, bodyTemplate: string, locals: Record<string, unknown>) {
   return res.render('layout', { title: '竞争对手', activeNav: 'competitors', currentProjectId: null, bodyTemplate, ...locals });
 }
+function csrfTokenFor(req: any, res: any) { return deriveCsrfToken(env.SESSION_SECRET, req.auth!.sessionId, res.locals.authSessionTokenHash); }
 
 function assertFeature(project: { planLevel: 'STANDARD' | 'ADVANCED' | 'ENTERPRISE' }) {
   if (!hasFeature(project.planLevel, 'COMPETITOR_INTELLIGENCE')) {
@@ -29,7 +31,7 @@ competitorWebRoutes.get('/projects/:id/competitors', async (req, res, next) => {
     const model = await competitorWebRepository.getCenter((Array.isArray(req.params.id) ? req.params.id[0]! : req.params.id));
     if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
     assertFeature(model.project);
-    render(res, 'competitors/index', { title: '竞争对手中心', currentProjectId: model.project.id, ...model });
+    render(res, 'competitors/index', { title: '竞争对手中心', currentProjectId: model.project.id, csrfToken: csrfTokenFor(req, res), ...model });
   } catch (error) { next(error); }
 });
 
@@ -51,7 +53,7 @@ competitorWebRoutes.get('/projects/:id/competitors/:competitorId', async (req, r
     const model = await competitorWebRepository.getDetail((Array.isArray(req.params.id) ? req.params.id[0]! : req.params.id), (Array.isArray(req.params.competitorId) ? req.params.competitorId[0]! : req.params.competitorId));
     if (!model) throw new NotFoundError('Competitor not found', 'COMPETITOR_NOT_FOUND');
     assertFeature(model.project);
-    render(res, 'competitors/show', { title: model.competitor.name, currentProjectId: model.project.id, ...model });
+    render(res, 'competitors/show', { title: model.competitor.name, currentProjectId: model.project.id, csrfToken: csrfTokenFor(req, res), ...model });
   } catch (error) { next(error); }
 });
 

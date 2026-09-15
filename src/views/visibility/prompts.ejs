@@ -11,7 +11,7 @@
 
 <section class="panel">
   <div class="panel-header"><div><h2>创建 Prompt Set</h2><p class="muted">用于组织同一监控主题下的版本化 Prompt。</p></div></div>
-  <form action="/projects/<%= project.id %>/visibility/prompt-sets" method="post" class="form-grid">
+  <form action="/projects/<%= project.id %>/visibility/prompt-sets" method="post" class="form-grid"><input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <label class="field" for="prompt-set-name"><span>Prompt Set 名称</span><input id="prompt-set-name" name="name" required /></label>
     <label class="field" for="default-locale"><span>默认语言</span><input id="default-locale" name="defaultLocale" placeholder="en-US" /></label>
     <label class="field" for="default-country"><span>默认国家</span><input id="default-country" name="defaultCountry" placeholder="US" /></label>
@@ -23,7 +23,7 @@
 <section class="panel">
   <div class="panel-header"><div><h2>创建 Prompt 版本</h2><p class="muted">每次提交都生成新的不可变版本，并记录确定性 hash。</p></div></div>
   <% if (promptSets.length) { %>
-  <form action="/projects/<%= project.id %>/visibility/prompts" method="post" class="form-grid">
+  <form action="/projects/<%= project.id %>/visibility/prompts" method="post" class="form-grid"><input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <label class="field" for="prompt-set"><span>Prompt Set</span><select id="prompt-set" name="promptSetId" required>
       <% for (const set of promptSets) { %><option value="<%= set.id %>" label="<%= set.name %>">选择此 Prompt Set</option><% } %>
     </select></label>

@@ -28,7 +28,7 @@
 
   <section class="panel competitor-create-panel" data-ui="competitor-create-form">
     <div class="panel-header"><div><h2>添加竞品</h2><p class="muted">每个竞品使用独立 bounded crawl，不写入自有站点 Page/SEO/GEO 表。</p></div></div>
-    <form action="/projects/<%= project.id %>/competitors" method="post" class="form-grid">
+    <form action="/projects/<%= project.id %>/competitors" method="post" class="form-grid"><input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <label>竞品名称<input name="name" aria-label="竞品名称" required placeholder="例如：Reference Site"></label>
       <label>竞品域名<input name="domain" aria-label="竞品域名" required placeholder="example.com"></label>
       <div class="actions"><button class="button" type="submit">添加竞品</button></div>
