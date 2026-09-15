@@ -16,10 +16,11 @@
   <div class="panel-header"><div><h2>抓取与比较</h2><p class="muted">bounded crawl 默认 25 页，硬上限 100 页。</p></div></div>
   <div class="actions">
     <form action="/projects/<%= project.id %>/competitors/<%= competitor.id %>/crawls" method="post">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <label>最大页面数 <input name="maxPages" type="number" min="1" max="100" value="25"></label>
       <button class="button" type="submit">开始竞品抓取</button>
     </form>
-    <form action="/projects/<%= project.id %>/competitors/<%= competitor.id %>/compare" method="post"><button class="button secondary" type="submit">生成确定性比较</button></form>
+    <form action="/projects/<%= project.id %>/competitors/<%= competitor.id %>/compare" method="post"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button secondary" type="submit">生成确定性比较</button></form>
   </div>
 </section>
 
@@ -40,7 +41,7 @@
       <% for (const gap of gaps) { %><tr><td><%= gap.metric ?? 'UNKNOWN' %></td><td><span class="badge"><%= gap.state ?? 'UNKNOWN' %></span></td><td><%= gap.owned ?? 'UNKNOWN' %></td><td><%= gap.competitor ?? 'UNKNOWN' %></td></tr><% } %>
       <% if (!gaps.length) { %><tr><td colspan="4" class="muted">没有可比较的确定性 gap。</td></tr><% } %>
       </tbody></table></div>
-      <form action="/projects/<%= project.id %>/competitors/comparisons/<%= comparison.id %>/ai" method="post"><button class="button" type="submit">DeepSeek 解释差距</button></form>
+      <form action="/projects/<%= project.id %>/competitors/comparisons/<%= comparison.id %>/ai" method="post"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button" type="submit">DeepSeek 解释差距</button></form>
     </article>
   <% } %>
   <% if (!competitor.comparisons.length) { %><p class="muted">完成竞品抓取后，可生成 COMPETITOR_COMPARISON_V1。</p><% } %>

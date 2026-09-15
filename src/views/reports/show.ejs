@@ -78,7 +78,7 @@
 <section class="panel">
   <div class="panel-header"><div><h2>AI 建议 / Executive Summary</h2><p class="muted">以下内容全部是建议性输出，不改变上面的确定性事实。</p></div></div>
   <% if (!report.executiveAiTaskId) { %>
-    <form action="/projects/<%= project.id %>/reports/<%= report.id %>/ai-summary" method="post"><button class="button" type="submit">生成 DeepSeek Executive Summary</button></form>
+    <form action="/projects/<%= project.id %>/reports/<%= report.id %>/ai-summary" method="post"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button" type="submit">生成 DeepSeek Executive Summary</button></form>
   <% } else { %>
     <p><strong>Executive AI Task:</strong> <a href="/projects/<%= project.id %>/ai/tasks/<%= report.executiveAiTaskId %>"><%= report.executiveAiTaskId %></a> · <%= executiveTask?.status ?? 'UNKNOWN' %></p>
     <% if (executiveResult) { %><article class="nested-panel"><strong>Executive Summary</strong><p><%= executiveResult.summary %></p></article><% } %>

@@ -8,9 +8,10 @@
 </section>
 
 <section class="panel">
-  <p class="muted">此表单不调用 AI，不创建发布计划，也不执行网站写入。</p>
+  <p class="muted"><%= values.briefId ? '已载入所选 AI Brief；保存后只创建内部草稿，不发布、不创建发布计划，也不执行网站写入。' : '此表单不调用 AI，不创建发布计划，也不执行网站写入。' %></p>
   <form action="/projects/<%= project.id %>/publication/drafts" method="post" class="form-grid">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <% if (values.briefId) { %><input type="hidden" name="briefId" value="<%= values.briefId %>"><% } %>
     <label>标题<input name="title" required maxlength="300" value="<%= values.title ?? '' %>"></label>
     <% if (errors.title) { %><p class="error"><%= errors.title.join(' ') %></p><% } %>
     <label>URL slug（可选）<input name="slugCandidate" maxlength="200" value="<%= values.slugCandidate ?? '' %>"></label>

@@ -75,6 +75,22 @@ export const publicationWebRepository = {
     return { project, drafts };
   },
 
+  async getBriefDraftSeed(projectId: string, briefId: string) {
+    return prisma.contentBrief.findFirst({
+      where: { id: briefId, projectId },
+      include: {
+        document: {
+          select: {
+            title: true,
+            canonicalUrl: true,
+            metaDescription: true,
+            language: true
+          }
+        }
+      }
+    });
+  },
+
   async getDraft(projectId: string, draftId: string) {
     const project = await prisma.project.findUnique({ where: { id: projectId }, select: PROJECT_SELECT });
     if (!project) return null;

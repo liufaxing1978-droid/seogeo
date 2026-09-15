@@ -6,8 +6,8 @@
       <p class="muted"><%= project.name %> · <%= project.primaryDomain %></p>
     </div>
     <div class="actions">
-      <form action="/projects/<%= project.id %>/reports" method="post"><button class="button secondary" type="submit">生成项目报告 V1</button></form>
-      <form action="/projects/<%= project.id %>/reports/v2" method="post"><button class="button" type="submit">生成项目报告 V2</button></form>
+      <form action="/projects/<%= project.id %>/reports" method="post"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button secondary" type="submit">生成项目报告 V1</button></form>
+      <form action="/projects/<%= project.id %>/reports/v2" method="post"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button" type="submit">生成项目报告 V2</button></form>
     </div>
   </section>
 

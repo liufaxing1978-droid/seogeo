@@ -1,6 +1,13 @@
 <section class="page-header">
   <div><p class="eyebrow">AI Advisory · P5-A</p><h1>Content Brief</h1><p class="muted">Prompt <%= brief.promptVersion %> · AI 建议，不是确定性事实</p></div>
-  <div class="actions"><a class="button secondary" href="/projects/<%= project.id %>/content">返回内容中心</a></div>
+  <div class="actions">
+    <a class="button" href="/projects/<%= project.id %>/publication/drafts/new?briefId=<%= brief.id %>">创建内部草稿</a>
+    <a class="button secondary" href="/projects/<%= project.id %>/content">返回内容中心</a>
+  </div>
+</section>
+
+<section class="panel">
+  <p class="muted"><strong>安全边界：</strong>该入口只创建草稿，不发布、不创建发布计划，也不会写入网站。</p>
 </section>
 
 <section class="panel">

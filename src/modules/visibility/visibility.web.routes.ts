@@ -1,5 +1,9 @@
 import { Router } from 'express';
+import { requireAuthentication } from '../../auth/authentication.js';
+import { deriveCsrfToken, requireCsrf } from '../../auth/csrf.js';
 import { hasFeature, type Feature } from '../../auth/feature-flags.js';
+import { requireProjectCapability, requireProjectMembership } from '../../auth/project-access.js';
+import { env } from '../../config/env.js';
 import { AppError, NotFoundError } from '../../core/errors.js';
 import { prisma } from '../../db/prisma.js';
 import { visibilityPromptService } from './visibility-prompts.service.js';
@@ -23,12 +27,22 @@ function optionalText(value: unknown) {
   return trimmed || null;
 }
 
+function csrfTokenFor(req: any, res: any) {
+  return deriveCsrfToken(env.SESSION_SECRET, req.auth.sessionId, res.locals.authSessionTokenHash);
+}
+
+function routeParam(value: string | string[]): string {
+  return Array.isArray(value) ? value[0]! : value;
+}
+
 export const visibilityWebRoutes = Router();
+visibilityWebRoutes.use('/projects/:id/visibility', requireAuthentication(), requireProjectMembership(), requireProjectCapability('PROJECT_READ'));
+const visibilityWriteGuards = [requireCsrf(), requireProjectCapability('CONTENT_WRITE')];
 
 visibilityWebRoutes.get('/projects/:id/visibility', async (req, res, next) => {
   try {
-    await requireVisibilityProject(req.params.id, 'AI_VISIBILITY');
-    const data = await visibilityWebRepository.getOverview(req.params.id);
+    await requireVisibilityProject(routeParam(req.params.id), 'AI_VISIBILITY');
+    const data = await visibilityWebRepository.getOverview(routeParam(req.params.id));
     if (!data) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
     res.render('layout', {
       title: `AI Visibility · ${data.project.name}`,
@@ -43,8 +57,8 @@ visibilityWebRoutes.get('/projects/:id/visibility', async (req, res, next) => {
 
 visibilityWebRoutes.get('/projects/:id/visibility/prompts', async (req, res, next) => {
   try {
-    await requireVisibilityProject(req.params.id, 'PROMPT_MONITOR');
-    const data = await visibilityWebRepository.getPromptMonitor(req.params.id);
+    await requireVisibilityProject(routeParam(req.params.id), 'PROMPT_MONITOR');
+    const data = await visibilityWebRepository.getPromptMonitor(routeParam(req.params.id));
     if (!data) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
     res.render('layout', {
       title: `Prompt 监控 · ${data.project.name}`,
@@ -52,42 +66,45 @@ visibilityWebRoutes.get('/projects/:id/visibility/prompts', async (req, res, nex
       currentProjectId: data.project.id,
       breadcrumbs: ['项目', data.project.name, 'AI Visibility', 'Prompt 监控'],
       bodyTemplate: 'visibility/prompts',
+      csrfToken: csrfTokenFor(req, res),
       ...data
     });
   } catch (error) { next(error); }
 });
 
-visibilityWebRoutes.post('/projects/:id/visibility/prompt-sets', async (req, res, next) => {
+visibilityWebRoutes.post('/projects/:id/visibility/prompt-sets', ...visibilityWriteGuards, async (req, res, next) => {
   try {
-    await requireVisibilityProject(req.params.id, 'PROMPT_MONITOR');
-    await visibilityPromptService.createPromptSet(req.params.id, {
+    const projectId = routeParam(req.params.id);
+    await requireVisibilityProject(projectId, 'PROMPT_MONITOR');
+    await visibilityPromptService.createPromptSet(projectId, {
       name: typeof req.body.name === 'string' ? req.body.name : '',
       description: optionalText(req.body.description),
       defaultLocale: optionalText(req.body.defaultLocale),
       defaultCountry: optionalText(req.body.defaultCountry)
     });
-    res.redirect(303, `/projects/${req.params.id}/visibility/prompts`);
+    res.redirect(303, `/projects/${projectId}/visibility/prompts`);
   } catch (error) { next(error); }
 });
 
-visibilityWebRoutes.post('/projects/:id/visibility/prompts', async (req, res, next) => {
+visibilityWebRoutes.post('/projects/:id/visibility/prompts', ...visibilityWriteGuards, async (req, res, next) => {
   try {
-    await requireVisibilityProject(req.params.id, 'PROMPT_MONITOR');
-    await visibilityPromptService.createPromptVersion(req.params.id, {
+    const projectId = routeParam(req.params.id);
+    await requireVisibilityProject(projectId, 'PROMPT_MONITOR');
+    await visibilityPromptService.createPromptVersion(projectId, {
       promptSetId: typeof req.body.promptSetId === 'string' ? req.body.promptSetId : '',
       promptKey: typeof req.body.promptKey === 'string' ? req.body.promptKey : '',
       promptText: typeof req.body.promptText === 'string' ? req.body.promptText : '',
       locale: optionalText(req.body.locale),
       country: optionalText(req.body.country)
     });
-    res.redirect(303, `/projects/${req.params.id}/visibility/prompts`);
+    res.redirect(303, `/projects/${projectId}/visibility/prompts`);
   } catch (error) { next(error); }
 });
 
 visibilityWebRoutes.get('/projects/:id/visibility/runs/:runId', async (req, res, next) => {
   try {
-    await requireVisibilityProject(req.params.id, 'AI_VISIBILITY');
-    const data = await visibilityWebRepository.getRunDetail(req.params.id, req.params.runId);
+    await requireVisibilityProject(routeParam(req.params.id), 'AI_VISIBILITY');
+    const data = await visibilityWebRepository.getRunDetail(routeParam(req.params.id), routeParam(req.params.runId));
     if (!data) throw new NotFoundError('Visibility run not found', 'VISIBILITY_RUN_NOT_FOUND');
     res.render('layout', {
       title: `采样运行详情 · ${data.project.name}`,

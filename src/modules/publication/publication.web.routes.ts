@@ -13,6 +13,7 @@ function routeParam(value: string | string[]): string {
   return Array.isArray(value) ? value[0]! : value;
 }
 const proposalQuerySchema = z.object({ proposalId: z.string().uuid().optional() }).strict();
+const draftSeedQuerySchema = z.object({ briefId: z.string().uuid().optional() }).strict();
 
 function objectRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -36,6 +37,7 @@ function prettyJson(value: unknown): string {
 }
 
 const manualDraftFormSchema = z.object({
+  briefId: z.string().uuid().optional(),
   title: z.string().trim().min(1).max(300),
   slugCandidate: z.string().trim().max(200).optional(),
   body: z.string().trim().min(1).max(200_000),
@@ -62,6 +64,42 @@ const permanentDeleteFormSchema = z.object({
 
 function nullableText(value: string | undefined): string | null {
   return value ? value : null;
+}
+
+function briefText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function briefTextList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => briefText(item) ? [briefText(item)!] : [])
+    : [];
+}
+
+function draftValuesFromBrief(brief: Awaited<ReturnType<typeof publicationWebRepository.getBriefDraftSeed>>) {
+  if (!brief) return null;
+  const payload = objectRecord(brief.briefJson);
+  const title = briefText(payload.primaryTopic) ?? brief.document?.title ?? '基于 Content Brief 的内部草稿';
+  const objective = briefText(payload.objective);
+  const outline = briefTextList(payload.recommendedOutline);
+  const questions = briefTextList(payload.questionsToAnswer);
+  const body = [
+    `# ${title}`,
+    objective ? `> 草稿目标：${objective}` : null,
+    ...outline.map((heading) => `## ${heading}`),
+    questions.length ? `## 待回答问题\n\n${questions.map((question) => `- ${question}`).join('\n')}` : null
+  ].filter((section): section is string => Boolean(section)).join('\n\n');
+  return {
+    briefId: brief.id,
+    title,
+    body,
+    excerpt: objective ?? brief.document?.metaDescription ?? '',
+    metaTitle: title,
+    metaDescription: brief.document?.metaDescription ?? objective ?? '',
+    canonicalCandidate: brief.document?.canonicalUrl ?? '',
+    language: brief.document?.language ?? 'zh-CN',
+    reason: `基于 Content Brief ${brief.id} 创建内部草稿`
+  };
 }
 
 function csrfTokenFor(req: any, res: any): string {
@@ -131,9 +169,11 @@ publicationWebRoutes.get('/projects/:id/publication', async (req, res, next) => 
     const latestExecution = model.executions[0] ?? null;
     const latestVerification = model.verifications[0] ?? null;
     const primarySite = model.sites[0] ?? null;
+    const activeDrafts = model.drafts.filter((draft) => draft.status !== 'ARCHIVED');
     render(res, 'publication/index', {
       currentProjectId: model.project.id,
       ...model,
+      drafts: activeDrafts,
       latestExecution,
       latestVerification,
       primarySite,
@@ -183,12 +223,17 @@ publicationWebRoutes.get(
   async (req, res, next) => {
     try {
       const projectId = routeParam(req.params.id);
+      const briefId = draftSeedQuerySchema.parse(req.query).briefId;
       const model = await publicationWebRepository.listDrafts(projectId);
       if (!model) throw new NotFoundError('Project not found', 'PROJECT_NOT_FOUND');
+      const brief = briefId
+        ? await publicationWebRepository.getBriefDraftSeed(projectId, briefId)
+        : null;
+      if (briefId && !brief) throw new NotFoundError('Content brief not found', 'CONTENT_BRIEF_NOT_FOUND');
       render(res, 'publication/new-draft', {
         currentProjectId: model.project.id,
         project: model.project,
-        values: { language: 'zh-CN', reason: '人工创建内容草稿' },
+        values: draftValuesFromBrief(brief) ?? { language: 'zh-CN', reason: '人工创建内容草稿' },
         errors: {},
         csrfToken: csrfTokenFor(req, res)
       });
@@ -208,6 +253,10 @@ publicationWebRoutes.post(
     delete values._csrf;
     try {
       const input = manualDraftFormSchema.parse(values);
+      const brief = input.briefId
+        ? await publicationWebRepository.getBriefDraftSeed(projectId, input.briefId)
+        : null;
+      if (input.briefId && !brief) throw new NotFoundError('Content brief not found', 'CONTENT_BRIEF_NOT_FOUND');
       if (input.slugCandidate) {
         const existing = await prisma.contentDraft.findFirst({
           where: { projectId, slugCandidate: input.slugCandidate, status: { not: 'ARCHIVED' } },
@@ -232,6 +281,13 @@ publicationWebRoutes.post(
         language: input.language,
         generatedBy: 'HUMAN'
       });
+      if (brief) {
+        await publicationService.addSourceReference(draft.id, {
+          title: `Content Brief ${brief.id}`,
+          sourceType: 'CONTENT_BRIEF',
+          internalRef: true
+        });
+      }
       res.redirect(303, `/projects/${projectId}/publication/drafts/${draft.id}`);
     } catch (error) {
       if (!(error instanceof z.ZodError)) return next(error);
