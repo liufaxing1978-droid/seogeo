@@ -4,10 +4,12 @@ import { AppError, NotFoundError } from '../core/errors.js';
 import { prisma } from '../db/prisma.js';
 import { hasProjectCapability, type ProjectCapability } from './project-capabilities.js';
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function projectIdFromParams(params: Record<string, string | string[] | undefined>): string {
   const rawId = params.projectId ?? params.id;
   const projectId = Array.isArray(rawId) ? rawId[0] : rawId;
-  if (!projectId) throw new NotFoundError();
+  if (!projectId || !UUID_PATTERN.test(projectId)) throw new NotFoundError();
   return projectId;
 }
 
