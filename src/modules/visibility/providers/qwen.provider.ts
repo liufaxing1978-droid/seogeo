@@ -123,11 +123,25 @@ function streamingEvents(value: unknown): Record<string, unknown>[] {
 function completeStreamingResponse(value: unknown) {
   const events = streamingEvents(value);
   const providerResponseId = events.map((item) => stringValue(item.request_id)).find((item) => item !== null) ?? null;
+  const outputs = events.flatMap((item) => {
+    const output = record(item.output);
+    return output ? [output] : [];
+  });
   const finalEvent = [...events].reverse().find((item) => record(item.output) !== null) ?? null;
+  const streamedAnswerText = outputs
+    .map(answerText)
+    .filter((item): item is string => item !== null)
+    .reduce((assembled, chunk) => {
+      if (!assembled || chunk.startsWith(assembled)) return chunk;
+      return assembled.endsWith(chunk) ? assembled : `${assembled}${chunk}`;
+    }, '');
+  const sourceOutput = [...outputs].reverse().find((output) => record(output.search_info)?.search_results !== undefined) ?? null;
   return {
     body: finalEvent,
     providerResponseId,
     output: finalEvent ? record(finalEvent.output) : null,
+    sourceOutput,
+    answerText: streamedAnswerText || null,
     usage: finalEvent?.usage
   };
 }
@@ -234,12 +248,12 @@ export class QwenVisibilityProvider implements VisibilityProviderAdapter {
     const body = streamed.body;
     const providerResponseId = streamed.providerResponseId;
     const output = streamed.output;
-    const normalizedAnswer = output ? answerText(output) : null;
+    const normalizedAnswer = streamed.answerText ?? (output ? answerText(output) : null);
     if (!body || !providerResponseId || !output || !normalizedAnswer) {
       throw new VisibilityProviderError('VISIBILITY_PROVIDER_MALFORMED_RESPONSE', 'Qwen returned a malformed visibility response', { httpStatus: response.status, retryable: false });
     }
 
-    const searchInfo = record(output.search_info);
+    const searchInfo = record((streamed.sourceOutput ?? output).search_info);
     const rawResults = searchInfo?.search_results;
     const citations = normalizeCitations(rawResults);
     const usage = normalizeUsage(streamed.usage);

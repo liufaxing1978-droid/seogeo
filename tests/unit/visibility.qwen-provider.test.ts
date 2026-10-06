@@ -118,6 +118,33 @@ describe('P9-0E Alibaba Cloud Model Studio Qwen visibility adapter', () => {
     await expect(adapter.sample(request)).resolves.toMatchObject({ citations: [], citationEvidenceState: 'KNOWN_EMPTY' });
   });
 
+  it('assembles answer text from incremental streaming chunks', async () => {
+    const initial = {
+      request_id: 'qwen_req_chunks',
+      output: { choices: [{ message: { role: 'assistant', content: [{ text: '兴善' }] } }] }
+    };
+    const final = {
+      request_id: 'qwen_req_chunks',
+      output: {
+        choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: [] } }],
+        search_info: { search_results: [] }
+      },
+      usage: { input_tokens: 10, output_tokens: 2, total_tokens: 12 }
+    };
+    const body = [
+      `data: ${JSON.stringify(initial)}`,
+      `data: ${JSON.stringify(final)}`,
+      'data: [DONE]'
+    ].join('\n\n');
+    const adapter = new QwenVisibilityProvider({ apiKey: 'fixture-key', transport: new FixtureTransport([{ status: 200, body, latencyMs: 2 }]) });
+
+    await expect(adapter.sample(request)).resolves.toMatchObject({
+      providerResponseId: 'qwen_req_chunks',
+      answerText: '兴善',
+      citationEvidenceState: 'KNOWN_EMPTY'
+    });
+  });
+
   it('uses UNKNOWN when search_info is absent', async () => {
     const body = completedStreamingBody([], false);
     const adapter = new QwenVisibilityProvider({ apiKey: 'fixture-key', transport: new FixtureTransport([{ status: 200, body, latencyMs: 2 }]) });
