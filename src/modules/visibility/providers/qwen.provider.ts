@@ -36,7 +36,11 @@ class FetchQwenVisibilityTransport implements QwenVisibilityTransport {
       body: JSON.stringify(request.body)
     });
     let body: unknown = null;
-    try { body = await response.json(); } catch { body = null; }
+    try {
+      body = response.headers.get('content-type')?.includes('text/event-stream')
+        ? await response.text()
+        : await response.json();
+    } catch { body = null; }
     return { status: response.status, body, latencyMs: Date.now() - startedAt };
   }
 }
@@ -74,13 +78,58 @@ function providerHttpError(status: number): VisibilityProviderError {
   return new VisibilityProviderError('VISIBILITY_PROVIDER_FAILED', `Qwen visibility request failed with HTTP ${status}`, { httpStatus: status, retryable: false });
 }
 
+function messageText(value: unknown): string | null {
+  const direct = stringValue(value);
+  if (direct) return direct;
+  if (!Array.isArray(value)) return null;
+  const text = value
+    .map((item) => stringValue(record(item)?.text))
+    .filter((item): item is string => item !== null)
+    .join('');
+  return text || null;
+}
+
 function answerText(output: Record<string, unknown>): string | null {
   if (!Array.isArray(output.choices)) return null;
   for (const choice of output.choices) {
-    const content = stringValue(record(record(choice)?.message)?.content);
+    const content = messageText(record(record(choice)?.message)?.content);
     if (content) return content;
   }
   return null;
+}
+
+function streamingEvents(value: unknown): Record<string, unknown>[] {
+  const object = record(value);
+  if (object) return [object];
+  if (typeof value !== 'string') return [];
+  const events: Record<string, unknown>[] = [];
+  for (const block of value.split(/\r?\n\r?\n/)) {
+    const payload = block
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trim())
+      .join('');
+    if (!payload || payload === '[DONE]') continue;
+    try {
+      const parsed = record(JSON.parse(payload));
+      if (parsed) events.push(parsed);
+    } catch {
+      // Ignore keepalive and malformed non-data frames; final response validation remains fail-closed.
+    }
+  }
+  return events;
+}
+
+function completeStreamingResponse(value: unknown) {
+  const events = streamingEvents(value);
+  const providerResponseId = events.map((item) => stringValue(item.request_id)).find((item) => item !== null) ?? null;
+  const finalEvent = [...events].reverse().find((item) => record(item.output) !== null) ?? null;
+  return {
+    body: finalEvent,
+    providerResponseId,
+    output: finalEvent ? record(finalEvent.output) : null,
+    usage: finalEvent?.usage
+  };
 }
 
 function normalizeCitations(rawResults: unknown): VisibilityCitationSource[] {
@@ -155,20 +204,20 @@ export class QwenVisibilityProvider implements VisibilityProviderAdapter {
     let response: QwenVisibilityHttpResponse;
     try {
       response = await this.transport.send({
-        url: `https://${workspaceId}.${region}.maas.aliyuncs.com/api/v1/services/aigc/text-generation/generation`,
+        url: `https://${workspaceId}.${region}.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`,
         method: 'POST',
         headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
         body: {
           model: request.model,
-          input: { messages: [{ role: 'user', content: request.prompt }] },
+          input: { messages: [{ role: 'user', content: [{ text: request.prompt }] }] },
           parameters: {
-            result_format: 'message',
             enable_search: true,
             search_options: {
+              search_strategy: 'agent',
               enable_source: true,
-              enable_citation: true,
-              citation_format: '[ref_<number>]'
-            }
+              enable_citation: true
+            },
+            incremental_output: true
           }
         }
       });
@@ -178,9 +227,10 @@ export class QwenVisibilityProvider implements VisibilityProviderAdapter {
     }
 
     if (response.status < 200 || response.status >= 300) throw providerHttpError(response.status);
-    const body = record(response.body);
-    const providerResponseId = stringValue(body?.request_id);
-    const output = record(body?.output);
+    const streamed = completeStreamingResponse(response.body);
+    const body = streamed.body;
+    const providerResponseId = streamed.providerResponseId;
+    const output = streamed.output;
     const normalizedAnswer = output ? answerText(output) : null;
     if (!body || !providerResponseId || !output || !normalizedAnswer) {
       throw new VisibilityProviderError('VISIBILITY_PROVIDER_MALFORMED_RESPONSE', 'Qwen returned a malformed visibility response', { httpStatus: response.status, retryable: false });
@@ -189,7 +239,7 @@ export class QwenVisibilityProvider implements VisibilityProviderAdapter {
     const searchInfo = record(output.search_info);
     const rawResults = searchInfo?.search_results;
     const citations = normalizeCitations(rawResults);
-    const usage = normalizeUsage(body.usage);
+    const usage = normalizeUsage(streamed.usage);
 
     return {
       status: 'COMPLETED',

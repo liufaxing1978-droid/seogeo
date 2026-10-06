@@ -42,9 +42,24 @@ function completedBody(searchResults: unknown[] = [
   };
 }
 
+function completedStreamingBody(searchResults: unknown[] = [
+  { index: 1, title: '兴善堂', url: 'https://xingshantang.org/article' },
+  { index: 2, title: '参考资料', url: 'https://example.cn/reference' },
+  { index: 3, title: '重复资料', url: 'https://xingshantang.org/article' }
+], includeSearchInfo = true) {
+  const output: Record<string, unknown> = {
+    choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: [{ text: '兴善堂与参考资料均提供相关公开信息。' }] } }]
+  };
+  if (includeSearchInfo) output.search_info = { search_results: searchResults };
+  return [
+    `data: ${JSON.stringify({ request_id: 'qwen_req_123', output, usage: { input_tokens: 10, output_tokens: 20, total_tokens: 30 } })}`,
+    'data: [DONE]'
+  ].join('\n\n');
+}
+
 describe('P9-0E Alibaba Cloud Model Studio Qwen visibility adapter', () => {
-  it('uses DashScope native web search and normalizes native sources', async () => {
-    const transport = new FixtureTransport([{ status: 200, body: completedBody(), latencyMs: 31 }]);
+  it('uses the Qwen3 multimodal streaming endpoint for native web search', async () => {
+    const transport = new FixtureTransport([{ status: 200, body: completedStreamingBody(), latencyMs: 31 }]);
     const adapter = new QwenVisibilityProvider({ apiKey: 'fixture-key', transport });
 
     expect(adapter.capabilities).toEqual(['WEB_GROUNDED', 'CITATION_NATIVE']);
@@ -53,7 +68,7 @@ describe('P9-0E Alibaba Cloud Model Studio Qwen visibility adapter', () => {
 
     expect(transport.calls).toHaveLength(1);
     expect(transport.calls[0]).toEqual({
-      url: 'https://ws-fixture.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/text-generation/generation',
+      url: 'https://ws-fixture.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
       method: 'POST',
       headers: {
         Authorization: 'Bearer fixture-key',
@@ -61,16 +76,16 @@ describe('P9-0E Alibaba Cloud Model Studio Qwen visibility adapter', () => {
       },
       body: {
         model: 'qwen-plus',
-        input: { messages: [{ role: 'user', content: request.prompt }] },
-        parameters: {
-          result_format: 'message',
-          enable_search: true,
-          search_options: {
-            enable_source: true,
-            enable_citation: true,
-            citation_format: '[ref_<number>]'
+          input: { messages: [{ role: 'user', content: [{ text: request.prompt }] }] },
+          parameters: {
+            enable_search: true,
+            search_options: {
+              search_strategy: 'agent',
+              enable_source: true,
+              enable_citation: true
+            },
+            incremental_output: true
           }
-        }
       }
     });
     expect(result).toEqual({
@@ -99,13 +114,12 @@ describe('P9-0E Alibaba Cloud Model Studio Qwen visibility adapter', () => {
   });
 
   it('marks explicit empty search results as KNOWN_EMPTY', async () => {
-    const adapter = new QwenVisibilityProvider({ apiKey: 'fixture-key', transport: new FixtureTransport([{ status: 200, body: completedBody([]), latencyMs: 2 }]) });
+    const adapter = new QwenVisibilityProvider({ apiKey: 'fixture-key', transport: new FixtureTransport([{ status: 200, body: completedStreamingBody([]), latencyMs: 2 }]) });
     await expect(adapter.sample(request)).resolves.toMatchObject({ citations: [], citationEvidenceState: 'KNOWN_EMPTY' });
   });
 
   it('uses UNKNOWN when search_info is absent', async () => {
-    const body = completedBody();
-    delete (body.output as { search_info?: unknown }).search_info;
+    const body = completedStreamingBody([], false);
     const adapter = new QwenVisibilityProvider({ apiKey: 'fixture-key', transport: new FixtureTransport([{ status: 200, body, latencyMs: 2 }]) });
     await expect(adapter.sample(request)).resolves.toMatchObject({ citationEvidenceState: 'UNKNOWN' });
   });
