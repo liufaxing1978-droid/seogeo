@@ -206,7 +206,11 @@ export class QwenVisibilityProvider implements VisibilityProviderAdapter {
       response = await this.transport.send({
         url: `https://${workspaceId}.${region}.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`,
         method: 'POST',
-        headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+          'X-DashScope-SSE': 'enable'
+        },
         body: {
           model: request.model,
           input: { messages: [{ role: 'user', content: [{ text: request.prompt }] }] },
@@ -214,8 +218,7 @@ export class QwenVisibilityProvider implements VisibilityProviderAdapter {
             enable_search: true,
             search_options: {
               search_strategy: 'agent',
-              enable_source: true,
-              enable_citation: true
+              enable_source: true
             },
             incremental_output: true
           }

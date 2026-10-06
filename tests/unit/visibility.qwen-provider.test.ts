@@ -72,7 +72,8 @@ describe('P9-0E Alibaba Cloud Model Studio Qwen visibility adapter', () => {
       method: 'POST',
       headers: {
         Authorization: 'Bearer fixture-key',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-DashScope-SSE': 'enable'
       },
       body: {
         model: 'qwen-plus',
@@ -81,8 +82,7 @@ describe('P9-0E Alibaba Cloud Model Studio Qwen visibility adapter', () => {
             enable_search: true,
             search_options: {
               search_strategy: 'agent',
-              enable_source: true,
-              enable_citation: true
+              enable_source: true
             },
             incremental_output: true
           }
