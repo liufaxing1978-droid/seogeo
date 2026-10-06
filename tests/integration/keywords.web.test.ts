@@ -314,6 +314,43 @@ describe('P11-01 keyword center web UI', () => {
     }
   });
 
+  it('renders the lock acknowledgement needed to set a locked Cluster primary keyword', async () => {
+    const fixture = await seedAuthenticatedUser({
+      role: 'OWNER',
+      planLevel: 'ENTERPRISE',
+      userStatus: 'ACTIVE',
+      membershipStatus: 'ACTIVE',
+    });
+
+    try {
+      const keyword = await keywordService.createManual({
+        actorUserId: fixture.user.id,
+        projectId: fixture.project.id,
+        text: '战略锁定主词',
+        type: 'CORE',
+        locked: true,
+      });
+      const group = await keywordService.createGroup({
+        projectId: fixture.project.id,
+        name: '锁定主词 Cluster',
+      });
+
+      const response = await request(createApp())
+        .get(`/projects/${fixture.project.id}/keywords`)
+        .set('Cookie', fixture.sessionCookie)
+        .expect(200);
+      const primaryForm = response.text.match(new RegExp(
+        `<form[^>]*action="/projects/${fixture.project.id}/keyword-groups/${group.id}/primary-keyword"[^>]*>[\\s\\S]*?</form>`,
+      ))?.[0] ?? '';
+
+      expect(primaryForm).toContain('name="acknowledgeLock"');
+      expect(primaryForm).toContain('确认调整锁定词');
+      expect(response.text).toContain(keyword.text);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it('renders persisted opportunity score confidence and explainable unknown dimensions', async () => {
     const fixture = await seedAuthenticatedUser({
       role: 'OWNER',
